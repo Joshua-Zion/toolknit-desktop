@@ -182,7 +182,7 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 ## 链接
 
 - 网页端:[toolknit.com](https://toolknit.com)
-- 下载桌面端:[toolknit.com/exe.html](https://toolknit.com/exe.html)
+- 下载桌面端:[GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
 - 问题反馈:[GitHub Issues](https://github.com/ZihangDong/toolknit-desktop/issues)
 - 赞助支持:[toolknit.com](https://toolknit.com)(页面底部)
 

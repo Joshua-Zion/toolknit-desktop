@@ -184,7 +184,7 @@ This project is open-sourced under the [MIT License](LICENSE). You are free to u
 ## Links
 
 - Web App: [toolknit.com](https://toolknit.com)
-- Download Desktop: [toolknit.com/exe.html](https://toolknit.com/exe.html)
+- Download Desktop: [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
 - Issue Tracker: [GitHub Issues](https://github.com/ZihangDong/toolknit-desktop/issues)
 - Sponsor: [toolknit.com](https://toolknit.com) (bottom of page)
 
