@@ -1,8 +1,12 @@
 <div align="center">
 
+![ToolKnit Banner](assets/banner.svg)
+
 # ToolKnit
 
 ### 多功能工具箱 · 桌面端开源版
+
+[English](README_EN.md) · 简体中文
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-success.svg)]()
