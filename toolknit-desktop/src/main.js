@@ -272,7 +272,6 @@
       const settingsOverlay = document.getElementById('settingsOverlay');
       const settingsBtn = document.getElementById('settingsBtn');
       const settingsBack = document.getElementById('settingsBack');
-      const checkUpdate = document.getElementById('checkUpdate');
 
       // Language selection in settings
       const langOptionBtns = document.querySelectorAll('.settings-row.lang-options .lang-option');
@@ -310,185 +309,12 @@
         }
       });
 
-      if (checkUpdate) {
-        checkUpdate.addEventListener('click', () => {
-          if (!isTauri) return;
-          import('@tauri-apps/api/core').then(({ invoke }) => {
-            invoke('check_update', { language: getLang() }).then((result) => {
-              if (result.has_update) {
-                showForceUpdateOverlay(result);
-              } else {
-                showToast(t('settings.upToDate'));
-              }
-            }).catch((e) => {
-              console.error('Check update failed:', e);
-              showToast(t('settings.updateCheckFailed'));
-            });
-          });
-        });
-      }
-
-      // ===== Force Update =====
-      const forceUpdateOverlay = document.getElementById('forceUpdateOverlay');
-      const forceUpdateVersion = document.getElementById('forceUpdateVersion');
-      const forceUpdateChangelog = document.getElementById('forceUpdateChangelog');
-      const forceUpdateBtn = document.getElementById('forceUpdateBtn');
-      const forceUpdateError = document.getElementById('forceUpdateError');
-      let updateInfo = null;
-
-      let forceUpdateBgInstance = null;
-
-      function showForceUpdateOverlay(info) {
-        updateInfo = info;
-        const isZh = getLang() === 'zh';
-        if (forceUpdateVersion) {
-          forceUpdateVersion.textContent = `v${info.current_version} → v${info.latest_version}`;
-        }
-        if (forceUpdateChangelog) {
-          forceUpdateChangelog.textContent = isZh ? info.changelog_zh : info.changelog_en;
-        }
-        if (forceUpdateError) forceUpdateError.classList.remove('visible');
-        if (forceUpdateBtn) {
-          forceUpdateBtn.disabled = false;
-          forceUpdateBtn.textContent = t('home.update.btn');
-        }
-
-        if (forceUpdateOverlay) forceUpdateOverlay.classList.add('visible');
-
-        const forceUpdateBg = document.getElementById('forceUpdateBg');
-        if (forceUpdateBg && !forceUpdateBgInstance) {
-          const darkveilVariant = Math.random() < 0.5 ? 'original' : 'blue';
-          forceUpdateBgInstance = initDarkVeil(forceUpdateBg, {
-            hueShift: darkveilVariant === 'blue' ? 220 : 0,
-            noiseIntensity: 0.03,
-            scanlineIntensity: 0,
-            speed: 1.6,
-            scanlineFrequency: 5,
-            warpAmount: 0,
-            resolutionScale: 1
-          });
-        }
-      }
-
-      if (forceUpdateBtn) {
-        forceUpdateBtn.addEventListener('click', () => {
-          const downloadUrl = 'https://toolknit.com/exe.html';
-          if (isTauri) {
-            import('@tauri-apps/api/core').then(({ invoke }) => {
-              invoke('open_url', { url: downloadUrl }).catch(() => {
-                window.open(downloadUrl, '_blank');
-              });
-            });
-          } else {
-            window.open(downloadUrl, '_blank');
-          }
-        });
-      }
-
-      // Auto check on startup (silent, only force update shows overlay)
-      if (isTauri) {
-        import('@tauri-apps/api/core').then(({ invoke }) => {
-          invoke('check_update', { language: getLang() }).then((result) => {
-            if (result.has_update && result.force_update) {
-              showForceUpdateOverlay(result);
-            }
-          }).catch(() => {});
-        });
-      }
-
-      // ===== FFmpeg Download Dialog =====
-      const ffmpegDialogOverlay = document.getElementById('ffmpegDialogOverlay');
-      const ffmpegDialogCancel = document.getElementById('ffmpegDialogCancel');
-      const ffmpegDialogConfirm = document.getElementById('ffmpegDialogConfirm');
-      const ffmpegDialogProgressWrap = document.getElementById('ffmpegDialogProgressWrap');
-      const ffmpegDialogProgressFill = document.getElementById('ffmpegDialogProgressFill');
-      const ffmpegDialogProgressText = document.getElementById('ffmpegDialogProgressText');
-      const ffmpegDialogError = document.getElementById('ffmpegDialogError');
-      let ffmpegDownloadUnlisten = null;
-      let ffmpegBgInstance = null;
-
-      function showFfmpegDialog() {
-        return new Promise((resolve) => {
-          if (!ffmpegDialogOverlay) { resolve(false); return; }
-          if (ffmpegDialogProgressWrap) ffmpegDialogProgressWrap.style.display = 'none';
-          if (ffmpegDialogError) ffmpegDialogError.classList.remove('visible');
-          if (ffmpegDialogConfirm) ffmpegDialogConfirm.disabled = false;
-          if (ffmpegDialogCancel) ffmpegDialogCancel.disabled = false;
-          if (ffmpegDialogProgressFill) ffmpegDialogProgressFill.style.width = '0%';
-          if (ffmpegDialogProgressText) ffmpegDialogProgressText.textContent = '0%';
-          ffmpegDialogOverlay.classList.add('visible');
-
-          const ffmpegOverlayBg = document.getElementById('ffmpegOverlayBg');
-          if (ffmpegOverlayBg && !ffmpegBgInstance) {
-            const darkveilVariant = Math.random() < 0.5 ? 'original' : 'blue';
-            ffmpegBgInstance = initDarkVeil(ffmpegOverlayBg, {
-              hueShift: darkveilVariant === 'blue' ? 220 : 0,
-              noiseIntensity: 0.03,
-              scanlineIntensity: 0,
-              speed: 1.6,
-              scanlineFrequency: 5,
-              warpAmount: 0,
-              resolutionScale: 1
-            });
-          }
-
-          let resolved = false;
-          const cleanup = () => {
-            ffmpegDialogOverlay.classList.remove('visible');
-            if (ffmpegDownloadUnlisten) { ffmpegDownloadUnlisten(); ffmpegDownloadUnlisten = null; }
-          };
-
-          if (ffmpegDialogCancel) {
-            ffmpegDialogCancel.onclick = () => {
-              if (resolved) return;
-              resolved = true;
-              cleanup();
-              resolve(false);
-            };
-          }
-
-          if (ffmpegDialogConfirm) {
-            ffmpegDialogConfirm.onclick = async () => {
-              if (resolved) return;
-              ffmpegDialogConfirm.disabled = true;
-              ffmpegDialogCancel.disabled = true;
-              if (ffmpegDialogProgressWrap) ffmpegDialogProgressWrap.style.display = 'flex';
-              if (ffmpegDialogError) ffmpegDialogError.classList.remove('visible');
-
-              try {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const { listen } = await import('@tauri-apps/api/event');
-                ffmpegDownloadUnlisten = await listen('ffmpeg-download-progress', (event) => {
-                  const pct = event.payload;
-                  if (ffmpegDialogProgressFill) ffmpegDialogProgressFill.style.width = pct + '%';
-                  if (ffmpegDialogProgressText) ffmpegDialogProgressText.textContent = pct + '%';
-                });
-                await invoke('download_ffmpeg', { language: getLang() });
-                resolved = true;
-                cleanup();
-                resolve(true);
-              } catch (e) {
-                if (ffmpegDialogError) {
-                  ffmpegDialogError.textContent = t('home.ffmpeg.downloadFail', { error: String(e) });
-                  ffmpegDialogError.classList.add('visible');
-                }
-                ffmpegDialogConfirm.disabled = false;
-                ffmpegDialogCancel.disabled = false;
-                if (ffmpegDialogProgressWrap) ffmpegDialogProgressWrap.style.display = 'none';
-              }
-            };
-          }
-        });
-      }
 
       async function ensureFfmpegAvailable() {
         if (!isTauri) return false;
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          const exists = await invoke('check_ffmpeg');
-          if (exists) return true;
-          const userChoice = await showFfmpegDialog();
-          return userChoice;
+          return await invoke('check_ffmpeg');
         } catch (e) {
           console.error('FFmpeg check failed:', e);
           return false;
@@ -4278,31 +4104,8 @@
           if (feedbackFormSubmit) feedbackFormSubmit.disabled = true;
 
           try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 15000);
-            const resp = await fetch(`${AUTH_API_BASE}/api/feedback`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            const data = await resp.json();
-            if (data.code === 0) {
-              closeFeedbackDrawer();
-              resetFeedbackForm();
-              window.showToast(t('home.feedbackPage.submitSuccess'));
-            } else {
-              console.error('Feedback submit failed:', data);
-              window.showToast(t('home.feedbackPage.submitError'));
-            }
-          } catch (err) {
-            console.error('Feedback submit error:', err);
-            if (err.name === 'AbortError') {
-              window.showToast(t('auth.errTimeout'));
-            } else {
-              window.showToast(t('home.feedbackPage.submitError'));
-            }
+            const msg = getLang() === 'zh' ? '此功能在开源版中已移除' : 'This feature has been removed in the open-source version.';
+            window.showToast(msg);
           } finally {
             if (feedbackFormSubmit) feedbackFormSubmit.disabled = false;
           }
@@ -4490,8 +4293,6 @@
         }, 600);
       }
 
-      const AUTH_API_BASE = 'https://toolknitapi.24picture.com';
-
       const SERVER_ERROR_MAP = {
         'Email already registered': 'auth.errEmailExists',
         'Invalid email or password': 'auth.errInvalidCredentials',
@@ -4578,39 +4379,9 @@
 
         const timeoutId = setTimeout(hideMaskOnce, 8000);
 
-        try {
-          const res = await fetch(`${AUTH_API_BASE}/api/auth/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          const data = await res.json();
-          clearTimeout(timeoutId);
-          if (data.code === 0 && data.data && data.data.user) {
-            localStorage.setItem('toolknit_user', JSON.stringify(data.data.user));
-            // Update UI outside try block so errors here don't clear the token
-            try {
-              updatePersonalPanel(data.data.user);
-              if (typeof renderFavorites === 'function') renderFavorites();
-            } catch (uiErr) {
-              console.error('[restoreSession] UI update error:', uiErr);
-            }
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                hideMaskOnce();
-              });
-            });
-          } else {
-            // Auth error (invalid/expired token) — clear token
-            console.warn('[restoreSession] Auth failed, clearing token:', data.msg);
-            localStorage.removeItem('toolknit_token');
-            localStorage.removeItem('toolknit_user');
-            hideMaskOnce();
-          }
-        } catch (e) {
-          // Network error — don't clear token, just hide mask
-          clearTimeout(timeoutId);
-          console.error('[restoreSession] Network error:', e);
-          hideMaskOnce();
-        }
+        // Open-source version: silent disable, no session restore (no backend)
+        clearTimeout(timeoutId);
+        hideMaskOnce();
       }
 
       function logout() {
@@ -5062,30 +4833,8 @@
         const btnRect = loginSubmit.getBoundingClientRect();
         showAuthLoading(btnRect.left + btnRect.width / 2, btnRect.top + btnRect.height / 2);
         try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000);
-          const res = await fetch(`${AUTH_API_BASE}/api/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          const data = await res.json();
-          if (data.code === 0 && data.data) {
-            localStorage.setItem('toolknit_token', data.data.token);
-            localStorage.setItem('toolknit_user', JSON.stringify(data.data.user));
-            updatePersonalPanel(data.data.user);
-            closeAuthOverlay();
-          } else {
-            showAuthError(loginError, translateServerError(data.msg) || t('auth.errLoginFailed'));
-          }
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            showAuthError(loginError, t('auth.errTimeout'));
-          } else {
-            showAuthError(loginError, t('auth.errNetwork'));
-          }
+          const msg = getLang() === 'zh' ? '此功能在开源版中已移除' : 'This feature has been removed in the open-source version.';
+          showAuthError(loginError, msg);
         } finally {
           hideAuthLoading();
           loginSubmit.disabled = false;
@@ -5169,53 +4918,8 @@
         const btnRect = registerSubmit.getBoundingClientRect();
         showAuthLoading(btnRect.left + btnRect.width / 2, btnRect.top + btnRect.height / 2);
         try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000);
-          const res = await fetch(`${AUTH_API_BASE}/api/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, username }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          const data = await res.json();
-          if (data.code === 0 && data.data) {
-            localStorage.setItem('toolknit_token', data.data.token);
-            localStorage.setItem('toolknit_user', JSON.stringify(data.data.user));
-            // If avatar selected, upload it
-            if (registerAvatarData && data.data.token) {
-              try {
-                const formData = new FormData();
-                formData.append('avatar', registerAvatarData);
-                const avatarRes = await fetch(`${AUTH_API_BASE}/api/upload/avatar`, {
-                  method: 'POST',
-                  headers: { 'Authorization': `Bearer ${data.data.token}` },
-                  body: formData,
-                });
-                const avatarData = await avatarRes.json();
-                if (avatarData.code === 0 && avatarData.data && avatarData.data.user) {
-                  localStorage.setItem('toolknit_user', JSON.stringify(avatarData.data.user));
-                  updatePersonalPanel(avatarData.data.user);
-                } else {
-                  updatePersonalPanel(data.data.user);
-                }
-              } catch (avatarErr) {
-                console.error('Avatar upload after register failed:', avatarErr);
-                updatePersonalPanel(data.data.user);
-              }
-            } else {
-              updatePersonalPanel(data.data.user);
-            }
-            closeAuthOverlay();
-          } else {
-            if (registerError2) showAuthError(registerError2, translateServerError(data.msg) || t('auth.errRegisterFailed'));
-          }
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            if (registerError2) showAuthError(registerError2, t('auth.errTimeout'));
-          } else {
-            if (registerError2) showAuthError(registerError2, t('auth.errNetwork'));
-          }
+          const msg = getLang() === 'zh' ? '此功能在开源版中已移除' : 'This feature has been removed in the open-source version.';
+          showAuthError(registerError2, msg);
         } finally {
           hideAuthLoading();
           registerSubmit.disabled = false;
@@ -5285,7 +4989,6 @@
       (function initStats() {
         const totalKey = 'toolknit_total_usage';
         const myKey = 'toolknit_my_usage';
-        const WEB_USAGE_API = 'https://toolknit.com/api/total-usage.php';
 
         function getStoredInt(key, fallback = 0) {
           try {
@@ -5365,35 +5068,12 @@
 
         // Fetch web-side total usage from PHP API
         async function fetchWebTotalUsage() {
-          try {
-            const res = await fetch(WEB_USAGE_API);
-            const text = await res.text();
-            const num = parseInt(text.trim(), 10);
-            if (!isNaN(num)) {
-              webTotalUsage = num;
-              refreshTotalDisplay();
-            }
-          } catch (e) {
-            console.warn('Failed to fetch web total usage:', e);
-          }
+          // Open-source version: silent disable, no remote usage fetch
         }
 
         // Fetch exe-side global total from API
         async function fetchExeApiTotalUsage() {
-          try {
-            const res = await fetch(`${AUTH_API_BASE}/api/usage/total`);
-            const data = await res.json();
-            if (data.code === 0 && data.data) {
-              exeApiTotalUsage = data.data.count || 0;
-              // Server total already includes all historical local increments,
-              // so reset local total to avoid double-counting
-              exeTotalUsage = 0;
-              setStoredInt(totalKey, 0);
-              refreshTotalDisplay();
-            }
-          } catch (e) {
-            console.warn('Failed to fetch exe api total usage:', e);
-          }
+          // Open-source version: silent disable, no remote usage fetch
         }
 
         // Report tool usage: local +1 + public API increment
@@ -5403,12 +5083,7 @@
           exeMyUsage += 1;
           setStoredInt(myKey, exeMyUsage);
 
-          try {
-            await fetch(`${AUTH_API_BASE}/api/usage/increment`, { method: 'POST' });
-            exeApiTotalUsage += 1;
-          } catch (e) {
-            console.warn('Failed to report usage to server:', e);
-          }
+          // Open-source version: silent disable, no remote usage increment
 
           refreshTotalDisplay();
           refreshMyUsageDisplay();

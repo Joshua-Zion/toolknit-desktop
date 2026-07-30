@@ -29,7 +29,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: blob: data: https://cdn.24picture.com https://toolknitapi.24picture.com https://pic1.imgdb.cn; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://toolknitapi.24picture.com https://toolknit.com https://cdn.24picture.com https://toolknit.cn-nb1.rains3.com https://api.deepseek.com https://api.openai.com https://dashscope.aliyuncs.com https://api.moonshot.cn; font-src 'self' data:",
+      "csp": "default-src 'self'; img-src 'self' asset: blob: data: https://pic1.imgdb.cn; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://api.deepseek.com https://api.openai.com https://dashscope.aliyuncs.com https://api.moonshot.cn; font-src 'self' data:",
       "assetProtocol": {
         "enable": true,
         "scope": ["$DOCUMENT/*", "$DOWNLOAD/*", "$APPDATA/*"]
@@ -42,6 +42,7 @@
     "icon": [
       "icons/icon.ico"
     ],
+    "resources": ["resources/ffmpeg/ffmpeg.exe"],
     "windows": {
       "nsis": {
         "installMode": "both",

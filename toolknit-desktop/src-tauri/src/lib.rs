@@ -1,5 +1,4 @@
-﻿use tauri::Manager;
-use tauri::Emitter;
+use tauri::Manager;
 
 /// Read the installer language at startup (from install_lang.txt).
 /// Returns "zh" or "en", defaulting to "en" on any error.
@@ -145,11 +144,17 @@ static CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
 static CURRENT_CHILD_ID: AtomicU32 = AtomicU32::new(0);
 
 fn get_ffmpeg_dir() -> Result<std::path::PathBuf, String> {
-    // Search for ffmpeg.exe in exe directory and parent directories (up to 4 levels)
-    // ffmpeg.exe is installed alongside the main exe by the installer
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut search_dir = exe.parent().ok_or("Cannot find exe directory")?;
-    
+    let exe_dir = exe.parent().ok_or("Cannot find exe directory")?;
+
+    // 优先：使用打包内置的 resources/ffmpeg/ 目录（开源版 ffmpeg.exe 已内置）
+    let bundled = exe_dir.join("resources").join("ffmpeg");
+    if bundled.join("ffmpeg.exe").exists() {
+        return Ok(bundled);
+    }
+
+    // 兼容：搜索 ffmpeg.exe in exe directory and parent directories (up to 4 levels)
+    let mut search_dir = exe_dir;
     for _ in 0..4 {
         let candidate = search_dir.join("ffmpeg.exe");
         if candidate.exists() {
@@ -160,9 +165,8 @@ fn get_ffmpeg_dir() -> Result<std::path::PathBuf, String> {
             None => break,
         }
     }
-    
+
     // Fallback 1: use install_path from install_config.json (user's chosen install directory)
-    let exe_dir = exe.parent().ok_or("Cannot find exe directory")?;
     let mut search_dir2 = exe_dir;
     for _ in 0..4 {
         let candidate = search_dir2.join("install_config.json");
@@ -204,121 +208,6 @@ fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
 #[tauri::command]
 fn check_ffmpeg() -> bool {
     get_ffmpeg_path().map(|p| p.exists()).unwrap_or(false)
-}
-
-#[tauri::command]
-async fn download_ffmpeg(app_handle: tauri::AppHandle, language: String) -> Result<String, String> {
-    use tauri::Emitter;
-    use futures_util::StreamExt;
-
-    let ffmpeg_dir = get_ffmpeg_dir()?;
-    let ffmpeg_path = ffmpeg_dir.join("ffmpeg.exe");
-    if ffmpeg_path.exists() {
-        return Ok(ffmpeg_path.to_string_lossy().to_string());
-    }
-
-    // Primary source based on language: zh=RainS3(国内), en=R2(海外)
-    let (primary, fallback) = if language == "zh" {
-        (
-            "https://toolknit.cn-nb1.rains3.com/ffmpeg-master-latest-win64-gpl.zip",
-            "https://cdn.24picture.com/ffmpeg-master-latest-win64-gpl.zip",
-        )
-    } else {
-        (
-            "https://cdn.24picture.com/ffmpeg-master-latest-win64-gpl.zip",
-            "https://toolknit.cn-nb1.rains3.com/ffmpeg-master-latest-win64-gpl.zip",
-        )
-    };
-    let urls = [primary, fallback];
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .user_agent("ToolKnit-Desktop")
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-    let temp_zip = ffmpeg_path.parent().unwrap().join("ffmpeg_download.zip");
-    let mut downloaded_ok = false;
-
-    for url in &urls {
-        let response = match client.get(*url).send().await {
-            Ok(r) if r.status().is_success() => r,
-            _ => continue,
-        };
-
-        let total_size = response.content_length().unwrap_or(0);
-        let mut file = match std::fs::File::create(&temp_zip) {
-            Ok(f) => f,
-            Err(e) => { let _ = app_handle.emit("ffmpeg-download-error", e.to_string()); continue; }
-        };
-        let mut stream = response.bytes_stream();
-        let mut downloaded: u64 = 0;
-        let mut last_percent: u64 = 0;
-
-        let mut stream_ok = true;
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = match chunk_result {
-                Ok(c) => c,
-                Err(e) => { stream_ok = false; let _ = app_handle.emit("ffmpeg-download-error", e.to_string()); break; }
-            };
-            if std::io::Write::write_all(&mut file, &chunk).is_err() { stream_ok = false; break; }
-            downloaded += chunk.len() as u64;
-            if total_size > 0 {
-                let percent = (downloaded * 100) / total_size;
-                if percent != last_percent {
-                    last_percent = percent;
-                    let _ = app_handle.emit("ffmpeg-download-progress", percent);
-                }
-            }
-        }
-        drop(file);
-
-        if stream_ok {
-            let _ = app_handle.emit("ffmpeg-download-progress", 100u64);
-            downloaded_ok = true;
-            break;
-        }
-    }
-
-    if !downloaded_ok {
-        return Err("Failed to download ffmpeg from all sources".to_string());
-    }
-
-    // Extract ffmpeg.exe from the zip
-    let zip_file = std::fs::File::open(&temp_zip)
-        .map_err(|e| format!("FFmpeg zip open error: {}", e))?;
-    let mut archive = zip::ZipArchive::new(zip_file)
-        .map_err(|e| format!("FFmpeg zip read error: {}", e))?;
-
-    let mut extracted = false;
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i)
-            .map_err(|e| format!("FFmpeg zip entry error: {}", e))?;
-        let name = entry.name().to_string();
-        // Extract all files from the ffmpeg bin directory so dependencies (DLLs) are present
-        if name.contains("/bin/") || name.contains("\\bin\\") {
-            let file_name = std::path::Path::new(&name).file_name()
-                .ok_or_else(|| format!("Invalid zip entry path: {}", name))?
-                .to_string_lossy()
-                .to_string();
-            let out_path = ffmpeg_dir.join(&file_name);
-            let mut out = std::fs::File::create(&out_path)
-                .map_err(|e| format!("FFmpeg extract error for {}: {}", file_name, e))?;
-            std::io::copy(&mut entry, &mut out)
-                .map_err(|e| format!("FFmpeg write error for {}: {}", file_name, e))?;
-            if file_name == "ffmpeg.exe" {
-                extracted = true;
-            }
-        }
-    }
-
-    let _ = std::fs::remove_file(&temp_zip);
-
-    if !extracted || !ffmpeg_path.exists() {
-        return Err("Failed to extract ffmpeg.exe from archive".to_string());
-    }
-
-    Ok(ffmpeg_path.to_string_lossy().to_string())
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1471,95 +1360,6 @@ fn open_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
-// ===== Auto Update =====
-
-#[derive(serde::Serialize)]
-struct UpdateCheckResult {
-    has_update: bool,
-    force_update: bool,
-    current_version: String,
-    latest_version: String,
-    changelog_zh: String,
-    changelog_en: String,
-    url: String,
-    url_cn: String,
-}
-
-fn parse_version(v: &str) -> Vec<u64> {
-    v.trim_start_matches('v')
-        .split('.')
-        .filter_map(|s| s.trim().parse::<u64>().ok())
-        .collect()
-}
-
-fn version_lt(a: &str, b: &str) -> bool {
-    let va = parse_version(a);
-    let vb = parse_version(b);
-    let len = va.len().max(vb.len());
-    for i in 0..len {
-        let na = va.get(i).unwrap_or(&0);
-        let nb = vb.get(i).unwrap_or(&0);
-        if na < nb { return true; }
-        if na > nb { return false; }
-    }
-    false
-}
-
-#[tauri::command]
-fn get_app_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-
-#[tauri::command]
-async fn check_update(language: String) -> Result<UpdateCheckResult, String> {
-    let current = env!("CARGO_PKG_VERSION").to_string();
-    let urls = if language == "zh" {
-        ["https://toolknit.cn-nb1.rains3.com/manifest.json", "https://cdn.24picture.com/toolknit/manifest.json"]
-    } else {
-        ["https://cdn.24picture.com/toolknit/manifest.json", "https://toolknit.cn-nb1.rains3.com/manifest.json"]
-    };
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("ToolKnit-Desktop")
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
-
-    let mut manifest: Option<serde_json::Value> = None;
-    for url in &urls {
-        match client.get(*url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                if let Ok(json) = resp.json::<serde_json::Value>().await {
-                    manifest = Some(json);
-                    break;
-                }
-            }
-            _ => continue,
-        }
-    }
-
-    let json = manifest.ok_or("Failed to fetch manifest from all sources")?;
-    let latest = json.get("version").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let force = json.get("forceUpdate").and_then(|v| v.as_bool()).unwrap_or(false);
-    let changelog_zh = json.get("changelog").and_then(|c| c.get("zh")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let changelog_en = json.get("changelog").and_then(|c| c.get("en")).and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let url = json.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let url_cn = json.get("url_cn").and_then(|v| v.as_str()).unwrap_or("").to_string();
-
-    let has_update = version_lt(&current, &latest);
-
-    Ok(UpdateCheckResult {
-        has_update,
-        force_update: force,
-        current_version: current,
-        latest_version: latest,
-        changelog_zh,
-        changelog_en,
-        url,
-        url_cn,
-    })
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -1568,11 +1368,10 @@ pub fn run() {
       convert_audio_batch, cancel_convert, open_path, reveal_in_folder,
       read_file_bytes, write_file_bytes, write_file_chunk, exists_path, get_file_size,
       trim_audio, probe_video, extract_audio,
-      check_ffmpeg, download_ffmpeg,
+      check_ffmpeg,
       convert_image_batch,
       compress_image_batch,
       convert_video_batch,
-      get_app_version, check_update,
       set_tray_lang,
     ])
     .plugin(tauri_plugin_dialog::init())
