@@ -11,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-success.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-orange.svg)](https://tauri.app)
-[![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://toolknit.com/exe.html)
+[![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
 
 **一站式音视频 · 图片 · 文档 · AI 工具箱,全部本地运行,隐私安全**
 
@@ -97,7 +97,7 @@ ToolKnit 是一个多功能桌面工具箱,把日常会用到的音视频处理�
 
 无需配置环境,直接下载编译好的安装包:
 
-**[前往 toolknit.com 下载](https://toolknit.com/exe.html)**
+**[前往 GitHub Releases 下载最新版](https://github.com/ZihangDong/toolknit-desktop/releases/latest)**
 
 ### 方式二:从源码构建
 

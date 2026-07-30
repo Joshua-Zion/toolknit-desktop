@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-success.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-orange.svg)](https://tauri.app)
-[![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://toolknit.com/exe.html)
+[![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
 
 **One-stop audio/video · image · document · AI toolbox. All processing runs locally, privacy-first.**
 
@@ -99,7 +99,7 @@ ToolKnit is a multi-functional desktop toolbox that integrates everyday audio/vi
 
 No environment setup required. Download the pre-built installer:
 
-**[Download from toolknit.com](https://toolknit.com/exe.html)**
+**[Download latest release from GitHub](https://github.com/ZihangDong/toolknit-desktop/releases/latest)**
 
 ### Option 2: Build from Source
 
