@@ -106,8 +106,8 @@ ToolKnit 是一个多功能桌面工具箱,把日常会用到的音视频处理�
 1. **克隆仓库**
 
    ```bash
-   git clone https://github.com/ToolKnit/ToolKnit.git
-   cd ToolKnit/toolknit-desktop
+   git clone https://github.com/ZihangDong/toolknit-desktop.git
+   cd toolknit-desktop
    ```
 
 2. **下载 ffmpeg.exe(必需)**
@@ -175,7 +175,7 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 
 - 网页端:[toolknit.com](https://toolknit.com)
 - 下载桌面端:[toolknit.com/exe.html](https://toolknit.com/exe.html)
-- 问题反馈:[GitHub Issues](https://github.com/ToolKnit/ToolKnit/issues)
+- 问题反馈:[GitHub Issues](https://github.com/ZihangDong/toolknit-desktop/issues)
 - 赞助支持:[toolknit.com](https://toolknit.com)(页面底部)
 
 ---
