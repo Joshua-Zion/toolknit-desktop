@@ -20,17 +20,6 @@
     "notLoggedIn": "ID: 未登录"
   },
   "home": {
-    "update": {
-      "title": "发现新版本",
-      "btn": "前往官网下载"
-    },
-    "ffmpeg": {
-      "title": "需要下载扩展包",
-      "desc": "此功能需要 FFmpeg 扩展包才能使用，是否现在下载？",
-      "cancel": "取消",
-      "confirm": "下载",
-      "downloadFail": "下载失败：{error}"
-    },
     "aiLogin": {
       "title": "需要登录",
       "desc": "AI 功能需要登录并配置 AI 平台密钥后使用，请前往设置页面完成配置。",
@@ -1286,9 +1275,6 @@
     "chooseFolder": "选择文件夹",
     "notSelected": "未选择",
     "version": "版本与更新",
-    "checkUpdate": "检查更新",
-    "upToDate": "已是最新版本",
-    "updateCheckFailed": "检查更新失败",
     "helpFeedback": "帮助与反馈",
     "helpCenter": "帮助中心",
     "feedbackBug": "反馈 BUG",

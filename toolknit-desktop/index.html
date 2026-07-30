@@ -13,40 +13,6 @@
     </div>
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ===== Force Update Overlay ===== -->
-    <div class="force-update-overlay" id="forceUpdateOverlay">
-      <div class="force-update-bg" id="forceUpdateBg"></div>
-      <div class="force-update-content">
-        <div class="tk-mascot-lg" aria-hidden="true"></div>
-        <h2 class="force-update-title" data-i18n="home.update.title">发现新版本</h2>
-        <div class="force-update-version" id="forceUpdateVersion"></div>
-        <div class="force-update-changelog" id="forceUpdateChangelog"></div>
-        <button class="force-update-btn" id="forceUpdateBtn" data-i18n="home.update.btn">立即更新</button>
-        <div class="force-update-error" id="forceUpdateError"></div>
-      </div>
-    </div>
-
-    <!-- ===== FFmpeg Download Overlay ===== -->
-    <div class="ffmpeg-overlay" id="ffmpegDialogOverlay">
-      <div class="ffmpeg-overlay-bg" id="ffmpegOverlayBg"></div>
-      <div class="ffmpeg-overlay-content">
-        <div class="tk-mascot-lg" aria-hidden="true"></div>
-        <h2 class="ffmpeg-overlay-title" data-i18n="home.ffmpeg.title">需要下载扩展包</h2>
-        <p class="ffmpeg-overlay-desc" data-i18n="home.ffmpeg.desc">此功能需要 FFmpeg 扩展包，是否现在下载？</p>
-        <div class="ffmpeg-overlay-progress-wrap" id="ffmpegDialogProgressWrap" style="display:none;">
-          <div class="ffmpeg-overlay-progress-bar">
-            <div class="ffmpeg-overlay-progress-fill" id="ffmpegDialogProgressFill"></div>
-          </div>
-          <div class="ffmpeg-overlay-progress-text" id="ffmpegDialogProgressText">0%</div>
-        </div>
-        <div class="ffmpeg-overlay-actions">
-          <button class="ffmpeg-overlay-btn ffmpeg-overlay-cancel" id="ffmpegDialogCancel" data-i18n="home.ffmpeg.cancel">取消</button>
-          <button class="ffmpeg-overlay-btn ffmpeg-overlay-confirm" id="ffmpegDialogConfirm" data-i18n="home.ffmpeg.confirm">下载</button>
-        </div>
-        <div class="ffmpeg-overlay-error" id="ffmpegDialogError"></div>
-      </div>
-    </div>
-
     <div class="settings-overlay" id="settingsOverlay">
       <div class="settings-header">
         <button class="settings-back" id="settingsBack" data-i18n-title="settings.back">
@@ -81,7 +47,6 @@
           <h3 class="settings-section-title" data-i18n="settings.version">版本与更新</h3>
           <div class="settings-row">
             <span class="settings-version" data-i18n="changelog.currentVersion">v1.0 Beta</span>
-            <button class="settings-btn" id="checkUpdate" data-i18n="settings.checkUpdate">检查更新</button>
           </div>
         </div>
 

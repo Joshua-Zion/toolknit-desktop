@@ -20,17 +20,6 @@
     "notLoggedIn": "Not logged in"
   },
   "home": {
-    "update": {
-      "title": "New Version Available",
-      "btn": "Go to Download"
-    },
-    "ffmpeg": {
-      "title": "Extension Required",
-      "desc": "This feature requires the FFmpeg extension pack. Download it now?",
-      "cancel": "Cancel",
-      "confirm": "Download",
-      "downloadFail": "Download failed: {error}"
-    },
     "aiLogin": {
       "title": "Login Required",
       "desc": "AI features require login and an AI platform key. Please configure it in Settings.",
@@ -1286,9 +1275,6 @@
     "chooseFolder": "Choose Folder",
     "notSelected": "Not selected",
     "version": "Version & Updates",
-    "checkUpdate": "Check for Updates",
-    "upToDate": "Already up to date",
-    "updateCheckFailed": "Update check failed",
     "helpFeedback": "Help & Feedback",
     "helpCenter": "Help Center",
     "feedbackBug": "Report Bug",
