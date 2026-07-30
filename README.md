@@ -173,7 +173,7 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 | 前端 | 原生 JavaScript + [Vite](https://vitejs.dev/) |
 | 音视频处理 | ffmpeg(内置打包,无需额外安装) |
 | AI 模型 | DeepSeek / OpenAI / 通义千问 / Moonshot(用户自配 Key) |
-| ML 模型 | whisper(语音识别)、yolov8(水印检测) |
+| ML 模型 | whisper(语音识别)、yolov8(水印检测)(模型文件需自行下载) |
 
 ## 开源协议
 
@@ -193,5 +193,13 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 **喜欢 ToolKnit?去 [toolknit.com](https://toolknit.com) 体验完整版!**
 
 如果这个项目对你有帮助,欢迎 Star 支持
+
+---
+
+## 作者
+
+- 中文名:董子航
+- English Name:Zihang Dong
+- GitHub:[@ZihangDong](https://github.com/ZihangDong)
 
 </div>

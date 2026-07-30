@@ -175,7 +175,7 @@ The ToolKnit web app ([toolknit.com](https://toolknit.com)) is a more complete o
 | Frontend | Vanilla JavaScript + [Vite](https://vitejs.dev/) |
 | Audio/Video Processing | ffmpeg (bundled, no extra install) |
 | AI Models | DeepSeek / OpenAI / Qwen / Moonshot (user-provided keys) |
-| ML Models | whisper (speech recognition), yolov8 (watermark detection) |
+| ML Models | whisper (speech recognition), yolov8 (watermark detection) (model files require manual download) |
 
 ## License
 
@@ -195,5 +195,13 @@ This project is open-sourced under the [MIT License](LICENSE). You are free to u
 **Like ToolKnit? Try the full version at [toolknit.com](https://toolknit.com)!**
 
 If this project helps you, please consider giving it a Star.
+
+---
+
+## Author
+
+- 中文名:董子航
+- English Name:Zihang Dong
+- GitHub:[@ZihangDong](https://github.com/ZihangDong)
 
 </div>
