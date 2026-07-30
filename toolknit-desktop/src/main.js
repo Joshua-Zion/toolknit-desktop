@@ -4568,16 +4568,14 @@
         el.classList.add('show');
       }
 
-      // Login button in personal panel → trigger circular expansion
+      // Login button in personal panel → disabled in open-source version
       const personalPanel = document.getElementById('personalPanel');
       const loginBtn = personalPanel ? personalPanel.querySelector('.login-btn') : null;
       if (loginBtn) {
         loginBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          const rect = loginBtn.getBoundingClientRect();
-          const cx = rect.left + rect.width / 2;
-          const cy = rect.top + rect.height / 2;
-          openAuthOverlay(cx, cy);
+          const msg = getLang() === 'zh' ? '登录功能在开源版中已移除' : 'Login has been removed in the open-source version.';
+          showToast(msg);
         });
       }
       // Logout button → show confirm dialog
@@ -4596,7 +4594,8 @@
       if (btnLogout) {
         btnLogout.addEventListener('click', (e) => {
           e.stopPropagation();
-          showLogoutConfirm();
+          const msg = getLang() === 'zh' ? '登录功能在开源版中已移除' : 'Login has been removed in the open-source version.';
+          showToast(msg);
         });
       }
       if (logoutCancelBtn) {
@@ -4775,23 +4774,14 @@
       if (aiLoginGoSettings) {
         aiLoginGoSettings.addEventListener('click', () => {
           hideAiLoginOverlay();
-          if (!isLoggedIn()) {
-            const pp = document.getElementById('personalPanel');
-            const lb = pp ? pp.querySelector('.login-btn') : null;
-            if (lb) {
-              const rect = lb.getBoundingClientRect();
-              openAuthOverlay(rect.left + rect.width / 2, rect.top + rect.height / 2);
-            }
-          } else {
-            if (btnApiKey) btnApiKey.click();
-          }
+          if (btnApiKey) btnApiKey.click();
         });
       }
 
-      // Check AI login before opening AI tool overlay
+      // Check AI API key before opening AI tool overlay
       function openToolWithAiCheck(openFn) {
-        if (!isLoggedIn() || !hasAiApiKey()) {
-          showAiLoginOverlay();
+        if (!hasAiApiKey()) {
+          if (aiLoginOverlay) aiLoginOverlay.classList.add('visible');
           return;
         }
         openFn();
@@ -14713,10 +14703,6 @@
       document.querySelectorAll('.audio-list-item').forEach(item => {
         item.addEventListener('contextmenu', (e) => {
           e.preventDefault();
-          if (!isLoggedIn()) {
-            showToast(t('home.favLoginRequired'));
-            return;
-          }
           const info = getToolInfo(item);
           if (isFavorited(info.toolId)) {
             removeFavorite(info.toolId);
@@ -14739,25 +14725,6 @@
       function renderFavorites() {
         const container = document.getElementById('favoritesContent');
         if (!container) return;
-
-        if (!isLoggedIn()) {
-          container.innerHTML = `
-            <div class="fav-empty-guide">
-              <div class="fav-empty-icon"><i data-lucide="star"></i></div>
-              <div class="fav-empty-text">${escapeHtml(t('home.favEmptyLogin'))}</div>
-              <div class="fav-login-btn" id="favLoginBtn">${escapeHtml(t('home.favEmptyLoginBtn'))}</div>
-            </div>
-          `;
-          const loginBtn = document.getElementById('favLoginBtn');
-          if (loginBtn) {
-            loginBtn.addEventListener('click', () => {
-              const rect = loginBtn.getBoundingClientRect();
-              openAuthOverlay(rect.left + rect.width / 2, rect.top + rect.height / 2);
-            });
-          }
-          if (typeof createIcons === 'function') createIcons({ icons });
-          return;
-        }
 
         const favs = getFavorites();
         if (favs.length === 0) {
