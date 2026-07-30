@@ -76,6 +76,10 @@ ToolKnit is a multi-functional desktop toolbox that integrates everyday audio/vi
 
 > AI tools support DeepSeek / OpenAI / Qwen (Tongyi Qianwen) / Moonshot. Users configure their own API keys; data goes directly to the model provider, not through any third party.
 
+## Screenshot
+
+![ToolKnit Screenshot](assets/screenshots/toolknit-image-stitch-2026-07-30-2305.png)
+
 ### Text & Utilities
 
 | Tool | Description |

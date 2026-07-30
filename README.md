@@ -76,6 +76,10 @@ ToolKnit 是一个多功能桌面工具箱,把日常会用到的音视频处理�
 
 > AI 工具支持 DeepSeek / OpenAI / 通义千问 / Moonshot,用户自行配置 API Key,数据直连模型厂商,不经第三方。
 
+## 界面预览
+
+![ToolKnit 界面预览](assets/screenshots/toolknit-image-stitch-2026-07-30-2305.png)
+
 ### 文本与小工具
 
 | 工具 | 说明 |
