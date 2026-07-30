@@ -49,3 +49,6 @@ toolknit-desktop-changelog.md
 
 # 安装器项目(不开源)
 toolknit-installer/
+
+# 打包后的安装程序(体积大,通过 GitHub Releases 分发)
+ToolKnit-Desktop-Setup.exe
