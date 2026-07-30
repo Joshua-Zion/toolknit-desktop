@@ -78,7 +78,7 @@ ToolKnit 是一个多功能桌面工具箱,把日常会用到的音视频处理�
 
 ## 界面预览
 
-![ToolKnit 界面预览](assets/screenshots/toolknit-image-stitch-2026-07-30-2305.png)
+![ToolKnit 界面预览](assets/screenshots/screenshot-home.png)
 
 ### 文本与小工具
 

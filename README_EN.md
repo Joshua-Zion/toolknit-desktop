@@ -78,7 +78,7 @@ ToolKnit is a multi-functional desktop toolbox that integrates everyday audio/vi
 
 ## Screenshot
 
-![ToolKnit Screenshot](assets/screenshots/toolknit-image-stitch-2026-07-30-2305.png)
+![ToolKnit Screenshot](assets/screenshots/screenshot-home.png)
 
 ### Text & Utilities
 
