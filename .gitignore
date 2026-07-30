@@ -33,3 +33,6 @@ toolknit-desktop/src-tauri/resources/ffmpeg/ffmpeg.exe
 
 # AI/ML 模型文件(体积过大,用户自行下载)
 models/
+
+# Windsurf AI 工作流文档(可能包含部署凭据,勿提交)
+.windsurf/workflows/
