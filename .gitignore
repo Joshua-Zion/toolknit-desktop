@@ -36,3 +36,10 @@ models/
 
 # Windsurf AI 工作流文档(可能包含部署凭据,勿提交)
 .windsurf/workflows/
+
+# 开发/部署文档和配置(非开源项目核心代码)
+devto-article.md
+manifest.json
+toolknit-desktop-changelog.md
+强制更新功能文档.md
+新电脑初始化指南.md
