@@ -6,12 +6,21 @@
 
 ### Multi-functional Toolbox · Open Source Desktop Edition
 
+**One portable .exe replacing 20+ online tool sites. All processing runs locally, files never upload, privacy-first.**
+
+[简体中文](README.md) · English
+
+[![Stars](https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=social)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-success.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-orange.svg)](https://tauri.app)
 [![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
 
-**One-stop audio/video · image · document · AI toolbox. All processing runs locally, privacy-first.**
+### ☕ If ToolKnit helps you, consider supporting the author
+
+| WeChat Pay | Alipay |
+|:---:|:---:|
+| <img src="assets/wechat-qr.jpg" width="130" alt="WeChat Pay"> | <img src="assets/alipay-qr.png" width="130" alt="Alipay"> |
 
 ---
 

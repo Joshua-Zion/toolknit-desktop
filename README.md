@@ -6,14 +6,21 @@
 
 ### 多功能工具箱 · 桌面端开源版
 
+**一个 exe 替代 20+ 在线工具网站,全部本地运行,文件不上传,隐私安全。**
+
 [English](README_EN.md) · 简体中文
 
+[![Stars](https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=social)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-success.svg)]()
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-orange.svg)](https://tauri.app)
 [![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
 
-**一站式音视频 · 图片 · 文档 · AI 工具箱,全部本地运行,隐私安全**
+### ☕ 如果 ToolKnit 帮到了你,欢迎支持作者继续维护
+
+| 微信支付 | 支付宝 |
+|:---:|:---:|
+| <img src="assets/wechat-qr.jpg" width="130" alt="微信支付"> | <img src="assets/alipay-qr.png" width="130" alt="支付宝"> |
 
 ---
 
