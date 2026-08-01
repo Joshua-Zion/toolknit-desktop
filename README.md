@@ -49,11 +49,11 @@ ToolKnit 是一个多功能桌面工具箱,把日常会用到的音视频处理�
 
 ## 路线图
 
-- [x] v1.0: 开源纯净版,移除后端依赖,全本地运行
-- [ ] **v1.2(本周发布)**: 根据群友反馈增加新功能、优化设置体验
-- [ ] 后续: 更多格式支持、插件化、深色主题优化
+- [x] v1.0: 开源纯净版
+- [ ] v1.2: 自定义背景、默认保存路径、更多格式转换、CLI 支持
+- [ ] 后续: 插件化、更多工具
 
-如果你有任何建议,欢迎提交 [Issue](https://github.com/ZihangDong/toolknit-desktop/issues) 或加入讨论!
+欢迎提交 [Issue](https://github.com/ZihangDong/toolknit-desktop/issues) 提建议!
 
 ## 功能特性
 
@@ -199,9 +199,9 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 
 ## Star 历史
 
-感谢每一位 Star 支持者的鼓励!
+感谢每一位 Star 支持者的鼓励! 🌟
 
-[![Star History Chart](https://starchart.cc/ZihangDong/toolknit-desktop.svg?variant=dark)](https://starchart.cc/ZihangDong/toolknit-desktop)
+> 当前 Star 数:[![Stars](https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=social)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
 
 ## 开源协议
 

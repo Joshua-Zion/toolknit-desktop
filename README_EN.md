@@ -53,11 +53,11 @@ ToolKnit is a multi-functional desktop toolbox that integrates everyday audio/vi
 
 ## Roadmap
 
-- [x] v1.0: Open-source clean version, remove backend dependencies, fully local runtime
-- [ ] **v1.2 (releasing this week)**: New features and settings improvements based on community feedback
-- [ ] Future: More format support, plugin system, dark theme enhancements
+- [x] v1.0: Open-source clean version
+- [ ] v1.2: Custom background, default output path, more format conversions, CLI support
+- [ ] Future: Plugin system, more tools
 
-Have suggestions? Submit an [Issue](https://github.com/ZihangDong/toolknit-desktop/issues) or join the discussion!
+Have suggestions? Submit an [Issue](https://github.com/ZihangDong/toolknit-desktop/issues)!
 
 ## Features
 
@@ -203,9 +203,9 @@ The ToolKnit web app ([toolknit.com](https://toolknit.com)) is a more complete o
 
 ## Star History
 
-Thank you to every Star supporter!
+Thank you to every Star supporter! 🌟
 
-[![Star History Chart](https://starchart.cc/ZihangDong/toolknit-desktop.svg?variant=dark)](https://starchart.cc/ZihangDong/toolknit-desktop)
+> Current stars: [![Stars](https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=social)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
 
 ## License
 
