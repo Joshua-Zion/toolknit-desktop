@@ -44,6 +44,21 @@ ToolKnit is a multi-functional desktop toolbox that integrates everyday audio/vi
 > The web version is more complete, requires no installation, works cross-platform, and is ready to use instantly. We recommend using it first:
 > **[toolknit.com](https://toolknit.com)**
 
+### Who is it for?
+
+- **Privacy-conscious users** who don't want to upload files to online tool sites
+- **Productivity seekers** who want one app for PDF/image/audio/video/AI tasks
+- **Students and office workers** who need offline file processing
+- **Developers** learning Tauri + vanilla JavaScript desktop app development
+
+## Roadmap
+
+- [x] v1.0: Open-source clean version, remove backend dependencies, fully local runtime
+- [ ] **v1.2 (releasing this week)**: New features and settings improvements based on community feedback
+- [ ] Future: More format support, plugin system, dark theme enhancements
+
+Have suggestions? Submit an [Issue](https://github.com/ZihangDong/toolknit-desktop/issues) or join the discussion!
+
 ## Features
 
 ### Document Tools (Document Studio)
@@ -185,6 +200,12 @@ The ToolKnit web app ([toolknit.com](https://toolknit.com)) is a more complete o
 | Audio/Video Processing | ffmpeg (bundled, no extra install) |
 | AI Models | DeepSeek / OpenAI / Qwen / Moonshot (user-provided keys) |
 | ML Models | whisper (speech recognition), yolov8 (watermark detection) (model files require manual download) |
+
+## Star History
+
+Thank you to every Star supporter!
+
+[![Star History Chart](https://api.star-history.com/svg?repos=ZihangDong/toolknit-desktop&type=Date)](https://star-history.com/#ZihangDong/toolknit-desktop&Date)
 
 ## License
 

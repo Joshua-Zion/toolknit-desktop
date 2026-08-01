@@ -40,6 +40,21 @@ ToolKnit 是一个多功能桌面工具箱,把日常会用到的音视频处理�
 > 网页端功能更完整、免安装、跨平台、即开即用,推荐优先使用:
 > **[toolknit.com](https://toolknit.com)**
 
+### 适合谁用?
+
+- 不想把文件上传到各种在线工具网站的**隐私敏感用户**
+- 希望一个软件搞定 PDF/图片/音视频/AI 的**效率工作者**
+- 需要离线环境下处理文件的**学生/办公人群**
+- 想学习 Tauri + 原生 JavaScript 桌面应用开发的**开发者**
+
+## 路线图
+
+- [x] v1.0: 开源纯净版,移除后端依赖,全本地运行
+- [ ] **v1.2(本周发布)**: 根据群友反馈增加新功能、优化设置体验
+- [ ] 后续: 更多格式支持、插件化、深色主题优化
+
+如果你有任何建议,欢迎提交 [Issue](https://github.com/ZihangDong/toolknit-desktop/issues) 或加入讨论!
+
 ## 功能特性
 
 ### 文档工具(Document Studio)
@@ -181,6 +196,12 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 | 音视频处理 | ffmpeg(内置打包,无需额外安装) |
 | AI 模型 | DeepSeek / OpenAI / 通义千问 / Moonshot(用户自配 Key) |
 | ML 模型 | whisper(语音识别)、yolov8(水印检测)(模型文件需自行下载) |
+
+## Star 历史
+
+感谢每一位 Star 支持者的鼓励!
+
+[![Star History Chart](https://api.star-history.com/svg?repos=ZihangDong/toolknit-desktop&type=Date)](https://star-history.com/#ZihangDong/toolknit-desktop&Date)
 
 ## 开源协议
 
