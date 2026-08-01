@@ -205,7 +205,7 @@ The ToolKnit web app ([toolknit.com](https://toolknit.com)) is a more complete o
 
 Thank you to every Star supporter! 🌟
 
-[![Star History Chart](assets/star-chart.svg)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
+[![Star History Chart](assets/star-growth.svg)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
 
 ## License
 
