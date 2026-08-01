@@ -1,0 +1,78 @@
+<svg width="900" height="360" viewBox="0 0 900 360" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+    <linearGradient id="areaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="900" height="360" rx="16" fill="#0f172a"/>
+
+  <text x="40" y="48" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="700" fill="#f8fafc">ToolKnit Star 增长趋势</text>
+  <text x="40" y="76" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" fill="#94a3b8">开源以来累计获得 150+ Star</text>
+
+  <g transform="translate(60, 110)">
+    <rect x="0" y="0" width="780" height="200" fill="none"/>
+
+    <g stroke="#334155" stroke-width="1">
+      <line x1="0" y1="180" x2="780" y2="180"/>
+      <line x1="0" y1="135" x2="780" y2="135"/>
+      <line x1="0" y1="90" x2="780" y2="90"/>
+      <line x1="0" y1="45" x2="780" y2="45"/>
+      <line x1="0" y1="0" x2="780" y2="0"/>
+    </g>
+
+    <g font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#64748b">
+      <text x="-10" y="184" text-anchor="end">0</text>
+      <text x="-10" y="139" text-anchor="end">50</text>
+      <text x="-10" y="94" text-anchor="end">100</text>
+      <text x="-10" y="49" text-anchor="end">150</text>
+      <text x="-10" y="4" text-anchor="end">200</text>
+    </g>
+
+    <path d="M 0,180 L 130,170 L 260,142 L 390,108 L 520,65 L 650,20 L 780,8" fill="none" stroke="url(#lineGrad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <path d="M 0,180 L 130,170 L 260,142 L 390,108 L 520,65 L 650,20 L 780,8 L 780,180 L 0,180 Z" fill="url(#areaGrad)"/>
+
+    <g>
+      <circle cx="0" cy="180" r="5" fill="#3b82f6"/>
+      <circle cx="130" cy="170" r="5" fill="#3b82f6"/>
+      <circle cx="260" cy="142" r="5" fill="#6366f1"/>
+      <circle cx="390" cy="108" r="5" fill="#8b5cf6"/>
+      <circle cx="520" cy="65" r="5" fill="#a855f7"/>
+      <circle cx="650" cy="20" r="5" fill="#d946ef"/>
+      <circle cx="780" cy="8" r="6" fill="#ec4899"/>
+    </g>
+
+    <g font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#f8fafc" text-anchor="middle">
+      <text x="0" y="205">开源</text>
+      <text x="130" y="205">Day 1</text>
+      <text x="260" y="205">Day 2</text>
+      <text x="390" y="205">Day 3</text>
+      <text x="520" y="205">Day 4</text>
+      <text x="650" y="205">Day 5</text>
+      <text x="780" y="205">现在</text>
+    </g>
+
+    <g font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0" text-anchor="middle">
+      <text x="0" y="170">0</text>
+      <text x="130" y="160">5</text>
+      <text x="260" y="132">20</text>
+      <text x="390" y="98">50</text>
+      <text x="520" y="55">88</text>
+      <text x="650" y="10">150+</text>
+      <text x="780" y="-2">150+</text>
+    </g>
+  </g>
+</svg>
