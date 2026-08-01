@@ -201,7 +201,7 @@ ToolKnit 网页端([toolknit.com](https://toolknit.com))是功能更完整的在
 
 感谢每一位 Star 支持者的鼓励!
 
-[![Star History Chart](https://api.star-history.com/svg?repos=ZihangDong/toolknit-desktop&type=Date)](https://star-history.com/#ZihangDong/toolknit-desktop&Date)
+[![Star History Chart](https://starchart.cc/ZihangDong/toolknit-desktop.svg?variant=dark)](https://starchart.cc/ZihangDong/toolknit-desktop)
 
 ## 开源协议
 
