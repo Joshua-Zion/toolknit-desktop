@@ -1,237 +1,315 @@
-<div align="center">
+<table>
+  <tr>
+    <td width="72%" valign="top">
+      <img src="assets/readme/hero.gif" alt="ToolKnit Desktop opening animation" width="100%" />
+    </td>
+    <td width="28%" valign="middle" align="center">
+      <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers">
+        <img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&label=Stars&color=181717" alt="GitHub stars" />
+      </a>
+      <br /><br />
+      <img src="assets/readme/star-growth.svg" alt="ToolKnit GitHub Star growth" width="100%" />
+      <br />
+      <strong>Open tools, shared with care.</strong>
+      <br />
+      <sub>Live Star badge from GitHub · Public donations: 25.88 CNY</sub>
+    </td>
+  </tr>
+</table>
 
-![ToolKnit Banner](assets/screenshots/screenshot-home.png)
+<h1 align="center">ToolKnit Desktop</h1>
 
-# ToolKnit
+<p align="center"><em>人生何处不青山 · there is always another green mountain ahead</em></p>
 
-### Multi-functional Toolbox · Open Source Desktop Edition
+<p align="center">
+  <strong>Local-first multi-tool desktop app · Open-source desktop edition v1.2</strong><br />
+  A Windows app for PDFs, images, audio/video, text, AI documents, AI tables, CLI workflows, and IDE Agent automation. Files stay local by default.
+</p>
 
-**One portable .exe replacing 20+ online tool sites. All processing runs locally, files never upload, privacy-first.**
+<p align="center">
+  <a href="README.md">简体中文</a> ·
+  <a href="https://github.com/ZihangDong/toolknit-desktop/releases">Download Desktop</a> ·
+  <a href="https://toolknit.com">Web Version</a> ·
+  <a href="#cli--ide-agent--mcp">CLI / Agent</a> ·
+  <a href="toolknit-desktop/docs/agent-guide.en.md">Agent Guide</a>
+</p>
 
-[简体中文](README.md) · English
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-111827" alt="Windows 10/11" />
+  <img src="https://img.shields.io/badge/Tauri-2.x-111827" alt="Tauri 2.x" />
+  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.2-111827" alt="CLI and MCP" />
+</p>
 
-[![Stars](https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=social)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-success.svg)]()
-[![Tauri](https://img.shields.io/badge/Tauri-2.x-orange.svg)](https://tauri.app)
-[![Release](https://img.shields.io/badge/Download-latest-brightgreen.svg)](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
+<p align="center">
+  <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+</p>
 
-### ☕ If ToolKnit helps you, consider supporting the author
+## Overview
 
-| WeChat Pay | Alipay |
-|:---:|:---:|
-| <img src="assets/wechat-qr.jpg" width="130" alt="WeChat Pay"> | <img src="assets/alipay-qr.png" width="130" alt="Alipay"> |
+ToolKnit Desktop is the open-source desktop companion to the ToolKnit web app. It is built for people who want their files to remain on their own machine while still having one clean place for everyday work: merging PDFs, extracting video frames, making GIFs, batch converting media, stitching long images, transcribing audio/video, and generating editable AI documents and tables.
 
----
+It is useful for:
 
-### Web Version (Online, more features, no installation)
+- Privacy-conscious users who do not want to upload documents or media to random online tools.
+- Office and study workflows that need a focused all-in-one desktop toolbox.
+- Creators who need fast extraction, conversion, stitching, and export tasks.
+- Developers and AI IDE users who want CLI or Agent access to local file-processing tools.
 
-# [toolknit.com](https://toolknit.com)
+Only AI-specific workflows send text to the model provider you configure yourself, such as AI polish, AI translate, AI documents, AI tables, or optional AI review after transcription. Regular PDF, image, audio/video, and text tools run locally by default.
 
-</div>
+## Support
 
----
+If ToolKnit helps you, supporting the author keeps testing, mirrors, documentation, releases, and future development moving. Independent development takes time; support helps ToolKnit stay open-source, clean, local-first, and useful for Agent workflows.
 
-[简体中文](README.md) · English
+<p align="center">
+  <strong>Public donations so far: 25.88 CNY</strong><br />
+  <sub>Public record: <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
+</p>
 
----
+<table>
+  <tr>
+    <th width="30%">WeChat Pay</th>
+    <th width="30%">Alipay</th>
+    <th width="40%">What support helps with</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/wechat-qr.jpg" alt="Support ToolKnit with WeChat Pay" width="230" /></td>
+    <td align="center"><img src="assets/alipay-qr.png" alt="Support ToolKnit with Alipay" width="230" /></td>
+    <td valign="top">
+      <p>
+        <img src="https://img.shields.io/badge/Feature%20requests-priority%20review-111827" alt="Feature requests priority review" />
+        <img src="https://img.shields.io/badge/Bug%20fixes-continuous%20polish-111827" alt="Bug fixes continuous polish" />
+        <img src="https://img.shields.io/badge/Dependency%20mirrors-faster%20downloads-111827" alt="Dependency mirrors faster downloads" />
+      </p>
+      <ul>
+        <li><strong>Building is hard; maintaining open source is harder.</strong> Every bit of support helps ToolKnit keep moving.</li>
+        <li>If you have a tool, format, or workflow improvement you really want, leave a note with your donation, open an Issue, or contact me through the web version.</li>
+        <li>Clear, reproducible, maintainable requests are easier to evaluate and schedule for upcoming versions.</li>
+      </ul>
+      <sub>Support is not a paid outsourcing contract, but it does help me spend more focused time on ToolKnit.</sub>
+    </td>
+  </tr>
+</table>
 
-## Introduction
+<p align="center">
+  Prefer a no-install online experience? Visit <a href="https://toolknit.com"><strong>toolknit.com</strong></a>
+</p>
 
-ToolKnit is a multi-functional desktop toolbox that integrates everyday audio/video processing, image conversion/compression, PDF/document processing, AI chat, and text utilities into one application. All file processing runs entirely on your local machine — no files are uploaded to any server, ensuring privacy and security.
+<p align="center">
+  <a href="https://toolknit.com">
+    <img src="assets/readme/web-version.png" alt="ToolKnit web version preview" width="100%" />
+  </a>
+  <br />
+  <a href="https://fmhy.net/misc">
+    <img src="https://img.shields.io/badge/FMHY-listed-111827" alt="ToolKnit web version listed on FMHY" />
+  </a>
+  <img src="https://img.shields.io/badge/Web%20version-no%20install-111827" alt="Web version no install" />
+  <img src="https://img.shields.io/badge/Desktop-local%20first-111827" alt="Desktop local first" />
+</p>
 
-> **This desktop edition is the open-source companion of the ToolKnit web app.**
-> The web version is more complete, requires no installation, works cross-platform, and is ready to use instantly. We recommend using it first:
-> **[toolknit.com](https://toolknit.com)**
+## v1.0 to v1.2
 
-### Who is it for?
+<table>
+  <tr>
+    <td width="48%" valign="top">
+      <h3>v1.0</h3>
+      <img src="assets/readme/home-v1.0.png" alt="ToolKnit Desktop v1.0 home screen" width="100%" />
+      <ul>
+        <li>20+ basic desktop tools.</li>
+        <li>Mainly click-based local processing.</li>
+        <li>PDF, image, audio/video, text, and basic AI features.</li>
+        <li>Fixed output behavior and limited preview editing.</li>
+      </ul>
+    </td>
+    <td width="4%" align="center" valign="middle"><strong>-></strong></td>
+    <td width="48%" valign="top">
+      <h3>v1.2</h3>
+      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+      <ul>
+        <li>30+ desktop tools, including video frame export, video-to-GIF, long image stitching, and audio/video transcription.</li>
+        <li>Custom output root, per-tool output folders, custom backgrounds, and default background fallback.</li>
+        <li>Most core file tools expose CLI contracts and MCP tools for IDE Agents.</li>
+        <li>AI documents and AI tables now use inspectable, numbered, editable, undoable, re-renderable project workflows.</li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
-- **Privacy-conscious users** who don't want to upload files to online tool sites
-- **Productivity seekers** who want one app for PDF/image/audio/video/AI tasks
-- **Students and office workers** who need offline file processing
-- **Developers** learning Tauri + vanilla JavaScript desktop app development
+### AI Document Generation: 1.0 vs 1.2
 
-## Roadmap
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>AI Document 1.0</h3>
+      <img src="assets/readme/ai-doc-v1.0.png" alt="AI Document 1.0 comparison image" width="100%" />
+      <ul>
+        <li>Focused on one-shot PDF generation.</li>
+        <li>Good for quick drafts, but follow-up edits required re-prompting.</li>
+        <li>No stable component IDs, making precise Agent edits difficult.</li>
+      </ul>
+    </td>
+    <td width="50%" valign="top">
+      <h3>AI Document 1.2 (project workflow)</h3>
+      <img src="assets/readme/ai-doc-v1.2.png" alt="AI Document 1.2 comparison image" width="100%" />
+      <ul>
+        <li>Exports PDF, previews, numbered component maps, and an editable project.</li>
+        <li>Text, image, and table components receive stable IDs for precise Agent edits.</li>
+        <li>Supports an inspect, dry-run, commit, undo, and render loop.</li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
-- [x] v1.0: Open-source clean version
-- [ ] v1.2: Custom background, default output path, more format conversions, CLI support
-- [ ] Future: Plugin system, more tools
+### v1.2 Highlights
 
-Have suggestions? Submit an [Issue](https://github.com/ZihangDong/toolknit-desktop/issues)!
+| Update | What it enables |
+| --- | --- |
+| HD video frame export | Export PNG or high-quality JPG frames by time or frame position. |
+| Video to GIF | Choose start/end, FPS, and width, then export palette-optimized GIFs up to 30 seconds. |
+| Long image stitching | Stitch images and PDF pages horizontally or vertically with spacing, background, and reference sizing. |
+| Audio/video transcription | Download a local Whisper model, then export TXT, SRT, and JSON; optional DeepSeek review is supported. |
+| AI document upgrade | Generate PDF plus editable project, preview images, and numbered component maps; edit position, size, color, font, alignment, layer order, and undo history. |
+| AI table workflow | Export XLSX, CSV, PDF, PNG, and editable projects; modify rows, columns, formulas, charts, and render again. |
+| PDF page selection | Merge, split, and rotate flows now support preview, page picking, select all, clear all, and safe back navigation. |
+| Dependency management | FFmpeg and transcription models are downloaded on demand from official or mirror sources. |
+| CLI and Agent support | Core file tools have explicit input, output, progress, error-code, and help contracts for natural-language IDE Agent usage. |
 
-## Features
+## Tools
 
-### Document Tools (Document Studio)
+### PDF
 
 | Tool | Description |
-|------|-------------|
-| PDF Merge | Merge multiple PDFs into one |
-| PDF Split | Split PDF by page ranges |
-| PDF Rotate | Rotate PDF pages |
-| PDF Encrypt | Add password protection to PDF |
-| PDF Decrypt | Remove PDF password |
-| PDF Compress | Reduce PDF file size |
-| PDF Enhance | Improve PDF clarity |
+| --- | --- |
+| PDF Merge | Pick files and pages, then merge in order. |
+| PDF Split | Export selected pages, all pages, or ranges. |
+| PDF Rotate | Rotate selected pages by 90/180/270 degrees. |
+| PDF Encrypt / Decrypt | Add or remove password protection. |
+| PDF Compress | Reduce file size while keeping the original. |
+| PDF Enhance | Improve readability for scanned PDFs. |
 
-### Image Tools (Pixel Lab)
+### Image, Audio, Video, and Text
 
-| Tool | Description |
-|------|-------------|
-| Image Convert | Batch convert image formats (JPG/PNG/WebP/BMP/GIF) |
-| Image Compress | Compress image file size |
-| Icon Generator | Generate app icons |
+| Category | Tools |
+| --- | --- |
+| Image | Batch image conversion, image compression, long image stitching, icon generation, color extraction. |
+| Audio | Format conversion, BPM detection, audio clipping, audio extraction from video. |
+| Video | Format conversion, HD frame export, GIF export up to 30 seconds. |
+| Text | Audio/video transcription, text statistics, text formatting. |
 
-### Audio & Video Tools (Sound Studio)
+### AI and Utilities
 
-| Tool | Description |
-|------|-------------|
-| Audio Convert | Batch convert audio formats |
-| BPM Detect | Detect audio beats per minute |
-| Audio Trim | Precisely trim audio clips |
-| Audio Extract | Extract audio tracks from video |
-| Video Convert | Batch convert video formats |
+| Category | Tools |
+| --- | --- |
+| AI | AI polish, AI translate, AI document, AI table. |
+| Calculators | BMI, timestamp, mortgage, interest, password generator. |
+| Creative | Typing test, color palette extraction. |
 
-### AI Tools
+Calculator tools and the typing test remain desktop-first because CLI/MCP would not add much value there.
 
-| Tool | Description |
-|------|-------------|
-| AI Polish | Smart text polishing |
-| AI Translate | Multi-language translation |
-| AI Doc | Smart document processing |
-| AI Table | Smart table processing |
+## Download and Usage
 
-> AI tools support DeepSeek / OpenAI / Qwen (Tongyi Qianwen) / Moonshot. Users configure their own API keys; data goes directly to the model provider, not through any third party.
+### Desktop App
 
-## Screenshots
+Download the Windows installer from [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases). Optional components are not forced on first launch; when a tool needs FFmpeg or a local transcription model, the app explains why and points you to Settings.
 
-![ToolKnit Screenshots](assets/screenshots/toolknit-image-stitch-2026-07-30-2305.png)
+The current Windows installer is not commercially code-signed, so SmartScreen may show an “Unknown publisher” warning. Download only from this repository's Releases page and verify the accompanying `.sha256` file before choosing **More info -> Run anyway**.
 
-### Text & Utilities
+In Settings, you can:
 
-| Tool | Description |
-|------|-------------|
-| Color Extractor | Extract color palettes from images |
-| Text Stats | Count characters and lines |
-| Text Format | Case conversion and more |
-| Typing Test | Typing speed practice |
-| BMI Calculator | Body mass index calculator |
-| Timestamp Calc | Unix timestamp converter |
+- Choose a global output root. ToolKnit then writes into per-tool subfolders.
+- Configure DeepSeek/OpenAI-compatible AI providers.
+- Download FFmpeg and Whisper models from official or mirror sources.
+- Upload an image or video as the home/category background and restore the default animated background at any time.
 
-## Download & Usage
+### Run from Source
 
-### Option 1: Download Installer (Recommended)
+```powershell
+git clone https://github.com/ZihangDong/toolknit-desktop.git
+Set-Location toolknit-desktop\toolknit-desktop
+npm ci
+npm run tauri dev
+```
 
-No environment setup required. Download the pre-built installer:
+Requirements: Windows 10/11, Node.js `20.12.0` or newer, and Rust stable for native desktop builds.
 
-**[Download latest release from GitHub](https://github.com/ZihangDong/toolknit-desktop/releases/latest)**
+## CLI / IDE Agent / MCP
 
-### Option 2: Build from Source
+<a id="cli--ide-agent--mcp"></a>
 
-For developers who want to modify and build themselves.
+v1.2 extracts the desktop app's core file-processing capabilities into verifiable CLI/MCP contracts. The desktop app is best for preview and visual editing; CLI is best for scripts, batch processing, and CI; IDE Agents can call the same capabilities through MCP without keeping the desktop window open.
 
-#### Requirements
+### Install from npm (recommended)
 
-- [Node.js](https://nodejs.org/) 18+
-- [Rust](https://www.rust-lang.org/) (stable)
-- Windows 10+
+```powershell
+npm install --global @toolknit/cli
+toolknit doctor --json
+toolknit --help
+```
 
-#### Build Steps
+If a regional npm mirror has not synced the newest release yet, install from the official npm registry:
 
-1. **Clone the repository**
+```powershell
+npm install --global @toolknit/cli --registry=https://registry.npmjs.org
+```
 
-   ```bash
-   git clone https://github.com/ZihangDong/toolknit-desktop.git
-   cd toolknit-desktop
-   ```
+The CLI does not overwrite existing files by default. JSON and MCP output are kept clean without ASCII banners. Sensitive inputs such as PDF passwords use protected input paths instead of command history.
 
-2. **Download ffmpeg.exe (Required)**
+### Debug from the Source Tree (maintainers)
 
-   Due to GitHub's 100MB single-file limit, ffmpeg.exe is not included in the repository. Please download it manually:
+```powershell
+Set-Location toolknit-desktop\toolknit-desktop
+npm ci
+npm run cli -- doctor
+npm run cli -- help
+npm run cli -- help pdf split
+```
 
-   - Download: [ffmpeg-master-latest-win64-gpl.zip](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip)
-   - Extract and place `bin/ffmpeg.exe` into:
+### MCP Example
 
-     ```
-     toolknit-desktop/src-tauri/resources/ffmpeg/ffmpeg.exe
-     ```
+Add this to Trae, Cursor, VS Code, or another MCP-capable client after `toolknit` is available on PATH:
 
-   - The directory structure should look like:
+```json
+{
+  "mcpServers": {
+    "toolknit": {
+      "command": "toolknit",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
 
-     ```
-     toolknit-desktop/
-     └── src-tauri/
-         └── resources/
-             └── ffmpeg/
-                 └── ffmpeg.exe   ← place here
-     ```
+Local PDF, image, audio/video, and text tools do not need an AI key. Only AI documents, AI tables, and transcription with `refine` require a real `DEEPSEEK_API_KEY` (or `TOOLKNIT_AI_API_KEY`) in the IDE's MCP environment/secret settings; restart the IDE after setting it. Do not leave explanatory placeholder text or paste the key into an Agent conversation. Credentials saved by the desktop app are not shared with CLI/MCP.
 
-3. **Install dependencies and build**
+Recommended natural-language prompt:
 
-   ```bash
-   npm install
-   npm run tauri build
-   ```
+> Inspect the local file first, then process it with ToolKnit. Write output into the current project's `toolknit-output` folder and do not overwrite existing files. For AI documents and AI tables, use `inspect -> dry-run -> commit -> render`.
 
-   After the build completes, the installer will be in `src-tauri/target/release/bundle/`.
+Docs:
 
-4. **Run in development mode**
+- [CLI and MCP contract](toolknit-desktop/docs/cli-agent.md)
+- [Chinese Agent guide](toolknit-desktop/docs/agent-guide.zh-CN.md)
+- [English Agent guide](toolknit-desktop/docs/agent-guide.en.md)
+- [AI document project spec](toolknit-desktop/docs/ai-document-project-spec.md)
 
-   ```bash
-   npm run tauri dev
-   ```
+## Web Version
 
-## About the Web Version
+The ToolKnit web version provides a no-install cross-platform experience with more continuously updated online capabilities: [toolknit.com](https://toolknit.com). It is also listed on [FMHY](https://fmhy.net/misc) as a tool for image, video, PDF, audio, and file workflows.
 
-The ToolKnit web app ([toolknit.com](https://toolknit.com)) is a more complete online version:
+This repository focuses on the Windows local desktop app, CLI, and MCP layer. The web service, domains, accounts, visual brand, and hosted operations are outside this repository's open-source license.
 
-- No installation, works instantly in the browser
-- More features, continuously updated
-- Cross-platform (Windows / macOS / Linux / mobile)
-- No environment setup required
+## Development and Feedback
 
-**[Try the web version now](https://toolknit.com)**
+| Topic | Link |
+| --- | --- |
+| Build guide | [BUILD.md](BUILD.md) |
+| Contribution guide | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Changelog | [toolknit-desktop/CHANGELOG.md](toolknit-desktop/CHANGELOG.md) |
+| Bugs and requests | [GitHub Issues](https://github.com/ZihangDong/toolknit-desktop/issues) |
 
-## Tech Stack
+## License and Brand Notice
 
-| Category | Technology |
-|----------|------------|
-| Desktop Framework | [Tauri 2.x](https://tauri.app/) (Rust) |
-| Frontend | Vanilla JavaScript + [Vite](https://vitejs.dev/) |
-| Audio/Video Processing | ffmpeg (bundled, no extra install) |
-| AI Models | DeepSeek / OpenAI / Qwen / Moonshot (user-provided keys) |
-| ML Models | whisper (speech recognition), yolov8 (watermark detection) (model files require manual download) |
+ToolKnit Desktop and the CLI/MCP source code in this repository are licensed under the [Apache License 2.0](LICENSE).
 
-## Star History
-
-Thank you to every Star supporter! 🌟
-
-[![Star History Chart](assets/star-growth.svg)](https://github.com/ZihangDong/toolknit-desktop/stargazers)
-
-## License
-
-This project is open-sourced under the [MIT License](LICENSE). You are free to use, modify, and distribute it.
-
-## Links
-
-- Web App: [toolknit.com](https://toolknit.com)
-- Download Desktop: [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases/latest)
-- Issue Tracker: [GitHub Issues](https://github.com/ZihangDong/toolknit-desktop/issues)
-- Sponsor: [toolknit.com](https://toolknit.com) (bottom of page)
-
----
-
-<div align="center">
-
-**Like ToolKnit? Try the full version at [toolknit.com](https://toolknit.com)!**
-
-If this project helps you, please consider giving it a Star.
-
----
-
-## Author
-
-- 中文名:董子航
-- English Name:Zihang Dong
-- GitHub:[@ZihangDong](https://github.com/ZihangDong)
-
-</div>
+The license does not grant rights to the ToolKnit name, logos, visual identity, domains, official website, hosted web services, service accounts, or other independently operated products. See [NOTICE](NOTICE).
