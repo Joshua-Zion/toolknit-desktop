@@ -2119,47 +2119,6 @@
         margin-top: 6px;
       }
 
-      /* The hardware index has seven read-only areas. Keep the entire map visible
-         in the fixed desktop window while preserving the shared list treatment. */
-      .content-section[data-category="hardware"] .audio-list {
-        gap: 6px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-item {
-        gap: 14px;
-        min-height: 56px;
-        padding: 8px 18px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 9px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-icon svg {
-        width: 19px;
-        height: 19px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-title {
-        font-size: 15px;
-        margin-bottom: 2px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-desc {
-        font-size: 12px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-right {
-        gap: 1px;
-        padding-left: 14px;
-      }
-
-      .content-section[data-category="hardware"] .audio-list-meta {
-        margin-top: 3px;
-      }
-
       .audio-search {
         width: 200px;
         display: flex;
