@@ -132,7 +132,7 @@ imageContext.font = '700 148px sans-serif';
 imageContext.fillText('ToolKnit Agent', 180, 500);
 imageContext.font = '400 76px sans-serif';
 imageContext.fillStyle = '#4A4A4A';
-imageContext.fillText('Editable document workflow / v1.2', 180, 660);
+imageContext.fillText('Editable document workflow / v1.3', 180, 660);
 imageContext.fillStyle = '#111111';
 imageContext.fillRect(180, 780, 2040, 12);
 await writeFile(sourceImagePath, imageCanvas.toBuffer('image/png'), { flag: 'wx' });

@@ -1,6 +1,6 @@
 # ToolKnit AI Document Project Specification
 
-Status: v1, ToolKnit 1.2
+Status: v1, ToolKnit 1.3
 
 ## Purpose
 

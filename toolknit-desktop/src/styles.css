@@ -8,6 +8,10 @@
         user-select: none;
       }
 
+      :root {
+        --toolknit-window-radius: 10px;
+      }
+
       /* ===== Force Update Overlay ===== */
       .force-update-overlay {
         position: fixed;
@@ -255,6 +259,13 @@
         height: 100%;
       }
 
+      html {
+        background: transparent;
+        overflow: hidden;
+        border-radius: var(--toolknit-window-radius);
+        clip-path: inset(0 round var(--toolknit-window-radius));
+      }
+
       ::-webkit-scrollbar {
         display: none;
       }
@@ -267,6 +278,9 @@
       body {
         background: transparent;
         font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        position: relative;
+        overflow: hidden;
+        border-radius: var(--toolknit-window-radius);
       }
 
       @font-face {
@@ -10872,7 +10886,7 @@
         font-size: 14px;
       }
 
-      /* ===== V1.2 Home Workbench ===== */
+      /* ===== V1.3 Home Workbench ===== */
       .home-grid {
         display: grid;
         grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(230px, 0.85fr);
@@ -11174,7 +11188,7 @@
         border-radius: 0;
       }
 
-      /* ===== V1.2 Home Typography Revision ===== */
+      /* ===== V1.3 Home Typography Revision ===== */
       .home-grid {
         position: relative;
         grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.9fr) minmax(190px, 0.72fr);
@@ -11458,7 +11472,7 @@
         }
       }
 
-      /* ===== V1.2 Monochrome Home ===== */
+      /* ===== V1.3 Monochrome Home ===== */
       .content-section[data-category="home"] {
         background: transparent;
       }

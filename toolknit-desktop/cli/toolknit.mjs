@@ -22,7 +22,7 @@ import { generateAiDocument } from './lib/ai-document-runtime.mjs';
 import { editAiTableProject, generateAiTableProject, inspectAiTableProjectFile, renderAiTableProject } from './lib/ai-table-project-runtime.mjs';
 import { installTranscriptionModel, listTranscriptionModels, setCurrentTranscriptionModel, transcribeMedia } from './lib/transcription-runtime.mjs';
 
-const VERSION = '1.2.8';
+const VERSION = '1.3.0';
 const HELP = `ToolKnit CLI ${VERSION}
 
 用法：

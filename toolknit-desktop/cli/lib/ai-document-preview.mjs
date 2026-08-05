@@ -25,22 +25,32 @@ function drawControlOverlay(context, control, scaleX, scaleY) {
   const y = control.y * scaleY;
   const width = control.w * scaleX;
   const height = control.h * scaleY;
-  const label = `${control.controlNumber}  ${control.type}`;
+  const label = `${control.controlNumber}`;
   context.save();
   context.strokeStyle = '#111111';
   context.lineWidth = Math.max(2, scaleX * 1.5);
   context.setLineDash([Math.max(6, scaleX * 4), Math.max(4, scaleX * 3)]);
   context.strokeRect(x, y, width, height);
   context.setLineDash([]);
-  context.font = `600 ${Math.max(18, Math.round(12 * scaleX))}px sans-serif`;
-  const labelWidth = Math.ceil(context.measureText(label).width) + 18;
+  context.font = `700 ${Math.max(18, Math.round(12 * scaleX))}px sans-serif`;
+  const labelWidth = Math.ceil(context.measureText(label).width) + 20;
   const labelHeight = Math.max(28, Math.round(22 * scaleY));
-  const labelY = Math.max(0, y - labelHeight);
+  const labelGap = Math.max(8, Math.round(5 * scaleX));
+  const preferredLeft = x - labelWidth - labelGap;
+  const labelX = preferredLeft >= 4 ? preferredLeft : Math.min(x + labelGap, context.canvas.width - labelWidth - 4);
+  const centeredY = y + height / 2 - labelHeight / 2;
+  const labelY = Math.min(
+    Math.max(4, centeredY),
+    Math.max(4, context.canvas.height - labelHeight - 4)
+  );
+  const radius = Math.min(labelHeight / 2, 14 * scaleX);
   context.fillStyle = '#111111';
-  context.fillRect(x, labelY, Math.min(labelWidth, Math.max(width, 80)), labelHeight);
+  context.beginPath();
+  context.roundRect(labelX, labelY, labelWidth, labelHeight, radius);
+  context.fill();
   context.fillStyle = '#FFFFFF';
   context.textBaseline = 'middle';
-  context.fillText(label, x + 9, labelY + labelHeight / 2, Math.max(40, width - 18));
+  context.fillText(label, labelX + 10, labelY + labelHeight / 2, Math.max(40, labelWidth - 20));
   context.restore();
 }
 

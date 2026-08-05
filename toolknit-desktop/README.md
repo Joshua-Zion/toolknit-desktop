@@ -75,7 +75,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 ---
 
-## v1.0 -> v1.2
+## v1.0 -> v1.3
 
 <table>
   <tr>
@@ -90,7 +90,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
     </td>
     <td width="8%" align="center" valign="middle"><h2>-></h2></td>
     <td width="46%" valign="top">
-      <h3>v1.2</h3>
+      <h3>v1.3</h3>
       <ul>
         <li>32 个桌面工具，加入视频单帧图、视频转 GIF、长图拼接和音视频转文字</li>
         <li>可自定义输出根目录、二级分类目录和应用背景</li>
@@ -101,7 +101,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
   </tr>
 </table>
 
-### v1.2 重点更新
+### v1.3 重点更新
 
 | 更新 | 现在可以做什么 |
 | --- | --- |
@@ -174,7 +174,7 @@ npx tauri dev
 
 <a id="cli--ai-agent"></a>
 
-v1.2 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
+v1.3 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
 
 ### CLI
 

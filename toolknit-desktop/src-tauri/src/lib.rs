@@ -746,7 +746,7 @@ async fn download_ffmpeg_runtime(app_handle: tauri::AppHandle, source: Option<St
     let _ = std::fs::remove_file(directory.join("ffmpeg-download.zip.part"));
     let requested = source.as_deref().unwrap_or("auto").trim().to_ascii_lowercase();
     let candidates = ffmpeg_download_candidates(&requested)?;
-    let client = reqwest::Client::builder().user_agent("ToolKnit/1.2 ffmpeg-runtime-manager").connect_timeout(std::time::Duration::from_secs(12)).build().map_err(|error| format!("Cannot initialize FFmpeg download: {}", error))?;
+    let client = reqwest::Client::builder().user_agent("ToolKnit/1.3 ffmpeg-runtime-manager").connect_timeout(std::time::Duration::from_secs(12)).build().map_err(|error| format!("Cannot initialize FFmpeg download: {}", error))?;
     let mut last_error = None;
     for (candidate, url) in candidates {
         if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) { return Err("dependency-download:cancelled".to_string()); }
@@ -1051,7 +1051,7 @@ async fn download_transcription_model(
 
     let partial = target.with_extension("bin.part");
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/1.2 offline-model-manager")
+        .user_agent("ToolKnit/1.3 offline-model-manager")
         .build()
         .map_err(|error| format!("Cannot initialize model download: {}", error))?;
     let requested_source = source.as_deref().unwrap_or("auto").trim().to_ascii_lowercase();
@@ -6634,7 +6634,7 @@ fn get_file_size(path: String) -> Result<u64, String> {
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
     // Legacy frontend builds used this command name for output actions. Keep
-    // the command available for compatibility, but enforce the v1.2 rule that
+    // the command available for compatibility, but enforce the v1.3 rule that
     // an "open folder" action opens a directory only and never selects or opens
     // the output file itself.
     open_path(path)

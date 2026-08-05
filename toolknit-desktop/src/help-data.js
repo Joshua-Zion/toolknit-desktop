@@ -768,8 +768,8 @@ export const HELP_CONTENT = {
 
       <div class="help-agent-prompt">
         <h4>生成多页 AI 文档</h4>
-        <p class="help-agent-prompt-text">请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v1.2 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。</p>
-        <button class="help-prompt-copy" type="button" data-copy-prompt="请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v1.2 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。">复制话术</button>
+        <p class="help-agent-prompt-text">请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v1.3 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。</p>
+        <button class="help-prompt-copy" type="button" data-copy-prompt="请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v1.3 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。">复制话术</button>
       </div>
 
       <div class="help-agent-prompt">

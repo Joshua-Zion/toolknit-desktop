@@ -295,7 +295,7 @@ Use ToolKnit MCP to inspect <scanned PDF path>, then enhance it with medium stre
 ```text
 You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat.
 
-Generate a four-page English A4 PDF titled "ToolKnit v1.2 Open Source Product Plan" at <absolute output PDF path>. Do not overwrite an existing file.
+Generate a four-page English A4 PDF titled "ToolKnit v1.3 Open Source Product Plan" at <absolute output PDF path>. Do not overwrite an existing file.
 
 Page 1 must contain an executive summary, project context, release goals, target users, and five core values, plus a compact metadata table. Page 2 must organize desktop capabilities into PDF, image, audio/video, text, and AI groups and explain the local-first privacy and performance strategy without inventing usage metrics. Page 3 must explain the CLI and IDE Agent/MCP architecture, shared capability contracts, explicit output paths, overwrite protection, progress, and structured errors, with a table of representative calls. Page 4 must present the release plan, risks, acceptance criteria, and roadmap, including an action table with owner roles, priorities, and expected evidence.
 

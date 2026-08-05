@@ -428,7 +428,7 @@ try {
       { regions: [
         { type: 'title', x: 56, y: 60, w: 682, h: 50, text: 'ToolKnit 多页文档测试', fontSize: 30, bold: true, align: 'center' },
         { type: 'subtitle', x: 56, y: 120, w: 682, h: 24, text: 'MCP / PAGE 01', fontSize: 14, bold: false, align: 'center' },
-        { type: 'table-row', x: 56, y: 170, w: 682, h: 42, text: '版本 | v1.2 | 形态 | CLI + MCP', fontSize: 13, bold: false, align: 'left' },
+        { type: 'table-row', x: 56, y: 170, w: 682, h: 42, text: '版本 | v1.3 | 形态 | CLI + MCP', fontSize: 13, bold: false, align: 'left' },
         { type: 'section-heading', x: 56, y: 242, w: 682, h: 34, text: '01 / 执行摘要', fontSize: 18, bold: true, align: 'left' },
         { type: 'emphasis', x: 56, y: 296, w: 682, h: 58, text: 'Agent 必须真实调用 ToolKnit，并在发布前校验输出页数。', fontSize: 14, bold: true, align: 'left' },
         { type: 'body', x: 56, y: 374, w: 682, h: 66, text: '此测试通过本地模拟的 OpenAI 兼容端点生成布局，不访问外部服务，也不会把测试密钥写入结果。', fontSize: 14, bold: false, align: 'left' },
@@ -514,7 +514,7 @@ try {
   };
   const cliPromptPath = path.join(fixtureDirectory, 'document-brief.txt');
   const cliAiDocumentPath = path.join(fixtureDirectory, 'cli-ai-document.pdf');
-  await writeFile(cliPromptPath, '生成四页 ToolKnit CLI 验证文档。使用以下明确提供的模拟数据：版本 v1.2，文档内列出的测试结果均允许写为通过。');
+  await writeFile(cliPromptPath, '生成四页 ToolKnit CLI 验证文档。使用以下明确提供的模拟数据：版本 v1.3，文档内列出的测试结果均允许写为通过。');
   const cliCreate = await runCli([
     'ai-doc', 'create', '--prompt-file', cliPromptPath, '--output', cliAiDocumentPath,
     '--page-count', '4', '--locale', 'zh-CN', '--json'
@@ -704,7 +704,7 @@ try {
     name: 'toolknit_ai_document',
     _meta: { progressToken: 'ai-document-test' },
     arguments: {
-      prompt: '生成四页 ToolKnit MCP 验证文档。使用以下明确提供的模拟数据：版本 v1.2，文档内列出的测试结果均允许写为通过。',
+      prompt: '生成四页 ToolKnit MCP 验证文档。使用以下明确提供的模拟数据：版本 v1.3，文档内列出的测试结果均允许写为通过。',
       output_path: mcpAiDocument,
       page_count: 4,
       locale: 'zh-CN',
