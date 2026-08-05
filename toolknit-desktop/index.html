@@ -3854,6 +3854,10 @@
             <i data-lucide="cpu" class="nav-icon"></i>
             <span data-i18n="nav.aiTools">AI工具</span>
           </div>
+          <div class="nav-item" data-category="hardware">
+            <i data-lucide="monitor-cog" class="nav-icon"></i>
+            <span data-i18n="nav.hardware">硬件工具</span>
+          </div>
         </div>
         <div class="sidebar-footer">
           <div class="footer-btns">
@@ -4531,6 +4535,123 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.aiTableMeta">智能数据 / 图表可视化 / 导出 Excel·PDF·PNG·CSV</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-section" data-category="hardware">
+            <div class="tools-page">
+              <div class="tools-hero-text">
+                <span class="tools-eyebrow" data-i18n="home.toolNames.hardwareEyebrow">System Inspector</span>
+                <h2 data-i18n="nav.hardware">硬件工具</h2>
+                <p data-i18n="home.hardwareCategoryDesc">本地只读查看整机、核心硬件、存储与设备信息。</p>
+              </div>
+              <div class="audio-search tools-search">
+                <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
+                <button class="audio-search-btn tools-search-btn" data-i18n-aria-label="home.searchBtn" aria-label="搜索">
+                  <i data-lucide="search"></i>
+                </button>
+                <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
+              </div>
+              <div class="audio-list">
+                <div class="audio-list-item" data-tool="hardware-overview" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwareOverview">
+                  <div class="audio-list-icon"><i data-lucide="layout-dashboard"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareOverview">整机概览</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareOverviewDesc">系统、机型、BIOS 与安全状态</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareOverviewMeta">Windows / BIOS / 虚拟化 / 安全启动</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-cpu-memory" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwareCpuMemory">
+                  <div class="audio-list-icon"><i data-lucide="cpu"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareCpuMemory">CPU 与内存</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareCpuMemoryDesc">核心线程、频率、缓存与内存通道</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareCpuMemoryMeta">型号 / 核心线程 / 频率 / 插槽</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-gpu-display" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwareGpuDisplay">
+                  <div class="audio-list-icon"><i data-lucide="monitor"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareGpuDisplay">显卡与显示器</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareGpuDisplayDesc">显存、驱动、分辨率与刷新率</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareGpuDisplayMeta">GPU / 驱动 / HDR / 刷新率</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-mainboard" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwareMainboard">
+                  <div class="audio-list-icon"><i data-lucide="circuit-board"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareMainboard">主板与固件</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareMainboardDesc">主板、BIOS/UEFI 与 PCIe 设备</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareMainboardMeta">型号 / BIOS / 芯片组 / PCIe</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-storage" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwareStorage">
+                  <div class="audio-list-icon"><i data-lucide="hard-drive"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareStorage">磁盘与健康</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareStorageDesc">容量、接口、分区与可靠性状态</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareStorageMeta">SMART / 容量 / 分区 / 通电信息</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-network-devices" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwareNetworkDevices">
+                  <div class="audio-list-icon"><i data-lucide="network"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareNetworkDevices">网络与设备</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareNetworkDevicesDesc">网卡、蓝牙、音频、USB 与摄像头</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareNetworkDevicesMeta">链路速率 / 适配器 / 外设清单</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-power-sensors" data-availability="planned" role="button" tabindex="0" aria-disabled="true" data-i18n-aria-label="home.toolNames.hardwarePowerSensors">
+                  <div class="audio-list-icon"><i data-lucide="battery-charging"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwarePowerSensors">电源与传感器</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwarePowerSensorsDesc">电池健康与硬件可提供的传感器数据</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwarePowerSensorsMeta">电池健康 / 温度 / 风扇 / 驱动支持</div>
                   </div>
                 </div>
               </div>

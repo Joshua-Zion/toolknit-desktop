@@ -292,6 +292,20 @@
         });
       });
 
+      // Planned hardware modules intentionally have no collection backend yet.
+      // Keep their visual entries discoverable without treating a click as usage.
+      document.querySelectorAll('.audio-list-item[data-availability="planned"]').forEach(item => {
+        item.addEventListener('click', event => {
+          event.stopImmediatePropagation();
+          showToast(t('home.hardwareComingSoon'));
+        });
+        item.addEventListener('contextmenu', event => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          showToast(t('home.hardwareComingSoon'));
+        });
+      });
+
       // Audio tool search: trigger by button click with spider mascot loading for at least 1s
       // After search: input hides, clear button shows; footer shows at bottom of results
       // Clear button: mask animation, then restore input
@@ -18517,7 +18531,8 @@
       function seedDefaultFavorites() {
         if (localStorage.getItem(FAV_KEY) !== null) return;
 
-        const candidates = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'));
+        const candidates = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
+          .filter(item => item.dataset.availability !== 'planned');
         const defaults = candidates
           .sort(() => Math.random() - 0.5)
           .slice(0, MAX_FAVORITES)
@@ -18570,6 +18585,7 @@
       document.querySelectorAll('.audio-list-item').forEach(item => {
         item.addEventListener('contextmenu', (e) => {
           e.preventDefault();
+          if (item.dataset.availability === 'planned') return;
           const info = getToolInfo(item);
           if (isFavorited(info.toolId)) {
             removeFavorite(info.toolId);
@@ -18579,6 +18595,7 @@
           }
         });
         item.addEventListener('click', () => {
+          if (item.dataset.availability === 'planned') return;
           const info = getToolInfo(item);
           if (info.toolId) {
             addRecent(info.toolId, info.name, info.iconHtml, info.category);
@@ -18640,7 +18657,8 @@
       function renderRecommended() {
         const container = document.getElementById('recommendedContent');
         if (!container) return;
-        const allItems = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'));
+        const allItems = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
+          .filter(item => item.dataset.availability !== 'planned');
         if (allItems.length === 0) return;
 
         // Pick 3 random items
