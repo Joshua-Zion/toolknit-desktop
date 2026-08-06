@@ -10,7 +10,7 @@
       <br /><br />
       <strong>每一颗 Star 都是继续维护的动力。</strong>
       <br />
-      <sub>实时同步 GitHub Star 数量</sub>
+      <sub>实时同步 GitHub Star 数量 · 已获捐赠 83.88 元 · 最近一笔：匿名开源支持者（工具编织）3 元</sub>
     </td>
   </tr>
 </table>
@@ -34,6 +34,10 @@
 </p>
 
 <p align="center">
+  <strong>❤️ <a href="#支持作者">如果 ToolKnit 曾帮你少熬一次夜，欢迎把一点点支持留给它。</a></strong>
+</p>
+
+<p align="center">
   <img src="./docs/assets/readme-home.png" alt="ToolKnit Desktop home screen" width="100%" />
 </p>
 
@@ -52,30 +56,9 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 只有在你明确调用 AI 润色、翻译、AI 文档、AI 表格或转写二次润色时，相关文字才会发送到你自行配置的 AI 服务；本地文件工具不会上传源文件。
 
-## 支持作者
-
-> **如果 ToolKnit 帮到了你，欢迎支持作者继续维护。**
->
-> 支持会用于测试设备、文档维护、运行时镜像、版本发布和后续功能开发。公开支持记录见 [docs/SUPPORT.md](docs/SUPPORT.md)。
-
-<table>
-  <tr>
-    <th width="50%">微信支付</th>
-    <th width="50%">支付宝</th>
-  </tr>
-  <tr>
-    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="微信支付支持 ToolKnit" width="220" /></td>
-    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="支付宝支持 ToolKnit" width="220" /></td>
-  </tr>
-</table>
-
-<p align="center">
-  想免安装使用更完整的在线能力？访问 <a href="https://toolknit.com"><strong>toolknit.com</strong></a>
-</p>
-
 ---
 
-## v1.0 -> v1.2
+## v1.0 -> v1.3
 
 <table>
   <tr>
@@ -90,21 +73,23 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
     </td>
     <td width="8%" align="center" valign="middle"><h2>-></h2></td>
     <td width="46%" valign="top">
-      <h3>v1.2</h3>
+      <h3>v1.3</h3>
       <ul>
-        <li>32 个桌面工具，加入视频单帧图、视频转 GIF、长图拼接和音视频转文字</li>
+        <li>40+ 个桌面工具，加入 PDF 转图像、视频单帧图、视频转 GIF、长图拼接、音视频转文字、硬件信息和 AI 大文件清理</li>
         <li>可自定义输出根目录、二级分类目录和应用背景</li>
-        <li>核心文件工具支持 CLI，并为 IDE Agent 提供 30 项 MCP 能力</li>
+        <li>核心文件工具支持 CLI，并为 IDE Agent 提供 31 项 MCP 能力</li>
         <li>AI 文档/AI 表格升级为可检查、可编号、可编辑、可撤销、可重渲染的工程工作流</li>
       </ul>
     </td>
   </tr>
 </table>
 
-### v1.2 重点更新
+### v1.3 重点更新
 
 | 更新 | 现在可以做什么 |
 | --- | --- |
+| PDF 转图像 | 按页导出 PNG / JPG，一页一图，适合拆页、取图和后续拼接。 |
+| 长图拼接 | 支持图片和 PDF 页面导入，提供横向 / 纵向拼接、间距、背景和参考尺寸。 |
 | 视频高清单帧图 | 按精确时间点或真实帧率定位，导出 PNG 无损图或高质量 JPG。 |
 | 视频截取 GIF | 选择起始与结束帧、帧率和宽度，导出最长 30 秒的调色板优化 GIF。 |
 | 音视频提取字幕文字 | 下载本地识别模型后离线转写音频或视频，输出 TXT、SRT、JSON；可选 AI 二次润色。 |
@@ -114,12 +99,51 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 | 输出与依赖管理 | 所有输出按工具分类到自定义目录；FFmpeg 和离线模型按需下载、校验与提示。 |
 | CLI 与 AI Agent | 大部分核心文件处理工具拥有确定的命令、进度、错误和输出契约，可由 MCP Agent 自然语言调用。 |
 
+## 支持作者
+
+<p align="center">
+  <strong>每一份支持，都会被悄悄变成下一次更稳的更新。</strong>
+</p>
+
+<p align="center">
+  <strong>当前公开捐赠总额：83.88 元</strong><br />
+  <sub>最近一笔：匿名开源支持者（工具编织）· 3 元</sub>
+</p>
+
+> 如果 ToolKnit 曾替你省下一次重复劳动、一个晚上的加班，或者把原本散掉的文件重新拢回秩序，欢迎把一点点支持留给它。
+>
+> 这些支持不会只停在一句感谢里，它们会被放回到测试设备、依赖镜像、文档、版本发布和 bug 修复里。每一笔都不算大，但都在帮它更稳地活下去。
+
+<table>
+  <tr>
+    <th width="50%">支付宝</th>
+    <th width="50%">微信支付</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="支付宝支持 ToolKnit" width="220" /></td>
+    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="微信支付支持 ToolKnit" width="220" /></td>
+  </tr>
+</table>
+
+<p align="center">
+  想免安装使用更完整的在线能力？访问 <a href="https://toolknit.com"><strong>toolknit.com</strong></a>
+</p>
+
+<p align="center">
+  公开支持记录见 <a href="docs/SUPPORT.md">docs/SUPPORT.md</a>，每一次支持都会被认真记下。
+</p>
+
+<p align="center">
+  <strong>谢谢每一位愿意为它停一下的人。</strong>
+</p>
+
 ## 功能总览
 
 ### PDF 工具
 
 | 工具 | 说明 |
 | --- | --- |
+| PDF 转图像 | 按页导出 PNG / JPG，适合拆页、取图和后续拼接。 |
 | PDF 合并 | 选择多个文件和页码后按顺序生成一个 PDF。 |
 | PDF 拆分 | 按页导出，支持单页、全部或指定范围。 |
 | PDF 旋转 | 对选定页面进行 90/180/270 度旋转。 |
@@ -174,7 +198,7 @@ npx tauri dev
 
 <a id="cli--ai-agent"></a>
 
-v1.2 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
+v1.3 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
 
 ### CLI
 

@@ -1,6 +1,6 @@
 # ToolKnit AI Agent 快速手册
 
-本手册帮助普通用户在 Trae、Cursor 或其他支持 MCP 的 IDE 中，让 AI Agent 安全调用 ToolKnit 处理本地 PDF、转换音频和视频，并生成专业的多页 AI 文档与可编辑 AI 表格。
+本手册帮助普通用户在 Trae、Cursor 或其他支持 MCP 的 IDE 中，让 AI Agent 安全调用 ToolKnit 处理本地 PDF（包括转图像和拼长图）、转换音频和视频，并生成专业的多页 AI 文档与可编辑 AI 表格。
 
 ## 先完成连接
 
@@ -25,8 +25,17 @@ C:\Users\<你的用户名>\AppData\Roaming\npm\node_modules\@toolknit\cli\toolkn
 
 基础 PDF、图片、音视频和文本工具不需要 AI Key。使用 AI 文档、AI 表格或转写后的 `refine` 二次校对时，请在 IDE 的 MCP 环境变量/密钥设置中为 `toolknit` 添加真实的 `DEEPSEEK_API_KEY`（也支持 `TOOLKNIT_AI_API_KEY`），再重启 IDE。不要把密钥写进 Agent 对话、文档需求、输出路径或文件名；桌面端保存的密钥不会被 CLI/MCP 读取。
 
-连接成功后，Agent 会显示 30 项 ToolKnit 工具：8 项 PDF 工具、4 项音频工具、4 项离线模型与转写工具、3 项视频工具、1 项文本工具、2 项图像工具、4 项 AI 文档工程工具，以及 4 项 AI 表格工程工具：
+连接成功后，Agent 会显示 31 项 ToolKnit 工具：9 项 PDF 工具、4 项音频工具、4 项离线模型与转写工具、3 项视频工具、1 项文本工具、2 项图像工具、4 项 AI 文档工程工具，以及 4 项 AI 表格工程工具：
 
+- `toolknit_pdf_inspect`：查看页数、大小和每页概况。
+- `toolknit_pdf_merge`：把多个本地 PDF 按顺序合并成一个文件。
+- `toolknit_pdf_split`：按明确页码拆分单个 PDF。
+- `toolknit_pdf_rotate`：旋转 PDF 页面方向。
+- `toolknit_pdf_encrypt`：给 PDF 加密码和权限。
+- `toolknit_pdf_decrypt`：解锁受密码保护的 PDF。
+- `toolknit_pdf_compress`：压缩 PDF 文件体积。
+- `toolknit_pdf_enhance`：增强扫描件可读性。
+- `toolknit_pdf_to_image`：把 PDF 页面导出为逐页图像，或按页码拼成长图。
 - `toolknit_ai_document`：创建 PDF、可编辑工程、干净预览、编号图和首个修订。
 - `toolknit_ai_document_inspect`：只读查看全部稳定控件编号、文字、样式、位置和诊断。
 - `toolknit_ai_document_edit`：按编号原子修改；支持试运行、样式、交换、移动、缩放、插图、锁定、分组、相对对齐、重叠整理和撤销。
@@ -66,6 +75,20 @@ Agent 必须把 IDE 文件树中的图片解析为绝对路径，并严格保持
 
 ```text
 请调用 toolknit_image_stitch，把 assets/left.png 和 assets/right.png 左右拼接，高度以较大图片为准，间距 16px，背景为不透明黑色，输出 JPG，质量 92。请严格保持 left 在前、right 在后，并把结果保存到当前项目的 toolknit-output 文件夹。
+```
+
+## PDF 转图像 / 拼长图
+
+用户在 IDE 里拖入 PDF 后，如果说“帮我把这个 PDF 转成图像”或“把这个 PDF 转成拼接长图”，Agent 应先从 IDE 文件树解析 PDF 的绝对路径，再把“保存到当前项目”解释成 `<工作区绝对路径>\\toolknit-output`。不要猜输出目录，也不要改写源 PDF。
+
+可复制话术：
+
+```text
+请调用 ToolKnit MCP 的 toolknit_pdf_to_image，把当前项目 assets/demo.pdf 导出为逐页图像，保存到当前项目的 toolknit-output 文件夹。请先从 IDE 文件树解析绝对路径，不要覆盖源文件；如果我说“拼接长图”，就改用 long 模式并按页码顺序输出。完成后报告每个输出绝对路径、页码、格式和文件大小。
+```
+
+```text
+请调用 ToolKnit MCP 的 toolknit_pdf_to_image，把当前项目 assets/demo.pdf 的第 1 到第 5 页导出为拼接长图，保存到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，不要猜测页面；完成后报告长图路径、页码范围和文件大小。
 ```
 
 ## 每次任务都说清楚
@@ -295,13 +318,13 @@ Agent 转换出的操作应只有一项：
 ```text
 请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。
 
-生成一份 4 页中文 A4 PDF《ToolKnit v1.2 开源版本产品方案》，输出到 D:\ToolKnit-Output\ToolKnit-v1.2-产品方案.pdf，不允许覆盖已有文件。
+生成一份 4 页中文 A4 PDF《ToolKnit v1.3 开源版本产品方案》，输出到 D:\ToolKnit-Output\ToolKnit-v1.3-产品方案.pdf，不允许覆盖已有文件。
 
 文档要求：
 1. 第 1 页为执行摘要，包含项目背景、版本目标、目标用户和 5 项核心价值，并用信息表格展示版本号、发布形态、技术栈和开源定位。
 2. 第 2 页介绍桌面版能力，按 PDF、图片、音视频、文本和 AI 工具分组，说明本地优先、隐私和性能策略；不要虚构未经提供的用户量或市场数据。
 3. 第 3 页介绍 CLI 与 IDE Agent/MCP 架构，说明桌面端与 CLI 共用能力契约、显式输出路径、禁止静默覆盖、结构化进度和错误码，并用表格列出典型调用场景。
-4. 第 4 页给出 v1.2 发布计划、风险、验收标准和后续路线，待办事项必须包含责任角色、优先级和验收结果。
+4. 第 4 页给出 v1.3 发布计划、风险、验收标准和后续路线，待办事项必须包含责任角色、优先级和验收结果。
 5. 使用现代黑白商务版式，包含清晰章节、元信息表格、重点摘要、待办表格和克制的注释区域；不要使用彩色装饰、emoji、占位文字或虚假引用。
 6. page_count 必须传 4，locale 传 zh-CN，overwrite 传 false。
 

@@ -34,6 +34,7 @@ const coreFiles = [
   'pdf-compress-core.js',
   'pdf-enhance-core.js',
   'pdf-enhance-engine.js',
+  'pdf-to-image-core.js',
   'audio-convert-core.js',
   'audio-clip-core.js',
   'audio-extract-core.js',

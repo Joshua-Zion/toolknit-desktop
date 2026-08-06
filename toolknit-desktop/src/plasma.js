@@ -1,5 +1,7 @@
 import { Renderer, Program, Mesh, Triangle } from 'ogl';
 
+const BACKGROUND_DPR_MAX = 1.25;
+
 const hexToRgb = hex => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return [1, 0.5, 0.2];
@@ -100,7 +102,7 @@ export function initPlasma(containerEl, options = {}) {
       webgl: 2,
       alpha: true,
       antialias: false,
-      dpr: Math.min(window.devicePixelRatio || 1, 2)
+      dpr: Math.min(window.devicePixelRatio || 1, BACKGROUND_DPR_MAX)
     });
   } catch {
     return null;
@@ -163,10 +165,25 @@ export function initPlasma(containerEl, options = {}) {
   let raf = 0;
   let contextLost = false;
   let isVisible = true;
+  let pageVisible = typeof document === 'undefined' || !document.hidden;
   const t0 = performance.now();
 
+  const stopLoop = () => {
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+  };
+
+  const startLoop = () => {
+    if (!raf && !contextLost && isVisible && pageVisible) {
+      raf = requestAnimationFrame(loop);
+    }
+  };
+
   const loop = t => {
-    if (contextLost || !isVisible) return;
+    raf = 0;
+    if (contextLost || !isVisible || !pageVisible) return;
     let timeValue = (t - t0) * 0.001;
     if (direction === 'pingpong') {
       const pingpongDuration = 10;
@@ -181,20 +198,17 @@ export function initPlasma(containerEl, options = {}) {
       program.uniforms.iTime.value = timeValue;
     }
     renderer.render({ scene: mesh });
-    raf = requestAnimationFrame(loop);
+    startLoop();
   };
 
   const handleContextLost = (e) => {
     e.preventDefault();
     contextLost = true;
-    cancelAnimationFrame(raf);
+    stopLoop();
   };
   const handleContextRestored = () => {
     contextLost = false;
-    if (isVisible) {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(loop);
-    }
+    startLoop();
   };
   canvas.addEventListener('webglcontextlost', handleContextLost);
   canvas.addEventListener('webglcontextrestored', handleContextRestored);
@@ -202,19 +216,38 @@ export function initPlasma(containerEl, options = {}) {
   const io = new IntersectionObserver(([entry]) => {
     const wasVisible = isVisible;
     isVisible = entry.isIntersecting;
-    if (isVisible && !wasVisible && !contextLost) {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(loop);
-    }
+    if (!isVisible) stopLoop();
+    else if (!wasVisible) startLoop();
   }, { threshold: 0 });
   io.observe(containerEl);
 
-  raf = requestAnimationFrame(loop);
+  const handleVisibilityChange = () => {
+    pageVisible = !document.hidden;
+    if (pageVisible) startLoop();
+    else stopLoop();
+  };
+  const handlePageHide = () => {
+    pageVisible = false;
+    stopLoop();
+  };
+  const handlePageShow = () => {
+    pageVisible = !document.hidden;
+    startLoop();
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('pageshow', handlePageShow);
+
+  startLoop();
 
   return () => {
-    cancelAnimationFrame(raf);
+    stopLoop();
     ro.disconnect();
     io.disconnect();
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('pageshow', handlePageShow);
     canvas.removeEventListener('webglcontextlost', handleContextLost);
     canvas.removeEventListener('webglcontextrestored', handleContextRestored);
     if (mouseInteractive && containerEl) {

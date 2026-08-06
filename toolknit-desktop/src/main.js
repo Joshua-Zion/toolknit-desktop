@@ -1,11 +1,9 @@
-      import { getCurrentWindow } from '@tauri-apps/api/window';
+      import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
       import { createIcons, icons } from 'lucide';
       import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
       import { initDarkVeil } from './darkveil.js';
       import { initLightRays } from './lightrays.js';
       import { initPlasma } from './plasma.js';
-      import { initFerrofluid } from './ferrofluid.js';
-      import { initDither } from './dither.js';
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
       import typingWordsData from './data/typing-words.json';
       import { HELP_CONTENT, getHelpContent } from './help-data.js';
@@ -115,15 +113,79 @@
       import { frameTimeLabel, normalizeVideoFrameFormat, normalizeVideoFrameTimestamp, validateVideoFrameInput } from './video-frame-core.js';
       import { createDefaultVideoGifSelection, normalizeVideoGifRequest, validateVideoGifInput, videoGifTimeLabel } from './video-gif-core.js';
       import { calculateImageStitchLayout, normalizeImageStitchRequest } from './image-stitch-core.js';
+      import { initPdfToImageTool } from './pdf-to-image-ui.js';
       import JSZip from 'jszip';
 
       // Disable context menu globally, but allow on tool items for favorites
       document.addEventListener('contextmenu', (e) => {
         if (e.target.closest('.audio-list-item')) return;
+        if (e.target.closest('.cleanup-large-files-table tr[data-path], .cleanup-large-files-context-menu')) return;
         e.preventDefault();
       });
       document.addEventListener('copy', (e) => e.preventDefault());
       document.addEventListener('cut', (e) => e.preventDefault());
+
+      const WINDOW_RADIUS_KEY = 'toolknit.window-radius.v1';
+      const WINDOW_RESIZE_KEY = 'toolknit.window-resizable.v1';
+      const WINDOW_MIN_WIDTH = 1210;
+      const WINDOW_MIN_HEIGHT = 780;
+      const WINDOW_RADIUS_PRESETS = {
+        none: 0,
+        small: 10,
+        large: 18
+      };
+      const WINDOW_RADIUS_CUSTOM_DEFAULT = 10;
+      const WINDOW_RADIUS_MAX = 32;
+
+      function clampWindowRadius(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return WINDOW_RADIUS_CUSTOM_DEFAULT;
+        return Math.max(0, Math.min(WINDOW_RADIUS_MAX, Math.round(numeric)));
+      }
+
+      function readWindowRadiusSetting() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(WINDOW_RADIUS_KEY) || 'null');
+          const mode = ['none', 'small', 'large', 'custom'].includes(parsed?.mode) ? parsed.mode : 'none';
+          const custom = clampWindowRadius(parsed?.custom ?? WINDOW_RADIUS_CUSTOM_DEFAULT);
+          return { mode, custom };
+        } catch {
+          return { mode: 'none', custom: WINDOW_RADIUS_CUSTOM_DEFAULT };
+        }
+      }
+
+      function windowRadiusPixels(setting = readWindowRadiusSetting()) {
+        if (setting.mode === 'custom') return clampWindowRadius(setting.custom);
+        return WINDOW_RADIUS_PRESETS[setting.mode] ?? 0;
+      }
+
+      function applyWindowRadiusSetting(setting = readWindowRadiusSetting()) {
+        const radius = windowRadiusPixels(setting);
+        document.documentElement.style.setProperty('--toolknit-window-radius', `${radius}px`);
+        document.body?.style.setProperty('--toolknit-window-radius', `${radius}px`);
+        return radius;
+      }
+
+      function saveWindowRadiusSetting(setting) {
+        const normalized = {
+          mode: ['none', 'small', 'large', 'custom'].includes(setting?.mode) ? setting.mode : 'none',
+          custom: clampWindowRadius(setting?.custom ?? WINDOW_RADIUS_CUSTOM_DEFAULT)
+        };
+        try { localStorage.setItem(WINDOW_RADIUS_KEY, JSON.stringify(normalized)); } catch {}
+        applyWindowRadiusSetting(normalized);
+        return normalized;
+      }
+
+      function readWindowResizeSetting() {
+        try { return localStorage.getItem(WINDOW_RESIZE_KEY) === '1'; } catch { return false; }
+      }
+
+      function saveWindowResizeSetting(enabled) {
+        try { localStorage.setItem(WINDOW_RESIZE_KEY, enabled ? '1' : '0'); } catch {}
+        return Boolean(enabled);
+      }
+
+      applyWindowRadiusSetting();
 
       createIcons({ icons });
       applyTranslations();
@@ -149,24 +211,143 @@
       document.querySelectorAll('.pdf-merge-page-stage').forEach(enablePdfPageStageHorizontalWheel);
 
       const darkveilBg = document.getElementById('darkveilBg');
-      if (darkveilBg) {
-        // Randomly choose between the original dark color and a blue variant on each entry
-        const darkveilVariant = Math.random() < 0.5 ? 'original' : 'blue';
-        initDarkVeil(darkveilBg, {
-          hueShift: darkveilVariant === 'blue' ? 220 : 0,
-          noiseIntensity: 0.03,
-          scanlineIntensity: 0,
-          speed: 1.6,
-          scanlineFrequency: 5,
-          warpAmount: 0,
-          resolutionScale: 1
-        });
+      // Randomly choose between the original dark color and a blue variant on each entry.
+      // Keep the default background as a managed resource: hidden windows and custom
+      // backgrounds should not leave a WebGL animation running underneath.
+      const darkveilVariant = Math.random() < 0.5 ? 'original' : 'blue';
+      const DARKVEIL_OPTIONS = {
+        hueShift: darkveilVariant === 'blue' ? 220 : 0,
+        noiseIntensity: 0.03,
+        scanlineIntensity: 0,
+        speed: 1.6,
+        scanlineFrequency: 5,
+        warpAmount: 0,
+        resolutionScale: 1
+      };
+      let darkveilDispose = null;
+
+      function stopDefaultDynamicBackground() {
+        if (typeof darkveilDispose === 'function') {
+          darkveilDispose();
+          darkveilDispose = null;
+        }
+      }
+
+      function syncDefaultDynamicBackground() {
+        const shouldRun = Boolean(darkveilBg && !document.hidden && !document.body.classList.contains('has-custom-background'));
+        if (!shouldRun) {
+          stopDefaultDynamicBackground();
+          return;
+        }
+        if (!darkveilDispose) {
+          darkveilDispose = initDarkVeil(darkveilBg, DARKVEIL_OPTIONS);
+        }
+      }
+      document.addEventListener('visibilitychange', syncDefaultDynamicBackground);
+      window.addEventListener('pageshow', syncDefaultDynamicBackground);
+      window.addEventListener('pagehide', stopDefaultDynamicBackground);
+      syncDefaultDynamicBackground();
+
+      const STANDARD_TOOL_PLASMA_OPTIONS = {
+        color: '#6B6B6B',
+        speed: 0.8,
+        direction: 'forward',
+        scale: 1,
+        opacity: 1,
+        mouseInteractive: false
+      };
+
+      function initStandardToolPlasma(containerEl) {
+        if (!containerEl) return null;
+        let disposed = false;
+        let innerDispose = null;
+        let rebuildRaf = 0;
+
+        const stopInner = () => {
+          if (rebuildRaf) {
+            cancelAnimationFrame(rebuildRaf);
+            rebuildRaf = 0;
+          }
+          if (typeof innerDispose === 'function') {
+            innerDispose();
+            innerDispose = null;
+          }
+        };
+
+        const startInner = () => {
+          rebuildRaf = 0;
+          if (disposed || innerDispose || document.hidden || !containerEl.isConnected) return;
+          innerDispose = initPlasma(containerEl, STANDARD_TOOL_PLASMA_OPTIONS);
+        };
+
+        const scheduleStart = () => {
+          if (disposed || innerDispose || rebuildRaf) return;
+          rebuildRaf = requestAnimationFrame(startInner);
+        };
+
+        const sync = () => {
+          if (disposed) return;
+          if (document.hidden) stopInner();
+          else scheduleStart();
+        };
+
+        document.addEventListener('visibilitychange', sync);
+        window.addEventListener('pageshow', sync);
+        window.addEventListener('pagehide', stopInner);
+        scheduleStart();
+
+        return () => {
+          disposed = true;
+          document.removeEventListener('visibilitychange', sync);
+          window.removeEventListener('pageshow', sync);
+          window.removeEventListener('pagehide', stopInner);
+          stopInner();
+        };
+      }
+
+      function disposeStandardToolPlasma(dispose) {
+        if (typeof dispose === 'function') dispose();
+        return null;
       }
 
       const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
       const appWindow = isTauri ? getCurrentWindow() : null;
       const OUTPUT_ROOT_KEY = 'toolknit.output-root.v1';
       const BACKGROUND_KEY = 'toolknit.custom-background.v1';
+
+      function syncWindowResizeChrome(enabled = readWindowResizeSetting()) {
+        document.querySelectorAll('.ctrl-btn[data-action="maximize"]').forEach(btn => {
+          btn.disabled = !enabled;
+          btn.classList.toggle('is-disabled', !enabled);
+          btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+        });
+      }
+
+      async function applyWindowResizeSetting(enabled = readWindowResizeSetting()) {
+        syncWindowResizeChrome(enabled);
+        if (!isTauri || !appWindow) return Boolean(enabled);
+        try {
+          await appWindow.setMinSize(new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT));
+          await appWindow.setMaxSize(null);
+          if (enabled) {
+            await appWindow.setResizable(true);
+          } else {
+            try {
+              if (await appWindow.isMaximized()) await appWindow.unmaximize();
+            } catch {}
+            try {
+              await appWindow.setSize(new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT));
+            } catch {}
+            await appWindow.setResizable(false);
+          }
+        } catch (error) {
+          console.error('Failed to apply window resize setting:', error);
+          window.showToast?.(getLang() === 'zh' ? '窗口拉伸设置应用失败。' : 'Failed to apply window resize setting.');
+        }
+        return Boolean(enabled);
+      }
+
+      void applyWindowResizeSetting();
 
       // Tauri uses data-tauri-drag-region. The older WebKit-only CSS hint was not
       // reliable on every Windows WebView, especially after opening an overlay.
@@ -241,10 +422,31 @@
         const parent = normalized.replace(/[/\\][^/\\]+$/, '');
         return parent && parent !== normalized ? parent : normalized;
       }
+      function displayFilesystemPath(path) {
+        const value = String(path || '').trim();
+        if (!value) return '';
+        const cleaned = value
+          .replace(/^\\\\\?\\UNC\\/i, '\\\\')
+          .replace(/^\\\\\?\\/i, '')
+          .replace(/^\/\/\?\/UNC\//i, '//')
+          .replace(/^\/\/\?\//i, '');
+        const looksLikeWindowsPath = /^[a-z]:[\\/]/i.test(cleaned) || /^\\\\/.test(cleaned) || /^\/\//.test(cleaned);
+        return looksLikeWindowsPath ? cleaned.replace(/\//g, '\\') : cleaned;
+      }
+      function displayOutputParentFolder(outputPath) {
+        return displayFilesystemPath(outputParentFolder(outputPath));
+      }
       async function openOutputFolder(outputPath) {
-        if (!isTauri || !outputPath) return;
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('open_path', { path: outputParentFolder(outputPath) });
+        if (!isTauri || !outputPath) return false;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: outputParentFolder(outputPath) });
+          return true;
+        } catch (error) {
+          console.error('Open output folder failed:', error);
+          window.showToast?.(t('common.openFolderFailed'));
+          return false;
+        }
       }
       const transitionMask = document.getElementById('transitionMask');
       const navItems = document.querySelectorAll('.nav-item');
@@ -289,6 +491,20 @@
             e.preventDefault();
             item.click();
           }
+        });
+      });
+
+      // Planned hardware modules intentionally have no collection backend yet.
+      // Keep their visual entries discoverable without treating a click as usage.
+      document.querySelectorAll('.audio-list-item[data-availability="planned"]').forEach(item => {
+        item.addEventListener('click', event => {
+          event.stopImmediatePropagation();
+          showToast(t('home.hardwareComingSoon'));
+        });
+        item.addEventListener('contextmenu', event => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          showToast(t('home.hardwareComingSoon'));
         });
       });
 
@@ -513,9 +729,72 @@
       onLangChange(syncLangButtons);
       syncLangButtons();
 
+      const windowRadiusOptionBtns = document.querySelectorAll('.settings-radius-option[data-window-radius-mode]');
+      const windowRadiusCustomInput = document.getElementById('windowRadiusCustomInput');
+      const windowRadiusValue = document.getElementById('windowRadiusValue');
+      const windowRadiusCustomWrap = document.getElementById('windowRadiusCustomWrap');
+      const windowResizeToggle = document.getElementById('windowResizeToggle');
+
+      function syncWindowResizeControl(enabled = readWindowResizeSetting()) {
+        windowResizeToggle?.classList.toggle('active', enabled);
+        windowResizeToggle?.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        syncWindowResizeChrome(enabled);
+      }
+
+      function syncWindowRadiusControls(setting = readWindowRadiusSetting()) {
+        const radius = applyWindowRadiusSetting(setting);
+        windowRadiusOptionBtns.forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.windowRadiusMode === setting.mode);
+        });
+        if (windowRadiusCustomInput) {
+          windowRadiusCustomInput.value = String(clampWindowRadius(setting.custom));
+          windowRadiusCustomInput.disabled = setting.mode !== 'custom';
+        }
+        if (windowRadiusValue) windowRadiusValue.textContent = `${radius}px`;
+        windowRadiusCustomWrap?.classList.toggle('is-disabled', setting.mode !== 'custom');
+      }
+
+      windowRadiusOptionBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const current = readWindowRadiusSetting();
+          const next = saveWindowRadiusSetting({
+            mode: btn.dataset.windowRadiusMode || 'none',
+            custom: current.custom
+          });
+          syncWindowRadiusControls(next);
+        });
+      });
+
+      windowRadiusCustomInput?.addEventListener('input', () => {
+        const next = saveWindowRadiusSetting({
+          mode: 'custom',
+          custom: windowRadiusCustomInput.value
+        });
+        windowRadiusOptionBtns.forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.windowRadiusMode === 'custom');
+        });
+        if (windowRadiusCustomInput) windowRadiusCustomInput.disabled = false;
+        if (windowRadiusValue) windowRadiusValue.textContent = `${windowRadiusPixels(next)}px`;
+        windowRadiusCustomWrap?.classList.remove('is-disabled');
+      });
+
+      windowRadiusCustomInput?.addEventListener('change', () => {
+        syncWindowRadiusControls(readWindowRadiusSetting());
+      });
+
+      windowResizeToggle?.addEventListener('click', async () => {
+        const next = saveWindowResizeSetting(!readWindowResizeSetting());
+        syncWindowResizeControl(next);
+        await applyWindowResizeSetting(next);
+      });
+
+      syncWindowResizeControl();
+      syncWindowRadiusControls();
+
       // Re-apply translations when language changes externally
       onLangChange(() => {
         applyTranslations();
+        syncWindowRadiusControls();
       });
 
       // Refresh help content on language change
@@ -558,11 +837,11 @@
           const customRoot = await invoke('get_output_root');
           if (typeof customRoot === 'string' && customRoot.trim()) {
             localStorage.setItem(OUTPUT_ROOT_KEY, customRoot);
-            storagePathDisplay.textContent = customRoot;
+            storagePathDisplay.textContent = displayFilesystemPath(customRoot);
             return;
           }
           localStorage.removeItem(OUTPUT_ROOT_KEY);
-          storagePathDisplay.textContent = await invoke('get_default_output_root');
+          storagePathDisplay.textContent = displayFilesystemPath(await invoke('get_default_output_root'));
         } catch { storagePathDisplay.textContent = '--'; }
       }
       if (storagePathDisplay) {
@@ -578,7 +857,11 @@
           await invoke('set_output_root', { outputDir: selected });
           localStorage.setItem(OUTPUT_ROOT_KEY, selected);
           await refreshStoragePath();
-        } catch (error) { console.error('Choose output folder failed:', error); }
+          window.showToast?.(t('settings.storageFolderUpdated'));
+        } catch (error) {
+          console.error('Choose output folder failed:', error);
+          window.showToast?.(t('settings.storageFolderChooseFailed'));
+        }
       });
       if (openStorageFolder) {
         openStorageFolder.addEventListener('click', async () => {
@@ -590,6 +873,7 @@
             await invoke('open_path', { path: customRoot || defaultRoot });
           } catch (e) {
             console.error('Open folder failed:', e);
+            window.showToast?.(t('settings.storageFolderOpenFailed'));
           }
         });
       }
@@ -599,6 +883,9 @@
       const chooseCustomBackground = document.getElementById('chooseCustomBackground');
       const clearCustomBackground = document.getElementById('clearCustomBackground');
       const customBackgroundInput = document.getElementById('customBackgroundInput');
+      function pauseCustomBackgroundVideos() {
+        customBackground?.querySelectorAll('video').forEach(video => video.pause?.());
+      }
       function updateCustomBackgroundStatus(record) {
         if (!customBackgroundStatus) return;
         if (!record) customBackgroundStatus.textContent = t('settings.defaultBackground');
@@ -608,20 +895,37 @@
       }
 
       function restoreDefaultBackground({ forgetSavedBackground = false } = {}) {
+        pauseCustomBackgroundVideos();
         customBackground?.replaceChildren();
         document.body.classList.remove('has-custom-background');
         updateCustomBackgroundStatus(null);
         if (clearCustomBackground) clearCustomBackground.disabled = true;
         if (forgetSavedBackground) {
-          try { localStorage.removeItem(BACKGROUND_KEY); } catch {}
+            try { localStorage.removeItem(BACKGROUND_KEY); } catch {}
         }
+        syncDefaultDynamicBackground();
+      }
+
+      function syncCustomBackgroundPlayback() {
+        const videos = Array.from(customBackground?.querySelectorAll('video') || []);
+        const shouldPlay = Boolean(!document.hidden && document.body.classList.contains('has-custom-background'));
+        videos.forEach(video => {
+          if (shouldPlay) {
+            const playPromise = video.play?.();
+            if (playPromise?.catch) playPromise.catch(() => {});
+          } else {
+            video.pause?.();
+          }
+        });
       }
 
       async function applyCustomBackground(record) {
         if (!customBackground) return;
+        pauseCustomBackgroundVideos();
         customBackground.replaceChildren();
         const active = record && typeof record.path === 'string' && (record.type === 'image' || record.type === 'video');
         document.body.classList.toggle('has-custom-background', Boolean(active));
+        syncDefaultDynamicBackground();
         updateCustomBackgroundStatus(active ? record : null);
         if (clearCustomBackground) clearCustomBackground.disabled = !active;
         if (!active) {
@@ -663,7 +967,11 @@
           window.showToast?.(t('settings.backgroundLoadFailed'));
         }, { once: true });
         customBackground.append(media);
+        syncCustomBackgroundPlayback();
       }
+      document.addEventListener('visibilitychange', syncCustomBackgroundPlayback);
+      window.addEventListener('pageshow', syncCustomBackgroundPlayback);
+      window.addEventListener('pagehide', pauseCustomBackgroundVideos);
       function savedBackground() { try { return JSON.parse(localStorage.getItem(BACKGROUND_KEY) || 'null'); } catch { return null; } }
       void applyCustomBackground(savedBackground());
       async function saveCustomBackground(record) {
@@ -755,11 +1063,13 @@
             await invoke('clear_custom_background');
           } catch (error) {
             console.error('Clear custom background failed:', error);
+            window.showToast?.(t('settings.backgroundClearFailed'));
             return;
           }
         }
         try { localStorage.removeItem(BACKGROUND_KEY); } catch {}
         restoreDefaultBackground();
+        window.showToast?.(t('settings.backgroundCleared'));
       });
       onLangChange(() => {
         void refreshStoragePath();
@@ -1003,7 +1313,7 @@
         const name = document.createElement('div'); name.className = 'transcription-model-name'; name.textContent = 'FFmpeg';
         const meta = document.createElement('div'); meta.className = 'transcription-model-meta';
         meta.textContent = ffmpegRuntimeStatus?.installed
-          ? `${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)} - ${ffmpegRuntimeStatus.path}`
+          ? `${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)} - ${displayFilesystemPath(ffmpegRuntimeStatus.path)}`
           : (getLang() === 'en' ? 'Required for audio and video tools' : '音频、视频工具所需的本地运行时');
         info.append(name, meta);
         const actions = document.createElement('div'); actions.className = 'transcription-model-actions';
@@ -1261,7 +1571,7 @@
 
       function showTranscriptionTool() {
         transcriptionOverlay?.classList.add('visible');
-        if (transcriptionPlasmaBg && !transcriptionPlasmaDispose) transcriptionPlasmaDispose = initPlasma(transcriptionPlasmaBg, { color: '#6366f1', speed: 0.25, scale: 1.05 });
+        if (transcriptionPlasmaBg && !transcriptionPlasmaDispose) transcriptionPlasmaDispose = initStandardToolPlasma(transcriptionPlasmaBg);
       }
 
       async function openTranscriptionTool() {
@@ -1439,7 +1749,7 @@
             : t('home.transcription.success');
         }
         if (transcriptionSuccessCount) transcriptionSuccessCount.textContent = String(refined ? 5 : 3);
-        if (transcriptionSuccessPath) transcriptionSuccessPath.textContent = outputDir;
+        if (transcriptionSuccessPath) transcriptionSuccessPath.textContent = displayFilesystemPath(outputDir);
         transcriptionSuccessOverlay.classList.add('visible');
       }
 
@@ -1737,14 +2047,7 @@
         if (!audioConvertOverlay) return;
         audioConvertOverlay.classList.add('visible');
         if (plasmaBg && !plasmaInstance) {
-          plasmaInstance = initPlasma(plasmaBg, {
-            color: '#6B6B6B',
-            speed: 0.8,
-            direction: 'forward',
-            scale: 1,
-            opacity: 1,
-            mouseInteractive: false
-          });
+          plasmaInstance = initStandardToolPlasma(plasmaBg);
         }
       }
 
@@ -1766,6 +2069,2637 @@
       if (audioConvertBack) {
         audioConvertBack.addEventListener('click', closeAudioConvertOverlay);
       }
+
+      // ===== Hardware Overview =====
+      // The native side returns a deliberately small, read-only inventory. Keep
+      // formatting and localized labels in the renderer so the command remains
+      // usable by future CLI and agent callers without presentation concerns.
+      const hardwareOverviewOverlay = document.getElementById('hardwareOverviewOverlay');
+      const hardwareOverviewBack = document.getElementById('hardwareOverviewBack');
+      const hardwareOverviewRefresh = document.getElementById('hardwareOverviewRefresh');
+      const hardwareOverviewUpdatedAt = document.getElementById('hardwareOverviewUpdatedAt');
+      const hardwareOverviewContent = document.getElementById('hardwareOverviewContent');
+      const hardwareOverviewPlasmaBg = document.getElementById('hardwareOverviewPlasmaBg');
+      let hardwareOverviewPlasmaInstance = null;
+      let hardwareOverviewLoading = false;
+      let hardwareOverviewData = null;
+      let hardwareOverviewScannedAt = null;
+
+      const hwText = key => t(`home.hardwareOverviewPage.${key}`);
+
+      function hardwareReadableText(value, fallback) {
+        const fallbackText = fallback === undefined ? hwText('unavailable') : fallback;
+        if (value === null || value === undefined) return fallbackText;
+        const text = String(value).replace(/\0/g, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+        if (!text) return fallbackText;
+        const compact = text.replace(/\s+/g, ' ');
+        const normalized = compact.replace(/[·•]/g, ' ').trim();
+        const placeholderPattern = /^(unknown|undefined|not specified|unspecified|to be filled by o\.e\.m\.|system product name|system manufacturer|default string|default|none|null|n\/a|not applicable|generic pnp monitor)$/i;
+        if (placeholderPattern.test(normalized)) return fallbackText;
+        if (compact.includes('\uFFFD')) return fallbackText;
+        if (/^(?:\?|\s){2,}$/.test(compact) || /(?:\?){3,}/.test(compact)) return fallbackText;
+        return compact;
+      }
+
+      function hardwareOverviewValue(value) {
+        if (value === null || value === undefined || value === '' || value === 0) return hwText('unavailable');
+        return hardwareReadableText(value, hwText('unavailable'));
+      }
+
+      function hardwareOverviewBytes(value) {
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes) || bytes <= 0) return hwText('unavailable');
+        const gib = bytes / (1024 ** 3);
+        return `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: gib >= 100 ? 0 : 1 }).format(gib)} GB`;
+      }
+
+      function hardwareOverviewDate(value) {
+        const timestamp = Number(value);
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return hwText('unavailable');
+        return new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', {
+          year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date(timestamp));
+      }
+
+      function hardwareOverviewUptime(value) {
+        const bootAt = Number(value);
+        if (!Number.isFinite(bootAt) || bootAt <= 0 || bootAt > Date.now()) return hwText('unavailable');
+        let remaining = Math.floor((Date.now() - bootAt) / 1000);
+        const days = Math.floor(remaining / 86400);
+        remaining %= 86400;
+        const hours = Math.floor(remaining / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        return getLang() === 'zh'
+          ? `${days} 天 ${hours} 小时 ${minutes} 分钟`
+          : `${days}d ${hours}h ${minutes}m`;
+      }
+
+      function hardwareOverviewDeviceType(value) {
+        const map = { desktop: 'desktop', laptop: 'laptop', workstation: 'workstation', server: 'server' };
+        return hwText(map[String(value || '').toLowerCase()] || 'otherDevice');
+      }
+
+      function hardwareOverviewStatusValue(value, positiveKey, fallbackKey) {
+        const normalized = String(value || '').toLowerCase();
+        if (normalized === 'enabled') return hwText(positiveKey);
+        if (normalized === 'disabled') return hwText(fallbackKey);
+        return hwText('unavailable');
+      }
+
+      function hardwareOverviewField(label, value) {
+        return `<div class="hardware-overview-field"><span class="hardware-overview-key">${escapeHtml(label)}</span><span class="hardware-overview-value">${escapeHtml(hardwareOverviewValue(value))}</span></div>`;
+      }
+
+      function hardwareOverviewSection(title, fields, note = '') {
+        return `<section class="hardware-overview-section">
+          <div class="hardware-overview-section-heading">
+            <h2 class="hardware-overview-section-title">${escapeHtml(title)}</h2>
+            ${note ? `<span class="hardware-overview-section-note">${escapeHtml(note)}</span>` : ''}
+          </div>
+          <div class="hardware-overview-grid">${fields.join('')}</div>
+        </section>`;
+      }
+
+      function primaryHardwareGpu(gpus) {
+        const names = Array.isArray(gpus) ? gpus.map(gpu => hardwareReadableText(gpu?.name, '')).filter(Boolean) : [];
+        return names.find(name => !/(virtual|remote|basic display|parsec|spacedesk)/i.test(name)) || names[0] || '';
+      }
+
+      function renderHardwareOverview(data) {
+        if (!hardwareOverviewContent) return;
+        const device = data?.device || {};
+        const system = data?.system || {};
+        const core = data?.core || {};
+        const firmware = data?.firmware || {};
+        const totalMemory = Number(core.memory_total_bytes);
+        const availableMemory = Number(core.memory_available_bytes);
+        const usedMemory = Number.isFinite(totalMemory) && totalMemory > 0 && Number.isFinite(availableMemory)
+          ? Math.max(0, Math.min(100, Math.round((1 - availableMemory / totalMemory) * 100)))
+          : null;
+        const memoryText = Number.isFinite(usedMemory)
+          ? `${hardwareOverviewBytes(totalMemory)} · ${usedMemory}% ${getLang() === 'zh' ? '已用' : 'used'}`
+          : hardwareOverviewBytes(totalMemory);
+        const disks = Array.isArray(core.disks) ? core.disks : [];
+        const volumes = Array.isArray(core.volumes) ? core.volumes : [];
+        const diskTotal = disks.reduce((sum, disk) => sum + Math.max(0, Number(disk?.size_bytes) || 0), 0);
+        const volumeFree = volumes.reduce((sum, volume) => sum + Math.max(0, Number(volume?.free_bytes) || 0), 0);
+        const storageText = diskTotal > 0
+          ? `${hardwareOverviewBytes(diskTotal)} · ${hardwareOverviewBytes(volumeFree)} ${getLang() === 'zh' ? '可用' : 'free'}`
+          : hwText('unavailable');
+        const cpuSummary = [hardwareOverviewValue(core.cpu_name), core.cpu_cores ? `${core.cpu_cores}${getLang() === 'zh' ? ' 核' : ' cores'}` : '', core.cpu_threads ? `${core.cpu_threads}${getLang() === 'zh' ? ' 线程' : ' threads'}` : '']
+          .filter(value => value && value !== hwText('unavailable')).join(' · ') || hwText('unavailable');
+        const tpmText = firmware.tpm_present
+          ? (firmware.tpm_ready ? hwText('ready') : hwText('present'))
+          : hwText('notDetected');
+        const secureBootText = hardwareOverviewStatusValue(firmware.secure_boot, 'enabled', 'disabled');
+        const virtualizationText = firmware.virtualization_enabled ? hwText('enabled') : hwText('disabled');
+        const bootModeText = firmware.boot_mode === 'uefi' ? hwText('uefi') : hwText('legacyOrUnavailable');
+
+        const sections = [
+          hardwareOverviewSection(hwText('device'), [
+            hardwareOverviewField(hwText('manufacturer'), device.manufacturer),
+            hardwareOverviewField(hwText('model'), device.model),
+            hardwareOverviewField(hwText('deviceType'), hardwareOverviewDeviceType(device.device_type)),
+            hardwareOverviewField(hwText('architecture'), system.architecture)
+          ], hwText('localReadOnly')),
+          hardwareOverviewSection(hwText('system'), [
+            hardwareOverviewField(hwText('windows'), system.caption),
+            hardwareOverviewField(hwText('version'), [system.version, system.build ? `Build ${system.build}` : ''].filter(Boolean).join(' · ')),
+            hardwareOverviewField(hwText('installed'), hardwareOverviewDate(system.install_at)),
+            hardwareOverviewField(hwText('uptime'), hardwareOverviewUptime(system.boot_at))
+          ]),
+          hardwareOverviewSection(hwText('coreHardware'), [
+            hardwareOverviewField(hwText('cpu'), cpuSummary),
+            hardwareOverviewField(hwText('memory'), memoryText),
+            hardwareOverviewField(hwText('graphics'), primaryHardwareGpu(core.gpus)),
+            hardwareOverviewField(hwText('storage'), storageText)
+          ]),
+          hardwareOverviewSection(hwText('firmwareSecurity'), [
+            hardwareOverviewField(hwText('mainboard'), firmware.mainboard),
+            hardwareOverviewField(hwText('bios'), [firmware.bios_version, hardwareOverviewDate(firmware.bios_release_at)].filter(value => value && value !== hwText('unavailable')).join(' · ')),
+            hardwareOverviewField(hwText('bootMode'), bootModeText),
+            hardwareOverviewField(hwText('secureBoot'), secureBootText),
+            hardwareOverviewField(hwText('tpm'), tpmText),
+            hardwareOverviewField(hwText('virtualization'), virtualizationText)
+          ])
+        ];
+
+        const statusItems = [
+          ['is-good', '✓', hwText('statusReadOnly')],
+          [firmware.tpm_present && firmware.tpm_ready ? 'is-good' : 'is-neutral', firmware.tpm_present && firmware.tpm_ready ? '✓' : 'i', firmware.tpm_present && firmware.tpm_ready ? hwText('statusTpmReady') : hwText('statusTpmUnavailable')]
+        ];
+        if (firmware.secure_boot === 'enabled' || firmware.secure_boot === 'disabled') {
+          statusItems.splice(1, 0, [firmware.secure_boot === 'enabled' ? 'is-good' : 'is-attention', firmware.secure_boot === 'enabled' ? '✓' : '!', firmware.secure_boot === 'enabled' ? hwText('statusSecureBootOn') : hwText('statusSecureBootOff')]);
+        }
+        if (data?.battery?.status === 'not_detected') statusItems.push(['is-neutral', 'i', hwText('statusNoBattery')]);
+        const status = `<section class="hardware-overview-section">
+          <div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(hwText('status'))}</h2></div>
+          <div class="hardware-overview-status-list">${statusItems.map(([kind, icon, text]) => `<div class="hardware-overview-status-item ${kind}"><span class="hardware-overview-status-icon">${icon}</span><span>${escapeHtml(text)}</span></div>`).join('')}</div>
+        </section>`;
+        hardwareOverviewContent.innerHTML = `${sections.join('')}${status}`;
+      }
+
+      function renderHardwareOverviewLoading() {
+        if (hardwareOverviewContent) hardwareOverviewContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(hwText('scanning'))}</span></div>`;
+      }
+
+      function renderHardwareOverviewError(title, description) {
+        if (hardwareOverviewContent) hardwareOverviewContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      function formatHardwareOverviewUpdatedAt(date) {
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        return t('home.hardwareOverviewPage.updated', { time });
+      }
+
+      async function loadHardwareOverview() {
+        if (hardwareOverviewLoading) return;
+        hardwareOverviewLoading = true;
+        renderHardwareOverviewLoading();
+        hardwareOverviewRefresh?.classList.add('is-loading');
+        if (hardwareOverviewRefresh) hardwareOverviewRefresh.disabled = true;
+        if (hardwareOverviewUpdatedAt) hardwareOverviewUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderHardwareOverviewError(hwText('desktopOnlyTitle'), hwText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwareOverviewData = await invoke('get_hardware_overview');
+          renderHardwareOverview(hardwareOverviewData);
+          hardwareOverviewScannedAt = new Date();
+          if (hardwareOverviewUpdatedAt) hardwareOverviewUpdatedAt.textContent = formatHardwareOverviewUpdatedAt(hardwareOverviewScannedAt);
+        } catch (error) {
+          console.error('Failed to collect hardware overview:', error);
+          renderHardwareOverviewError(hwText('readFailedTitle'), hwText('readFailedDesc'));
+          window.showToast?.(hwText('readFailedDesc'));
+        } finally {
+          hardwareOverviewLoading = false;
+          hardwareOverviewRefresh?.classList.remove('is-loading');
+          if (hardwareOverviewRefresh) hardwareOverviewRefresh.disabled = false;
+        }
+      }
+
+      function openHardwareOverviewOverlay() {
+        if (!hardwareOverviewOverlay) return;
+        hardwareOverviewOverlay.classList.add('visible');
+        hardwareOverviewOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwareOverviewPlasmaBg && !hardwareOverviewPlasmaInstance) {
+          hardwareOverviewPlasmaInstance = initStandardToolPlasma(hardwareOverviewPlasmaBg);
+        }
+        loadHardwareOverview();
+      }
+
+      function closeHardwareOverviewOverlay() {
+        if (!hardwareOverviewOverlay) return;
+        hardwareOverviewOverlay.classList.remove('visible');
+        hardwareOverviewOverlay.setAttribute('aria-hidden', 'true');
+        if (hardwareOverviewPlasmaInstance) {
+          hardwareOverviewPlasmaInstance();
+          hardwareOverviewPlasmaInstance = null;
+        }
+      }
+
+      hardwareOverviewBack?.addEventListener('click', closeHardwareOverviewOverlay);
+      hardwareOverviewRefresh?.addEventListener('click', loadHardwareOverview);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-overview"]').forEach(item => {
+        item.addEventListener('click', openHardwareOverviewOverlay);
+      });
+
+      onLangChange(() => {
+        if (!hardwareOverviewOverlay?.classList.contains('visible')) return;
+        if (hardwareOverviewData) {
+          renderHardwareOverview(hardwareOverviewData);
+          if (hardwareOverviewScannedAt && hardwareOverviewUpdatedAt) hardwareOverviewUpdatedAt.textContent = formatHardwareOverviewUpdatedAt(hardwareOverviewScannedAt);
+        } else {
+          renderHardwareOverviewLoading();
+        }
+      });
+
+      // ===== CPU & Memory =====
+      const hardwareCpuMemoryOverlay = document.getElementById('hardwareCpuMemoryOverlay');
+      const hardwareCpuMemoryBack = document.getElementById('hardwareCpuMemoryBack');
+      const hardwareCpuMemoryRefresh = document.getElementById('hardwareCpuMemoryRefresh');
+      const hardwareCpuMemoryUpdatedAt = document.getElementById('hardwareCpuMemoryUpdatedAt');
+      const hardwareCpuMemoryContent = document.getElementById('hardwareCpuMemoryContent');
+      const hardwareCpuMemoryPlasmaBg = document.getElementById('hardwareCpuMemoryPlasmaBg');
+      let hardwareCpuMemoryPlasmaInstance = null;
+      let hardwareCpuMemoryLoading = false;
+      let hardwareCpuMemoryLiveLoading = false;
+      let hardwareCpuMemoryData = null;
+      let hardwareCpuMemoryScannedAt = null;
+      let hardwareCpuMemoryLiveTimer = null;
+
+      const cpuMemoryText = key => t(`home.cpuMemoryPage.${key}`);
+
+      function cpuMemoryKnownText(value, fallback = cpuMemoryText('unavailable')) {
+        return hardwareReadableText(value, fallback);
+      }
+
+      function cpuMemoryMHz(value) {
+        const mhz = Number(value);
+        if (!Number.isFinite(mhz) || mhz <= 0) return cpuMemoryText('unavailable');
+        return `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 0 }).format(mhz)} MHz`;
+      }
+
+      function cpuMemoryPercent(value) {
+        const percent = Number(value);
+        if (!Number.isFinite(percent) || percent < 0) return cpuMemoryText('unavailable');
+        return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
+      }
+
+      function cpuMemoryType(value) {
+        const typeMap = {
+          20: 'DDR', 21: 'DDR2', 24: 'DDR3', 26: 'DDR4', 27: 'LPDDR', 28: 'LPDDR2',
+          29: 'LPDDR3', 30: 'LPDDR4', 34: 'DDR5', 35: 'LPDDR5'
+        };
+        return typeMap[Number(value)] || cpuMemoryText('unavailable');
+      }
+
+      function cpuMemoryEcc(value) {
+        if ([5, 6].includes(Number(value))) return cpuMemoryText('eccDetected');
+        if (Number(value) === 3) return cpuMemoryText('nonEcc');
+        return cpuMemoryText('unavailable');
+      }
+
+      function cpuMemoryBoolean(value, yesKey, noKey) {
+        return value === true ? cpuMemoryText(yesKey) : cpuMemoryText(noKey);
+      }
+
+      function cpuMemoryField(label, value) {
+        return `<div class="hardware-overview-field"><span class="hardware-overview-key">${escapeHtml(label)}</span><span class="hardware-overview-value">${escapeHtml(cpuMemoryKnownText(value))}</span></div>`;
+      }
+
+      function cpuMemorySection(title, fields, note = '') {
+        return hardwareOverviewSection(title, fields, note);
+      }
+
+      function cpuMemoryAggregateFrequency(modules, key) {
+        const values = Array.from(new Set(modules.map(module => Number(module?.[key])).filter(value => Number.isFinite(value) && value > 0)));
+        if (values.length === 1) return cpuMemoryMHz(values[0]);
+        if (values.length > 1) return values.map(cpuMemoryMHz).join(' / ');
+        return cpuMemoryText('unavailable');
+      }
+
+      function cpuMemoryModuleSlot(module) {
+        const slot = cpuMemoryKnownText(module?.slot, '');
+        const bank = cpuMemoryKnownText(module?.bank, '');
+        if (slot && bank && slot.toLowerCase() !== bank.toLowerCase()) return `${slot} · ${bank}`;
+        return slot || bank || cpuMemoryText('unavailable');
+      }
+
+      function renderCpuMemoryInfo(data) {
+        if (!hardwareCpuMemoryContent) return;
+        const cpu = data?.cpu || {};
+        const memory = data?.memory || {};
+        const current = data?.current || {};
+        const modules = Array.isArray(memory.modules) ? memory.modules : [];
+        const totalMemory = Number(memory.total_bytes);
+        const availableMemory = Number(current.memory_available_bytes ?? memory.available_bytes);
+        const usedMemory = Number.isFinite(totalMemory) && totalMemory > 0 && Number.isFinite(availableMemory)
+          ? Math.max(0, totalMemory - availableMemory)
+          : NaN;
+        const usedPercent = Number.isFinite(totalMemory) && totalMemory > 0 && Number.isFinite(usedMemory)
+          ? Math.round((usedMemory / totalMemory) * 100)
+          : NaN;
+        const commitTotal = Number(current.committed_bytes);
+        const commitLimit = Number(current.commit_limit_bytes);
+        const commitText = Number.isFinite(commitTotal) && Number.isFinite(commitLimit) && commitLimit > 0
+          ? `${hardwareOverviewBytes(commitTotal)} / ${hardwareOverviewBytes(commitLimit)}`
+          : cpuMemoryText('unavailable');
+        const architecture = cpu.address_width ? `${cpu.address_width}-bit` : cpuMemoryText('unavailable');
+        const coresThreads = Number(cpu.cores) > 0 && Number(cpu.threads) > 0
+          ? t('home.cpuMemoryPage.coresThreadsValue', { cores: cpu.cores, threads: cpu.threads })
+          : cpuMemoryText('unavailable');
+        const memoryTypes = Array.from(new Set(modules.map(module => cpuMemoryType(module?.smbios_memory_type)).filter(value => value !== cpuMemoryText('unavailable'))));
+        const memoryTypeText = memoryTypes.length ? memoryTypes.join(' / ') : cpuMemoryText('unavailable');
+        const slotsText = Number(memory.slots_reported) > 0
+          ? t('home.cpuMemoryPage.slotCount', { count: memory.slots_reported })
+          : cpuMemoryText('unavailable');
+        const installedModulesText = modules.length
+          ? t('home.cpuMemoryPage.moduleCount', { count: modules.length })
+          : cpuMemoryText('notDetected');
+
+        const sections = [
+          cpuMemorySection(cpuMemoryText('processor'), [
+            cpuMemoryField(cpuMemoryText('model'), cpu.name),
+            cpuMemoryField(cpuMemoryText('manufacturer'), cpu.manufacturer),
+            cpuMemoryField(cpuMemoryText('socket'), cpu.socket),
+            cpuMemoryField(cpuMemoryText('architecture'), architecture),
+            cpuMemoryField(cpuMemoryText('coresThreads'), coresThreads),
+            cpuMemoryField(cpuMemoryText('maxFrequency'), cpuMemoryMHz(cpu.max_clock_mhz)),
+            cpuMemoryField(cpuMemoryText('currentFrequency'), cpuMemoryMHz(cpu.current_clock_mhz)),
+            cpuMemoryField(cpuMemoryText('l2Cache'), Number(cpu.l2_cache_kb) > 0 ? `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US').format(cpu.l2_cache_kb)} KB` : cpuMemoryText('unavailable')),
+            cpuMemoryField(cpuMemoryText('l3Cache'), Number(cpu.l3_cache_kb) > 0 ? `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US').format(cpu.l3_cache_kb)} KB` : cpuMemoryText('unavailable'))
+          ], cpuMemoryText('localReadOnly')),
+          cpuMemorySection(cpuMemoryText('currentStatus'), [
+            cpuMemoryField(cpuMemoryText('cpuUsage'), cpuMemoryPercent(current.cpu_usage_percent)),
+            cpuMemoryField(cpuMemoryText('currentFrequency'), cpuMemoryMHz(cpu.current_clock_mhz)),
+            cpuMemoryField(cpuMemoryText('memoryTotal'), hardwareOverviewBytes(totalMemory)),
+            cpuMemoryField(cpuMemoryText('memoryUsed'), Number.isFinite(usedMemory) ? `${hardwareOverviewBytes(usedMemory)} · ${t('home.cpuMemoryPage.percentUsed', { percent: Math.max(0, Math.min(100, usedPercent)) })}` : cpuMemoryText('unavailable')),
+            cpuMemoryField(cpuMemoryText('memoryAvailable'), hardwareOverviewBytes(availableMemory)),
+            cpuMemoryField(cpuMemoryText('committedMemory'), commitText)
+          ]),
+          cpuMemorySection(cpuMemoryText('memoryTopology'), [
+            cpuMemoryField(cpuMemoryText('installedModules'), installedModulesText),
+            cpuMemoryField(cpuMemoryText('reportedSlots'), slotsText),
+            cpuMemoryField(cpuMemoryText('memoryType'), memoryTypeText),
+            cpuMemoryField(cpuMemoryText('memoryFrequency'), cpuMemoryAggregateFrequency(modules, 'configured_clock_mhz')),
+            cpuMemoryField(cpuMemoryText('reportedFrequency'), cpuMemoryAggregateFrequency(modules, 'speed_mhz')),
+            cpuMemoryField(cpuMemoryText('ecc'), cpuMemoryEcc(memory.error_correction_code))
+          ])
+        ];
+
+        const moduleTable = `<section class="hardware-overview-section">
+          <div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(cpuMemoryText('memoryModules'))}</h2></div>
+          <div class="cpu-memory-module-table-wrap"><table class="cpu-memory-module-table">
+            <thead><tr><th>${escapeHtml(cpuMemoryText('slot'))}</th><th>${escapeHtml(cpuMemoryText('brandModel'))}</th><th>${escapeHtml(cpuMemoryText('capacity'))}</th><th>${escapeHtml(cpuMemoryText('type'))}</th><th>${escapeHtml(cpuMemoryText('currentReported'))}</th></tr></thead>
+            <tbody>${modules.length ? modules.map(module => {
+              const brand = cpuMemoryKnownText(module?.manufacturer, cpuMemoryText('brandUnavailable'));
+              const model = cpuMemoryKnownText(module?.part_number, '');
+              const frequency = `${cpuMemoryMHz(module?.configured_clock_mhz)} / ${cpuMemoryMHz(module?.speed_mhz)}`;
+              return `<tr><td>${escapeHtml(cpuMemoryModuleSlot(module))}</td><td><span class="cpu-memory-module-brand">${escapeHtml(brand)}</span>${model ? `<span class="cpu-memory-module-part">${escapeHtml(model)}</span>` : ''}</td><td>${escapeHtml(hardwareOverviewBytes(module?.capacity_bytes))}</td><td>${escapeHtml(cpuMemoryType(module?.smbios_memory_type))}</td><td>${escapeHtml(frequency)}</td></tr>`;
+            }).join('') : `<tr><td colspan="5">${escapeHtml(cpuMemoryText('notDetected'))}</td></tr>`}</tbody>
+          </table></div>
+        </section>`;
+
+        const virtualizationOn = cpu.virtualization_firmware_enabled === true;
+        const capabilitySection = cpuMemorySection(cpuMemoryText('capabilities'), [
+          cpuMemoryField(cpuMemoryText('virtualization'), cpuMemoryBoolean(virtualizationOn, 'enabled', 'disabled')),
+          cpuMemoryField(cpuMemoryText('vmMonitor'), cpuMemoryBoolean(cpu.vm_monitor_extensions, 'supported', 'notSupported')),
+          cpuMemoryField(cpuMemoryText('slat'), cpuMemoryBoolean(cpu.slat_extensions, 'supported', 'notSupported'))
+        ]);
+        const statusSection = `<section class="hardware-overview-section">
+          <div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(cpuMemoryText('status'))}</h2></div>
+          <div class="cpu-memory-status-list">
+            <div class="cpu-memory-status-item is-good"><span class="cpu-memory-status-icon">✓</span><span>${escapeHtml(cpuMemoryText('statusReadOnly'))}</span></div>
+            <div class="cpu-memory-status-item ${virtualizationOn ? 'is-good' : 'is-neutral'}"><span class="cpu-memory-status-icon">${virtualizationOn ? '✓' : 'i'}</span><span>${escapeHtml(virtualizationOn ? cpuMemoryText('statusVirtualizationOn') : cpuMemoryText('statusVirtualizationOff'))}</span></div>
+            <div class="cpu-memory-status-item is-neutral"><span class="cpu-memory-status-icon">i</span><span>${escapeHtml(cpuMemoryText('statusFrequencyInfo'))}</span></div>
+          </div>
+        </section>`;
+        hardwareCpuMemoryContent.innerHTML = `${sections.join('')}${moduleTable}${capabilitySection}${statusSection}`;
+      }
+
+      function renderCpuMemoryLoading() {
+        if (hardwareCpuMemoryContent) hardwareCpuMemoryContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(cpuMemoryText('scanning'))}</span></div>`;
+      }
+
+      function renderCpuMemoryError(title, description) {
+        if (hardwareCpuMemoryContent) hardwareCpuMemoryContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      function formatCpuMemoryUpdatedAt(date) {
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        return t('home.cpuMemoryPage.updated', { time });
+      }
+
+      function updateCpuMemoryUpdatedAt(date = new Date()) {
+        hardwareCpuMemoryScannedAt = date;
+        if (hardwareCpuMemoryUpdatedAt) hardwareCpuMemoryUpdatedAt.textContent = formatCpuMemoryUpdatedAt(date);
+      }
+
+      async function refreshCpuMemoryLiveStats() {
+        if (hardwareCpuMemoryLiveLoading || !hardwareCpuMemoryData || !hardwareCpuMemoryOverlay?.classList.contains('visible') || !isTauri) return;
+        hardwareCpuMemoryLiveLoading = true;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const live = await invoke('get_cpu_memory_live_stats');
+          hardwareCpuMemoryData = { ...hardwareCpuMemoryData, current: { ...(hardwareCpuMemoryData.current || {}), ...live } };
+          renderCpuMemoryInfo(hardwareCpuMemoryData);
+          updateCpuMemoryUpdatedAt();
+        } catch (error) {
+          console.warn('Failed to refresh CPU and memory live stats:', error);
+        } finally {
+          hardwareCpuMemoryLiveLoading = false;
+        }
+      }
+
+      function startCpuMemoryLiveUpdates() {
+        if (hardwareCpuMemoryLiveTimer) window.clearInterval(hardwareCpuMemoryLiveTimer);
+        hardwareCpuMemoryLiveTimer = window.setInterval(refreshCpuMemoryLiveStats, 5000);
+      }
+
+      function stopCpuMemoryLiveUpdates() {
+        if (hardwareCpuMemoryLiveTimer) window.clearInterval(hardwareCpuMemoryLiveTimer);
+        hardwareCpuMemoryLiveTimer = null;
+      }
+
+      async function loadCpuMemoryInfo() {
+        if (hardwareCpuMemoryLoading) return;
+        hardwareCpuMemoryLoading = true;
+        stopCpuMemoryLiveUpdates();
+        renderCpuMemoryLoading();
+        hardwareCpuMemoryRefresh?.classList.add('is-loading');
+        if (hardwareCpuMemoryRefresh) hardwareCpuMemoryRefresh.disabled = true;
+        if (hardwareCpuMemoryUpdatedAt) hardwareCpuMemoryUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderCpuMemoryError(cpuMemoryText('desktopOnlyTitle'), cpuMemoryText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwareCpuMemoryData = await invoke('get_cpu_memory_info');
+          renderCpuMemoryInfo(hardwareCpuMemoryData);
+          updateCpuMemoryUpdatedAt();
+          startCpuMemoryLiveUpdates();
+        } catch (error) {
+          console.error('Failed to collect CPU and memory information:', error);
+          renderCpuMemoryError(cpuMemoryText('readFailedTitle'), cpuMemoryText('readFailedDesc'));
+          window.showToast?.(cpuMemoryText('readFailedDesc'));
+        } finally {
+          hardwareCpuMemoryLoading = false;
+          hardwareCpuMemoryRefresh?.classList.remove('is-loading');
+          if (hardwareCpuMemoryRefresh) hardwareCpuMemoryRefresh.disabled = false;
+        }
+      }
+
+      function openCpuMemoryOverlay() {
+        if (!hardwareCpuMemoryOverlay) return;
+        hardwareCpuMemoryOverlay.classList.add('visible');
+        hardwareCpuMemoryOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwareCpuMemoryPlasmaBg && !hardwareCpuMemoryPlasmaInstance) {
+          hardwareCpuMemoryPlasmaInstance = initStandardToolPlasma(hardwareCpuMemoryPlasmaBg);
+        }
+        loadCpuMemoryInfo();
+      }
+
+      function closeCpuMemoryOverlay() {
+        if (!hardwareCpuMemoryOverlay) return;
+        hardwareCpuMemoryOverlay.classList.remove('visible');
+        hardwareCpuMemoryOverlay.setAttribute('aria-hidden', 'true');
+        stopCpuMemoryLiveUpdates();
+        if (hardwareCpuMemoryPlasmaInstance) {
+          hardwareCpuMemoryPlasmaInstance();
+          hardwareCpuMemoryPlasmaInstance = null;
+        }
+      }
+
+      hardwareCpuMemoryBack?.addEventListener('click', closeCpuMemoryOverlay);
+      hardwareCpuMemoryRefresh?.addEventListener('click', loadCpuMemoryInfo);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-cpu-memory"]').forEach(item => {
+        item.addEventListener('click', openCpuMemoryOverlay);
+      });
+
+      onLangChange(() => {
+        if (!hardwareCpuMemoryOverlay?.classList.contains('visible')) return;
+        if (hardwareCpuMemoryData) {
+          renderCpuMemoryInfo(hardwareCpuMemoryData);
+          if (hardwareCpuMemoryScannedAt && hardwareCpuMemoryUpdatedAt) hardwareCpuMemoryUpdatedAt.textContent = formatCpuMemoryUpdatedAt(hardwareCpuMemoryScannedAt);
+        } else {
+          renderCpuMemoryLoading();
+        }
+      });
+
+      // ===== GPU & Displays =====
+      const hardwareGpuDisplayOverlay = document.getElementById('hardwareGpuDisplayOverlay');
+      const hardwareGpuDisplayBack = document.getElementById('hardwareGpuDisplayBack');
+      const hardwareGpuDisplayRefresh = document.getElementById('hardwareGpuDisplayRefresh');
+      const hardwareGpuDisplayUpdatedAt = document.getElementById('hardwareGpuDisplayUpdatedAt');
+      const hardwareGpuDisplayContent = document.getElementById('hardwareGpuDisplayContent');
+      const hardwareGpuDisplayPlasmaBg = document.getElementById('hardwareGpuDisplayPlasmaBg');
+      let hardwareGpuDisplayPlasmaInstance = null;
+      let hardwareGpuDisplayLoading = false;
+      let hardwareGpuDisplayData = null;
+      let hardwareGpuDisplayScannedAt = null;
+
+      const gpuDisplayText = key => t(`home.gpuDisplayPage.${key}`);
+
+      function gpuDisplayKnownText(value, fallback = gpuDisplayText('unavailable')) {
+        return hardwareReadableText(value, fallback);
+      }
+
+      function gpuDisplayIsVirtual(adapter) {
+        return (Number(adapter?.flags) & 2) === 2 || /(virtual|remote|basic display|parsec|spacedesk|gameviewer|miracast)/i.test(String(adapter?.name || adapter?.description || ''));
+      }
+
+      function gpuDisplayVendor(adapter) {
+        const id = Number(adapter?.vendor_id);
+        if (id === 0x10de) return 'NVIDIA';
+        if (id === 0x1002 || id === 0x1022) return 'AMD';
+        if (id === 0x8086) return 'Intel';
+        const name = String(adapter?.name || adapter?.description || '');
+        if (/nvidia/i.test(name)) return 'NVIDIA';
+        if (/amd|radeon/i.test(name)) return 'AMD';
+        if (/intel/i.test(name)) return 'Intel';
+        return gpuDisplayText('unknownVendor');
+      }
+
+      function gpuDisplayIdentity(value) {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+
+      function gpuDisplayUniqueGpus(gpus) {
+        const seen = new Set();
+        return gpus.filter(gpu => {
+          const key = [
+            gpuDisplayIdentity(gpu?.name || gpu?.video_processor),
+            gpuDisplayIdentity(gpu?.driver_version),
+            gpuDisplayIdentity(gpu?.driver_date)
+          ].filter(Boolean).join(':');
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
+      function gpuDisplayUniqueDxgi(adapters) {
+        const seen = new Set();
+        return adapters.filter(adapter => {
+          // DXGI can expose one physical GPU more than once when a display
+          // virtualization driver is present. This fallback is only used if
+          // WMI did not provide a physical-device record at all.
+          const key = [
+            gpuDisplayIdentity(adapter?.description),
+            Number(adapter?.vendor_id),
+            Number(adapter?.device_id),
+            Number(adapter?.dedicated_video_memory)
+          ].join(':');
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
+      function gpuDisplayMatchingDxgi(gpu, adapters) {
+        const identity = gpuDisplayIdentity(gpu?.name || gpu?.video_processor);
+        return adapters.find(adapter => {
+          const adapterIdentity = gpuDisplayIdentity(adapter?.description);
+          return identity && adapterIdentity && (adapterIdentity.includes(identity) || identity.includes(adapterIdentity));
+        }) || adapters.find(adapter => !gpuDisplayIsVirtual(adapter)) || null;
+      }
+
+      function gpuDisplayConnection(value) {
+        const map = {
+          0: 'connectionVga', 4: 'connectionDvi', 5: 'connectionHdmi', 10: 'connectionDisplayPort',
+          11: 'connectionDisplayPort', 6: 'connectionInternal', 0x80000000: 'connectionInternal'
+        };
+        return gpuDisplayText(map[Number(value)] || 'connectionOther');
+      }
+
+      function gpuDisplayDiagonal(monitor) {
+        const width = Number(monitor?.width_cm);
+        const height = Number(monitor?.height_cm);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return gpuDisplayText('unavailable');
+        const inches = Math.sqrt(width ** 2 + height ** 2) / 2.54;
+        return `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 1 }).format(inches)} in (${width} × ${height} cm)`;
+      }
+
+      function gpuDisplayKey(value) {
+        const match = String(value || '').toUpperCase().match(/(?:DISPLAY|MONITOR)[\\#]([^\\#]+)/);
+        return match?.[1] || '';
+      }
+
+      function gpuDisplayDisplayConfig(monitor, configurations) {
+        const key = monitor?.display_key || gpuDisplayKey(monitor?.display_id || monitor?.instance);
+        if (!key) return null;
+        return configurations.find(configuration => {
+          const configurationKey = configuration?.monitor_key || gpuDisplayKey(configuration?.monitor_device_id);
+          return configurationKey && configurationKey === key;
+        }) || null;
+      }
+
+      function gpuDisplayResolution(configuration) {
+        const width = Number(configuration?.width);
+        const height = Number(configuration?.height);
+        const refresh = Number(configuration?.refresh_hz);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return gpuDisplayText('unavailable');
+        return `${width} × ${height}${Number.isFinite(refresh) && refresh > 1 ? ` · ${refresh} Hz` : ''}`;
+      }
+
+      function gpuDisplayField(label, value) {
+        return `<div class="hardware-overview-field"><span class="hardware-overview-key">${escapeHtml(label)}</span><span class="hardware-overview-value">${escapeHtml(gpuDisplayKnownText(value))}</span></div>`;
+      }
+
+      function gpuDisplayTable(headers, rows) {
+        return `<div class="hardware-device-table-wrap"><table class="hardware-device-table"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+
+      function renderGpuDisplayInfo(data) {
+        if (!hardwareGpuDisplayContent) return;
+        const gpus = Array.isArray(data?.gpus) ? data.gpus : [];
+        const monitors = Array.isArray(data?.monitors) ? data.monitors : [];
+        const dxgiAdapters = Array.isArray(data?.dxgi_adapters) ? data.dxgi_adapters : [];
+        const configurations = Array.isArray(data?.display_configurations) ? data.display_configurations : [];
+        const physicalGpus = gpuDisplayUniqueGpus(gpus.filter(gpu => !gpuDisplayIsVirtual(gpu)));
+        const virtualGpus = gpus.filter(gpu => gpuDisplayIsVirtual(gpu));
+        const primaryGpu = physicalGpus[0] || dxgiAdapters.find(adapter => !gpuDisplayIsVirtual(adapter)) || null;
+        const primaryDxgi = primaryGpu ? gpuDisplayMatchingDxgi(primaryGpu, dxgiAdapters) : null;
+        const primaryName = primaryGpu?.name || primaryDxgi?.description || gpuDisplayText('notDetected');
+        const primaryEngine = primaryGpu?.video_processor || primaryName;
+
+        const primarySection = hardwareOverviewSection(gpuDisplayText('primaryGpu'), [
+          gpuDisplayField(gpuDisplayText('model'), primaryName),
+          gpuDisplayField(gpuDisplayText('gpuEngine'), primaryEngine),
+          gpuDisplayField(gpuDisplayText('vendor'), gpuDisplayVendor(primaryDxgi || primaryGpu)),
+          gpuDisplayField(gpuDisplayText('dedicatedMemory'), hardwareOverviewBytes(primaryDxgi?.dedicated_video_memory)),
+          gpuDisplayField(gpuDisplayText('sharedMemory'), hardwareOverviewBytes(primaryDxgi?.shared_system_memory)),
+          gpuDisplayField(gpuDisplayText('driverVersion'), primaryGpu?.driver_version),
+          gpuDisplayField(gpuDisplayText('driverDate'), primaryGpu?.driver_date)
+        ], gpuDisplayText('localReadOnly'));
+
+        // WMI is the physical device inventory. DXGI provides the reliable
+        // memory values, but it can report a duplicate adapter in the presence
+        // of virtual display drivers, so it must not define the table rows.
+        const physicalAdapterItems = physicalGpus.length
+          ? physicalGpus.map(gpu => ({ gpu, dxgi: gpuDisplayMatchingDxgi(gpu, dxgiAdapters) }))
+          : gpuDisplayUniqueDxgi(dxgiAdapters.filter(adapter => !gpuDisplayIsVirtual(adapter))).map(dxgi => ({ gpu: null, dxgi }));
+        const adapterRows = physicalAdapterItems.length ? physicalAdapterItems.map(({ gpu, dxgi }) => {
+          const name = gpu?.name || dxgi?.description;
+          return `<tr><td><span class="hardware-device-table-primary">${escapeHtml(gpuDisplayKnownText(name))}</span><span class="hardware-device-table-secondary">${escapeHtml(gpuDisplayVendor(dxgi || gpu))}</span></td><td>${escapeHtml(hardwareOverviewBytes(dxgi?.dedicated_video_memory))}</td><td>${escapeHtml(hardwareOverviewBytes(dxgi?.shared_system_memory))}</td><td>${escapeHtml(gpuDisplayKnownText(gpu?.driver_version))}</td></tr>`;
+        }).join('') : `<tr><td colspan="4">${escapeHtml(gpuDisplayText('notDetected'))}</td></tr>`;
+        const adapterSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(gpuDisplayText('adapters'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.gpuDisplayPage.adapterCount', { count: physicalAdapterItems.length }))}</span></div>${gpuDisplayTable([gpuDisplayText('adapter'), gpuDisplayText('videoMemory'), gpuDisplayText('sharedMemory'), gpuDisplayText('driver')], adapterRows)}</section>`;
+
+        const displayRows = monitors.length ? monitors.map(monitor => {
+          const configuration = gpuDisplayDisplayConfig(monitor, configurations);
+          const brand = gpuDisplayKnownText(monitor?.manufacturer, gpuDisplayText('unknownVendor'));
+          const model = gpuDisplayKnownText(monitor?.model, gpuDisplayText('unknownDisplay'));
+          return `<tr><td><span class="hardware-device-table-primary">${escapeHtml(model)}</span><span class="hardware-device-table-secondary">${escapeHtml(brand)}</span></td><td>${escapeHtml(gpuDisplayDiagonal(monitor))}</td><td>${escapeHtml(gpuDisplayConnection(monitor?.connection_code))}</td><td>${escapeHtml(gpuDisplayResolution(configuration))}</td></tr>`;
+        }).join('') : `<tr><td colspan="4">${escapeHtml(gpuDisplayText('notDetected'))}</td></tr>`;
+        const displaySection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(gpuDisplayText('displays'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.gpuDisplayPage.displayCount', { count: monitors.length }))}</span></div>${gpuDisplayTable([gpuDisplayText('manufacturerModel'), gpuDisplayText('diagonal'), gpuDisplayText('connection'), gpuDisplayText('resolutionRefresh')], displayRows)}</section>`;
+
+        const virtualSection = virtualGpus.length ? `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(gpuDisplayText('virtualAdapters'))}</h2></div>${gpuDisplayTable([gpuDisplayText('virtualAdapter'), gpuDisplayText('driverVersion'), gpuDisplayText('driverDate')], virtualGpus.map(gpu => `<tr><td>${escapeHtml(gpuDisplayKnownText(gpu?.name))}</td><td>${escapeHtml(gpuDisplayKnownText(gpu?.driver_version))}</td><td>${escapeHtml(gpuDisplayKnownText(gpu?.driver_date))}</td></tr>`).join(''))}</section>` : '';
+        const statusSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(gpuDisplayText('status'))}</h2></div><div class="cpu-memory-status-list"><div class="cpu-memory-status-item is-good"><span class="cpu-memory-status-icon">✓</span><span>${escapeHtml(gpuDisplayText('statusReadOnly'))}</span></div><div class="cpu-memory-status-item is-good"><span class="cpu-memory-status-icon">✓</span><span>${escapeHtml(gpuDisplayText('statusDxgi'))}</span></div>${virtualGpus.length ? `<div class="cpu-memory-status-item is-neutral"><span class="cpu-memory-status-icon">i</span><span>${escapeHtml(gpuDisplayText('statusVirtual'))}</span></div>` : ''}</div></section>`;
+        hardwareGpuDisplayContent.innerHTML = `${primarySection}${adapterSection}${displaySection}${virtualSection}${statusSection}`;
+      }
+
+      function renderGpuDisplayLoading() {
+        if (hardwareGpuDisplayContent) hardwareGpuDisplayContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(gpuDisplayText('scanning'))}</span></div>`;
+      }
+
+      function renderGpuDisplayError(title, description) {
+        if (hardwareGpuDisplayContent) hardwareGpuDisplayContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      function updateGpuDisplayUpdatedAt(date = new Date()) {
+        hardwareGpuDisplayScannedAt = date;
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        if (hardwareGpuDisplayUpdatedAt) hardwareGpuDisplayUpdatedAt.textContent = t('home.gpuDisplayPage.updated', { time });
+      }
+
+      async function loadGpuDisplayInfo() {
+        if (hardwareGpuDisplayLoading) return;
+        hardwareGpuDisplayLoading = true;
+        renderGpuDisplayLoading();
+        hardwareGpuDisplayRefresh?.classList.add('is-loading');
+        if (hardwareGpuDisplayRefresh) hardwareGpuDisplayRefresh.disabled = true;
+        if (hardwareGpuDisplayUpdatedAt) hardwareGpuDisplayUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderGpuDisplayError(gpuDisplayText('desktopOnlyTitle'), gpuDisplayText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwareGpuDisplayData = await invoke('get_gpu_display_info');
+          renderGpuDisplayInfo(hardwareGpuDisplayData);
+          updateGpuDisplayUpdatedAt();
+        } catch (error) {
+          console.error('Failed to collect GPU and display information:', error);
+          renderGpuDisplayError(gpuDisplayText('readFailedTitle'), gpuDisplayText('readFailedDesc'));
+          window.showToast?.(gpuDisplayText('readFailedDesc'));
+        } finally {
+          hardwareGpuDisplayLoading = false;
+          hardwareGpuDisplayRefresh?.classList.remove('is-loading');
+          if (hardwareGpuDisplayRefresh) hardwareGpuDisplayRefresh.disabled = false;
+        }
+      }
+
+      function openGpuDisplayOverlay() {
+        if (!hardwareGpuDisplayOverlay) return;
+        hardwareGpuDisplayOverlay.classList.add('visible');
+        hardwareGpuDisplayOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwareGpuDisplayPlasmaBg && !hardwareGpuDisplayPlasmaInstance) {
+          hardwareGpuDisplayPlasmaInstance = initStandardToolPlasma(hardwareGpuDisplayPlasmaBg);
+        }
+        loadGpuDisplayInfo();
+      }
+
+      function closeGpuDisplayOverlay() {
+        if (!hardwareGpuDisplayOverlay) return;
+        hardwareGpuDisplayOverlay.classList.remove('visible');
+        hardwareGpuDisplayOverlay.setAttribute('aria-hidden', 'true');
+        if (hardwareGpuDisplayPlasmaInstance) {
+          hardwareGpuDisplayPlasmaInstance();
+          hardwareGpuDisplayPlasmaInstance = null;
+        }
+      }
+
+      hardwareGpuDisplayBack?.addEventListener('click', closeGpuDisplayOverlay);
+      hardwareGpuDisplayRefresh?.addEventListener('click', loadGpuDisplayInfo);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-gpu-display"]').forEach(item => item.addEventListener('click', openGpuDisplayOverlay));
+      onLangChange(() => {
+        if (!hardwareGpuDisplayOverlay?.classList.contains('visible')) return;
+        if (hardwareGpuDisplayData) {
+          renderGpuDisplayInfo(hardwareGpuDisplayData);
+          if (hardwareGpuDisplayScannedAt) updateGpuDisplayUpdatedAt(hardwareGpuDisplayScannedAt);
+        } else {
+          renderGpuDisplayLoading();
+        }
+      });
+
+      // ===== Mainboard & Firmware =====
+      const hardwareMainboardOverlay = document.getElementById('hardwareMainboardOverlay');
+      const hardwareMainboardBack = document.getElementById('hardwareMainboardBack');
+      const hardwareMainboardRefresh = document.getElementById('hardwareMainboardRefresh');
+      const hardwareMainboardUpdatedAt = document.getElementById('hardwareMainboardUpdatedAt');
+      const hardwareMainboardContent = document.getElementById('hardwareMainboardContent');
+      const hardwareMainboardPlasmaBg = document.getElementById('hardwareMainboardPlasmaBg');
+      let hardwareMainboardPlasmaInstance = null;
+      let hardwareMainboardLoading = false;
+      let hardwareMainboardData = null;
+      let hardwareMainboardScannedAt = null;
+
+      const mainboardText = key => t(`home.mainboardPage.${key}`);
+
+      function mainboardValue(value) {
+        return hardwareReadableText(value, mainboardText('unavailable'));
+      }
+
+      function mainboardField(label, value) {
+        return `<div class="hardware-overview-field"><span class="hardware-overview-key">${escapeHtml(label)}</span><span class="hardware-overview-value">${escapeHtml(mainboardValue(value))}</span></div>`;
+      }
+
+      function mainboardBoolean(value, trueKey, falseKey) {
+        return value === true ? mainboardText(trueKey) : mainboardText(falseKey);
+      }
+
+      function mainboardChassis(types) {
+        const codes = Array.isArray(types) ? types.map(Number) : [];
+        if (codes.some(code => [3, 4, 5, 6, 7, 15, 16, 35, 36].includes(code))) return mainboardText('desktop');
+        if (codes.some(code => [8, 9, 10, 11, 12, 14, 30, 31, 32].includes(code))) return mainboardText('laptop');
+        if (codes.some(code => [17, 23, 28, 29].includes(code))) return mainboardText('server');
+        if (codes.includes(28)) return mainboardText('workstation');
+        return mainboardText('otherChassis');
+      }
+
+      function mainboardPciCategory(value) {
+        const map = {
+          display: 'pciDisplay', net: 'pciNetwork', hdc: 'pciStorage', scsiadapter: 'pciStorage',
+          system: 'pciSystem', securitydevices: 'pciSecurity', media: 'pciAudio', usb: 'pciUsb'
+        };
+        return mainboardText(map[String(value || '').toLowerCase()] || 'pciOther');
+      }
+
+      function mainboardTpmStatus(security) {
+        if (!security?.tpm_present) return mainboardText('notDetected');
+        return security.tpm_ready ? mainboardText('ready') : mainboardText('present');
+      }
+
+      function mainboardSecureBoot(value) {
+        if (value === 'enabled') return mainboardText('enabled');
+        if (value === 'disabled') return mainboardText('disabled');
+        return mainboardText('unavailable');
+      }
+
+      function mainboardUpdatedAt(date = new Date()) {
+        hardwareMainboardScannedAt = date;
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        if (hardwareMainboardUpdatedAt) hardwareMainboardUpdatedAt.textContent = t('home.mainboardPage.updated', { time });
+      }
+
+      function mainboardTable(headers, rows) {
+        return `<div class="hardware-device-table-wrap"><table class="hardware-device-table mainboard-pci-table"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+
+      function renderMainboardInfo(data) {
+        if (!hardwareMainboardContent) return;
+        const board = data?.board || {};
+        const firmware = data?.firmware || {};
+        const security = data?.security || {};
+        const chassis = data?.chassis || {};
+        const devices = Array.isArray(data?.pci_devices) ? data.pci_devices : [];
+        const smbios = Number(firmware.smbios_major) > 0 ? `${firmware.smbios_major}.${Number(firmware.smbios_minor) || 0}` : mainboardText('unavailable');
+        const firmwareDate = hardwareOverviewDate(firmware.release_at);
+
+        const boardSection = hardwareOverviewSection(mainboardText('mainboard'), [
+          mainboardField(mainboardText('manufacturer'), board.manufacturer),
+          mainboardField(mainboardText('model'), board.product),
+          mainboardField(mainboardText('version'), board.version),
+          mainboardField(mainboardText('chassis'), mainboardChassis(chassis.types)),
+          mainboardField(mainboardText('boardStatus'), board.status)
+        ], mainboardText('localReadOnly'));
+
+        const firmwareSection = hardwareOverviewSection(mainboardText('firmware'), [
+          mainboardField(mainboardText('biosManufacturer'), firmware.manufacturer),
+          mainboardField(mainboardText('biosVersion'), firmware.bios_version),
+          mainboardField(mainboardText('biosRelease'), firmwareDate),
+          mainboardField(mainboardText('smbios'), smbios),
+          mainboardField(mainboardText('bootMode'), firmware.boot_mode === 'uefi' ? mainboardText('uefi') : mainboardText('legacyOrUnavailable'))
+        ]);
+
+        const securitySection = hardwareOverviewSection(mainboardText('security'), [
+          mainboardField(mainboardText('secureBoot'), mainboardSecureBoot(security.secure_boot)),
+          mainboardField(mainboardText('tpm'), mainboardTpmStatus(security)),
+          mainboardField(mainboardText('tpmManufacturer'), security.tpm_present ? security.tpm_manufacturer : mainboardText('notDetected')),
+          mainboardField(mainboardText('virtualization'), mainboardBoolean(security.virtualization_enabled, 'enabled', 'disabled'))
+        ]);
+
+        const pciRows = devices.length ? devices.map(device => {
+          const problem = Number(device?.problem_code);
+          const status = problem > 0 ? `${mainboardValue(device?.status)} (${problem})` : mainboardValue(device?.status);
+          return `<tr><td><span class="hardware-device-table-primary">${escapeHtml(mainboardValue(device?.name))}</span><span class="hardware-device-table-secondary">${escapeHtml(mainboardValue(device?.manufacturer))}</span></td><td>${escapeHtml(mainboardPciCategory(device?.pnp_class))}</td><td>${escapeHtml(mainboardValue(device?.manufacturer))}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(String(Math.max(1, Number(device?.count) || 1)))}</td></tr>`;
+        }).join('') : `<tr><td colspan="5">${escapeHtml(mainboardText('notDetected'))}</td></tr>`;
+        const pciSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(mainboardText('pciDevices'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.mainboardPage.pciCount', { count: devices.length }))}</span></div>${mainboardTable([mainboardText('device'), mainboardText('category'), mainboardText('deviceManufacturer'), mainboardText('status'), mainboardText('instances')], pciRows)}</section>`;
+
+        const statusItems = [
+          ['is-good', '✓', mainboardText('statusReadOnly')],
+          [security.tpm_present && security.tpm_ready ? 'is-good' : 'is-neutral', security.tpm_present && security.tpm_ready ? '✓' : 'i', security.tpm_present && security.tpm_ready ? mainboardText('statusTpmReady') : mainboardText('statusTpmUnavailable')],
+          [security.virtualization_enabled ? 'is-good' : 'is-neutral', security.virtualization_enabled ? '✓' : 'i', security.virtualization_enabled ? mainboardText('statusVirtualizationOn') : mainboardText('statusVirtualizationOff')]
+        ];
+        if (security.secure_boot === 'enabled' || security.secure_boot === 'disabled') {
+          statusItems.splice(1, 0, [security.secure_boot === 'enabled' ? 'is-good' : 'is-attention', security.secure_boot === 'enabled' ? '✓' : '!', security.secure_boot === 'enabled' ? mainboardText('statusSecureBootOn') : mainboardText('statusSecureBootOff')]);
+        }
+        const statusSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(mainboardText('status'))}</h2></div><div class="cpu-memory-status-list">${statusItems.map(([kind, icon, text]) => `<div class="cpu-memory-status-item ${kind}"><span class="cpu-memory-status-icon">${icon}</span><span>${escapeHtml(text)}</span></div>`).join('')}</div></section>`;
+        hardwareMainboardContent.innerHTML = `${boardSection}${firmwareSection}${securitySection}${pciSection}${statusSection}`;
+      }
+
+      function renderMainboardLoading() {
+        if (hardwareMainboardContent) hardwareMainboardContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(mainboardText('scanning'))}</span></div>`;
+      }
+
+      function renderMainboardError(title, description) {
+        if (hardwareMainboardContent) hardwareMainboardContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      async function loadMainboardInfo() {
+        if (hardwareMainboardLoading) return;
+        hardwareMainboardLoading = true;
+        renderMainboardLoading();
+        hardwareMainboardRefresh?.classList.add('is-loading');
+        if (hardwareMainboardRefresh) hardwareMainboardRefresh.disabled = true;
+        if (hardwareMainboardUpdatedAt) hardwareMainboardUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderMainboardError(mainboardText('desktopOnlyTitle'), mainboardText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwareMainboardData = await invoke('get_mainboard_firmware_info');
+          renderMainboardInfo(hardwareMainboardData);
+          mainboardUpdatedAt();
+        } catch (error) {
+          console.error('Failed to collect mainboard and firmware information:', error);
+          renderMainboardError(mainboardText('readFailedTitle'), mainboardText('readFailedDesc'));
+          window.showToast?.(mainboardText('readFailedDesc'));
+        } finally {
+          hardwareMainboardLoading = false;
+          hardwareMainboardRefresh?.classList.remove('is-loading');
+          if (hardwareMainboardRefresh) hardwareMainboardRefresh.disabled = false;
+        }
+      }
+
+      function openMainboardOverlay() {
+        if (!hardwareMainboardOverlay) return;
+        hardwareMainboardOverlay.classList.add('visible');
+        hardwareMainboardOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwareMainboardPlasmaBg && !hardwareMainboardPlasmaInstance) {
+          hardwareMainboardPlasmaInstance = initStandardToolPlasma(hardwareMainboardPlasmaBg);
+        }
+        loadMainboardInfo();
+      }
+
+      function closeMainboardOverlay() {
+        if (!hardwareMainboardOverlay) return;
+        hardwareMainboardOverlay.classList.remove('visible');
+        hardwareMainboardOverlay.setAttribute('aria-hidden', 'true');
+        if (hardwareMainboardPlasmaInstance) {
+          hardwareMainboardPlasmaInstance();
+          hardwareMainboardPlasmaInstance = null;
+        }
+      }
+
+      hardwareMainboardBack?.addEventListener('click', closeMainboardOverlay);
+      hardwareMainboardRefresh?.addEventListener('click', loadMainboardInfo);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-mainboard"]').forEach(item => item.addEventListener('click', openMainboardOverlay));
+      onLangChange(() => {
+        if (!hardwareMainboardOverlay?.classList.contains('visible')) return;
+        if (hardwareMainboardData) {
+          renderMainboardInfo(hardwareMainboardData);
+          if (hardwareMainboardScannedAt) mainboardUpdatedAt(hardwareMainboardScannedAt);
+        } else {
+          renderMainboardLoading();
+        }
+      });
+
+      // ===== Storage & Health =====
+      const hardwareStorageOverlay = document.getElementById('hardwareStorageOverlay');
+      const hardwareStorageBack = document.getElementById('hardwareStorageBack');
+      const hardwareStorageRefresh = document.getElementById('hardwareStorageRefresh');
+      const hardwareStorageUpdatedAt = document.getElementById('hardwareStorageUpdatedAt');
+      const hardwareStorageContent = document.getElementById('hardwareStorageContent');
+      const hardwareStoragePlasmaBg = document.getElementById('hardwareStoragePlasmaBg');
+      let hardwareStoragePlasmaInstance = null;
+      let hardwareStorageLoading = false;
+      let hardwareStorageData = null;
+      let hardwareStorageScannedAt = null;
+
+      const storageText = key => t(`home.storagePage.${key}`);
+
+      function storageValue(value) {
+        return hardwareReadableText(value, storageText('unavailable'));
+      }
+
+      function storageBytes(value) {
+        const bytes = Number(value);
+        if (!Number.isFinite(bytes) || bytes <= 0) return storageText('unavailable');
+        const gib = bytes / (1024 ** 3);
+        return `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: gib >= 100 ? 0 : 1 }).format(gib)} GB`;
+      }
+
+      function storageNumber(value, suffix = '') {
+        if (value === null || value === undefined || value === '') return storageText('unavailable');
+        const number = Number(value);
+        if (!Number.isFinite(number)) return storageText('unavailable');
+        return `${new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 0 }).format(number)}${suffix}`;
+      }
+
+      function storageField(label, value) {
+        return `<div class="hardware-overview-field"><span class="hardware-overview-key">${escapeHtml(label)}</span><span class="hardware-overview-value">${escapeHtml(storageValue(value))}</span></div>`;
+      }
+
+      function storageHealth(value) {
+        const normalized = String(value || '').toLowerCase();
+        if (normalized === 'healthy' || normalized === 'ok') return storageText('healthy');
+        if (normalized === 'warning' || normalized === 'degraded') return storageText('warning');
+        if (normalized === 'unhealthy' || normalized === 'critical') return storageText('unhealthy');
+        return storageText('unknownHealth');
+      }
+
+      function storageHealthNeedsAttention(value) {
+        return /^(warning|degraded|unhealthy|critical)$/i.test(String(value || ''));
+      }
+
+      function storageMediaType(value) {
+        const normalized = String(value || '').toLowerCase();
+        if (normalized === 'ssd') return storageText('ssd');
+        if (normalized === 'hdd') return storageText('hdd');
+        return storageText('unspecifiedMedia');
+      }
+
+      function storageUsage(volume) {
+        const total = Number(volume?.size_bytes);
+        const free = Number(volume?.free_bytes);
+        if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(free) || free < 0) return { markup: storageText('unavailable'), low: false };
+        const used = Math.max(0, total - free);
+        const percent = Math.min(100, Math.max(0, Math.round((used / total) * 100)));
+        const freeRatio = free / total;
+        const kind = freeRatio < 0.1 ? 'is-warning' : freeRatio < 0.15 ? 'is-attention' : '';
+        const label = t('home.storagePage.usedOf', { used: storageBytes(used), total: storageBytes(total), percent });
+        return {
+          low: freeRatio < 0.15,
+          markup: `<div class="hardware-storage-usage ${kind}"><span class="hardware-storage-usage-copy">${escapeHtml(label)}</span><span class="hardware-storage-usage-track"><span class="hardware-storage-usage-fill" style="width:${Math.max(2, percent)}%"></span></span></div>`
+        };
+      }
+
+      function storageTable(headers, rows, className = '') {
+        return `<div class="hardware-device-table-wrap"><table class="hardware-device-table ${escapeHtml(className)}"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+
+      function storageUpdatedAt(date = new Date()) {
+        hardwareStorageScannedAt = date;
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        if (hardwareStorageUpdatedAt) hardwareStorageUpdatedAt.textContent = t('home.storagePage.updated', { time });
+      }
+
+      function renderStorageInfo(data) {
+        if (!hardwareStorageContent) return;
+        const disks = Array.isArray(data?.disks) ? data.disks : [];
+        const volumes = Array.isArray(data?.volumes) ? data.volumes : [];
+        const diskRows = disks.length ? disks.map(disk => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(storageValue(disk?.friendly_name))}</span><span class="hardware-device-table-secondary">${escapeHtml(t('home.storagePage.disk', { number: Number(disk?.number) || 0 }))}</span></td><td>${escapeHtml(storageMediaType(disk?.media_type))}<span class="hardware-device-table-secondary">${escapeHtml(storageValue(disk?.bus_type))}</span></td><td>${escapeHtml(storageBytes(disk?.size_bytes))}</td><td>${escapeHtml(storageValue(disk?.partition_style))}</td><td>${escapeHtml(storageHealth(disk?.health_status))}</td><td>${escapeHtml(storageValue(disk?.firmware_version))}</td></tr>`).join('') : `<tr><td colspan="6">${escapeHtml(storageText('notDetected'))}</td></tr>`;
+        const diskSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(storageText('physicalDisks'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.storagePage.diskCount', { count: disks.length }))}</span></div>${storageTable([storageText('model'), storageText('mediaType'), storageText('capacity'), storageText('partitionStyle'), storageText('health'), storageText('firmware')], diskRows)}</section>`;
+
+        const reliabilitySection = disks.length ? disks.map(disk => {
+          const counters = disk?.reliability || {};
+          const title = `${storageText('reliability')} · ${t('home.storagePage.disk', { number: Number(disk?.number) || 0 })}`;
+          return hardwareOverviewSection(title, [
+            storageField(storageText('temperature'), storageNumber(counters.temperature_c, ' °C')),
+            storageField(storageText('wear'), storageNumber(counters.wear_percent, '%')),
+            storageField(storageText('powerOnHours'), storageNumber(counters.power_on_hours, getLang() === 'zh' ? ' 小时' : ' h')),
+            storageField(storageText('readErrors'), storageNumber(counters.read_errors_total)),
+            storageField(storageText('writeErrors'), storageNumber(counters.write_errors_total)),
+            storageField(storageText('operational'), storageValue(disk?.operational_status))
+          ], storageValue(disk?.friendly_name));
+        }).join('') : '';
+
+        const volumeStates = volumes.map(storageUsage);
+        const volumeRows = volumes.length ? volumes.map((volume, index) => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(`${storageValue(volume?.drive_letter)}:`)}</span><span class="hardware-device-table-secondary">${escapeHtml(storageText('fixedDisk'))}</span></td><td>${escapeHtml(storageValue(volume?.file_system))}</td><td>${escapeHtml(storageBytes(volume?.size_bytes))}</td><td>${escapeHtml(storageBytes(volume?.free_bytes))}</td><td>${volumeStates[index].markup}</td></tr>`).join('') : `<tr><td colspan="5">${escapeHtml(storageText('notDetected'))}</td></tr>`;
+        const volumeSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(storageText('volumes'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.storagePage.volumeCount', { count: volumes.length }))}</span></div>${storageTable([storageText('drive'), storageText('fileSystem'), storageText('total'), storageText('remaining'), storageText('usage')], volumeRows, 'hardware-storage-volume-table')}</section>`;
+
+        const hasDiskIssue = disks.some(disk => storageHealthNeedsAttention(disk?.health_status) || disk?.is_offline);
+        const lowVolumeCount = volumeStates.filter(state => state.low).length;
+        const allHealthy = disks.length > 0 && !hasDiskIssue && disks.every(disk => /^(healthy|ok)$/i.test(String(disk?.health_status || '')));
+        const statusItems = [
+          ['is-good', '✓', storageText('statusReadOnly')],
+          [hasDiskIssue ? 'is-attention' : allHealthy ? 'is-good' : 'is-neutral', hasDiskIssue ? '!' : allHealthy ? '✓' : 'i', hasDiskIssue ? storageText('statusAttention') : allHealthy ? storageText('statusHealthy') : storageText('notDetected')],
+          ['is-neutral', 'i', storageText('statusReliability')]
+        ];
+        if (lowVolumeCount) statusItems.push(['is-attention', '!', t('home.storagePage.statusSpace', { count: lowVolumeCount })]);
+        const statusSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(storageText('status'))}</h2></div><div class="cpu-memory-status-list">${statusItems.map(([kind, icon, text]) => `<div class="cpu-memory-status-item ${kind}"><span class="cpu-memory-status-icon">${icon}</span><span>${escapeHtml(text)}</span></div>`).join('')}</div></section>`;
+        hardwareStorageContent.innerHTML = `${diskSection}${reliabilitySection}${volumeSection}${statusSection}`;
+      }
+
+      function renderStorageLoading() {
+        if (hardwareStorageContent) hardwareStorageContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(storageText('scanning'))}</span></div>`;
+      }
+
+      function renderStorageError(title, description) {
+        if (hardwareStorageContent) hardwareStorageContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      async function loadStorageInfo() {
+        if (hardwareStorageLoading) return;
+        hardwareStorageLoading = true;
+        renderStorageLoading();
+        hardwareStorageRefresh?.classList.add('is-loading');
+        if (hardwareStorageRefresh) hardwareStorageRefresh.disabled = true;
+        if (hardwareStorageUpdatedAt) hardwareStorageUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderStorageError(storageText('desktopOnlyTitle'), storageText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwareStorageData = await invoke('get_storage_health_info');
+          renderStorageInfo(hardwareStorageData);
+          storageUpdatedAt();
+        } catch (error) {
+          console.error('Failed to collect storage and health information:', error);
+          renderStorageError(storageText('readFailedTitle'), storageText('readFailedDesc'));
+          window.showToast?.(storageText('readFailedDesc'));
+        } finally {
+          hardwareStorageLoading = false;
+          hardwareStorageRefresh?.classList.remove('is-loading');
+          if (hardwareStorageRefresh) hardwareStorageRefresh.disabled = false;
+        }
+      }
+
+      function openStorageOverlay() {
+        if (!hardwareStorageOverlay) return;
+        hardwareStorageOverlay.classList.add('visible');
+        hardwareStorageOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwareStoragePlasmaBg && !hardwareStoragePlasmaInstance) {
+          hardwareStoragePlasmaInstance = initStandardToolPlasma(hardwareStoragePlasmaBg);
+        }
+        loadStorageInfo();
+      }
+
+      function closeStorageOverlay() {
+        if (!hardwareStorageOverlay) return;
+        hardwareStorageOverlay.classList.remove('visible');
+        hardwareStorageOverlay.setAttribute('aria-hidden', 'true');
+        if (hardwareStoragePlasmaInstance) {
+          hardwareStoragePlasmaInstance();
+          hardwareStoragePlasmaInstance = null;
+        }
+      }
+
+      hardwareStorageBack?.addEventListener('click', closeStorageOverlay);
+      hardwareStorageRefresh?.addEventListener('click', loadStorageInfo);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-storage"]').forEach(item => item.addEventListener('click', openStorageOverlay));
+      onLangChange(() => {
+        if (!hardwareStorageOverlay?.classList.contains('visible')) return;
+        if (hardwareStorageData) {
+          renderStorageInfo(hardwareStorageData);
+          if (hardwareStorageScannedAt) storageUpdatedAt(hardwareStorageScannedAt);
+        } else {
+          renderStorageLoading();
+        }
+      });
+
+      // ===== Network & Devices =====
+      const hardwareNetworkDevicesOverlay = document.getElementById('hardwareNetworkDevicesOverlay');
+      const hardwareNetworkDevicesBack = document.getElementById('hardwareNetworkDevicesBack');
+      const hardwareNetworkDevicesRefresh = document.getElementById('hardwareNetworkDevicesRefresh');
+      const hardwareNetworkDevicesUpdatedAt = document.getElementById('hardwareNetworkDevicesUpdatedAt');
+      const hardwareNetworkDevicesContent = document.getElementById('hardwareNetworkDevicesContent');
+      const hardwareNetworkDevicesPlasmaBg = document.getElementById('hardwareNetworkDevicesPlasmaBg');
+      let hardwareNetworkDevicesPlasmaInstance = null;
+      let hardwareNetworkDevicesLoading = false;
+      let hardwareNetworkDevicesData = null;
+      let hardwareNetworkDevicesScannedAt = null;
+
+      const networkDevicesText = key => t(`home.networkDevicesPage.${key}`);
+
+      function networkDevicesValue(value) {
+        return hardwareReadableText(value, networkDevicesText('unavailable'));
+      }
+
+      function networkConnection(value) {
+        const normalized = String(value || '').toLowerCase();
+        if (normalized === 'up') return networkDevicesText('active');
+        if (normalized === 'disconnected') return networkDevicesText('disconnected');
+        if (normalized === 'disabled') return networkDevicesText('disabled');
+        if (normalized === 'not present') return networkDevicesText('notPresent');
+        return networkDevicesText('otherStatus');
+      }
+
+      function networkAdapterIsActive(adapter) {
+        return String(adapter?.status || '').toLowerCase() === 'up';
+      }
+
+      function networkLinkSpeed(adapter) {
+        return networkAdapterIsActive(adapter) ? networkDevicesValue(adapter?.link_speed) : networkDevicesText('notConnected');
+      }
+
+      function networkTable(headers, rows, className = '') {
+        return `<div class="hardware-device-table-wrap"><table class="hardware-device-table hardware-network-table ${escapeHtml(className)}"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+
+      function networkAdapterSection(title, adapters) {
+        const rows = adapters.length ? adapters.map(adapter => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(networkDevicesValue(adapter?.name))}</span><span class="hardware-device-table-secondary">${escapeHtml(adapter?.physical ? networkDevicesText('physical') : networkDevicesText('virtual'))}</span></td><td>${escapeHtml(networkDevicesValue(adapter?.description))}</td><td>${escapeHtml(networkConnection(adapter?.status))}</td><td>${escapeHtml(networkLinkSpeed(adapter))}</td></tr>`).join('') : `<tr><td colspan="4">${escapeHtml(networkDevicesText('notDetected'))}</td></tr>`;
+        return `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(title)}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.networkDevicesPage.adapterCount', { count: adapters.length }))}</span></div>${networkTable([networkDevicesText('adapter'), networkDevicesText('description'), networkDevicesText('connection'), networkDevicesText('linkSpeed')], rows)}</section>`;
+      }
+
+      function networkPeripheralSection(title, devices) {
+        const rows = devices.length ? devices.map(device => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(networkDevicesValue(device?.name))}</span></td><td>${escapeHtml(networkDevicesValue(device?.manufacturer))}</td><td>${escapeHtml(networkDevicesValue(device?.status))}</td><td>${escapeHtml(String(Math.max(1, Number(device?.count) || 1)))}</td></tr>`).join('') : `<tr><td colspan="4">${escapeHtml(networkDevicesText('notDetected'))}</td></tr>`;
+        return `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(title)}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.networkDevicesPage.deviceCount', { count: devices.length }))}</span></div>${networkTable([networkDevicesText('device'), networkDevicesText('manufacturer'), networkDevicesText('deviceStatus'), networkDevicesText('instances')], rows)}</section>`;
+      }
+
+      function networkDevicesUpdatedAt(date = new Date()) {
+        hardwareNetworkDevicesScannedAt = date;
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        if (hardwareNetworkDevicesUpdatedAt) hardwareNetworkDevicesUpdatedAt.textContent = t('home.networkDevicesPage.updated', { time });
+      }
+
+      function renderNetworkDevicesInfo(data) {
+        if (!hardwareNetworkDevicesContent) return;
+        const adapters = Array.isArray(data?.network_adapters) ? data.network_adapters : [];
+        const bluetooth = Array.isArray(data?.bluetooth_devices) ? data.bluetooth_devices : [];
+        const audio = Array.isArray(data?.audio_devices) ? data.audio_devices : [];
+        const usb = Array.isArray(data?.usb_devices) ? data.usb_devices : [];
+        const cameras = Array.isArray(data?.cameras) ? data.cameras : [];
+        const physicalAdapters = adapters.filter(adapter => adapter?.physical === true);
+        const virtualAdapters = adapters.filter(adapter => adapter?.physical !== true);
+        const connectedCount = adapters.filter(networkAdapterIsActive).length;
+        const sections = [
+          networkAdapterSection(networkDevicesText('physicalNetwork'), physicalAdapters),
+          networkAdapterSection(networkDevicesText('virtualNetwork'), virtualAdapters),
+          networkPeripheralSection(networkDevicesText('bluetooth'), bluetooth),
+          networkPeripheralSection(networkDevicesText('audio'), audio),
+          networkPeripheralSection(networkDevicesText('usb'), usb),
+          networkPeripheralSection(networkDevicesText('camera'), cameras)
+        ];
+        const statusItems = [
+          ['is-good', '✓', networkDevicesText('statusReadOnly')],
+          [connectedCount ? 'is-good' : 'is-neutral', connectedCount ? '✓' : 'i', connectedCount ? t('home.networkDevicesPage.statusNetworkActive', { count: connectedCount }) : networkDevicesText('statusNetworkInactive')],
+          ['is-neutral', 'i', networkDevicesText('statusDevices')]
+        ];
+        const statusSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(networkDevicesText('status'))}</h2></div><div class="cpu-memory-status-list">${statusItems.map(([kind, icon, text]) => `<div class="cpu-memory-status-item ${kind}"><span class="cpu-memory-status-icon">${icon}</span><span>${escapeHtml(text)}</span></div>`).join('')}</div></section>`;
+        hardwareNetworkDevicesContent.innerHTML = `${sections.join('')}${statusSection}`;
+      }
+
+      function renderNetworkDevicesLoading() {
+        if (hardwareNetworkDevicesContent) hardwareNetworkDevicesContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(networkDevicesText('scanning'))}</span></div>`;
+      }
+
+      function renderNetworkDevicesError(title, description) {
+        if (hardwareNetworkDevicesContent) hardwareNetworkDevicesContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      async function loadNetworkDevicesInfo() {
+        if (hardwareNetworkDevicesLoading) return;
+        hardwareNetworkDevicesLoading = true;
+        renderNetworkDevicesLoading();
+        hardwareNetworkDevicesRefresh?.classList.add('is-loading');
+        if (hardwareNetworkDevicesRefresh) hardwareNetworkDevicesRefresh.disabled = true;
+        if (hardwareNetworkDevicesUpdatedAt) hardwareNetworkDevicesUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderNetworkDevicesError(networkDevicesText('desktopOnlyTitle'), networkDevicesText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwareNetworkDevicesData = await invoke('get_network_devices_info');
+          renderNetworkDevicesInfo(hardwareNetworkDevicesData);
+          networkDevicesUpdatedAt();
+        } catch (error) {
+          console.error('Failed to collect network and device information:', error);
+          renderNetworkDevicesError(networkDevicesText('readFailedTitle'), networkDevicesText('readFailedDesc'));
+          window.showToast?.(networkDevicesText('readFailedDesc'));
+        } finally {
+          hardwareNetworkDevicesLoading = false;
+          hardwareNetworkDevicesRefresh?.classList.remove('is-loading');
+          if (hardwareNetworkDevicesRefresh) hardwareNetworkDevicesRefresh.disabled = false;
+        }
+      }
+
+      function openNetworkDevicesOverlay() {
+        if (!hardwareNetworkDevicesOverlay) return;
+        hardwareNetworkDevicesOverlay.classList.add('visible');
+        hardwareNetworkDevicesOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwareNetworkDevicesPlasmaBg && !hardwareNetworkDevicesPlasmaInstance) {
+          hardwareNetworkDevicesPlasmaInstance = initStandardToolPlasma(hardwareNetworkDevicesPlasmaBg);
+        }
+        loadNetworkDevicesInfo();
+      }
+
+      function closeNetworkDevicesOverlay() {
+        if (!hardwareNetworkDevicesOverlay) return;
+        hardwareNetworkDevicesOverlay.classList.remove('visible');
+        hardwareNetworkDevicesOverlay.setAttribute('aria-hidden', 'true');
+        if (hardwareNetworkDevicesPlasmaInstance) {
+          hardwareNetworkDevicesPlasmaInstance();
+          hardwareNetworkDevicesPlasmaInstance = null;
+        }
+      }
+
+      hardwareNetworkDevicesBack?.addEventListener('click', closeNetworkDevicesOverlay);
+      hardwareNetworkDevicesRefresh?.addEventListener('click', loadNetworkDevicesInfo);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-network-devices"]').forEach(item => item.addEventListener('click', openNetworkDevicesOverlay));
+      onLangChange(() => {
+        if (!hardwareNetworkDevicesOverlay?.classList.contains('visible')) return;
+        if (hardwareNetworkDevicesData) {
+          renderNetworkDevicesInfo(hardwareNetworkDevicesData);
+          if (hardwareNetworkDevicesScannedAt) networkDevicesUpdatedAt(hardwareNetworkDevicesScannedAt);
+        } else {
+          renderNetworkDevicesLoading();
+        }
+      });
+
+      // ===== Power & Sensors =====
+      const hardwarePowerSensorsOverlay = document.getElementById('hardwarePowerSensorsOverlay');
+      const hardwarePowerSensorsBack = document.getElementById('hardwarePowerSensorsBack');
+      const hardwarePowerSensorsRefresh = document.getElementById('hardwarePowerSensorsRefresh');
+      const hardwarePowerSensorsUpdatedAt = document.getElementById('hardwarePowerSensorsUpdatedAt');
+      const hardwarePowerSensorsContent = document.getElementById('hardwarePowerSensorsContent');
+      const hardwarePowerSensorsPlasmaBg = document.getElementById('hardwarePowerSensorsPlasmaBg');
+      let hardwarePowerSensorsPlasmaInstance = null;
+      let hardwarePowerSensorsLoading = false;
+      let hardwarePowerSensorsData = null;
+      let hardwarePowerSensorsScannedAt = null;
+
+      const powerSensorsText = key => t(`home.powerSensorsPage.${key}`);
+
+      function powerSensorsValue(value) {
+        return hardwareReadableText(value, powerSensorsText('unavailable'));
+      }
+
+      function powerSensorsNumber(value, options = {}) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return powerSensorsText('unavailable');
+        return new Intl.NumberFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', options).format(number);
+      }
+
+      function powerSensorsPercent(value) {
+        const percent = Number(value);
+        if (!Number.isFinite(percent) || percent < 0) return powerSensorsText('unavailable');
+        return `${powerSensorsNumber(Math.round(percent))}%`;
+      }
+
+      function powerSensorsTemperature(value) {
+        const temperature = Number(value);
+        if (!Number.isFinite(temperature) || temperature < -50 || temperature > 150) return powerSensorsText('unavailable');
+        return `${powerSensorsNumber(temperature, { maximumFractionDigits: 1 })} °C`;
+      }
+
+      function powerSensorsCapacity(value) {
+        const capacity = Number(value);
+        if (!Number.isFinite(capacity) || capacity <= 0) return powerSensorsText('unavailable');
+        return t('home.powerSensorsPage.mwh', { value: powerSensorsNumber(capacity) });
+      }
+
+      function powerSensorsRuntime(value) {
+        const minutes = Number(value);
+        if (!Number.isFinite(minutes) || minutes <= 0) return powerSensorsText('unavailable');
+        return t('home.powerSensorsPage.minutes', { count: powerSensorsNumber(minutes) });
+      }
+
+      function powerSensorsRpm(value) {
+        const rpm = Number(value);
+        if (!Number.isFinite(rpm) || rpm <= 0) return powerSensorsText('unavailable');
+        return t('home.powerSensorsPage.rpm', { value: powerSensorsNumber(rpm) });
+      }
+
+      function powerSensorsBoolean(value) {
+        if (value === true) return powerSensorsText('yes');
+        if (value === false) return powerSensorsText('no');
+        return powerSensorsText('unavailable');
+      }
+
+      function powerSensorsField(label, value) {
+        return `<div class="hardware-overview-field"><span class="hardware-overview-key">${escapeHtml(label)}</span><span class="hardware-overview-value">${escapeHtml(powerSensorsValue(value))}</span></div>`;
+      }
+
+      function powerSensorsBatteryStatus(value) {
+        const statusMap = {
+          other: 'other',
+          unknown: 'unknown',
+          fully_charged: 'fullyCharged',
+          low: 'low',
+          critical: 'critical',
+          charging: 'charging',
+          charging_high: 'chargingHigh',
+          charging_low: 'chargingLow',
+          charging_critical: 'chargingCritical',
+          undefined: 'undefined',
+          partially_charged: 'partiallyCharged'
+        };
+        return powerSensorsText(statusMap[String(value || '').toLowerCase()] || 'unknown');
+      }
+
+      function powerSensorsTable(headers, rows, className = '') {
+        return `<div class="hardware-device-table-wrap"><table class="hardware-device-table hardware-sensor-table ${escapeHtml(className)}"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+
+      function powerSensorsUpdatedAt(date = new Date()) {
+        hardwarePowerSensorsScannedAt = date;
+        const time = new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+        if (hardwarePowerSensorsUpdatedAt) hardwarePowerSensorsUpdatedAt.textContent = t('home.powerSensorsPage.updated', { time });
+      }
+
+      function renderPowerSensorsInfo(data) {
+        if (!hardwarePowerSensorsContent) return;
+        const powerPlan = data?.power_plan || {};
+        const batteries = Array.isArray(data?.batteries) ? data.batteries : [];
+        const thermalZones = Array.isArray(data?.thermal_zones) ? data.thermal_zones : [];
+        const fans = Array.isArray(data?.fans) ? data.fans : [];
+
+        const planSection = hardwareOverviewSection(powerSensorsText('powerPlan'), [
+          powerSensorsField(powerSensorsText('planName'), powerPlan.name),
+          powerSensorsField(powerSensorsText('planCaption'), powerPlan.caption),
+          powerSensorsField(powerSensorsText('planState'), powerPlan.active ? powerSensorsText('activePlan') : powerSensorsText('unavailable'))
+        ], powerSensorsText('localReadOnly'));
+
+        const batteryRows = batteries.length ? batteries.map((battery, index) => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(powerSensorsValue(battery?.name))}</span><span class="hardware-device-table-secondary">${escapeHtml(t('home.powerSensorsPage.batteryIndex', { number: index + 1 }))}</span></td><td>${escapeHtml(powerSensorsPercent(battery?.charge_percent))}</td><td>${escapeHtml(powerSensorsBatteryStatus(battery?.status))}</td><td>${escapeHtml(powerSensorsRuntime(battery?.estimated_run_time_min))}</td><td>${escapeHtml(powerSensorsCapacity(battery?.design_capacity_mwh))}</td><td>${escapeHtml(powerSensorsCapacity(battery?.full_charge_capacity_mwh))}</td><td>${escapeHtml(powerSensorsPercent(battery?.health_percent))}</td></tr>`).join('') : `<tr><td colspan="7">${escapeHtml(powerSensorsText('notDetected'))}</td></tr>`;
+        const batterySection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(powerSensorsText('battery'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.powerSensorsPage.batteryCount', { count: batteries.length }))}</span></div>${powerSensorsTable([powerSensorsText('batteryName'), powerSensorsText('charge'), powerSensorsText('batteryStatus'), powerSensorsText('runtime'), powerSensorsText('designCapacity'), powerSensorsText('fullCapacity'), powerSensorsText('batteryHealth')], batteryRows, 'hardware-battery-table')}</section>`;
+
+        const thermalRows = thermalZones.length ? thermalZones.map((zone, index) => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(t('home.powerSensorsPage.zoneIndex', { number: index + 1 }))}</span><span class="hardware-device-table-secondary">${escapeHtml(powerSensorsValue(zone?.name))}</span></td><td>${escapeHtml(zone?.source === 'acpi' ? powerSensorsText('acpiSource') : powerSensorsValue(zone?.source))}</td><td>${escapeHtml(powerSensorsTemperature(zone?.current_c))}</td><td>${escapeHtml(powerSensorsTemperature(zone?.critical_c))}</td><td>${escapeHtml(powerSensorsTemperature(zone?.passive_c))}</td></tr>`).join('') : `<tr><td colspan="5">${escapeHtml(powerSensorsText('notDetected'))}</td></tr>`;
+        const thermalSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(powerSensorsText('thermalZones'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.powerSensorsPage.zoneCount', { count: thermalZones.length }))}</span></div>${powerSensorsTable([powerSensorsText('zone'), powerSensorsText('source'), powerSensorsText('currentTemperature'), powerSensorsText('criticalTemperature'), powerSensorsText('passiveTemperature')], thermalRows)}</section>`;
+
+        const fanRows = fans.length ? fans.map(fan => `<tr><td><span class="hardware-device-table-primary">${escapeHtml(powerSensorsValue(fan?.name))}</span></td><td>${escapeHtml(powerSensorsValue(fan?.status))}</td><td>${escapeHtml(powerSensorsRpm(fan?.desired_speed_rpm))}</td><td>${escapeHtml(powerSensorsBoolean(fan?.active_cooling))}</td></tr>`).join('') : `<tr><td colspan="4">${escapeHtml(powerSensorsText('notDetected'))}</td></tr>`;
+        const fanSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(powerSensorsText('fans'))}</h2><span class="hardware-overview-section-note">${escapeHtml(t('home.powerSensorsPage.fanCount', { count: fans.length }))}</span></div>${powerSensorsTable([powerSensorsText('fan'), powerSensorsText('fanStatus'), powerSensorsText('desiredSpeed'), powerSensorsText('activeCooling')], fanRows)}</section>`;
+
+        const batteryHealthValues = batteries.map(battery => Number(battery?.health_percent)).filter(value => Number.isFinite(value));
+        const hasWeakBattery = batteryHealthValues.some(value => value > 0 && value < 70);
+        const statusItems = [
+          ['is-good', '✓', powerSensorsText('statusReadOnly')]
+        ];
+        if (batteries.length) {
+          statusItems.push([
+            hasWeakBattery ? 'is-attention' : batteryHealthValues.length ? 'is-good' : 'is-neutral',
+            hasWeakBattery ? '!' : batteryHealthValues.length ? '✓' : 'i',
+            hasWeakBattery ? powerSensorsText('statusBatteryAttention') : batteryHealthValues.length ? powerSensorsText('statusBatteryHealthy') : powerSensorsText('statusBatteryUnknown')
+          ]);
+        } else {
+          statusItems.push(['is-neutral', 'i', powerSensorsText('statusNoBattery')]);
+        }
+        statusItems.push(['is-neutral', 'i', powerSensorsText('statusThermal')]);
+        if (!fans.length) statusItems.push(['is-neutral', 'i', powerSensorsText('statusNoFans')]);
+        const statusSection = `<section class="hardware-overview-section"><div class="hardware-overview-section-heading"><h2 class="hardware-overview-section-title">${escapeHtml(powerSensorsText('status'))}</h2></div><div class="cpu-memory-status-list">${statusItems.map(([kind, icon, text]) => `<div class="cpu-memory-status-item ${kind}"><span class="cpu-memory-status-icon">${icon}</span><span>${escapeHtml(text)}</span></div>`).join('')}</div></section>`;
+
+        hardwarePowerSensorsContent.innerHTML = `${planSection}${batterySection}${thermalSection}${fanSection}${statusSection}`;
+      }
+
+      function renderPowerSensorsLoading() {
+        if (hardwarePowerSensorsContent) hardwarePowerSensorsContent.innerHTML = `<div class="hardware-overview-loading"><span class="hardware-overview-loading-copy">${escapeHtml(powerSensorsText('scanning'))}</span></div>`;
+      }
+
+      function renderPowerSensorsError(title, description) {
+        if (hardwarePowerSensorsContent) hardwarePowerSensorsContent.innerHTML = `<div class="hardware-overview-error"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+      }
+
+      async function loadPowerSensorsInfo() {
+        if (hardwarePowerSensorsLoading) return;
+        hardwarePowerSensorsLoading = true;
+        renderPowerSensorsLoading();
+        hardwarePowerSensorsRefresh?.classList.add('is-loading');
+        if (hardwarePowerSensorsRefresh) hardwarePowerSensorsRefresh.disabled = true;
+        if (hardwarePowerSensorsUpdatedAt) hardwarePowerSensorsUpdatedAt.textContent = '';
+        try {
+          if (!isTauri) {
+            renderPowerSensorsError(powerSensorsText('desktopOnlyTitle'), powerSensorsText('desktopOnlyDesc'));
+            return;
+          }
+          const { invoke } = await import('@tauri-apps/api/core');
+          hardwarePowerSensorsData = await invoke('get_power_sensors_info');
+          renderPowerSensorsInfo(hardwarePowerSensorsData);
+          powerSensorsUpdatedAt();
+        } catch (error) {
+          console.error('Failed to collect power and sensor information:', error);
+          renderPowerSensorsError(powerSensorsText('readFailedTitle'), powerSensorsText('readFailedDesc'));
+          window.showToast?.(powerSensorsText('readFailedDesc'));
+        } finally {
+          hardwarePowerSensorsLoading = false;
+          hardwarePowerSensorsRefresh?.classList.remove('is-loading');
+          if (hardwarePowerSensorsRefresh) hardwarePowerSensorsRefresh.disabled = false;
+        }
+      }
+
+      function openPowerSensorsOverlay() {
+        if (!hardwarePowerSensorsOverlay) return;
+        hardwarePowerSensorsOverlay.classList.add('visible');
+        hardwarePowerSensorsOverlay.setAttribute('aria-hidden', 'false');
+        if (hardwarePowerSensorsPlasmaBg && !hardwarePowerSensorsPlasmaInstance) {
+          hardwarePowerSensorsPlasmaInstance = initStandardToolPlasma(hardwarePowerSensorsPlasmaBg);
+        }
+        loadPowerSensorsInfo();
+      }
+
+      function closePowerSensorsOverlay() {
+        if (!hardwarePowerSensorsOverlay) return;
+        hardwarePowerSensorsOverlay.classList.remove('visible');
+        hardwarePowerSensorsOverlay.setAttribute('aria-hidden', 'true');
+        if (hardwarePowerSensorsPlasmaInstance) {
+          hardwarePowerSensorsPlasmaInstance();
+          hardwarePowerSensorsPlasmaInstance = null;
+        }
+      }
+
+      hardwarePowerSensorsBack?.addEventListener('click', closePowerSensorsOverlay);
+      hardwarePowerSensorsRefresh?.addEventListener('click', loadPowerSensorsInfo);
+      document.querySelectorAll('.audio-list-item[data-tool="hardware-power-sensors"]').forEach(item => item.addEventListener('click', openPowerSensorsOverlay));
+      onLangChange(() => {
+        if (!hardwarePowerSensorsOverlay?.classList.contains('visible')) return;
+        if (hardwarePowerSensorsData) {
+          renderPowerSensorsInfo(hardwarePowerSensorsData);
+          if (hardwarePowerSensorsScannedAt) powerSensorsUpdatedAt(hardwarePowerSensorsScannedAt);
+        } else {
+          renderPowerSensorsLoading();
+        }
+      });
+
+      // ===== Cleanup / Large Files =====
+      const largeFileCleanupOverlay = document.getElementById('largeFileCleanupOverlay');
+      const largeFileCleanupBody = largeFileCleanupOverlay?.querySelector('.cleanup-large-files-body');
+      const largeFileCleanupPlasmaBg = document.getElementById('largeFileCleanupPlasmaBg');
+      const largeFileCleanupBack = document.getElementById('largeFileCleanupBack');
+      const largeFileCleanupFolder = document.getElementById('largeFileCleanupFolder');
+      const largeFileCleanupChooseFolder = document.getElementById('largeFileCleanupChooseFolder');
+      const largeFileCleanupThreshold = document.getElementById('largeFileCleanupThreshold');
+      const largeFileCleanupModeGroup = document.getElementById('largeFileCleanupModeGroup');
+      const largeFileCleanupScanBtn = document.getElementById('largeFileCleanupScanBtn');
+      const largeFileCleanupAiCard = document.getElementById('largeFileCleanupAiCard');
+      const largeFileCleanupAiTitle = document.getElementById('largeFileCleanupAiTitle');
+      const largeFileCleanupAiDesc = document.getElementById('largeFileCleanupAiDesc');
+      const largeFileCleanupAiBtn = document.getElementById('largeFileCleanupAiBtn');
+      const largeFileCleanupAiProgress = document.getElementById('largeFileCleanupAiProgress');
+      const largeFileCleanupAiProgressFill = document.getElementById('largeFileCleanupAiProgressFill');
+      const largeFileCleanupAiProgressText = document.getElementById('largeFileCleanupAiProgressText');
+      const largeFileCleanupSelectAllBtn = document.getElementById('largeFileCleanupSelectAllBtn');
+      const largeFileCleanupClearBtn = document.getElementById('largeFileCleanupClearBtn');
+      const largeFileCleanupDeleteBtn = document.getElementById('largeFileCleanupDeleteBtn');
+      const largeFileCleanupSelectAllCheckbox = document.getElementById('largeFileCleanupSelectAllCheckbox');
+      const largeFileCleanupSummary = document.getElementById('largeFileCleanupSummary');
+      const largeFileCleanupTableBody = document.getElementById('largeFileCleanupTableBody');
+      const largeFileCleanupSizeSort = document.getElementById('largeFileCleanupSizeSort');
+      const largeFileCleanupSizeSortTrigger = document.getElementById('largeFileCleanupSizeSortTrigger');
+      const largeFileCleanupSizeSortMenu = document.getElementById('largeFileCleanupSizeSortMenu');
+      const largeFileCleanupSuccessOverlay = document.getElementById('largeFileCleanupSuccessOverlay');
+      const largeFileCleanupSuccessMeta = document.getElementById('largeFileCleanupSuccessMeta');
+      const largeFileCleanupSuccessAnalyzed = document.getElementById('largeFileCleanupSuccessAnalyzed');
+      const largeFileCleanupSuccessMoved = document.getElementById('largeFileCleanupSuccessMoved');
+      const largeFileCleanupSuccessSize = document.getElementById('largeFileCleanupSuccessSize');
+      const largeFileCleanupSuccessFolder = document.getElementById('largeFileCleanupSuccessFolder');
+      const largeFileCleanupSuccessFailures = document.getElementById('largeFileCleanupSuccessFailures');
+      const largeFileCleanupSuccessOpenFolder = document.getElementById('largeFileCleanupSuccessOpenFolder');
+      const largeFileCleanupSuccessOk = document.getElementById('largeFileCleanupSuccessOk');
+      const largeFileCleanupDriveRootOverlay = document.getElementById('largeFileCleanupDriveRootOverlay');
+      const largeFileCleanupDriveRootTitle = document.getElementById('largeFileCleanupDriveRootTitle');
+      const largeFileCleanupDriveRootDesc = document.getElementById('largeFileCleanupDriveRootDesc');
+      const largeFileCleanupDriveRootCancel = document.getElementById('largeFileCleanupDriveRootCancel');
+      const largeFileCleanupDriveRootConfirm = document.getElementById('largeFileCleanupDriveRootConfirm');
+      let largeFileCleanupPlasmaInstance = null;
+      let largeFileCleanupRootPath = '';
+      let largeFileCleanupMode = 'video';
+      let largeFileCleanupCandidates = [];
+      let largeFileCleanupSkippedDirs = 0;
+      let largeFileCleanupScanRunId = 0;
+      let largeFileCleanupAiRunId = 0;
+      let largeFileCleanupBusy = false;
+      let largeFileCleanupBusyKind = '';
+      let largeFileCleanupSelectedPaths = new Set();
+      let largeFileCleanupEmptyMessage = '';
+      let largeFileCleanupSummaryStatus = '';
+      let largeFileCleanupAiProgressDone = 0;
+      let largeFileCleanupAiProgressTotal = 0;
+      let largeFileCleanupDriveRootResolver = null;
+      let largeFileCleanupHoverToast = null;
+      let largeFileCleanupHoverToastTimer = null;
+      let largeFileCleanupContextCandidate = null;
+      let largeFileCleanupContextMenu = null;
+      let largeFileCleanupSortMode = 'default';
+      let largeFileCleanupSizeSortCloseTimer = null;
+      let largeFileCleanupDriveSpace = null;
+      let largeFileCleanupDriveSpaceRunId = 0;
+      const LARGE_FILE_CLEANUP_FOLDER_KEY = 'toolknit.cleanup.large-file.folder.v1';
+
+      function loadLargeFileCleanupFolder() {
+        try {
+          return localStorage.getItem(LARGE_FILE_CLEANUP_FOLDER_KEY)?.trim() || '';
+        } catch {
+          return '';
+        }
+      }
+
+      function saveLargeFileCleanupFolder(path) {
+        try {
+          if (path) localStorage.setItem(LARGE_FILE_CLEANUP_FOLDER_KEY, path);
+          else localStorage.removeItem(LARGE_FILE_CLEANUP_FOLDER_KEY);
+        } catch {}
+      }
+
+      function largeFileCleanupBusyState() {
+        return largeFileCleanupBusy;
+      }
+
+      function largeFileCleanupFormatDate(time) {
+        if (!time) return '--';
+        const date = new Date(time);
+        if (Number.isNaN(date.getTime())) return '--';
+        return new Intl.DateTimeFormat(getLang() === 'zh' ? 'zh-CN' : 'en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(date);
+      }
+
+      function largeFileCleanupSetBusy(nextBusy, kind = '') {
+        largeFileCleanupBusy = !!nextBusy;
+        largeFileCleanupBusyKind = largeFileCleanupBusy ? kind : '';
+        [largeFileCleanupChooseFolder, largeFileCleanupThreshold, largeFileCleanupScanBtn, largeFileCleanupAiBtn, largeFileCleanupSelectAllBtn, largeFileCleanupClearBtn, largeFileCleanupDeleteBtn, largeFileCleanupSelectAllCheckbox]
+          .forEach(el => {
+            if (!el) return;
+            el.disabled = largeFileCleanupBusy;
+          });
+        if (largeFileCleanupScanBtn) {
+          largeFileCleanupScanBtn.textContent = largeFileCleanupBusyKind === 'scan'
+            ? t('home.cleanupLargeFilesPage.scanning')
+            : t('home.cleanupLargeFilesPage.scan');
+        }
+        if (largeFileCleanupAiBtn) {
+          largeFileCleanupAiBtn.textContent = largeFileCleanupBusyKind === 'ai'
+            ? t('home.cleanupLargeFilesPage.analysisRunning')
+            : t('home.cleanupLargeFilesPage.aiAnalyze');
+        }
+        if (largeFileCleanupDeleteBtn && largeFileCleanupBusyKind === 'delete') {
+          largeFileCleanupDeleteBtn.textContent = getLang() === 'zh' ? '正在移入回收站...' : 'Moving to Recycle Bin...';
+        }
+        largeFileCleanupRenderAiCard();
+      }
+
+      function largeFileCleanupSetMode(mode) {
+        largeFileCleanupMode = mode || 'video';
+        largeFileCleanupModeGroup?.querySelectorAll('[data-mode]').forEach(button => {
+          button.classList.toggle('is-active', button.dataset.mode === largeFileCleanupMode);
+        });
+      }
+
+      function largeFileCleanupNormalizeDriveSpace(space) {
+        if (!space) return null;
+        const freeBytes = Number(space.free_bytes ?? space.freeBytes);
+        const totalBytes = Number(space.total_bytes ?? space.totalBytes);
+        if (!Number.isFinite(totalBytes) || totalBytes <= 0) return null;
+        return {
+          drive: String(space.drive || largeFileCleanupDriveLabel(largeFileCleanupRootPath) || '').trim(),
+          freeBytes: Math.max(0, Number.isFinite(freeBytes) ? freeBytes : 0),
+          totalBytes
+        };
+      }
+
+      function largeFileCleanupDriveSpaceText(space = largeFileCleanupDriveSpace) {
+        const normalized = largeFileCleanupNormalizeDriveSpace(space);
+        if (!normalized) return '';
+        return t('home.cleanupLargeFilesPage.driveSpaceLabel', {
+          free: formatFileSize(normalized.freeBytes),
+          total: formatFileSize(normalized.totalBytes)
+        });
+      }
+
+      function largeFileCleanupSetDriveSpace(space) {
+        largeFileCleanupDriveSpace = largeFileCleanupNormalizeDriveSpace(space);
+        largeFileCleanupSetFolderLabel(largeFileCleanupRootPath);
+      }
+
+      async function refreshLargeFileCleanupDriveSpace(path) {
+        const rootPath = String(path || '').trim();
+        const runId = ++largeFileCleanupDriveSpaceRunId;
+        if (!isTauri || !isLargeFileCleanupDriveRoot(rootPath)) {
+          largeFileCleanupSetDriveSpace(null);
+          largeFileCleanupUpdateSummary();
+          return;
+        }
+        largeFileCleanupSetDriveSpace(null);
+        largeFileCleanupUpdateSummary();
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const space = await invoke('get_cleanup_drive_space', { rootPath });
+          if (runId !== largeFileCleanupDriveSpaceRunId) return;
+          largeFileCleanupSetDriveSpace(space);
+          largeFileCleanupUpdateSummary();
+        } catch (error) {
+          if (runId !== largeFileCleanupDriveSpaceRunId) return;
+          console.warn('Read cleanup drive space failed:', error);
+          largeFileCleanupSetDriveSpace(null);
+          largeFileCleanupUpdateSummary();
+        }
+      }
+
+      function largeFileCleanupSetFolderLabel(path) {
+        if (!largeFileCleanupFolder) return;
+        const value = String(path || '').trim();
+        if (!value) {
+          largeFileCleanupFolder.textContent = t('home.cleanupLargeFilesPage.folderPlaceholder');
+          largeFileCleanupFolder.removeAttribute('title');
+          return;
+        }
+        const driveSpaceText = isLargeFileCleanupDriveRoot(value) ? largeFileCleanupDriveSpaceText() : '';
+        const displayPath = displayFilesystemPath(value);
+        const label = driveSpaceText ? `${largeFileCleanupDriveLabel(value)} · ${driveSpaceText}` : displayPath;
+        largeFileCleanupFolder.textContent = label;
+        largeFileCleanupFolder.title = label;
+      }
+
+      function largeFileCleanupSetThreshold(value) {
+        if (!largeFileCleanupThreshold) return;
+        largeFileCleanupThreshold.value = String(Math.max(10, Math.min(102400, Number(value) || 50)));
+      }
+
+      function largeFileCleanupSelectedCount() {
+        return largeFileCleanupSelectedPaths.size;
+      }
+
+      function largeFileCleanupTotalBytes() {
+        return largeFileCleanupCandidates.reduce((sum, item) => sum + (Number(item.size_bytes) || 0), 0);
+      }
+
+      function largeFileCleanupAnalyzeCount() {
+        return largeFileCleanupCandidates.filter(item => item.ai_decision || item.aiDecision).length;
+      }
+
+      function largeFileCleanupSortedCandidates() {
+        const items = largeFileCleanupCandidates.map((item, index) => ({ item, index: Number.isFinite(Number(item.__default_index)) ? Number(item.__default_index) : index }));
+        if (largeFileCleanupSortMode === 'desc') {
+          items.sort((a, b) => (Number(b.item.size_bytes) || 0) - (Number(a.item.size_bytes) || 0) || a.index - b.index);
+        } else if (largeFileCleanupSortMode === 'asc') {
+          items.sort((a, b) => (Number(a.item.size_bytes) || 0) - (Number(b.item.size_bytes) || 0) || a.index - b.index);
+        } else {
+          items.sort((a, b) => a.index - b.index);
+        }
+        return items.map(entry => entry.item);
+      }
+
+      function syncLargeFileCleanupSizeSortUi() {
+        if (largeFileCleanupSizeSort) {
+          largeFileCleanupSizeSort.dataset.sort = largeFileCleanupSortMode;
+        }
+        if (largeFileCleanupSizeSortTrigger) {
+          largeFileCleanupSizeSortTrigger.setAttribute('aria-expanded', largeFileCleanupSizeSort?.classList.contains('is-open') ? 'true' : 'false');
+        }
+        largeFileCleanupSizeSortMenu?.querySelectorAll('[data-sort]').forEach(button => {
+          button.classList.toggle('active', button.dataset.sort === largeFileCleanupSortMode);
+        });
+      }
+
+      function openLargeFileCleanupSizeSortMenu() {
+        if (largeFileCleanupSizeSortCloseTimer) {
+          clearTimeout(largeFileCleanupSizeSortCloseTimer);
+          largeFileCleanupSizeSortCloseTimer = null;
+        }
+        largeFileCleanupSizeSort?.classList.add('is-open');
+        syncLargeFileCleanupSizeSortUi();
+      }
+
+      function closeLargeFileCleanupSizeSortMenu(delay = 320) {
+        if (largeFileCleanupSizeSortCloseTimer) clearTimeout(largeFileCleanupSizeSortCloseTimer);
+        largeFileCleanupSizeSortCloseTimer = setTimeout(() => {
+          largeFileCleanupSizeSort?.classList.remove('is-open');
+          syncLargeFileCleanupSizeSortUi();
+          largeFileCleanupSizeSortCloseTimer = null;
+        }, Math.max(0, delay));
+      }
+
+      function setLargeFileCleanupSortMode(mode) {
+        largeFileCleanupSortMode = ['default', 'desc', 'asc'].includes(mode) ? mode : 'default';
+        closeLargeFileCleanupSizeSortMenu(120);
+        syncLargeFileCleanupSizeSortUi();
+        largeFileCleanupRenderTable();
+      }
+
+      function largeFileCleanupHasAiKey() {
+        try {
+          return !!(localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key'));
+        } catch {
+          return false;
+        }
+      }
+
+      function largeFileCleanupRenderAiCard() {
+        if (!largeFileCleanupAiCard) return;
+        const total = largeFileCleanupCandidates.length;
+        const analyzed = largeFileCleanupAnalyzeCount();
+        const hasKey = largeFileCleanupHasAiKey();
+        const isAiBusy = largeFileCleanupBusy && largeFileCleanupBusyKind === 'ai';
+        let state = 'idle';
+        let titleKey = 'aiIdleTitle';
+        let descKey = 'aiIdleDesc';
+        let buttonText = t('home.cleanupLargeFilesPage.aiWaitingScan');
+        let buttonDisabled = largeFileCleanupBusy || total === 0;
+
+        if (isAiBusy) {
+          state = 'running';
+          titleKey = 'aiRunningTitle';
+          descKey = 'aiRunningDesc';
+          buttonText = t('home.cleanupLargeFilesPage.analysisRunning');
+          buttonDisabled = true;
+        } else if (total > 0 && !hasKey) {
+          state = 'need-key';
+          titleKey = 'aiNeedKeyTitle';
+          descKey = 'aiNeedKeyDesc';
+          buttonText = t('home.cleanupLargeFilesPage.aiConfigureAndAnalyze');
+          buttonDisabled = false;
+        } else if (total > 0 && analyzed >= total) {
+          state = 'done';
+          titleKey = 'aiDoneTitle';
+          descKey = 'aiDoneDesc';
+          buttonText = t('home.cleanupLargeFilesPage.aiReanalyze');
+          buttonDisabled = largeFileCleanupBusy;
+        } else if (total > 0) {
+          state = analyzed > 0 ? 'partial' : 'ready';
+          titleKey = analyzed > 0 ? 'aiPartialTitle' : 'aiReadyTitle';
+          descKey = analyzed > 0 ? 'aiPartialDesc' : 'aiReadyDesc';
+          buttonText = analyzed > 0
+            ? t('home.cleanupLargeFilesPage.aiContinueAnalyzeCount', { count: total })
+            : t('home.cleanupLargeFilesPage.aiAnalyzeCount', { count: total });
+          buttonDisabled = largeFileCleanupBusy;
+        }
+
+        largeFileCleanupAiCard.dataset.state = state;
+        if (largeFileCleanupAiTitle) largeFileCleanupAiTitle.textContent = t(`home.cleanupLargeFilesPage.${titleKey}`);
+        if (largeFileCleanupAiDesc) largeFileCleanupAiDesc.textContent = t(`home.cleanupLargeFilesPage.${descKey}`);
+        if (largeFileCleanupAiBtn) {
+          largeFileCleanupAiBtn.textContent = buttonText;
+          largeFileCleanupAiBtn.disabled = buttonDisabled;
+        }
+        if (largeFileCleanupAiProgress) {
+          const progressTotal = largeFileCleanupAiProgressTotal || total || 1;
+          const progressDone = Math.min(progressTotal, Math.max(0, largeFileCleanupAiProgressDone));
+          const percent = isAiBusy ? Math.max(8, Math.round((progressDone / progressTotal) * 100)) : 0;
+          if (largeFileCleanupAiProgressFill) largeFileCleanupAiProgressFill.style.width = `${percent}%`;
+          if (largeFileCleanupAiProgressText) {
+            largeFileCleanupAiProgressText.textContent = isAiBusy
+              ? t('home.cleanupLargeFilesPage.aiProgress', { done: progressDone, total: progressTotal })
+              : '';
+          }
+          largeFileCleanupAiProgress.setAttribute('aria-hidden', isAiBusy ? 'false' : 'true');
+        }
+      }
+
+      function largeFileCleanupUpdateSummary(extraText = '') {
+        if (!largeFileCleanupSummary) return;
+        const folderText = largeFileCleanupRootPath || t('home.cleanupLargeFilesPage.folderPlaceholder');
+        const statusText = extraText || largeFileCleanupSummaryStatus || '';
+        const labelMap = getLang() === 'zh'
+          ? { folder: '目录', driveSpace: '盘空间', files: '候选', size: '合计', selected: '已选', skipped: '保护目录', analyzed: 'AI' }
+          : { folder: 'Folder', driveSpace: 'Drive', files: 'Candidates', size: 'Total', selected: 'Selected', skipped: 'Protected', analyzed: 'AI' };
+        const driveSpaceText = isLargeFileCleanupDriveRoot(largeFileCleanupRootPath) ? largeFileCleanupDriveSpaceText() : '';
+        const chips = [
+          { key: 'folder', label: folderText, strong: labelMap.folder },
+          ...(driveSpaceText ? [{ key: 'drive-space', label: driveSpaceText, strong: labelMap.driveSpace }] : []),
+          { key: 'files', label: t('home.cleanupLargeFilesPage.summaryFiles', { count: largeFileCleanupCandidates.length }), strong: labelMap.files },
+          { key: 'size', label: t('home.cleanupLargeFilesPage.summarySize', { size: formatFileSize(largeFileCleanupTotalBytes()) }), strong: labelMap.size },
+          { key: 'selected', label: `${largeFileCleanupSelectedCount()} / ${largeFileCleanupCandidates.length}`, strong: labelMap.selected },
+          { key: 'skipped', label: t('home.cleanupLargeFilesPage.summarySkipped', { count: largeFileCleanupSkippedDirs }), strong: labelMap.skipped },
+          { key: 'analyzed', label: t('home.cleanupLargeFilesPage.summaryAnalyzed', { count: largeFileCleanupAnalyzeCount() }), strong: labelMap.analyzed }
+        ];
+        const statusChip = statusText ? `<span class="cleanup-large-files-summary-item cleanup-large-files-summary-status"><strong>${escapeHtml(statusText)}</strong></span>` : '';
+        largeFileCleanupSummary.innerHTML = `${statusChip}${chips.map(({ key, label, strong }) => `<span class="cleanup-large-files-summary-item" data-kind="${escapeAttr(key)}"><strong>${escapeHtml(strong)}</strong><span>${escapeHtml(label)}</span></span>`).join('')}`;
+        largeFileCleanupRenderAiCard();
+      }
+
+      function largeFileCleanupSyncSelectionUi() {
+        if (!largeFileCleanupSelectAllCheckbox) return;
+        const total = largeFileCleanupCandidates.length;
+        const selected = largeFileCleanupSelectedCount();
+        largeFileCleanupSelectAllCheckbox.checked = total > 0 && selected === total;
+        largeFileCleanupSelectAllCheckbox.indeterminate = selected > 0 && selected < total;
+        if (largeFileCleanupSelectAllBtn) {
+          largeFileCleanupSelectAllBtn.textContent = `${t('home.cleanupLargeFilesPage.selectAll')} (${selected}/${total})`;
+        }
+        if (largeFileCleanupClearBtn) {
+          largeFileCleanupClearBtn.textContent = `${t('home.cleanupLargeFilesPage.clearSelection')} (${selected})`;
+        }
+        if (largeFileCleanupDeleteBtn) {
+          largeFileCleanupDeleteBtn.textContent = `${t('home.cleanupLargeFilesPage.deleteSelected')} (${selected})`;
+          largeFileCleanupDeleteBtn.disabled = largeFileCleanupBusy || selected === 0;
+        }
+        largeFileCleanupRenderAiCard();
+      }
+
+      function largeFileCleanupDecisionLabel(decision) {
+        const normalized = String(decision || '').toLowerCase();
+        if (normalized === 'delete') return getLang() === 'zh' ? '建议删除' : 'Suggested delete';
+        if (normalized === 'keep') return getLang() === 'zh' ? '建议保留' : 'Suggested keep';
+        if (normalized === 'review') return getLang() === 'zh' ? '建议复核' : 'Suggested review';
+        return '';
+      }
+
+      function largeFileCleanupReasonDisplay(candidate) {
+        const decision = candidate.ai_decision || candidate.aiDecision || '';
+        const localReason = String(candidate.local_reason || '').trim();
+        const aiIdentity = String(candidate.ai_identity || candidate.aiIdentity || '').trim();
+        const aiReason = String(candidate.ai_reason || candidate.aiReason || '').trim();
+        const aiLabel = largeFileCleanupDecisionLabel(decision);
+        const pairSeparator = getLang() === 'zh' ? '：' : ': ';
+        const textParts = [];
+        const htmlParts = [];
+        if (localReason) {
+          const label = getLang() === 'zh' ? '本地规则' : 'Local rule';
+          textParts.push(`${label}${pairSeparator}${localReason}`);
+          htmlParts.push(`<span class="cleanup-large-files-reason-line"><b>${escapeHtml(label)}</b>${pairSeparator}${escapeHtml(localReason)}</span>`);
+        }
+        if (aiIdentity) {
+          const label = getLang() === 'zh' ? '文件识别' : 'File identity';
+          textParts.push(`${label}${pairSeparator}${aiIdentity}`);
+          htmlParts.push(`<span class="cleanup-large-files-reason-line"><b>${escapeHtml(label)}</b>${pairSeparator}${escapeHtml(aiIdentity)}</span>`);
+        }
+        if (aiLabel || aiReason) {
+          const label = getLang() === 'zh' ? 'AI 建议' : 'AI suggestion';
+          const valueSeparator = getLang() === 'zh' ? '：' : ': ';
+          const value = [aiLabel, aiReason].filter(Boolean).join(aiReason && aiLabel ? valueSeparator : '');
+          textParts.push(`${label}${pairSeparator}${value || '--'}`);
+          htmlParts.push(`<span class="cleanup-large-files-reason-line"><b>${escapeHtml(label)}</b>${pairSeparator}${aiLabel ? `<strong class="cleanup-large-files-ai-label">${escapeHtml(aiLabel)}</strong>` : ''}${aiReason ? `${aiLabel ? valueSeparator : ''}${escapeHtml(aiReason)}` : ''}</span>`);
+        }
+        if (!textParts.length && !htmlParts.length) {
+          textParts.push('--');
+          htmlParts.push('<span class="cleanup-large-files-reason-line">--</span>');
+        }
+        return {
+          text: textParts.join('\n'),
+          html: htmlParts.join('')
+        };
+      }
+
+      function closeLargeFileCleanupHoverToast(delay = 0) {
+        if (largeFileCleanupHoverToastTimer) clearTimeout(largeFileCleanupHoverToastTimer);
+        largeFileCleanupHoverToastTimer = setTimeout(() => {
+          largeFileCleanupHoverToast?.close?.();
+          largeFileCleanupHoverToast = null;
+          largeFileCleanupHoverToastTimer = null;
+        }, Math.max(0, delay));
+      }
+
+      function showLargeFileCleanupReasonToast(text) {
+        const message = String(text || '').trim();
+        if (!message || message === '--') return;
+        if (largeFileCleanupHoverToastTimer) {
+          clearTimeout(largeFileCleanupHoverToastTimer);
+          largeFileCleanupHoverToastTimer = null;
+        }
+        largeFileCleanupHoverToast?.close?.();
+        largeFileCleanupHoverToast = window.showToast?.(message, {
+          duration: 600000,
+          className: 'cleanup-reason-toast'
+        }) || null;
+        const toastEl = largeFileCleanupHoverToast?.el;
+        if (toastEl) {
+          toastEl.addEventListener('mouseenter', () => {
+            if (largeFileCleanupHoverToastTimer) {
+              clearTimeout(largeFileCleanupHoverToastTimer);
+              largeFileCleanupHoverToastTimer = null;
+            }
+          });
+          toastEl.addEventListener('mouseleave', () => closeLargeFileCleanupHoverToast(900));
+        }
+      }
+
+      function ensureLargeFileCleanupContextMenu() {
+        if (largeFileCleanupContextMenu) return largeFileCleanupContextMenu;
+        const menu = document.createElement('div');
+        menu.className = 'cleanup-large-files-context-menu';
+        menu.innerHTML = `
+          <div class="cleanup-large-files-context-title"></div>
+          <button type="button" class="cleanup-large-files-context-item" data-action="open-folder">
+            <span class="cleanup-large-files-context-icon" aria-hidden="true">↗</span>
+            <span>${escapeHtml(t('home.cleanupLargeFilesPage.contextOpenFolder'))}</span>
+          </button>
+        `;
+        document.body.appendChild(menu);
+        menu.addEventListener('click', async event => {
+          const action = event.target.closest('[data-action]')?.dataset.action || '';
+          if (action === 'open-folder' && largeFileCleanupContextCandidate) {
+            await openLargeFileCleanupCandidateFolder(largeFileCleanupContextCandidate);
+          }
+          hideLargeFileCleanupContextMenu();
+        });
+        largeFileCleanupContextMenu = menu;
+        return menu;
+      }
+
+      function hideLargeFileCleanupContextMenu() {
+        if (!largeFileCleanupContextMenu) return;
+        largeFileCleanupContextMenu.classList.remove('visible');
+        largeFileCleanupContextCandidate = null;
+      }
+
+      function showLargeFileCleanupContextMenu(event, candidate) {
+        if (!candidate) return;
+        hideLargeFileCleanupContextMenu();
+        largeFileCleanupContextCandidate = candidate;
+        const menu = ensureLargeFileCleanupContextMenu();
+        const title = menu.querySelector('.cleanup-large-files-context-title');
+        if (title) title.textContent = candidate.name || displayFilesystemPath(candidate.path) || '';
+        const openFolderLabel = menu.querySelector('[data-action="open-folder"] span:last-child');
+        if (openFolderLabel) openFolderLabel.textContent = t('home.cleanupLargeFilesPage.contextOpenFolder');
+        menu.classList.add('visible');
+        const rect = menu.getBoundingClientRect();
+        const padding = 10;
+        const left = Math.min(window.innerWidth - rect.width - padding, Math.max(padding, event.clientX));
+        const top = Math.min(window.innerHeight - rect.height - padding, Math.max(padding, event.clientY));
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+      }
+
+      async function openLargeFileCleanupCandidateFolder(candidate) {
+        if (!candidate?.path) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: candidate.path });
+        } catch (error) {
+          console.error('Open cleanup candidate folder failed:', error);
+          window.showToast?.(error?.message || (getLang() === 'zh' ? '打开所在文件夹失败。' : 'Failed to open containing folder.'));
+        }
+      }
+
+      function largeFileCleanupRenderTable() {
+        if (!largeFileCleanupTableBody) return;
+        syncLargeFileCleanupSizeSortUi();
+        largeFileCleanupTableBody.innerHTML = '';
+        if (!largeFileCleanupCandidates.length) {
+          const row = document.createElement('tr');
+          const cell = document.createElement('td');
+          cell.colSpan = 8;
+          cell.className = 'cleanup-large-files-summary-empty';
+          cell.textContent = largeFileCleanupBusy
+            ? t('home.cleanupLargeFilesPage.scanning')
+            : (largeFileCleanupEmptyMessage || t('home.cleanupLargeFilesPage.noResults'));
+          row.appendChild(cell);
+          largeFileCleanupTableBody.appendChild(row);
+          largeFileCleanupUpdateSummary();
+          largeFileCleanupSyncSelectionUi();
+          return;
+        }
+
+        for (const candidate of largeFileCleanupSortedCandidates()) {
+          const selected = largeFileCleanupSelectedPaths.has(candidate.path);
+          const row = document.createElement('tr');
+          row.dataset.path = candidate.path;
+          if (selected) row.classList.add('is-selected');
+          const reasonDisplay = largeFileCleanupReasonDisplay(candidate);
+          row.innerHTML = `
+            <td><input class="cleanup-large-files-check" type="checkbox" data-path="${escapeAttr(candidate.path)}"${selected ? ' checked' : ''}></td>
+            <td>
+              <span class="cleanup-large-files-item-main">${escapeHtml(candidate.name)}</span>
+              <span class="cleanup-large-files-item-sub">${escapeHtml(displayFilesystemPath(candidate.path))}</span>
+            </td>
+            <td>${escapeHtml(formatFileSize(Number(candidate.size_bytes) || 0))}</td>
+            <td>${escapeHtml(candidate.category || '--')}</td>
+            <td>${escapeHtml(largeFileCleanupFormatDate(candidate.modified_at))}</td>
+            <td>${escapeHtml(candidate.folder_hint || '--')}</td>
+            <td><span class="cleanup-large-files-risk cleanup-large-files-risk-${escapeHtml(candidate.risk || 'medium')}">${escapeHtml(candidate.risk || 'medium')}</span></td>
+            <td class="cleanup-large-files-reason">
+              <div class="cleanup-large-files-reason-preview" data-full-reason="${escapeAttr(reasonDisplay.text)}">${reasonDisplay.html}</div>
+            </td>
+          `;
+          largeFileCleanupTableBody.appendChild(row);
+        }
+
+        largeFileCleanupTableBody.querySelectorAll('.cleanup-large-files-check').forEach(checkbox => {
+          checkbox.addEventListener('change', () => {
+            const path = checkbox.dataset.path || '';
+            if (!path) return;
+            if (checkbox.checked) largeFileCleanupSelectedPaths.add(path);
+            else largeFileCleanupSelectedPaths.delete(path);
+            const row = checkbox.closest('tr');
+            row?.classList.toggle('is-selected', checkbox.checked);
+            largeFileCleanupSyncSelectionUi();
+            largeFileCleanupUpdateSummary();
+          });
+        });
+        largeFileCleanupTableBody.querySelectorAll('.cleanup-large-files-reason-preview').forEach(preview => {
+          preview.addEventListener('mouseenter', () => {
+            const fullText = preview.dataset.fullReason || '';
+            const isTruncated = preview.scrollHeight > preview.clientHeight + 2
+              || Array.from(preview.querySelectorAll('.cleanup-large-files-reason-line')).some(line => line.scrollWidth > line.clientWidth + 2);
+            if (isTruncated || fullText.length > 72) showLargeFileCleanupReasonToast(fullText);
+          });
+          preview.addEventListener('mouseleave', () => closeLargeFileCleanupHoverToast(900));
+        });
+        largeFileCleanupTableBody.querySelectorAll('tr[data-path]').forEach(row => {
+          row.addEventListener('contextmenu', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const candidate = largeFileCleanupCandidates.find(item => item.path === row.dataset.path);
+            showLargeFileCleanupContextMenu(event, candidate);
+          });
+        });
+
+        largeFileCleanupUpdateSummary();
+        largeFileCleanupSyncSelectionUi();
+      }
+
+      function largeFileCleanupResetSelection() {
+        largeFileCleanupSelectedPaths = new Set();
+        largeFileCleanupRenderTable();
+      }
+
+      function largeFileCleanupSetCandidates(candidates, skippedDirs) {
+        largeFileCleanupCandidates = Array.isArray(candidates) ? candidates.map((item, index) => ({ ...item, __default_index: index })) : [];
+        largeFileCleanupSkippedDirs = Number(skippedDirs) || 0;
+        largeFileCleanupSelectedPaths = new Set();
+        largeFileCleanupAiProgressDone = 0;
+        largeFileCleanupAiProgressTotal = 0;
+        if (largeFileCleanupCandidates.length) {
+          largeFileCleanupEmptyMessage = '';
+          largeFileCleanupSummaryStatus = '';
+        }
+        largeFileCleanupRenderTable();
+      }
+
+      function largeFileCleanupOpen() {
+        if (!largeFileCleanupOverlay) return;
+        largeFileCleanupOverlay.classList.add('visible');
+        largeFileCleanupOverlay.setAttribute('aria-hidden', 'false');
+        if (largeFileCleanupPlasmaBg && !largeFileCleanupPlasmaInstance) {
+          largeFileCleanupPlasmaInstance = initStandardToolPlasma(largeFileCleanupPlasmaBg);
+        }
+        if (!largeFileCleanupRootPath) {
+          const savedFolder = loadLargeFileCleanupFolder();
+          if (savedFolder) largeFileCleanupRootPath = savedFolder;
+        }
+        largeFileCleanupSetFolderLabel(largeFileCleanupRootPath);
+        refreshLargeFileCleanupDriveSpace(largeFileCleanupRootPath);
+        largeFileCleanupSetThreshold(largeFileCleanupThreshold?.value || 50);
+        largeFileCleanupSetMode(largeFileCleanupMode || 'video');
+        largeFileCleanupUpdateSummary();
+        largeFileCleanupRenderTable();
+      }
+
+      function largeFileCleanupClose() {
+        if (largeFileCleanupBusyState()) {
+          window.showToast?.(getLang() === 'zh' ? '正在处理，请稍后再关闭。' : 'Please wait until the current cleanup task finishes.');
+          return;
+        }
+        if (!largeFileCleanupOverlay) return;
+        largeFileCleanupOverlay.classList.remove('visible');
+        largeFileCleanupOverlay.setAttribute('aria-hidden', 'true');
+        if (largeFileCleanupPlasmaInstance) {
+          largeFileCleanupPlasmaInstance();
+          largeFileCleanupPlasmaInstance = null;
+        }
+      }
+
+      async function chooseLargeFileCleanupFolder() {
+        if (!isTauri) {
+          window.showToast?.(getLang() === 'zh' ? '仅支持桌面端选择清理目录。' : 'Folder selection is only available in the desktop app.');
+          return;
+        }
+        try {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const selected = await open({ directory: true, multiple: false, title: getLang() === 'zh' ? '选择大文件扫描目录' : 'Choose a folder to scan' });
+          if (typeof selected !== 'string' || !selected.trim()) return;
+          largeFileCleanupRootPath = selected.trim();
+          largeFileCleanupSetDriveSpace(null);
+          saveLargeFileCleanupFolder(largeFileCleanupRootPath);
+          largeFileCleanupSetFolderLabel(largeFileCleanupRootPath);
+          largeFileCleanupUpdateSummary(getLang() === 'zh' ? '已选择目录' : 'Folder selected');
+          window.showToast?.(t('home.cleanupLargeFilesPage.folderSelected', { path: displayFilesystemPath(largeFileCleanupRootPath) }));
+          refreshLargeFileCleanupDriveSpace(largeFileCleanupRootPath);
+        } catch (error) {
+          console.error('Choose cleanup folder failed:', error);
+          window.showToast?.(error?.message || (getLang() === 'zh' ? '选择目录失败。' : 'Failed to choose folder.'));
+        }
+      }
+
+      function largeFileCleanupModeChipHandler(event) {
+        const button = event.target.closest('[data-mode]');
+        if (!button || largeFileCleanupBusyState()) return;
+        largeFileCleanupSetMode(button.dataset.mode || 'video');
+      }
+
+      function largeFileCleanupCollectScanArgs() {
+        const minSizeMb = Math.max(10, Math.min(102400, Number(largeFileCleanupThreshold?.value || 50) || 50));
+        return {
+          rootPath: largeFileCleanupRootPath,
+          minSizeMb,
+          mode: largeFileCleanupMode || 'video'
+        };
+      }
+
+      function largeFileCleanupDriveLetter(path) {
+        const value = String(path || '').trim();
+        const match = value.match(/^([a-zA-Z]):[\\/]*$/);
+        return match ? match[1].toUpperCase() : '';
+      }
+
+      function isLargeFileCleanupDriveRoot(path) {
+        return !!largeFileCleanupDriveLetter(path);
+      }
+
+      function isLargeFileCleanupSystemDriveRoot(path) {
+        const value = String(path || '').trim();
+        const drive = largeFileCleanupDriveLetter(value);
+        return drive === 'C' || value === '\\' || value === '/';
+      }
+
+      function largeFileCleanupDriveLabel(path) {
+        const drive = largeFileCleanupDriveLetter(path);
+        return drive ? `${drive}:\\` : String(path || '').trim();
+      }
+
+      function largeFileCleanupRootBlockedMessage(path) {
+        const drive = largeFileCleanupDriveLetter(path) || 'C';
+        return t('home.cleanupLargeFilesPage.rootBlockedDesc', { drive });
+      }
+
+      function closeLargeFileCleanupDriveRootOverlay(result = false) {
+        if (largeFileCleanupDriveRootOverlay) {
+          largeFileCleanupDriveRootOverlay.classList.remove('visible');
+          largeFileCleanupDriveRootOverlay.setAttribute('aria-hidden', 'true');
+        }
+        const resolver = largeFileCleanupDriveRootResolver;
+        largeFileCleanupDriveRootResolver = null;
+        if (resolver) resolver(!!result);
+      }
+
+      function confirmLargeFileCleanupDataDriveRoot(path) {
+        const drive = largeFileCleanupDriveLetter(path);
+        if (!drive) return Promise.resolve(true);
+        const driveLabel = largeFileCleanupDriveLabel(path);
+        const title = t('home.cleanupLargeFilesPage.dataRootConfirmTitle', { drive });
+        const desc = t('home.cleanupLargeFilesPage.dataRootConfirmDesc', { drive: driveLabel });
+        if (largeFileCleanupDriveRootOverlay && largeFileCleanupDriveRootTitle && largeFileCleanupDriveRootDesc) {
+          largeFileCleanupDriveRootTitle.textContent = title;
+          largeFileCleanupDriveRootDesc.textContent = desc;
+          largeFileCleanupDriveRootOverlay.classList.add('visible');
+          largeFileCleanupDriveRootOverlay.setAttribute('aria-hidden', 'false');
+          return new Promise(resolve => {
+            largeFileCleanupDriveRootResolver = resolve;
+          });
+        }
+        return Promise.resolve(window.confirm(`${title}\n\n${desc}`));
+      }
+
+      function largeFileCleanupFriendlyError(error) {
+        const message = String(error?.message || error || '').trim();
+        if (message.includes('System drive root is blocked') || message.includes('Please choose a user folder')) {
+          return largeFileCleanupRootBlockedMessage(largeFileCleanupRootPath);
+        }
+        return message || t('home.cleanupLargeFilesPage.scanFailedDesc');
+      }
+
+      async function largeFileCleanupScan() {
+        if (!isTauri) {
+          window.showToast?.(getLang() === 'zh' ? '仅支持桌面端扫描。' : 'Scanning is only available in the desktop app.');
+          return;
+        }
+        if (largeFileCleanupBusyState()) return;
+        if (!largeFileCleanupRootPath) {
+          await chooseLargeFileCleanupFolder();
+          if (!largeFileCleanupRootPath) return;
+        }
+        const args = largeFileCleanupCollectScanArgs();
+        if (!args.rootPath) {
+          window.showToast?.(t('home.cleanupLargeFilesPage.noFolderChosen'));
+          return;
+        }
+        if (isLargeFileCleanupSystemDriveRoot(args.rootPath)) {
+          refreshLargeFileCleanupDriveSpace(args.rootPath);
+          largeFileCleanupCandidates = [];
+          largeFileCleanupSkippedDirs = 0;
+          largeFileCleanupSelectedPaths = new Set();
+          largeFileCleanupEmptyMessage = largeFileCleanupRootBlockedMessage(args.rootPath);
+          largeFileCleanupSummaryStatus = t('home.cleanupLargeFilesPage.rootBlockedTitle');
+          largeFileCleanupRenderTable();
+          window.showToast?.(largeFileCleanupRootBlockedMessage(args.rootPath));
+          return;
+        }
+        if (isLargeFileCleanupDriveRoot(args.rootPath)) {
+          const confirmed = await confirmLargeFileCleanupDataDriveRoot(args.rootPath);
+          if (!confirmed) {
+            largeFileCleanupSummaryStatus = t('home.cleanupLargeFilesPage.dataRootCancelled');
+            largeFileCleanupUpdateSummary();
+            return;
+          }
+        }
+        const runId = ++largeFileCleanupScanRunId;
+        largeFileCleanupSetBusy(true, 'scan');
+        largeFileCleanupSetDriveSpace(null);
+        largeFileCleanupSetFolderLabel(args.rootPath);
+        largeFileCleanupEmptyMessage = '';
+        largeFileCleanupSummaryStatus = '';
+        largeFileCleanupUpdateSummary(t('home.cleanupLargeFilesPage.scanning'));
+        largeFileCleanupCandidates = [];
+        largeFileCleanupSelectedPaths = new Set();
+        largeFileCleanupAiProgressDone = 0;
+        largeFileCleanupAiProgressTotal = 0;
+        largeFileCleanupRenderTable();
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const result = await invoke('scan_large_files', {
+            rootPath: args.rootPath,
+            minSizeMb: args.minSizeMb,
+            mode: args.mode
+          });
+          if (runId !== largeFileCleanupScanRunId) return;
+          largeFileCleanupRootPath = result?.root_path || args.rootPath;
+          saveLargeFileCleanupFolder(largeFileCleanupRootPath);
+          largeFileCleanupMode = result?.mode || args.mode;
+          largeFileCleanupSetDriveSpace(result?.drive_space || null);
+          if (isLargeFileCleanupDriveRoot(largeFileCleanupRootPath) && !largeFileCleanupDriveSpace) {
+            refreshLargeFileCleanupDriveSpace(largeFileCleanupRootPath);
+          }
+          largeFileCleanupSetFolderLabel(largeFileCleanupRootPath);
+          largeFileCleanupThreshold && (largeFileCleanupThreshold.value = String(args.minSizeMb));
+          largeFileCleanupSetCandidates(result?.candidates || [], result?.skipped_dirs || 0);
+          if (!largeFileCleanupCandidates.length) {
+            largeFileCleanupEmptyMessage = t('home.cleanupLargeFilesPage.noResults');
+            window.showToast?.(t('home.cleanupLargeFilesPage.noResults'));
+            largeFileCleanupRenderTable();
+          } else {
+            window.showToast?.(t('home.cleanupLargeFilesPage.scanComplete', {
+              count: largeFileCleanupCandidates.length,
+              size: formatFileSize(largeFileCleanupTotalBytes())
+            }));
+          }
+        } catch (error) {
+          if (runId !== largeFileCleanupScanRunId) return;
+          console.error('Cleanup scan failed:', error);
+          const friendlyMessage = largeFileCleanupFriendlyError(error);
+          largeFileCleanupEmptyMessage = friendlyMessage;
+          largeFileCleanupSummaryStatus = t('home.cleanupLargeFilesPage.scanFailedTitle');
+          largeFileCleanupSetCandidates([], 0);
+          window.showToast?.(friendlyMessage);
+        } finally {
+          if (runId === largeFileCleanupScanRunId) {
+            largeFileCleanupSetBusy(false);
+            largeFileCleanupRenderTable();
+            largeFileCleanupUpdateSummary();
+            largeFileCleanupSyncSelectionUi();
+          }
+        }
+      }
+
+      function largeFileCleanupExtractJson(text) {
+        const raw = String(text || '').trim();
+        if (!raw) return null;
+        const attempts = [raw];
+        const firstBrace = raw.indexOf('{');
+        const lastBrace = raw.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) attempts.push(raw.slice(firstBrace, lastBrace + 1));
+        const firstBracket = raw.indexOf('[');
+        const lastBracket = raw.lastIndexOf(']');
+        if (firstBracket >= 0 && lastBracket > firstBracket) attempts.push(raw.slice(firstBracket, lastBracket + 1));
+        for (const attempt of attempts) {
+          try {
+            return JSON.parse(attempt);
+          } catch {}
+        }
+        return null;
+      }
+
+      function largeFileCleanupApplyAiDecisions(payload) {
+        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : [];
+        const byId = new Map(items.map(item => [String(item?.id || ''), item]));
+        largeFileCleanupCandidates = largeFileCleanupCandidates.map(candidate => {
+          const entry = byId.get(String(candidate.id || ''));
+          if (!entry) return candidate;
+          const decision = String(entry.decision || entry.action || entry.recommendation || '').toLowerCase();
+          const aiDecision = decision === 'delete' || decision === 'remove' ? 'delete'
+            : decision === 'keep' ? 'keep'
+              : decision === 'review' || decision === 'check' || decision === 'uncertain' ? 'review'
+                : '';
+          const safeDecision = candidate.risk === 'high' && aiDecision === 'delete' ? 'review' : aiDecision;
+          const rawAiIdentity = String(entry.identity || entry.file_identity || entry.what_is_file || entry.summary || entry.purpose || '').trim();
+          const rawAiReason = String(entry.reason || entry.note || entry.explanation || '').trim();
+          const aiReason = candidate.risk === 'high' && aiDecision === 'delete'
+            ? `${getLang() === 'zh' ? '本地保护策略：高风险文件不会自动建议删除，已改为人工复核。AI 原因：' : 'Local safety policy: high-risk files are never auto-suggested for deletion, changed to review. AI reason: '}${rawAiReason}`
+            : rawAiReason;
+          return {
+            ...candidate,
+            ai_decision: safeDecision || candidate.ai_decision || '',
+            ai_identity: rawAiIdentity || candidate.ai_identity || '',
+            ai_reason: aiReason || candidate.ai_reason || ''
+          };
+        });
+        largeFileCleanupSelectedPaths = new Set(
+          largeFileCleanupCandidates
+            .filter(candidate => (candidate.ai_decision || candidate.aiDecision) === 'delete')
+            .map(candidate => candidate.path)
+        );
+        largeFileCleanupRenderTable();
+      }
+
+      async function largeFileCleanupAnalyze() {
+        if (!largeFileCleanupCandidates.length) {
+          window.showToast?.(t('home.cleanupLargeFilesPage.noResults'));
+          return;
+        }
+        if (!largeFileCleanupHasAiKey()) {
+          showAiKeyRequiredOverlay();
+          return;
+        }
+        if (largeFileCleanupBusyState()) return;
+        const runId = ++largeFileCleanupAiRunId;
+        largeFileCleanupAiProgressDone = 0;
+        largeFileCleanupAiProgressTotal = largeFileCleanupCandidates.length;
+        largeFileCleanupSetBusy(true, 'ai');
+        largeFileCleanupUpdateSummary(t('home.cleanupLargeFilesPage.analysisRunning'));
+        const batches = [];
+        const batchSize = 16;
+        for (let i = 0; i < largeFileCleanupCandidates.length; i += batchSize) {
+          batches.push(largeFileCleanupCandidates.slice(i, i + batchSize));
+        }
+        const responseLanguage = getLang() === 'en' ? 'English' : '中文';
+        const decisionHelp = getLang() === 'en'
+          ? 'Use delete only for clearly redundant installers, archives, cache-like videos, or obvious downloads. Never return delete for high-risk items, chat folders, project/source folders, or model/development packages; return keep or review. Review anything uncertain. Explain what the file probably belongs to from its name and folder hint, but do not overclaim.'
+          : '只对明显冗余的安装包、压缩包、缓存类视频、下载目录中的临时文件给出 delete。严禁对 high 风险项、聊天文件目录、项目源码目录、模型/开发包返回 delete；这类只能返回 keep 或 review。无法判断的给 review。需要根据文件名和目录线索解释文件大概属于什么软件/用途，但不要过度确定。';
+        try {
+          for (const batch of batches) {
+            if (runId !== largeFileCleanupAiRunId) return;
+            const prompt = [
+              {
+                role: 'system',
+                content: `You are a careful local cleanup assistant. Only inspect file metadata, never ask for or infer file contents. Reply in ${responseLanguage} with strict JSON only. The JSON must be: {"items":[{"id":"...","identity":"...","decision":"delete|keep|review","reason":"..."}]}. "identity" explains what this file probably is or which app/component it likely belongs to, based on file name and folder hint. "reason" explains why the decision is safe or why human review is needed. Keep identity under 28 Chinese chars or 8 English words; keep reason under 90 Chinese chars or 35 English words. If file names or folder hints mention Devin, language_server, resources/app/extensions, identify them as Devin AI IDE main program or extension/runtime components when appropriate.`
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  privacy_note: 'Only relative folder hints are provided. Absolute local paths and file contents are intentionally withheld.',
+                  mode: largeFileCleanupMode,
+                  threshold_mb: Number(largeFileCleanupThreshold?.value || 50) || 50,
+                  guidance: decisionHelp,
+                  items: batch.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    size_bytes: item.size_bytes,
+                    category: item.category,
+                    modified_at: item.modified_at,
+                    folder_hint: item.folder_hint,
+                    risk: item.risk,
+                    local_reason: item.local_reason
+                  }))
+                }, null, 2)
+              }
+            ];
+            const content = await callDeepSeek(prompt, undefined, 1800);
+            const parsed = largeFileCleanupExtractJson(content);
+            if (parsed) {
+              largeFileCleanupApplyAiDecisions(parsed);
+            }
+            largeFileCleanupAiProgressDone = Math.min(largeFileCleanupAiProgressTotal, largeFileCleanupAiProgressDone + batch.length);
+            largeFileCleanupRenderAiCard();
+          }
+          if (runId === largeFileCleanupAiRunId) {
+            window.showToast?.(t('home.cleanupLargeFilesPage.analysisReady'));
+          }
+        } catch (error) {
+          if (runId !== largeFileCleanupAiRunId) return;
+          console.error('Cleanup AI analysis failed:', error);
+          window.showToast?.(error?.message || t('home.cleanupLargeFilesPage.aiNeedKey'));
+        } finally {
+          if (runId === largeFileCleanupAiRunId) {
+            largeFileCleanupSetBusy(false);
+            largeFileCleanupUpdateSummary();
+            largeFileCleanupSyncSelectionUi();
+          }
+        }
+      }
+
+      function largeFileCleanupSelectAll(nextSelected) {
+        largeFileCleanupSelectedPaths = new Set(
+          nextSelected
+            ? largeFileCleanupCandidates.map(item => item.path)
+            : []
+        );
+        largeFileCleanupRenderTable();
+      }
+
+      function largeFileCleanupFileNameFromPath(path) {
+        const value = String(path || '').trim();
+        if (!value) return '--';
+        return value.split(/[\\/]/).filter(Boolean).pop() || value;
+      }
+
+      function largeFileCleanupFriendlyRecycleError(error) {
+        const message = String(error || '').trim();
+        const lower = message.toLowerCase();
+        if (!message) return t('home.cleanupLargeFilesPage.recycleFailureUnknown');
+        if (lower.includes('access') || lower.includes('permission') || message.includes('拒绝访问') || message.includes('权限')) {
+          return t('home.cleanupLargeFilesPage.recycleFailureAccessDenied');
+        }
+        if (lower.includes('being used') || lower.includes('another process') || lower.includes('in use') || message.includes('另一个程序') || message.includes('进程') || message.includes('占用')) {
+          return t('home.cleanupLargeFilesPage.recycleFailureInUse');
+        }
+        if (lower.includes('no longer exists') || lower.includes('cannot find') || message.includes('找不到') || message.includes('不存在')) {
+          return t('home.cleanupLargeFilesPage.recycleFailureMissing');
+        }
+        if (lower.includes('recycle') || message.includes('回收站')) {
+          return t('home.cleanupLargeFilesPage.recycleFailureRecycleUnavailable');
+        }
+        return message.length > 140 ? `${message.slice(0, 140)}...` : message;
+      }
+
+      function largeFileCleanupRenderFailureDetails(result) {
+        if (!largeFileCleanupSuccessFailures) return;
+        const failedItems = (Array.isArray(result?.items) ? result.items : []).filter(item => !item?.ok);
+        if (!failedItems.length) {
+          largeFileCleanupSuccessFailures.hidden = true;
+          largeFileCleanupSuccessFailures.innerHTML = '';
+          return;
+        }
+        const previewItems = failedItems.slice(0, 3);
+        const rows = previewItems.map(item => {
+          const name = largeFileCleanupFileNameFromPath(item?.path);
+          const reason = largeFileCleanupFriendlyRecycleError(item?.error);
+          return `<span title="${escapeAttr(`${name}：${reason}`)}">${escapeHtml(name)}：${escapeHtml(reason)}</span>`;
+        });
+        const remaining = failedItems.length - previewItems.length;
+        if (remaining > 0) {
+          rows.push(`<span>${escapeHtml(t('home.cleanupLargeFilesPage.deleteFailureMore', { count: remaining }))}</span>`);
+        }
+        rows.push(`<span>${escapeHtml(t('home.cleanupLargeFilesPage.deleteFailureHint'))}</span>`);
+        largeFileCleanupSuccessFailures.innerHTML = `<strong>${escapeHtml(t('home.cleanupLargeFilesPage.deleteFailureTitle'))}</strong>${rows.join('')}`;
+        largeFileCleanupSuccessFailures.hidden = false;
+      }
+
+      async function largeFileCleanupDeleteSelected() {
+        if (!isTauri) {
+          window.showToast?.(getLang() === 'zh' ? '仅支持桌面端清理。' : 'Cleanup is only available in the desktop app.');
+          return;
+        }
+        if (largeFileCleanupBusyState()) return;
+        const selected = largeFileCleanupCandidates.filter(item => largeFileCleanupSelectedPaths.has(item.path));
+        if (!selected.length) {
+          window.showToast?.(getLang() === 'zh' ? '请先勾选要移入回收站的文件。' : 'Please select files before moving them to the Recycle Bin.');
+          return;
+        }
+        const selectedBytes = selected.reduce((sum, item) => sum + Number(item?.size_bytes || 0), 0);
+        const confirmMessage = getLang() === 'zh'
+          ? `确定将 ${selected.length} 个文件移入回收站吗？\n\n待释放约 ${formatFileSize(selectedBytes)}，清空回收站后才会真正释放磁盘空间。`
+          : `Move ${selected.length} selected file(s) to the Recycle Bin?\n\nPending release about ${formatFileSize(selectedBytes)}. Disk space is freed only after emptying the Recycle Bin.`;
+        if (!window.confirm(confirmMessage)) return;
+        largeFileCleanupSetBusy(true, 'delete');
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const result = await invoke('move_files_to_recycle_bin', {
+            paths: selected.map(item => item.path)
+          });
+          const movedPaths = new Set((result?.items || []).filter(item => item?.ok).map(item => item.path));
+          const failedPaths = new Set((result?.items || []).filter(item => !item?.ok).map(item => item.path));
+          largeFileCleanupCandidates = largeFileCleanupCandidates.filter(item => !movedPaths.has(item.path));
+          largeFileCleanupSelectedPaths = failedPaths;
+          largeFileCleanupRenderTable();
+          if (largeFileCleanupSuccessMeta) {
+            largeFileCleanupSuccessMeta.textContent = t('home.cleanupLargeFilesPage.deleteSummary', {
+              moved: Number(result?.moved || 0),
+              failed: Number(result?.failed || 0),
+              size: formatFileSize(Number(result?.freed_bytes || 0))
+            });
+          }
+          largeFileCleanupRenderFailureDetails(result);
+          if (largeFileCleanupSuccessAnalyzed) largeFileCleanupSuccessAnalyzed.textContent = String(largeFileCleanupAnalyzeCount());
+          if (largeFileCleanupSuccessMoved) largeFileCleanupSuccessMoved.textContent = String(Number(result?.moved || 0));
+          if (largeFileCleanupSuccessSize) largeFileCleanupSuccessSize.textContent = formatFileSize(Number(result?.freed_bytes || 0));
+          if (largeFileCleanupSuccessFolder) largeFileCleanupSuccessFolder.textContent = t('home.cleanupLargeFilesPage.recycleNextStepValue');
+          if (largeFileCleanupSuccessOverlay) largeFileCleanupSuccessOverlay.classList.add('visible');
+        } catch (error) {
+          console.error('Cleanup delete failed:', error);
+          window.showToast?.(error?.message || (getLang() === 'zh' ? '移入回收站失败。' : 'Failed to move files to the Recycle Bin.'));
+        } finally {
+          largeFileCleanupSetBusy(false);
+          largeFileCleanupUpdateSummary();
+          largeFileCleanupSyncSelectionUi();
+        }
+      }
+
+      if (!largeFileCleanupRootPath) {
+        const savedFolder = loadLargeFileCleanupFolder();
+        if (savedFolder) {
+          largeFileCleanupRootPath = savedFolder;
+          largeFileCleanupSetFolderLabel(savedFolder);
+        }
+      }
+
+      largeFileCleanupBack?.addEventListener('click', largeFileCleanupClose);
+      largeFileCleanupChooseFolder?.addEventListener('click', chooseLargeFileCleanupFolder);
+      largeFileCleanupScanBtn?.addEventListener('click', largeFileCleanupScan);
+      largeFileCleanupAiBtn?.addEventListener('click', largeFileCleanupAnalyze);
+      largeFileCleanupSelectAllBtn?.addEventListener('click', () => largeFileCleanupSelectAll(true));
+      largeFileCleanupClearBtn?.addEventListener('click', () => largeFileCleanupSelectAll(false));
+      largeFileCleanupDeleteBtn?.addEventListener('click', largeFileCleanupDeleteSelected);
+      largeFileCleanupSelectAllCheckbox?.addEventListener('change', () => largeFileCleanupSelectAll(!!largeFileCleanupSelectAllCheckbox.checked));
+      largeFileCleanupModeGroup?.addEventListener('click', largeFileCleanupModeChipHandler);
+      largeFileCleanupSuccessOpenFolder?.addEventListener('click', async () => {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_recycle_bin');
+        } catch (error) {
+          console.error('Open recycle bin failed:', error);
+          window.showToast?.(getLang() === 'zh' ? '打开回收站失败，请手动从桌面或资源管理器打开。' : 'Failed to open Recycle Bin. Please open it manually.');
+        }
+      });
+      largeFileCleanupSuccessOk?.addEventListener('click', () => {
+        largeFileCleanupSuccessOverlay?.classList.remove('visible');
+      });
+      largeFileCleanupDriveRootCancel?.addEventListener('click', () => closeLargeFileCleanupDriveRootOverlay(false));
+      largeFileCleanupDriveRootConfirm?.addEventListener('click', () => closeLargeFileCleanupDriveRootOverlay(true));
+      largeFileCleanupDriveRootOverlay?.querySelector('.ffmpeg-overlay-bg')?.addEventListener('click', () => closeLargeFileCleanupDriveRootOverlay(false));
+      largeFileCleanupSizeSort?.addEventListener('mouseenter', () => {
+        openLargeFileCleanupSizeSortMenu();
+      });
+      largeFileCleanupSizeSort?.addEventListener('mouseleave', () => {
+        closeLargeFileCleanupSizeSortMenu(420);
+      });
+      largeFileCleanupSizeSortTrigger?.addEventListener('click', event => {
+        event.stopPropagation();
+        if (largeFileCleanupSizeSort?.classList.contains('is-open')) {
+          closeLargeFileCleanupSizeSortMenu(160);
+        } else {
+          openLargeFileCleanupSizeSortMenu();
+        }
+      });
+      largeFileCleanupSizeSortMenu?.addEventListener('click', event => {
+        const button = event.target.closest('[data-sort]');
+        if (!button) return;
+        event.stopPropagation();
+        setLargeFileCleanupSortMode(button.dataset.sort || 'default');
+      });
+      document.addEventListener('click', event => {
+        if (largeFileCleanupContextMenu?.contains(event.target)) return;
+        if (largeFileCleanupSizeSort?.contains(event.target)) return;
+        closeLargeFileCleanupSizeSortMenu(0);
+        hideLargeFileCleanupContextMenu();
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          closeLargeFileCleanupSizeSortMenu(0);
+          hideLargeFileCleanupContextMenu();
+          closeLargeFileCleanupHoverToast(0);
+        }
+      });
+      largeFileCleanupOverlay?.addEventListener('scroll', hideLargeFileCleanupContextMenu, { passive: true });
+      largeFileCleanupBody?.addEventListener('scroll', hideLargeFileCleanupContextMenu, { passive: true });
+
+      document.querySelectorAll('.audio-list-item[data-tool="large-file-cleanup"]').forEach(item => {
+        item.addEventListener('click', () => {
+          largeFileCleanupOpen();
+        });
+        item.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            largeFileCleanupOpen();
+          }
+        });
+      });
+
+      onLangChange(() => {
+        if (!largeFileCleanupOverlay?.classList.contains('visible')) return;
+        largeFileCleanupSetFolderLabel(largeFileCleanupRootPath);
+        largeFileCleanupRenderTable();
+        syncLargeFileCleanupSizeSortUi();
+        largeFileCleanupRenderAiCard();
+      });
 
       // Click on audio-list-item with data-tool="convert" to open the convert page
       document.querySelectorAll('.audio-list-item[data-tool="convert"]').forEach(item => {
@@ -1989,7 +4923,7 @@
           audioConvertSuccessCount.textContent = `${successCount} ${t('home.audioConvert.successCountUnit')}`;
         }
         if (audioConvertSuccessPath) {
-          audioConvertSuccessPath.textContent = outputPath;
+          audioConvertSuccessPath.textContent = displayFilesystemPath(outputPath);
         }
         lastOutputPath = outputPath;
         if (audioConvertSuccessOverlay) {
@@ -2170,6 +5104,10 @@
         return div.innerHTML;
       }
 
+      function escapeAttr(text) {
+        return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
       function enableSortableFileList(container, files, render, isLocked = () => false) {
         if (!container || !Array.isArray(files)) return;
         const rows = Array.from(container.querySelectorAll(':scope > .audio-convert-file-item'));
@@ -2226,9 +5164,7 @@
         if (!imageConvertOverlay) return;
         imageConvertOverlay.classList.add('visible');
         if (imageConvertPlasmaBg && !imageConvertPlasmaInstance) {
-          imageConvertPlasmaInstance = initPlasma(imageConvertPlasmaBg, {
-            color: '#6B6B6B', speed: 0.8, direction: 'forward', scale: 1, opacity: 1, mouseInteractive: false
-          });
+          imageConvertPlasmaInstance = initStandardToolPlasma(imageConvertPlasmaBg);
         }
       }
 
@@ -2402,7 +5338,7 @@
         if (imageConvertSuccessMeta) imageConvertSuccessMeta.textContent = summary;
         if (imageConvertSuccessFormat) imageConvertSuccessFormat.textContent = targetImageFormat;
         if (imageConvertSuccessCount) imageConvertSuccessCount.textContent = `${successCount} ${t('home.imageConvert.successCountUnit')}`;
-        if (imageConvertSuccessPath) imageConvertSuccessPath.textContent = outputPath;
+        if (imageConvertSuccessPath) imageConvertSuccessPath.textContent = displayFilesystemPath(outputPath);
         lastImageOutputPath = outputPath;
         if (imageConvertSuccessOverlay) imageConvertSuccessOverlay.classList.add('visible');
       }
@@ -2550,9 +5486,7 @@
         if (!imageCompressOverlay) return;
         imageCompressOverlay.classList.add('visible');
         if (imageCompressPlasmaBg && !imageCompressPlasmaInstance) {
-          imageCompressPlasmaInstance = initPlasma(imageCompressPlasmaBg, {
-            color: '#6B6B6B', speed: 0.8, direction: 'forward', scale: 1, opacity: 1, mouseInteractive: false
-          });
+          imageCompressPlasmaInstance = initStandardToolPlasma(imageCompressPlasmaBg);
         }
       }
 
@@ -2742,7 +5676,7 @@
         if (imageCompressSuccessMeta) imageCompressSuccessMeta.textContent = summary;
         if (imageCompressSuccessFormat) imageCompressSuccessFormat.textContent = qualityText;
         if (imageCompressSuccessCount) imageCompressSuccessCount.textContent = `${successCount} ${t('home.imageCompress.successCountUnit')}`;
-        if (imageCompressSuccessPath) imageCompressSuccessPath.textContent = outputPath;
+        if (imageCompressSuccessPath) imageCompressSuccessPath.textContent = displayFilesystemPath(outputPath);
 
         const origSize = result?.original_size ?? 0;
         const compSize = result?.compressed_size ?? 0;
@@ -2925,9 +5859,7 @@
         if (!iconGenOverlay) return;
         iconGenOverlay.classList.add('visible');
         if (iconGenPlasmaBg && !iconGenPlasmaInstance) {
-          iconGenPlasmaInstance = initPlasma(iconGenPlasmaBg, {
-            color: '#6B6B6B', speed: 0.8, direction: 'forward', scale: 1, opacity: 1, mouseInteractive: false
-          });
+          iconGenPlasmaInstance = initStandardToolPlasma(iconGenPlasmaBg);
         }
       }
 
@@ -3034,7 +5966,8 @@
               const imgExts = ['png', 'jpg', 'jpeg', 'webp'];
               const imgPath = paths.find(p => imgExts.some(ext => p.toLowerCase().endsWith('.' + ext)));
               if (imgPath) {
-                handleIconGenFileSelect({ name: imgPath.split(/[\\/]/).pop() || imgPath, path: imgPath, size: 0, type: 'image/png' });
+                const name = imgPath.split(/[\\/]/).pop() || imgPath;
+                handleIconGenFileSelect({ name, path: imgPath, size: 0, type: getIconGenMimeType(name) });
               }
             }
           });
@@ -3051,7 +5984,8 @@
                 filters: [{ name: 'Image Files', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
               });
               if (selected && typeof selected === 'string') {
-                handleIconGenFileSelect({ name: selected.split(/[\\/]/).pop() || selected, path: selected, size: 0, type: 'image/png' });
+                const name = selected.split(/[\\/]/).pop() || selected;
+                handleIconGenFileSelect({ name, path: selected, size: 0, type: getIconGenMimeType(name) });
               }
             } catch (e) {
               console.error('Icon gen file selection error', e);
@@ -3080,22 +6014,28 @@
             sourceSize = Number(await invoke('get_file_size', { path: file.path }));
           }
           assertIconSource(file, sourceSize);
-          const sourceBytes = await readIconGenSourceBytes(file);
-          assertIconSource(file, sourceBytes.byteLength);
-          const dimensions = readColorExtractorImageDimensions(sourceBytes);
+          const preparedSource = await readIconGenSource(file);
+          const sourceBytes = preparedSource.bytes;
+          const dimensions = preparedSource.dimensions || readColorExtractorImageDimensions(sourceBytes);
           if (!dimensions) {
-            throw new IconGenerationError('invalid_image_data', 'Image data is unsupported or malformed.');
+            throw new IconGenerationError('invalid_image_data', t('home.iconGen.decodeError'));
           }
           assertIconSourceDimensions(dimensions.width, dimensions.height);
-          candidateUrl = URL.createObjectURL(new Blob([sourceBytes], { type: getIconGenMimeType(file?.name) }));
-          const candidateImage = await loadIconGenImage(candidateUrl);
+          candidateUrl = URL.createObjectURL(new Blob([sourceBytes], { type: preparedSource.mimeType }));
+          let candidateImage;
+          try {
+            candidateImage = await loadIconGenImage(candidateUrl);
+          } catch (decodeError) {
+            console.error('Icon source image decode failed:', decodeError);
+            throw new IconGenerationError('decode_failed', t('home.iconGen.decodeError'));
+          }
           assertIconSourceDimensions(candidateImage.naturalWidth, candidateImage.naturalHeight);
 
           if (iconGenObjectUrl) URL.revokeObjectURL(iconGenObjectUrl);
           iconGenObjectUrl = candidateUrl;
           selectedIconGenFile = file;
           selectedIconGenImage = candidateImage;
-          selectedIconGenFileSize = sourceSize;
+          selectedIconGenFileSize = preparedSource.sourceSize || sourceSize;
         } catch (error) {
           if (candidateUrl) URL.revokeObjectURL(candidateUrl);
           console.error('Icon source validation failed:', error);
@@ -3131,16 +6071,33 @@
         return 'image/jpeg';
       }
 
-      async function readIconGenSourceBytes(file) {
+      async function readIconGenSource(file) {
         if (isTauri && file?.path) {
           const { invoke } = await import('@tauri-apps/api/core');
-          const rawBytes = await invoke('read_file_bytes_limited', {
-            path: file.path,
-            maxBytes: ICON_GEN_LIMITS.maxInputBytes
-          });
-          return Array.isArray(rawBytes) ? Uint8Array.from(rawBytes) : new Uint8Array(rawBytes);
+          try {
+            const prepared = await invoke('prepare_icon_source_image', { path: file.path });
+            const rawBytes = prepared?.bytes;
+            const bytes = Array.isArray(rawBytes) ? Uint8Array.from(rawBytes) : new Uint8Array(rawBytes);
+            return {
+              bytes,
+              mimeType: 'image/png',
+              sourceSize: Number(prepared?.source_bytes) || bytes.byteLength,
+              dimensions: {
+                width: Number(prepared?.width),
+                height: Number(prepared?.height)
+              }
+            };
+          } catch (error) {
+            console.error('Icon source preparation failed:', error);
+            throw new IconGenerationError('decode_failed', t('home.iconGen.decodeError'));
+          }
         }
-        return new Uint8Array(await file.arrayBuffer());
+        return {
+          bytes: new Uint8Array(await file.arrayBuffer()),
+          mimeType: getIconGenMimeType(file?.name),
+          sourceSize: Number(file?.size) || 0,
+          dimensions: null
+        };
       }
 
       function loadIconGenImage(objectUrl) {
@@ -3397,7 +6354,7 @@
         if (iconGenSuccessCount) iconGenSuccessCount.textContent = `${count} ${t('home.iconGen.successCountUnit')}`;
         if (iconGenSuccessMeta) {
           if (lastIconGenDownloadDir) {
-            const dir = lastIconGenDownloadDir.includes('\\') ? lastIconGenDownloadDir.substring(0, lastIconGenDownloadDir.lastIndexOf('\\')) : lastIconGenDownloadDir;
+            const dir = displayOutputParentFolder(lastIconGenDownloadDir);
             iconGenSuccessMeta.textContent = t('home.iconGen.successSummary', { count }) + '\n' + dir;
           } else {
             iconGenSuccessMeta.textContent = t('home.iconGen.successSummary', { count });
@@ -3420,7 +6377,7 @@
         iconGenOpenFolder.addEventListener('click', () => {
           if (isTauri && lastIconGenDownloadDir) {
             import('@tauri-apps/api/core').then(({ invoke }) => {
-              const dir = lastIconGenDownloadDir.includes('\\') ? lastIconGenDownloadDir.substring(0, lastIconGenDownloadDir.lastIndexOf('\\')) : lastIconGenDownloadDir;
+              const dir = outputParentFolder(lastIconGenDownloadDir);
               invoke('open_path', { path: dir }).catch(e => console.error('Open folder error', e));
             }).catch(e => console.error('Core import error', e));
           }
@@ -3438,9 +6395,7 @@
         if (!videoConvertOverlay) return;
         videoConvertOverlay.classList.add('visible');
         if (videoConvertPlasmaBg && !videoConvertPlasmaInstance) {
-          videoConvertPlasmaInstance = initPlasma(videoConvertPlasmaBg, {
-            color: '#6B6B6B', speed: 0.8, direction: 'forward', scale: 1, opacity: 1, mouseInteractive: false
-          });
+          videoConvertPlasmaInstance = initStandardToolPlasma(videoConvertPlasmaBg);
         }
       }
 
@@ -3616,7 +6571,7 @@
         if (videoConvertSuccessMeta) videoConvertSuccessMeta.textContent = summary;
         if (videoConvertSuccessFormat) videoConvertSuccessFormat.textContent = targetVideoFormat;
         if (videoConvertSuccessCount) videoConvertSuccessCount.textContent = `${successCount} ${t('home.videoConvert.successCountUnit')}`;
-        if (videoConvertSuccessPath) videoConvertSuccessPath.textContent = outputPath;
+        if (videoConvertSuccessPath) videoConvertSuccessPath.textContent = displayFilesystemPath(outputPath);
         lastVideoOutputPath = outputPath;
         if (videoConvertSuccessOverlay) videoConvertSuccessOverlay.classList.add('visible');
       }
@@ -3751,6 +6706,7 @@
 
       // ===== Image Stitch Tool =====
       const imageStitchOverlay = document.getElementById('imageStitchOverlay');
+      const imageStitchPlasmaBg = document.getElementById('imageStitchPlasmaBg');
       const imageStitchQueue = document.getElementById('imageStitchQueue');
       const imageStitchQueueEmpty = document.getElementById('imageStitchQueueEmpty');
       const imageStitchPreview = document.getElementById('imageStitchPreview');
@@ -3780,6 +6736,20 @@
       let imageStitchPdfImportCancelled = false;
       let imageStitchPdfLoadingTask = null;
       let imageStitchCancelRequested = false;
+      let imageStitchPlasmaInstance = null;
+
+      function openImageStitchOverlay() {
+        imageStitchOverlay?.classList.add('visible');
+        if (imageStitchPlasmaBg && !imageStitchPlasmaInstance) {
+          imageStitchPlasmaInstance = initStandardToolPlasma(imageStitchPlasmaBg);
+        }
+      }
+
+      function closeImageStitchOverlay() {
+        if (imageStitchBusy) return;
+        imageStitchOverlay?.classList.remove('visible');
+        imageStitchPlasmaInstance = disposeStandardToolPlasma(imageStitchPlasmaInstance);
+      }
 
       function imageStitchBackgroundRgba() {
         const color = document.getElementById('imageStitchBackground')?.value || '#ffffff';
@@ -4001,7 +6971,7 @@
       }
 
       async function openImageStitcher({ source = 'images', paths = [], sessionId = null } = {}) {
-        imageStitchOverlay?.classList.add('visible');
+        openImageStitchOverlay();
         const added = await addImageStitchPaths(paths);
         if (added && sessionId && !imageStitchPdfSessions.some(session => session.id === sessionId)) {
           imageStitchPdfSessions.push({ id: sessionId, source, paths: [...paths] });
@@ -4226,7 +7196,7 @@
           lastImageStitchOutputPath = result.output_path || result.outputPath || '';
           document.getElementById('imageStitchSuccessMeta').textContent = t('home.imageStitch.successMeta').replace('{count}', result.count).replace('{format}', result.format);
           document.getElementById('imageStitchSuccessSize').textContent = `${result.width} × ${result.height} px`;
-          document.getElementById('imageStitchSuccessPath').textContent = lastImageStitchOutputPath;
+          document.getElementById('imageStitchSuccessPath').textContent = displayFilesystemPath(lastImageStitchOutputPath);
           document.getElementById('imageStitchSuccessOverlay').classList.add('visible');
         } catch (error) {
           if (!String(error).includes('cancelled')) window.showToast?.(imageStitchErrorMessage(error));
@@ -4247,9 +7217,9 @@
       });
       document.getElementById('imageStitchSuccessOk')?.addEventListener('click', () => document.getElementById('imageStitchSuccessOverlay')?.classList.remove('visible'));
       document.getElementById('imageStitchOpenFolder')?.addEventListener('click', () => { if (lastImageStitchOutputPath) openOutputFolder(lastImageStitchOutputPath).catch(() => {}); document.getElementById('imageStitchSuccessOverlay')?.classList.remove('visible'); });
-      document.getElementById('imageStitchBack')?.addEventListener('click', () => { if (!imageStitchBusy) imageStitchOverlay?.classList.remove('visible'); });
+      document.getElementById('imageStitchBack')?.addEventListener('click', closeImageStitchOverlay);
       document.querySelectorAll('.audio-list-item[data-tool="image-stitch"]').forEach(item => item.addEventListener('click', () => {
-        imageStitchOverlay?.classList.add('visible');
+        openImageStitchOverlay();
         renderImageStitchQueue();
         if (typeof createIcons === 'function') createIcons({ icons });
       }));
@@ -4622,7 +7592,7 @@
         if (videoFrameEditor) videoFrameEditor.hidden = true;
         if (videoFrameEmpty) videoFrameEmpty.hidden = false;
       }
-      function openVideoFrameOverlay() { videoFrameOverlay?.classList.add('visible'); if (videoFramePlasmaBg && !videoFramePlasmaDispose) videoFramePlasmaDispose = initPlasma(videoFramePlasmaBg, { color: '#6B6B6B', speed: 0.45, scale: 1, opacity: 1, mouseInteractive: false }); }
+      function openVideoFrameOverlay() { videoFrameOverlay?.classList.add('visible'); if (videoFramePlasmaBg && !videoFramePlasmaDispose) videoFramePlasmaDispose = initStandardToolPlasma(videoFramePlasmaBg); }
       function closeVideoFrameOverlay() { videoFrameOverlay?.classList.remove('visible'); clearVideoFrame(); if (videoFramePlasmaDispose) { videoFramePlasmaDispose(); videoFramePlasmaDispose = null; } }
       async function loadVideoFrameFile(selected) {
         if (!isTauri) { window.showToast?.('视频单帧导出仅可在桌面端使用。'); return; }
@@ -4701,7 +7671,7 @@
         if (videoFrameSuccessMeta) videoFrameSuccessMeta.textContent = videoFrameFile?.name || '';
         if (videoFrameSuccessFormat) videoFrameSuccessFormat.textContent = String(result.format || videoFrameOutputFormat).toUpperCase();
         if (videoFrameSuccessTime) videoFrameSuccessTime.textContent = frameTimeLabel(result.timestamp_ms ?? videoFrameTimestampMs);
-        if (videoFrameSuccessPath) videoFrameSuccessPath.textContent = lastVideoFrameOutputPath;
+        if (videoFrameSuccessPath) videoFrameSuccessPath.textContent = displayFilesystemPath(lastVideoFrameOutputPath);
         videoFrameSuccessOverlay?.classList.add('visible');
       }
       videoFrameCancelBtn?.addEventListener('click', () => import('@tauri-apps/api/core').then(({ invoke }) => invoke('cancel_convert')).catch(() => {}));
@@ -5039,7 +8009,7 @@
         if (videoGifEmpty) videoGifEmpty.hidden = false;
         updateVideoGifSelection();
       }
-      function openVideoGifOverlay() { videoGifOverlay?.classList.add('visible'); if (videoGifPlasmaBg && !videoGifPlasmaDispose) videoGifPlasmaDispose = initPlasma(videoGifPlasmaBg, { color: '#6B6B6B', speed: 0.45, scale: 1, opacity: 1, mouseInteractive: false }); }
+      function openVideoGifOverlay() { videoGifOverlay?.classList.add('visible'); if (videoGifPlasmaBg && !videoGifPlasmaDispose) videoGifPlasmaDispose = initStandardToolPlasma(videoGifPlasmaBg); }
       function closeVideoGifOverlay() { videoGifOverlay?.classList.remove('visible'); clearVideoGif(); if (videoGifPlasmaDispose) { videoGifPlasmaDispose(); videoGifPlasmaDispose = null; } }
       async function loadVideoGifFile(selected) {
         if (!isTauri) { window.showToast?.('视频 GIF 导出仅可在桌面端使用。'); return; }
@@ -5140,7 +8110,7 @@
           if (videoGifSuccessDuration) videoGifSuccessDuration.textContent = `${(settings.duration_ms / 1000).toFixed(3)} 秒`;
           if (videoGifSuccessSpec) videoGifSuccessSpec.textContent = `${settings.width}px / ${settings.frame_rate} FPS / ${videoGifQualityLabels[settings.quality] || '均衡'}`;
           if (videoGifSuccessSize) videoGifSuccessSize.textContent = formatFileSize(Number(result.output_size ?? result.outputSize ?? 0));
-          if (videoGifSuccessPath) videoGifSuccessPath.textContent = lastVideoGifOutputPath;
+          if (videoGifSuccessPath) videoGifSuccessPath.textContent = displayFilesystemPath(lastVideoGifOutputPath);
           if (videoGifProcessBarFill) videoGifProcessBarFill.style.width = '100%';
           setTimeout(() => { videoGifProcessMask?.classList.remove('visible'); if (videoGifProcessBarFill) videoGifProcessBarFill.style.width = '0%'; videoGifSuccessOverlay?.classList.add('visible'); }, 240);
         } catch (error) { videoGifProcessMask?.classList.remove('visible'); if (videoGifProcessBarFill) videoGifProcessBarFill.style.width = '0%'; window.showToast?.(error?.message || 'GIF 导出失败。'); }
@@ -5272,12 +8242,7 @@
         bpmResult.classList.remove('visible');
         // Init plasma bg
         if (bpmPlasmaBg && !bpmPlasmaInstance) {
-          bpmPlasmaInstance = initPlasma(bpmPlasmaBg, {
-            color: '#6B6B6B',
-            speed: 0.8,
-            direction: 'forward',
-            density: 3
-          });
+          bpmPlasmaInstance = initStandardToolPlasma(bpmPlasmaBg);
         }
       }
 
@@ -5908,11 +8873,7 @@
         audioClipOverlay.classList.add('visible');
         audioClipHeroTop.style.display = '';
         if (audioClipPlasmaBg && !audioClipPlasmaInstance) {
-          audioClipPlasmaInstance = initPlasma(audioClipPlasmaBg, {
-            color: '#6B6B6B',
-            speed: 0.8,
-            direction: 'forward',
-          });
+          audioClipPlasmaInstance = initStandardToolPlasma(audioClipPlasmaBg);
         }
       }
 
@@ -6496,7 +9457,7 @@
             }
             if (audioClipSuccessFile) audioClipSuccessFile.textContent = request.fileName;
             if (audioClipSuccessDuration) audioClipSuccessDuration.textContent = durStr;
-            if (audioClipSuccessPath) audioClipSuccessPath.textContent = result.output_path;
+            if (audioClipSuccessPath) audioClipSuccessPath.textContent = displayFilesystemPath(result.output_path);
             audioClipSuccessOverlay.classList.add('visible');
           } catch (error) {
             if (isCurrentClipExport(runId)) {
@@ -6695,11 +9656,7 @@
         if (!audioExtractOverlay) return;
         audioExtractOverlay.classList.add('visible');
         if (audioExtractPlasmaBg && !audioExtractPlasmaInstance) {
-          audioExtractPlasmaInstance = initPlasma(audioExtractPlasmaBg, {
-            color: '#6B6B6B',
-            speed: 0.8,
-            direction: 'forward',
-          });
+          audioExtractPlasmaInstance = initStandardToolPlasma(audioExtractPlasmaBg);
         }
       }
 
@@ -6908,7 +9865,7 @@
           }
           if (audioExtractSuccessFile) audioExtractSuccessFile.textContent = request.fileName;
           if (audioExtractSuccessFormat) audioExtractSuccessFormat.textContent = request.targetFormat;
-          if (audioExtractSuccessPath) audioExtractSuccessPath.textContent = result.output_path;
+          if (audioExtractSuccessPath) audioExtractSuccessPath.textContent = displayFilesystemPath(result.output_path);
           if (audioExtractSuccessOverlay) audioExtractSuccessOverlay.classList.add('visible');
         } catch (error) {
           if (isCurrentAudioExtractRun(runId)) {
@@ -7422,6 +10379,7 @@
           }
           apiKeyStatus.textContent = t('apiKey.saved');
           apiKeyStatus.className = 'api-key-status show success';
+          largeFileCleanupRenderAiCard();
           setTimeout(() => apiKeyOverlay.classList.remove('visible'), 800);
         });
       }
@@ -7436,6 +10394,7 @@
           localStorage.removeItem('deepseek_api_key');
           apiKeyStatus.textContent = t('apiKey.cleared');
           apiKeyStatus.className = 'api-key-status show success';
+          largeFileCleanupRenderAiCard();
           setTimeout(() => apiKeyOverlay.classList.remove('visible'), 800);
         });
       }
@@ -7445,8 +10404,20 @@
       const aiKeyRequiredCancel = document.getElementById('aiKeyRequiredCancel');
       const aiKeyRequiredGoSettings = document.getElementById('aiKeyRequiredGoSettings');
 
+      function showAiKeyRequiredOverlay() {
+        if (aiKeyRequiredOverlay) {
+          aiKeyRequiredOverlay.classList.add('visible');
+          aiKeyRequiredOverlay.setAttribute('aria-hidden', 'false');
+          return;
+        }
+        window.showToast?.(t('home.aiKeyRequired.desc'));
+      }
+
       function hideAiKeyRequiredOverlay() {
-        if (aiKeyRequiredOverlay) aiKeyRequiredOverlay.classList.remove('visible');
+        if (aiKeyRequiredOverlay) {
+          aiKeyRequiredOverlay.classList.remove('visible');
+          aiKeyRequiredOverlay.setAttribute('aria-hidden', 'true');
+        }
       }
       if (aiKeyRequiredCancel) {
         aiKeyRequiredCancel.addEventListener('click', hideAiKeyRequiredOverlay);
@@ -7461,26 +10432,132 @@
       // Check AI API key before opening AI tool overlay
       function openToolWithAiCheck(openFn) {
         if (!hasAiApiKey()) {
-          if (aiKeyRequiredOverlay) aiKeyRequiredOverlay.classList.add('visible');
+          showAiKeyRequiredOverlay();
           return;
         }
         openFn();
       }
 
-      window.showToast = function(message, duration = 2000) {
+      const APP_TOAST_MIN_DURATION = 5200;
+      const APP_TOAST_LONG_DURATION = 7200;
+      const APP_TOAST_MAX_VISIBLE = 3;
+      const activeAppToasts = [];
+
+      function appToastDurationFor(message, requestedDuration) {
+        const numericDuration = Number(requestedDuration);
+        const text = String(message || '');
+        const looksImportant = /(失败|错误|无法|不支持|需要|请|未|阻止|警告|failed|error|cannot|unable|blocked|warning|required|please)/i.test(text);
+        const lengthBonus = Math.min(2600, Math.max(0, text.length - 28) * 45);
+        const base = looksImportant ? APP_TOAST_LONG_DURATION : APP_TOAST_MIN_DURATION;
+        if (Number.isFinite(numericDuration) && numericDuration > 0) {
+          return Math.max(base, numericDuration, APP_TOAST_MIN_DURATION) + lengthBonus;
+        }
+        return base + lengthBonus;
+      }
+
+      function removeAppToast(record, immediate = false) {
+        if (!record || record.removed) return;
+        record.removed = true;
+        if (record.timer) clearTimeout(record.timer);
+        const index = activeAppToasts.indexOf(record);
+        if (index >= 0) activeAppToasts.splice(index, 1);
+        if (immediate) {
+          record.el.remove();
+          return;
+        }
+        record.el.classList.add('hiding');
+        record.el.addEventListener('animationend', () => record.el.remove(), { once: true });
+      }
+
+      function scheduleAppToastRemoval(record, duration) {
+        if (!record || record.removed) return;
+        if (record.timer) clearTimeout(record.timer);
+        record.startedAt = Date.now();
+        record.remaining = Math.max(800, duration);
+        record.timer = setTimeout(() => removeAppToast(record), record.remaining);
+      }
+
+      function showToast(message, optionsOrDuration = {}) {
         const container = document.getElementById('toastContainer');
         if (!container) return;
+        const text = String(message ?? '').trim();
+        if (!text) return;
+
+        const options = typeof optionsOrDuration === 'number'
+          ? { duration: optionsOrDuration }
+          : (optionsOrDuration && typeof optionsOrDuration === 'object' ? optionsOrDuration : {});
+
+        const duplicate = activeAppToasts.find(record => record.message === text && !record.removed);
+        if (duplicate) {
+          duplicate.messageEl.textContent = text;
+          scheduleAppToastRemoval(duplicate, appToastDurationFor(text, options.duration));
+          return {
+            el: duplicate.el,
+            close: () => removeAppToast(duplicate),
+            update: nextMessage => {
+              const nextText = String(nextMessage ?? '').trim();
+              if (nextText) duplicate.messageEl.textContent = nextText;
+            }
+          };
+        }
+
+        while (activeAppToasts.length >= APP_TOAST_MAX_VISIBLE) {
+          removeAppToast(activeAppToasts[0], true);
+        }
 
         const toast = document.createElement('div');
-        toast.className = 'toast';
-        toast.textContent = message;
+        toast.className = 'app-toast';
+        if (options.className) toast.classList.add(...String(options.className).split(/\s+/).filter(Boolean));
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+
+        const messageEl = document.createElement('div');
+        messageEl.className = 'app-toast-message';
+        messageEl.textContent = text;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'app-toast-close';
+        closeBtn.type = 'button';
+        closeBtn.setAttribute('aria-label', getLang() === 'zh' ? '关闭提示' : 'Dismiss notification');
+        closeBtn.textContent = '×';
+        if (options.dismissible === false) closeBtn.style.display = 'none';
+
+        toast.appendChild(messageEl);
+        toast.appendChild(closeBtn);
         container.appendChild(toast);
 
-        setTimeout(() => {
-          toast.classList.add('hiding');
-          toast.addEventListener('animationend', () => toast.remove(), { once: true });
-        }, duration);
-      };
+        const record = {
+          el: toast,
+          messageEl,
+          message: text,
+          timer: null,
+          startedAt: Date.now(),
+          remaining: appToastDurationFor(text, options.duration),
+          removed: false
+        };
+        activeAppToasts.push(record);
+
+        closeBtn.addEventListener('click', () => removeAppToast(record));
+        toast.addEventListener('mouseenter', () => {
+          if (record.timer) clearTimeout(record.timer);
+          record.timer = null;
+          const elapsed = Date.now() - record.startedAt;
+          record.remaining = Math.max(1600, record.remaining - elapsed);
+        });
+        toast.addEventListener('mouseleave', () => {
+          scheduleAppToastRemoval(record, record.remaining);
+        });
+        scheduleAppToastRemoval(record, record.remaining);
+        return {
+          el: toast,
+          close: () => removeAppToast(record),
+          update: nextMessage => {
+            const nextText = String(nextMessage ?? '').trim();
+            if (nextText) messageEl.textContent = nextText;
+          }
+        };
+      }
+      window.showToast = showToast;
 
       const HOME_LINKS = {
         website: 'https://toolknit.com',
@@ -7544,7 +10621,7 @@
       const GITHUB_FIXED_ACTIVITY_POINTS = '0,62 248,62 280,8';
       // A shipped snapshot prevents a blank metric on first launch without a network connection.
       const DEFAULT_GITHUB_STAR_COUNT = 216;
-      const DEFAULT_DONATION_TOTAL = 25.88;
+      const DEFAULT_DONATION_TOTAL = 80.88;
       const GITHUB_REQUEST_TIMEOUT_MS = 8_000;
 
       async function fetchGithubJson(url, options = {}) {
@@ -7620,8 +10697,8 @@
 
       async function loadDonationTotal() {
         const sources = [
-          { url: GITHUB_CONTRIBUTORS_URL, isLive: true },
-          { url: GITHUB_LOCAL_CONTRIBUTORS_URL, isLive: false }
+          { url: GITHUB_LOCAL_CONTRIBUTORS_URL, isLive: false },
+          { url: GITHUB_CONTRIBUTORS_URL, isLive: true }
         ];
         let lastError = null;
         for (const source of sources) {
@@ -7672,41 +10749,22 @@
 
       // ===== PDF Merger =====
       const pdfMergeOverlay = document.getElementById('pdfMergeOverlay');
-      const pdfMergeFerrofluid = document.getElementById('pdfMergeFerrofluid');
+      const pdfMergePlasmaBg = document.getElementById('pdfMergePlasmaBg');
       const pdfMergeBack = document.getElementById('pdfMergeBack');
-      let pdfMergeFerrofluidInstance = null;
+      let pdfMergePlasmaInstance = null;
 
       function openPdfMergeOverlay() {
         if (!pdfMergeOverlay) return;
         pdfMergeOverlay.classList.add('visible');
-        if (pdfMergeFerrofluid && !pdfMergeFerrofluidInstance) {
-          pdfMergeFerrofluidInstance = initFerrofluid(pdfMergeFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            speed: 0.3,
-            scale: 2,
-            turbulence: 1,
-            fluidity: 0.14,
-            rimWidth: 0.19,
-            sharpness: 4.7,
-            shimmer: 0.5,
-            glow: 2.8,
-            flowDirection: 'left',
-            opacity: 0.6,
-            mouseInteraction: true,
-            mouseStrength: 1.6,
-            mouseRadius: 0.6,
-            mouseDampening: 0.15
-          });
+        if (pdfMergePlasmaBg && !pdfMergePlasmaInstance) {
+          pdfMergePlasmaInstance = initStandardToolPlasma(pdfMergePlasmaBg);
         }
       }
 
       function closePdfMergeOverlay() {
         if (!pdfMergeOverlay) return;
         pdfMergeOverlay.classList.remove('visible');
-        if (pdfMergeFerrofluidInstance) {
-          pdfMergeFerrofluidInstance();
-          pdfMergeFerrofluidInstance = null;
-        }
+        pdfMergePlasmaInstance = disposeStandardToolPlasma(pdfMergePlasmaInstance);
         pdfMergeProcessing = false;
         pdfMergeCommitting = false;
         resetPdfMergeSelectionFlow();
@@ -7749,30 +10807,22 @@
 
       // ===== PDF Split Overlay Open/Close =====
       const pdfSplitOverlay = document.getElementById('pdfSplitOverlay');
-      const pdfSplitFerrofluid = document.getElementById('pdfSplitFerrofluid');
+      const pdfSplitPlasmaBg = document.getElementById('pdfSplitPlasmaBg');
       const pdfSplitBack = document.getElementById('pdfSplitBack');
-      let pdfSplitFerrofluidInstance = null;
+      let pdfSplitPlasmaInstance = null;
 
       function openPdfSplitOverlay() {
         if (!pdfSplitOverlay) return;
         pdfSplitOverlay.classList.add('visible');
-        if (pdfSplitFerrofluid && !pdfSplitFerrofluidInstance) {
-          pdfSplitFerrofluidInstance = initFerrofluid(pdfSplitFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            speed: 0.3,
-            scale: 2,
-            opacity: 0.6,
-          });
+        if (pdfSplitPlasmaBg && !pdfSplitPlasmaInstance) {
+          pdfSplitPlasmaInstance = initStandardToolPlasma(pdfSplitPlasmaBg);
         }
       }
 
       function closePdfSplitOverlay() {
         if (!pdfSplitOverlay) return;
         pdfSplitOverlay.classList.remove('visible');
-        if (pdfSplitFerrofluidInstance) {
-          pdfSplitFerrofluidInstance();
-          pdfSplitFerrofluidInstance = null;
-        }
+        pdfSplitPlasmaInstance = disposeStandardToolPlasma(pdfSplitPlasmaInstance);
       }
 
       if (pdfSplitBack) {
@@ -8321,7 +11371,7 @@
       function showPdfSplitSuccess(saveFolder, type, count, failedCount = 0) {
         lastPdfSplitSavedFolder = saveFolder;
         if (pdfSplitSuccessCount) pdfSplitSuccessCount.textContent = String(count);
-        if (pdfSplitSuccessPath) pdfSplitSuccessPath.textContent = saveFolder.replace(/\//g, '\\');
+        if (pdfSplitSuccessPath) pdfSplitSuccessPath.textContent = displayFilesystemPath(saveFolder);
         if (pdfSplitSuccessMeta) {
           pdfSplitSuccessMeta.textContent = failedCount > 0
             ? t('home.pdfSplit.partialSave', { saved: count, failed: failedCount })
@@ -8367,32 +11417,35 @@
         pdfSplitBack.addEventListener('click', closePdfSplitOverlayFull);
       }
 
+      // ===== PDF To Image =====
+      initPdfToImageTool({
+        isTauri,
+        t,
+        onLangChange,
+        pdfWorkerUrl,
+        getOutputDir,
+        displayFilesystemPath,
+        initStandardToolPlasma,
+        disposeStandardToolPlasma
+      });
       // ===== PDF Rotate Overlay Open/Close =====
       const pdfRotateOverlay = document.getElementById('pdfRotateOverlay');
-      const pdfRotateFerrofluid = document.getElementById('pdfRotateFerrofluid');
+      const pdfRotatePlasmaBg = document.getElementById('pdfRotatePlasmaBg');
       const pdfRotateBack = document.getElementById('pdfRotateBack');
-      let pdfRotateFerrofluidInstance = null;
+      let pdfRotatePlasmaInstance = null;
 
       function openPdfRotateOverlay() {
         if (!pdfRotateOverlay) return;
         pdfRotateOverlay.classList.add('visible');
-        if (pdfRotateFerrofluid && !pdfRotateFerrofluidInstance) {
-          pdfRotateFerrofluidInstance = initFerrofluid(pdfRotateFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            speed: 0.3,
-            scale: 2,
-            opacity: 0.6,
-          });
+        if (pdfRotatePlasmaBg && !pdfRotatePlasmaInstance) {
+          pdfRotatePlasmaInstance = initStandardToolPlasma(pdfRotatePlasmaBg);
         }
       }
 
       function closePdfRotateOverlay() {
         if (!pdfRotateOverlay) return;
         pdfRotateOverlay.classList.remove('visible');
-        if (pdfRotateFerrofluidInstance) {
-          pdfRotateFerrofluidInstance();
-          pdfRotateFerrofluidInstance = null;
-        }
+        pdfRotatePlasmaInstance = disposeStandardToolPlasma(pdfRotatePlasmaInstance);
       }
 
       if (pdfRotateBack) {
@@ -8984,7 +12037,7 @@
       function showPdfRotateSuccess(savePath, type, count) {
         lastPdfRotateSavedPath = savePath;
         if (pdfRotateSuccessCount) pdfRotateSuccessCount.textContent = String(count);
-        if (pdfRotateSuccessPath) pdfRotateSuccessPath.textContent = savePath.replace(/\//g, '\\');
+        if (pdfRotateSuccessPath) pdfRotateSuccessPath.textContent = displayFilesystemPath(savePath);
         if (type === 'all') {
           if (pdfRotateSuccessMeta) pdfRotateSuccessMeta.textContent = t('home.pdfRotate.successAllMeta');
         } else {
@@ -9043,30 +12096,22 @@
 
       // ===== PDF Encrypt Overlay Open/Close =====
       const pdfEncryptOverlay = document.getElementById('pdfEncryptOverlay');
-      const pdfEncryptFerrofluid = document.getElementById('pdfEncryptFerrofluid');
+      const pdfEncryptPlasmaBg = document.getElementById('pdfEncryptPlasmaBg');
       const pdfEncryptBack = document.getElementById('pdfEncryptBack');
-      let pdfEncryptFerrofluidInstance = null;
+      let pdfEncryptPlasmaInstance = null;
 
       function openPdfEncryptOverlay() {
         if (!pdfEncryptOverlay) return;
         pdfEncryptOverlay.classList.add('visible');
-        if (pdfEncryptFerrofluid && !pdfEncryptFerrofluidInstance) {
-          pdfEncryptFerrofluidInstance = initFerrofluid(pdfEncryptFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            speed: 0.3,
-            scale: 2,
-            opacity: 0.6,
-          });
+        if (pdfEncryptPlasmaBg && !pdfEncryptPlasmaInstance) {
+          pdfEncryptPlasmaInstance = initStandardToolPlasma(pdfEncryptPlasmaBg);
         }
       }
 
       function closePdfEncryptOverlay() {
         if (!pdfEncryptOverlay) return;
         pdfEncryptOverlay.classList.remove('visible');
-        if (pdfEncryptFerrofluidInstance) {
-          pdfEncryptFerrofluidInstance();
-          pdfEncryptFerrofluidInstance = null;
-        }
+        pdfEncryptPlasmaInstance = disposeStandardToolPlasma(pdfEncryptPlasmaInstance);
       }
 
       if (pdfEncryptBack) {
@@ -9454,7 +12499,7 @@
       function showPdfEncryptSuccess(savePath, count) {
         lastPdfEncryptSavedPath = savePath;
         if (pdfEncryptSuccessCount) pdfEncryptSuccessCount.textContent = String(count);
-        if (pdfEncryptSuccessPath) pdfEncryptSuccessPath.textContent = savePath.replace(/\//g, '\\');
+        if (pdfEncryptSuccessPath) pdfEncryptSuccessPath.textContent = displayFilesystemPath(savePath);
         if (pdfEncryptSuccessMeta) pdfEncryptSuccessMeta.textContent = t('home.pdfEncrypt.successMeta');
         if (pdfEncryptSuccessOverlay) pdfEncryptSuccessOverlay.classList.add('visible');
       }
@@ -9496,30 +12541,22 @@
 
       // ===== PDF Decrypt Overlay Open/Close =====
       const pdfDecryptOverlay = document.getElementById('pdfDecryptOverlay');
-      const pdfDecryptFerrofluid = document.getElementById('pdfDecryptFerrofluid');
+      const pdfDecryptPlasmaBg = document.getElementById('pdfDecryptPlasmaBg');
       const pdfDecryptBack = document.getElementById('pdfDecryptBack');
-      let pdfDecryptFerrofluidInstance = null;
+      let pdfDecryptPlasmaInstance = null;
 
       function openPdfDecryptOverlay() {
         if (!pdfDecryptOverlay) return;
         pdfDecryptOverlay.classList.add('visible');
-        if (pdfDecryptFerrofluid && !pdfDecryptFerrofluidInstance) {
-          pdfDecryptFerrofluidInstance = initFerrofluid(pdfDecryptFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            speed: 0.3,
-            scale: 2,
-            opacity: 0.6,
-          });
+        if (pdfDecryptPlasmaBg && !pdfDecryptPlasmaInstance) {
+          pdfDecryptPlasmaInstance = initStandardToolPlasma(pdfDecryptPlasmaBg);
         }
       }
 
       function closePdfDecryptOverlay() {
         if (!pdfDecryptOverlay) return;
         pdfDecryptOverlay.classList.remove('visible');
-        if (pdfDecryptFerrofluidInstance) {
-          pdfDecryptFerrofluidInstance();
-          pdfDecryptFerrofluidInstance = null;
-        }
+        pdfDecryptPlasmaInstance = disposeStandardToolPlasma(pdfDecryptPlasmaInstance);
       }
 
       if (pdfDecryptBack) {
@@ -9840,7 +12877,7 @@
       function showPdfDecryptSuccess(savePath, count) {
         lastPdfDecryptSavedPath = savePath;
         if (pdfDecryptSuccessCount) pdfDecryptSuccessCount.textContent = String(count);
-        if (pdfDecryptSuccessPath) pdfDecryptSuccessPath.textContent = savePath.replace(/\//g, '\\');
+        if (pdfDecryptSuccessPath) pdfDecryptSuccessPath.textContent = displayFilesystemPath(savePath);
         if (pdfDecryptSuccessMeta) pdfDecryptSuccessMeta.textContent = t('home.pdfDecrypt.successMeta');
         if (pdfDecryptSuccessOverlay) pdfDecryptSuccessOverlay.classList.add('visible');
       }
@@ -9882,30 +12919,22 @@
 
       // ===== PDF Enhance Overlay Open/Close =====
       const pdfEnhanceOverlay = document.getElementById('pdfEnhanceOverlay');
-      const pdfEnhanceFerrofluid = document.getElementById('pdfEnhanceFerrofluid');
+      const pdfEnhancePlasmaBg = document.getElementById('pdfEnhancePlasmaBg');
       const pdfEnhanceBack = document.getElementById('pdfEnhanceBack');
-      let pdfEnhanceFerrofluidInstance = null;
+      let pdfEnhancePlasmaInstance = null;
 
       function openPdfEnhanceOverlay() {
         if (!pdfEnhanceOverlay) return;
         pdfEnhanceOverlay.classList.add('visible');
-        if (pdfEnhanceFerrofluid && !pdfEnhanceFerrofluidInstance) {
-          pdfEnhanceFerrofluidInstance = initFerrofluid(pdfEnhanceFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            speed: 0.3,
-            scale: 2,
-            opacity: 0.6,
-          });
+        if (pdfEnhancePlasmaBg && !pdfEnhancePlasmaInstance) {
+          pdfEnhancePlasmaInstance = initStandardToolPlasma(pdfEnhancePlasmaBg);
         }
       }
 
       function closePdfEnhanceOverlay() {
         if (!pdfEnhanceOverlay) return;
         pdfEnhanceOverlay.classList.remove('visible');
-        if (pdfEnhanceFerrofluidInstance) {
-          pdfEnhanceFerrofluidInstance();
-          pdfEnhanceFerrofluidInstance = null;
-        }
+        pdfEnhancePlasmaInstance = disposeStandardToolPlasma(pdfEnhancePlasmaInstance);
       }
 
       if (pdfEnhanceBack) {
@@ -10456,7 +13485,7 @@
       function showPdfEnhanceSuccess(savePath, count) {
         lastPdfEnhanceSavedPath = savePath;
         if (pdfEnhanceSuccessCount) pdfEnhanceSuccessCount.textContent = String(count);
-        if (pdfEnhanceSuccessPath) pdfEnhanceSuccessPath.textContent = savePath.replace(/\//g, '\\');
+        if (pdfEnhanceSuccessPath) pdfEnhanceSuccessPath.textContent = displayFilesystemPath(savePath);
         if (pdfEnhanceSuccessMeta) pdfEnhanceSuccessMeta.textContent = t('home.pdfEnhance.successMeta');
         if (pdfEnhanceSuccessOverlay) pdfEnhanceSuccessOverlay.classList.add('visible');
       }
@@ -10493,8 +13522,32 @@
         clearPdfEnhanceFiles();
       }
 
+      // ===== PDF Tool Template Overlay Background =====
+      const pdfToolTemplateOverlay = document.getElementById('pdfToolTemplateOverlay');
+      const pdfToolTemplatePlasmaBg = document.getElementById('pdfToolTemplatePlasmaBg');
+      const pdfToolTemplateBack = document.getElementById('pdfToolTemplateBack');
+      let pdfToolTemplatePlasmaInstance = null;
+
+      function openPdfToolTemplateOverlay() {
+        if (!pdfToolTemplateOverlay) return;
+        pdfToolTemplateOverlay.classList.add('visible');
+        if (pdfToolTemplatePlasmaBg && !pdfToolTemplatePlasmaInstance) {
+          pdfToolTemplatePlasmaInstance = initStandardToolPlasma(pdfToolTemplatePlasmaBg);
+        }
+      }
+
+      function closePdfToolTemplateOverlay() {
+        if (!pdfToolTemplateOverlay) return;
+        pdfToolTemplateOverlay.classList.remove('visible');
+        pdfToolTemplatePlasmaInstance = disposeStandardToolPlasma(pdfToolTemplatePlasmaInstance);
+      }
+
+      window.openPdfToolTemplateOverlay = openPdfToolTemplateOverlay;
+      pdfToolTemplateBack?.addEventListener('click', closePdfToolTemplateOverlay);
+
       // ===== AI Polish Tool =====
       const aiPolishOverlay = document.getElementById('aiPolishOverlay');
+      const aiPolishBg = document.getElementById('aiPolishBg');
       const aiPolishBack = document.getElementById('aiPolishBack');
       const aiPolishStartBtn = document.getElementById('aiPolishStartBtn');
       const aiPolishInput = document.getElementById('aiPolishInput');
@@ -10511,7 +13564,7 @@
       let aiPolishDirectionsData = [];
       let aiPolishResultMode = false; // true when result is shown, button acts as "clear"
       let aiPolishOriginalContent = '';
-      let aiPolishDitherInstance = null;
+      let aiPolishPlasmaInstance = null;
       let aiPolishRequestController = null;
       let aiPolishRequestTimeoutId = null;
       let aiPolishRequestId = 0;
@@ -10705,15 +13758,8 @@
         if (!aiPolishOverlay) return;
         aiPolishOverlay.classList.add('visible');
         resetAiPolishState();
-        if (aiPolishBg && !aiPolishDitherInstance) {
-          aiPolishDitherInstance = initDither(aiPolishBg, {
-            waveColor: [0.38823529411764707, 0.4, 0.9450980392156862],
-            colorNum: 40,
-            pixelSize: 2,
-            waveAmplitude: 0,
-            waveFrequency: 0,
-            waveSpeed: 0.07
-          });
+        if (aiPolishBg && !aiPolishPlasmaInstance) {
+          aiPolishPlasmaInstance = initStandardToolPlasma(aiPolishBg);
         }
       }
 
@@ -10721,10 +13767,7 @@
         if (!aiPolishOverlay) return;
         aiPolishOverlay.classList.remove('visible');
         resetAiPolishState();
-        if (aiPolishDitherInstance) {
-          aiPolishDitherInstance();
-          aiPolishDitherInstance = null;
-        }
+        aiPolishPlasmaInstance = disposeStandardToolPlasma(aiPolishPlasmaInstance);
       }
 
       function resetAiPolishState() {
@@ -11016,6 +14059,7 @@
 
       // ===== AI Translate Tool =====
       const aiTranslateOverlay = document.getElementById('aiTranslateOverlay');
+      const aiTranslateBg = document.getElementById('aiTranslateBg');
       const aiTranslateBack = document.getElementById('aiTranslateBack');
       const aiTranslateStartBtn = document.getElementById('aiTranslateStartBtn');
       const aiTranslateInput = document.getElementById('aiTranslateInput');
@@ -11031,7 +14075,7 @@
 
       let aiTranslateResultMode = false;
       let aiTranslateOriginalContent = '';
-      let aiTranslateDitherInstance = null;
+      let aiTranslatePlasmaInstance = null;
       let aiTranslateRequestController = null;
       let aiTranslateRequestTimeoutId = null;
       let aiTranslateRequestId = 0;
@@ -11081,15 +14125,8 @@
         if (!aiTranslateOverlay) return;
         aiTranslateOverlay.classList.add('visible');
         resetAiTranslateState();
-        if (aiTranslateBg && !aiTranslateDitherInstance) {
-          aiTranslateDitherInstance = initDither(aiTranslateBg, {
-            waveColor: [0.38823529411764707, 0.4, 0.9450980392156862],
-            colorNum: 40,
-            pixelSize: 2,
-            waveAmplitude: 0,
-            waveFrequency: 0,
-            waveSpeed: 0.07
-          });
+        if (aiTranslateBg && !aiTranslatePlasmaInstance) {
+          aiTranslatePlasmaInstance = initStandardToolPlasma(aiTranslateBg);
         }
       }
 
@@ -11098,10 +14135,7 @@
         aiTranslateOverlay.classList.remove('visible');
         restoreAiTranslateInput();
         resetAiTranslateState();
-        if (aiTranslateDitherInstance) {
-          aiTranslateDitherInstance();
-          aiTranslateDitherInstance = null;
-        }
+        aiTranslatePlasmaInstance = disposeStandardToolPlasma(aiTranslatePlasmaInstance);
       }
 
       function resetAiTranslateState() {
@@ -11448,8 +14482,8 @@
       const aiDocSuccessOk = document.getElementById('aiDocSuccessOk');
 
       let aiDocCleanupFns = [];
-      let aiDocDitherInstance = null;
-      let aiDocEditDitherInstance = null;
+      let aiDocPlasmaInstance = null;
+      let aiDocEditPlasmaInstance = null;
       let aiDocLastExportPath = '';
       let aiDocChatHistory = [];
       let aiDocLayoutData = null; // { pages: [{ regions: [...] }] }
@@ -11498,12 +14532,12 @@
       }
 
       const AI_DOC_PRESET_PROMPTS = [
-        { labelKey: 'home.aiDoc.chipRent', prompt: '请帮我生成一份标准个人租房合同，要求：1. 包含出租方和承租方信息栏；2. 明确房屋地址、面积、租金、押金、付款方式；3. 详细列出租赁期限、房屋用途、维修责任；4. 加入违约条款、提前解约条件和费用承担；5. 末尾预留双方签字和日期区域；6. 使用清晰的 A4 商务版式，相关字段用表格行整合，条款使用分级标题和正文。' },
-        { labelKey: 'home.aiDoc.chipResign', prompt: '请帮我生成一份正式离职申请书/离职报告，要求：1. 标题为离职报告；2. 包含申请人信息、部门、职位、入职日期；3. 说明离职原因、最后工作日；4. 表达感谢和工作交接意愿；5. 加入交接事项清单；6. 末尾预留签名和日期区域；7. 使用克制、正式的 A4 公文版式。' },
-        { labelKey: 'home.aiDoc.chipMeeting', prompt: '请帮我生成一份一页的项目周会会议纪要，要求：1. 包含会议主题、时间、地点、主持人、参会人员；2. 列出会议议程和讨论事项；3. 记录每个议题的结论；4. 待办事项使用紧凑表格行，明确责任人和截止时间；5. 加入下次会议安排；6. 使用信息层次清晰、现代专业的 A4 商务版式。' },
-        { labelKey: 'home.aiDoc.chipPrd', prompt: '请帮我生成一份产品需求文档（PRD），要求：1. 包含产品背景、目标用户、核心目标；2. 按功能模块描述需求、业务流程、输入输出和异常处理；3. 加入非功能需求、项目排期、风险说明；4. 使用 A4 专业文档版式，以章节、正文、表格和重点摘要组织内容，不堆砌零散区域。' },
-        { labelKey: 'home.aiDoc.chipBusiness', prompt: '请帮我生成一份初创项目商业计划书，要求：1. 包含项目概述、市场痛点、解决方案；2. 分析目标市场、市场规模、竞争对手；3. 描述商业模式、运营计划、团队、财务预测和融资需求；4. 加入风险分析和未来规划；5. 至少 3 页，使用现代、清晰的 A4 商务报告版式，以重点摘要、章节、表格和注释建立视觉层次。' },
-        { labelKey: 'home.aiDoc.chipResume', prompt: '请帮我生成一份个人简历，要求：1. 包含个人信息、联系方式、求职意向；2. 列出教育背景、工作经历、专业技能、项目经验和证书荣誉；3. 加入简洁的自我评价；4. 使用一至两页 A4 现代简历版式，以清晰的信息分组和时间层次组织内容。' }
+        { labelKey: 'home.aiDoc.chipRent', prompt: `生成一份可直接签署的一页个人租房合同 PDF。请模拟合理示例信息：出租方、承租方、房屋地址、建筑面积、租赁期限、月租金、押金、付款方式、物业/水电责任等。版式要求：A4 黑白商务合同风格，标题居中，基础信息用 2-4 列表格行整合，合同条款分为“租赁标的、费用支付、维修与使用、违约责任、提前解除、其他约定”，每段文字克制但完整。末尾预留出租方、承租方签字线和日期。所有内容都要是可编辑图层，避免图片占位。` },
+        { labelKey: 'home.aiDoc.chipResign', prompt: `生成一份正式离职报告 PDF，用于员工提交给直属领导和 HR。请模拟合理信息：姓名、部门、岗位、入职日期、拟离职日期、交接截止时间、交接联系人。内容结构：标题、申请信息表、离职原因说明、感谢与交接承诺、交接事项清单、审批/签字区域。语气正式、真诚、不情绪化。版式要求一页 A4 公文风，黑白灰高级排版，信息紧凑清晰，所有文字和表格行后续都可编辑。` },
+        { labelKey: 'home.aiDoc.chipMeeting', prompt: `生成一份一页项目周会会议纪要 PDF。请模拟一个“ToolKnit v1.3 发布前排查会”的真实场景数据：会议时间、地点、主持人、参会人、版本目标、已完成事项、遗留风险、负责人和截止日期。文档结构：会议概况、核心结论、问题清单、待办表格、下次会议安排。待办表格至少 5 行，包含事项、负责人、优先级、截止时间、验收标准。版式要像专业团队内部纪要，重点结论用强调块，所有模块可编辑。` },
+        { labelKey: 'home.aiDoc.chipPrd', prompt: `生成一份 2 页产品需求文档 PRD，主题是“AI 大文件清理工具”。请模拟完整业务资料：目标用户、使用场景、核心痛点、功能范围、非目标、用户流程、交互细节、风险控制、数据字段、验收标准。必须体现：本地扫描、AI 只分析文件元数据、用户最终确认、默认移入回收站、失败项可定位处理。版式使用 A4 专业产品文档风格，章节清晰，表格用于功能清单和验收标准，重点信息用灰阶强调块，不要图片占位。` },
+        { labelKey: 'home.aiDoc.chipBusiness', prompt: `生成一份 3 页商业计划书 PDF，项目名“ToolKnit Desktop”。请模拟合理数据：目标用户规模、工具数量、Star 增长、用户反馈、捐赠金额、版本节奏和未来路线。结构包括：项目概述、市场痛点、解决方案、核心优势、用户增长、商业模式、竞品差异、阶段规划、风险与对策。风格要适合放到路演或 GitHub 项目介绍中，黑白高级商务排版，关键数字用强调区或表格呈现，所有内容可编辑，不要图片占位。` },
+        { labelKey: 'home.aiDoc.chipResume', prompt: `生成一份 1-2 页现代中文简历 PDF，岗位方向为“前端 / AI 工具产品开发”。请模拟一位 3 年经验候选人的合理信息：基础信息、求职意向、技能栈、工作经历、项目经历、开源项目、教育背景和自我评价。项目经历重点写“桌面效率工具、AI 文档生成、CLI/Agent 接入、本地文件处理”。版式要干净、强层次、适合投递，时间线清晰，技能和项目成果用表格/列表组织，所有文字可编辑。` }
       ];
 
       const A4_WIDTH = 794;
@@ -11747,15 +14781,8 @@
         if (!aiDocOverlay) return;
         aiDocOverlay.classList.add('visible');
         resetAiDocState();
-        if (aiDocBg && !aiDocDitherInstance) {
-          aiDocDitherInstance = initDither(aiDocBg, {
-            waveColor: [0.38823529411764707, 0.4, 0.9450980392156862],
-            colorNum: 40,
-            pixelSize: 2,
-            waveAmplitude: 0,
-            waveFrequency: 0,
-            waveSpeed: 0.07
-          });
+        if (aiDocBg && !aiDocPlasmaInstance) {
+          aiDocPlasmaInstance = initStandardToolPlasma(aiDocBg);
         }
       }
 
@@ -11763,10 +14790,7 @@
         if (!aiDocOverlay) return;
         aiDocOverlay.classList.remove('visible');
         resetAiDocState();
-        if (aiDocDitherInstance) {
-          aiDocDitherInstance();
-          aiDocDitherInstance = null;
-        }
+        aiDocPlasmaInstance = disposeStandardToolPlasma(aiDocPlasmaInstance);
       }
 
       function resetAiDocState() {
@@ -12250,16 +15274,9 @@
           aiDocEditScroll.scrollLeft = 0;
         }
         renderAiDocEditPages(aiDocLayoutData, { preserveScroll: false });
-        // Init dither background for edit overlay
-        if (aiDocEditBg && !aiDocEditDitherInstance) {
-          aiDocEditDitherInstance = initDither(aiDocEditBg, {
-            waveColor: [0.38823529411764707, 0.4, 0.9450980392156862],
-            colorNum: 40,
-            pixelSize: 2,
-            waveAmplitude: 0,
-            waveFrequency: 0,
-            waveSpeed: 0.07
-          });
+        // Init the shared standard tool background for edit overlay
+        if (aiDocEditBg && !aiDocEditPlasmaInstance) {
+          aiDocEditPlasmaInstance = initStandardToolPlasma(aiDocEditBg);
         }
       }
 
@@ -12271,10 +15288,7 @@
         aiDocCleanupFns = [];
         if (aiDocEditScroll) aiDocEditScroll.innerHTML = '';
         if (aiDocLayoutData) renderAiDocThumbnails(aiDocLayoutData);
-        if (aiDocEditDitherInstance) {
-          aiDocEditDitherInstance();
-          aiDocEditDitherInstance = null;
-        }
+        aiDocEditPlasmaInstance = disposeStandardToolPlasma(aiDocEditPlasmaInstance);
       }
 
       // Render full-size A4 pages in edit overlay (with editing enabled)
@@ -13096,7 +16110,7 @@
       }
 
       function showAiDocSuccess(filePath) {
-        if (aiDocSuccessPath) aiDocSuccessPath.textContent = filePath;
+        if (aiDocSuccessPath) aiDocSuccessPath.textContent = displayFilesystemPath(filePath);
         if (aiDocSuccessOverlay) aiDocSuccessOverlay.classList.add('visible');
       }
 
@@ -13280,7 +16294,6 @@
       const aiTableCanvasEmpty = document.getElementById('aiTableCanvasEmpty');
       const aiTablePreviewScroll = document.getElementById('aiTablePreviewScroll');
       const aiTableCanvasToolbar = document.getElementById('aiTableCanvasToolbar');
-      const aiTableHelpBtn = document.getElementById('aiTableHelpBtn');
       const aiTableUndoBtn = document.getElementById('aiTableUndoBtn');
       const aiTableResetBtn = document.getElementById('aiTableResetBtn');
       const aiTableSuccessOverlay = document.getElementById('aiTableSuccessOverlay');
@@ -13290,7 +16303,7 @@
       const aiTableMask = document.getElementById('aiTableMask');
       const aiTableMaskText = document.getElementById('aiTableMaskText');
 
-      let aiTableDitherInstance = null;
+      let aiTablePlasmaInstance = null;
       let aiTableChatHistory = [];
       let aiTableData = null; // { title, columns, rows, charts }
       let aiTableUndoStack = [];
@@ -13372,21 +16385,18 @@
       const AI_TABLE_ICON_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>';
 
       const AI_TABLE_PRESET_PROMPTS = [
-        { labelKey: 'home.aiTable.presetSales', prompt: '请生成一份2024年Q1-Q4的销售报表，包含产品名称、季度、销售额（万元）、同比增长率列，数据要真实合理，并生成一个柱状图展示各产品季度销售额对比' },
-        { labelKey: 'home.aiTable.presetSchedule', prompt: '请生成一个项目排期表，包含任务名称、负责人、开始日期、结束日期、状态列，至少8个任务，状态包括进行中、已完成、未开始' },
-        { labelKey: 'home.aiTable.presetCompare', prompt: '请生成一份手机产品对比表，对比5款手机的处理器、内存、电池容量、摄像头像素、价格，数据要真实合理' },
-        { labelKey: 'home.aiTable.presetPerformance', prompt: '请生成一份部门员工绩效表，包含姓名、部门、KPI得分、出勤率、综合评级列，至少10人，并生成一个饼图展示评级分布' },
+        { labelKey: 'home.aiTable.presetSales', prompt: `生成一份 2026 年 Q2 新媒体投放复盘表，请模拟合理但真实感强的数据。字段包含：月份、平台、投放预算、曝光量、点击量、CTR、CPC、线索数、成交数、成交金额、ROI、主要问题、优化建议。请至少生成 18 行数据，覆盖抖音、小红书、B站、微信公众号、知乎、搜索广告等平台；突出 ROI 低于 1.2 的项目。请生成 2 个图表：1）各平台成交金额柱状图；2）按月份 ROI 趋势图。标题和摘要要适合老板汇报，最终适合导出 Excel、PNG 和 PDF。` },
+        { labelKey: 'home.aiTable.presetSchedule', prompt: `生成一份“ToolKnit v1.3 发布排期表”，请模拟详细项目数据。字段包含：模块、任务名称、负责人、开始日期、结束日期、当前状态、优先级、完成度、风险说明、验收标准。至少 14 行，覆盖 AI 文档、AI 表格、视频转 GIF、硬件工具、清理工具、帮助中心、打包发布等模块。状态包含未开始、进行中、待验证、已完成。请生成 1 个进度分布图和 1 个模块风险对比图，表格要适合项目复盘和 Agent 后续按任务修改。` },
+        { labelKey: 'home.aiTable.presetCompare', prompt: `生成一份 2026 年轻量办公笔记本选型对比表，请模拟 8 款产品数据。字段包含：品牌型号、CPU、内存、硬盘、屏幕、重量、续航、接口、参考价、适合人群、优势、短板、综合评分。数据要看起来合理，不要空泛。请生成 2 个图表：1）价格与综合评分对比柱状图；2）不同品牌平均续航对比图。表格摘要要给出“最值得买、性能优先、轻薄优先、预算优先”的建议。` },
+        { labelKey: 'home.aiTable.presetPerformance', prompt: `生成一份研发团队月度绩效复盘表，请模拟 12 名员工的合理数据。字段包含：姓名、岗位、负责模块、需求完成数、Bug 修复数、代码评审数、准时率、协作评分、质量评分、综合得分、绩效等级、主管建议。请让数据有差异和层次，不要每个人都很平均。生成 2 个图表：1）绩效等级分布图；2）各岗位平均综合得分对比图。摘要要指出高绩效特征、风险成员和下月提升建议，适合导出给管理层。` },
       ];
 
       function openAiTableOverlay() {
         if (!aiTableOverlay) return;
         aiTableOverlay.classList.add('visible');
         resetAiTableState();
-        if (aiTableBg && !aiTableDitherInstance) {
-          aiTableDitherInstance = initDither(aiTableBg, {
-            waveColor: [0.38823529411764707, 0.4, 0.9450980392156862],
-            colorNum: 40, pixelSize: 2, waveAmplitude: 0, waveFrequency: 0, waveSpeed: 0.07
-          });
+        if (aiTableBg && !aiTablePlasmaInstance) {
+          aiTablePlasmaInstance = initStandardToolPlasma(aiTableBg);
         }
       }
 
@@ -13394,7 +16404,7 @@
         if (!aiTableOverlay) return;
         aiTableOverlay.classList.remove('visible');
         resetAiTableState();
-        if (aiTableDitherInstance) { aiTableDitherInstance(); aiTableDitherInstance = null; }
+        aiTablePlasmaInstance = disposeStandardToolPlasma(aiTablePlasmaInstance);
       }
 
       function resetAiTableState() {
@@ -14561,13 +17571,12 @@
       }
 
       function showAiTableSuccess(filePath) {
-        if (aiTableSuccessPath) aiTableSuccessPath.textContent = filePath;
+        if (aiTableSuccessPath) aiTableSuccessPath.textContent = displayFilesystemPath(filePath);
         if (aiTableSuccessOverlay) aiTableSuccessOverlay.classList.add('visible');
       }
 
       // ===== AI Table Event Listeners =====
       if (aiTableBack) aiTableBack.addEventListener('click', closeAiTableOverlay);
-      if (aiTableHelpBtn) aiTableHelpBtn.addEventListener('click', () => openHelpOverlay('ai-table'));
       if (aiTableUndoBtn) aiTableUndoBtn.addEventListener('click', undoAiTableLastEdit);
       if (aiTableResetBtn) aiTableResetBtn.addEventListener('click', () => { resetAiTableState(); });
       if (aiTableSuccessOk) aiTableSuccessOk.addEventListener('click', () => { if (aiTableSuccessOverlay) aiTableSuccessOverlay.classList.remove('visible'); });
@@ -14642,7 +17651,7 @@
       const colorExtractorDetailCols = document.getElementById('colorExtractorDetailCols');
       const colorExtractorBackDetailBtn = document.getElementById('colorExtractorBackDetailBtn');
 
-      let colorExtractorDitherInstance = null;
+      let colorExtractorPlasmaInstance = null;
       let colorExtractorCurrentImg = null;
       let colorExtractorColors = [];
       let colorExtractorRequestId = 0;
@@ -14657,18 +17666,15 @@
         if (!colorExtractorOverlay) return;
         colorExtractorOverlay.classList.add('visible');
         resetColorExtractorState();
-        if (colorExtractorBg && !colorExtractorDitherInstance) {
-          colorExtractorDitherInstance = initDither(colorExtractorBg, {
-            waveColor: [0.4, 0.5, 0.9], colorNum: 40, pixelSize: 2,
-            waveAmplitude: 0, waveFrequency: 0, waveSpeed: 0.07
-          });
+        if (colorExtractorBg && !colorExtractorPlasmaInstance) {
+          colorExtractorPlasmaInstance = initStandardToolPlasma(colorExtractorBg);
         }
       }
       function closeColorExtractorOverlay() {
         if (!colorExtractorOverlay) return;
         colorExtractorOverlay.classList.remove('visible');
         resetColorExtractorState();
-        if (colorExtractorDitherInstance) { colorExtractorDitherInstance(); colorExtractorDitherInstance = null; }
+        colorExtractorPlasmaInstance = disposeStandardToolPlasma(colorExtractorPlasmaInstance);
       }
       function resetColorExtractorState() {
         colorExtractorRequestId += 1;
@@ -15237,9 +18243,7 @@
         textStatsOverlay.classList.add('visible');
         updateTextStats();
         if (textStatsBg && !textStatsPlasmaInstance) {
-          textStatsPlasmaInstance = initPlasma(textStatsBg, {
-            color: '#6B6B6B', speed: 0.8, direction: 'forward', scale: 1, opacity: 1, mouseInteractive: false
-          });
+          textStatsPlasmaInstance = initStandardToolPlasma(textStatsBg);
         }
         if (textStatsFocusTimer !== null) clearTimeout(textStatsFocusTimer);
         textStatsFocusTimer = setTimeout(() => {
@@ -15362,9 +18366,7 @@
         if (!textFormatOverlay) return;
         textFormatOverlay.classList.add('visible');
         if (textFormatBg && !textFormatPlasmaInstance) {
-          textFormatPlasmaInstance = initPlasma(textFormatBg, {
-            color: '#6B6B6B', speed: 0.8, direction: 'forward', scale: 1, opacity: 1, mouseInteractive: false
-          });
+          textFormatPlasmaInstance = initStandardToolPlasma(textFormatBg);
         }
         if (textFormatFocusTimer !== null) clearTimeout(textFormatFocusTimer);
         textFormatFocusTimer = setTimeout(() => {
@@ -15482,7 +18484,7 @@
       const typingTestResultWrong = document.getElementById('typingTestResultWrong');
       const typingTestResultRating = document.getElementById('typingTestResultRating');
 
-      let typingTestDitherInstance = null;
+      let typingTestPlasmaInstance = null;
       let typingTestTimer = null;
       let typingTestComposing = false;
       let zhInputBuffer = '';
@@ -15728,8 +18730,8 @@
         typingTestState.lang = getLang() === 'zh' ? 'zh' : 'en';
         selectTypingTestOption(typingTestLangOptions, typingTestState.lang);
         resetTypingTestToSettings();
-        if (typingTestBg && !typingTestDitherInstance) {
-          typingTestDitherInstance = initDither(typingTestBg, { color: 'rgba(120,130,255,0.18)', speed: 0.0006 });
+        if (typingTestBg && !typingTestPlasmaInstance) {
+          typingTestPlasmaInstance = initStandardToolPlasma(typingTestBg);
         }
       }
 
@@ -15741,7 +18743,7 @@
           typingTestTimer = null;
         }
         typingTestState.isRunning = false;
-        if (typingTestDitherInstance) { typingTestDitherInstance(); typingTestDitherInstance = null; }
+        typingTestPlasmaInstance = disposeStandardToolPlasma(typingTestPlasmaInstance);
       }
 
       function handleTypingInput() {
@@ -15912,31 +18914,20 @@
 
       let bmiCalcGender = 'male';
       let bmiCalcMode = 'simple';
-      let bmiCalcDitherInstance = null;
+      let bmiCalcPlasmaInstance = null;
 
       function openBmiCalcOverlay() {
         if (!bmiCalcOverlay) return;
         bmiCalcOverlay.classList.add('visible');
-        if (bmiCalcBg && !bmiCalcDitherInstance) {
-          bmiCalcDitherInstance = initDarkVeil(bmiCalcBg, {
-            hueShift: 0,
-            noiseIntensity: 0.03,
-            scanlineIntensity: 0,
-            speed: 1.6,
-            scanlineFrequency: 5,
-            warpAmount: 0,
-            resolutionScale: 1
-          });
+        if (bmiCalcBg && !bmiCalcPlasmaInstance) {
+          bmiCalcPlasmaInstance = initStandardToolPlasma(bmiCalcBg);
         }
         calcBmiResult();
       }
 
       function closeBmiCalcOverlay() {
         if (bmiCalcOverlay) bmiCalcOverlay.classList.remove('visible');
-        if (bmiCalcDitherInstance) {
-          bmiCalcDitherInstance();
-          bmiCalcDitherInstance = null;
-        }
+        bmiCalcPlasmaInstance = disposeStandardToolPlasma(bmiCalcPlasmaInstance);
         Object.keys(bmiCalcWarnTimers).forEach(id => clearTimeout(bmiCalcWarnTimers[id]));
         if (bmiCalcWarnDialog) bmiCalcWarnDialog.classList.remove('visible');
       }
@@ -16174,11 +19165,7 @@
       // Open from tool list
       document.querySelectorAll('.audio-list-item[data-tool="bmi-calc"]').forEach(item => {
         item.addEventListener('click', () => {
-          if (transitionMask) transitionMask.classList.add('visible');
-          setTimeout(() => {
-            openBmiCalcOverlay();
-            if (transitionMask) transitionMask.classList.remove('visible');
-          }, 1000);
+          openBmiCalcOverlay();
         });
         item.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -16214,7 +19201,7 @@
       let tsCalcMode = 'ts2date';
       let tsCalcFormat = 'local';
       let tsCalcFormat2 = 'unix';
-      let tsCalcDitherInstance = null;
+      let tsCalcPlasmaInstance = null;
       let tsCalcNowTimer = null;
 
       function pad2(n) { return n < 10 ? '0' + n : '' + n; }
@@ -16326,16 +19313,8 @@
       function openTsCalcOverlay() {
         if (!tsCalcOverlay) return;
         tsCalcOverlay.classList.add('visible');
-        if (tsCalcBg && !tsCalcDitherInstance) {
-          tsCalcDitherInstance = initDarkVeil(tsCalcBg, {
-            hueShift: 0,
-            noiseIntensity: 0.03,
-            scanlineIntensity: 0,
-            speed: 1.6,
-            scanlineFrequency: 5,
-            warpAmount: 0,
-            resolutionScale: 1
-          });
+        if (tsCalcBg && !tsCalcPlasmaInstance) {
+          tsCalcPlasmaInstance = initStandardToolPlasma(tsCalcBg);
         }
         // Reset state
         tsCalcMode = 'ts2date';
@@ -16372,10 +19351,7 @@
 
       function closeTsCalcOverlay() {
         if (tsCalcOverlay) tsCalcOverlay.classList.remove('visible');
-        if (tsCalcDitherInstance) {
-          tsCalcDitherInstance();
-          tsCalcDitherInstance = null;
-        }
+        tsCalcPlasmaInstance = disposeStandardToolPlasma(tsCalcPlasmaInstance);
         if (tsCalcNowTimer) {
           clearInterval(tsCalcNowTimer);
           tsCalcNowTimer = null;
@@ -16471,11 +19447,7 @@
       // Open from tool list
       document.querySelectorAll('.audio-list-item[data-tool="timestamp-calc"]').forEach(item => {
         item.addEventListener('click', () => {
-          if (transitionMask) transitionMask.classList.add('visible');
-          setTimeout(() => {
-            openTsCalcOverlay();
-            if (transitionMask) transitionMask.classList.remove('visible');
-          }, 1000);
+          openTsCalcOverlay();
         });
         item.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -16498,7 +19470,7 @@
       const mortgageCalcScheduleBody = document.getElementById('mortgageCalcScheduleBody');
 
       let mortgageCalcMethod = 'equalPayment';
-      let mortgageCalcDitherInstance = null;
+      let mortgageCalcPlasmaInstance = null;
       let mortgageCalcSchedule = [];
 
       function formatMoney(val) {
@@ -16538,15 +19510,13 @@
           return;
         }
 
-        // Show global spider transition mask
-        if (transitionMask) transitionMask.classList.add('visible');
         if (mortgageCalcBtn) mortgageCalcBtn.disabled = true;
 
-        setTimeout(() => {
+        try {
           _doCalcMortgage(amountWan, termYears, annualRate, months);
-          if (transitionMask) transitionMask.classList.remove('visible');
+        } finally {
           if (mortgageCalcBtn) mortgageCalcBtn.disabled = false;
-        }, 1000);
+        }
       }
 
       function _doCalcMortgage(amountWan, termYears, annualRate, months) {
@@ -16653,16 +19623,8 @@
       function openMortgageCalcOverlay() {
         if (!mortgageCalcOverlay) return;
         mortgageCalcOverlay.classList.add('visible');
-        if (mortgageCalcBg && !mortgageCalcDitherInstance) {
-          mortgageCalcDitherInstance = initDarkVeil(mortgageCalcBg, {
-            hueShift: 0,
-            noiseIntensity: 0.03,
-            scanlineIntensity: 0,
-            speed: 1.6,
-            scanlineFrequency: 5,
-            warpAmount: 0,
-            resolutionScale: 1
-          });
+        if (mortgageCalcBg && !mortgageCalcPlasmaInstance) {
+          mortgageCalcPlasmaInstance = initStandardToolPlasma(mortgageCalcBg);
         }
         // Reset state
         mortgageCalcMethod = 'equalPayment';
@@ -16685,10 +19647,7 @@
 
       function closeMortgageCalcOverlay() {
         if (mortgageCalcOverlay) mortgageCalcOverlay.classList.remove('visible');
-        if (mortgageCalcDitherInstance) {
-          mortgageCalcDitherInstance();
-          mortgageCalcDitherInstance = null;
-        }
+        mortgageCalcPlasmaInstance = disposeStandardToolPlasma(mortgageCalcPlasmaInstance);
       }
 
       if (mortgageCalcBack) {
@@ -16720,11 +19679,7 @@
       // Open from tool list
       document.querySelectorAll('.audio-list-item[data-tool="mortgage-calc"]').forEach(item => {
         item.addEventListener('click', () => {
-          if (transitionMask) transitionMask.classList.add('visible');
-          setTimeout(() => {
-            openMortgageCalcOverlay();
-            if (transitionMask) transitionMask.classList.remove('visible');
-          }, 1000);
+          openMortgageCalcOverlay();
         });
         item.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -16752,7 +19707,7 @@
 
       let interestCalcMode = 'simple';
       let interestCalcFreq = 'yearly';
-      let interestCalcDitherInstance = null;
+      let interestCalcPlasmaInstance = null;
       let interestCalcSchedule = [];
 
       function formatInterestMoney(val) {
@@ -16797,14 +19752,13 @@
           }
         }
 
-        if (transitionMask) transitionMask.classList.add('visible');
         if (interestCalcBtn) interestCalcBtn.disabled = true;
 
-        setTimeout(() => {
+        try {
           _doCalcInterest(principal, regularAmount, annualRate, termYears);
-          if (transitionMask) transitionMask.classList.remove('visible');
+        } finally {
           if (interestCalcBtn) interestCalcBtn.disabled = false;
-        }, 1000);
+        }
       }
 
       function _doCalcInterest(principal, regularAmount, annualRate, termYears) {
@@ -16970,16 +19924,8 @@
       function openInterestCalcOverlay() {
         if (!interestCalcOverlay) return;
         interestCalcOverlay.classList.add('visible');
-        if (interestCalcBg && !interestCalcDitherInstance) {
-          interestCalcDitherInstance = initDarkVeil(interestCalcBg, {
-            hueShift: 0,
-            noiseIntensity: 0.03,
-            scanlineIntensity: 0,
-            speed: 1.6,
-            scanlineFrequency: 5,
-            warpAmount: 0,
-            resolutionScale: 1
-          });
+        if (interestCalcBg && !interestCalcPlasmaInstance) {
+          interestCalcPlasmaInstance = initStandardToolPlasma(interestCalcBg);
         }
         // Reset state
         interestCalcMode = 'simple';
@@ -17011,10 +19957,7 @@
 
       function closeInterestCalcOverlay() {
         if (interestCalcOverlay) interestCalcOverlay.classList.remove('visible');
-        if (interestCalcDitherInstance) {
-          interestCalcDitherInstance();
-          interestCalcDitherInstance = null;
-        }
+        interestCalcPlasmaInstance = disposeStandardToolPlasma(interestCalcPlasmaInstance);
       }
 
       if (interestCalcBack) {
@@ -17057,11 +20000,7 @@
       // Open from tool list
       document.querySelectorAll('.audio-list-item[data-tool="interest-calc"]').forEach(item => {
         item.addEventListener('click', () => {
-          if (transitionMask) transitionMask.classList.add('visible');
-          setTimeout(() => {
-            openInterestCalcOverlay();
-            if (transitionMask) transitionMask.classList.remove('visible');
-          }, 1000);
+          openInterestCalcOverlay();
         });
         item.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -17092,7 +20031,7 @@
       const passwordGenLengthValue = document.getElementById('passwordGenLengthValue');
 
       let passwordGenStrength = 'simple';
-      let passwordGenDitherInstance = null;
+      let passwordGenPlasmaInstance = null;
       let passwordGenHistory = [];
 
       function clearPasswordSensitiveContent() {
@@ -17224,16 +20163,8 @@
       function openPasswordGenOverlay() {
         if (!passwordGenOverlay) return;
         passwordGenOverlay.classList.add('visible');
-        if (passwordGenBg && !passwordGenDitherInstance) {
-          passwordGenDitherInstance = initDarkVeil(passwordGenBg, {
-            hueShift: 0,
-            noiseIntensity: 0.03,
-            scanlineIntensity: 0,
-            speed: 1.6,
-            scanlineFrequency: 5,
-            warpAmount: 0,
-            resolutionScale: 1
-          });
+        if (passwordGenBg && !passwordGenPlasmaInstance) {
+          passwordGenPlasmaInstance = initStandardToolPlasma(passwordGenBg);
         }
         // Reset state
         passwordGenStrength = 'simple';
@@ -17249,10 +20180,7 @@
       function closePasswordGenOverlay() {
         clearPasswordSensitiveContent();
         if (passwordGenOverlay) passwordGenOverlay.classList.remove('visible');
-        if (passwordGenDitherInstance) {
-          passwordGenDitherInstance();
-          passwordGenDitherInstance = null;
-        }
+        passwordGenPlasmaInstance = disposeStandardToolPlasma(passwordGenPlasmaInstance);
       }
 
       if (passwordGenBack) {
@@ -17310,11 +20238,7 @@
       // Open from tool list
       document.querySelectorAll('.audio-list-item[data-tool="password-gen"]').forEach(item => {
         item.addEventListener('click', () => {
-          if (transitionMask) transitionMask.classList.add('visible');
-          setTimeout(() => {
-            openPasswordGenOverlay();
-            if (transitionMask) transitionMask.classList.remove('visible');
-          }, 1000);
+          openPasswordGenOverlay();
         });
         item.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -17967,7 +20891,7 @@
           pdfMergeSuccessCount.textContent = `${count} ${t('home.pdfMerge.successCountUnit')}`;
         }
         if (pdfMergeSuccessPath) {
-          pdfMergeSuccessPath.textContent = outputPath.replace(/\//g, '\\');
+          pdfMergeSuccessPath.textContent = displayFilesystemPath(outputPath);
         }
         if (pdfMergeSuccessOverlay) {
           pdfMergeSuccessOverlay.classList.add('visible');
@@ -17999,9 +20923,9 @@
 
       // ===== PDF Compress =====
       const pdfCompressOverlay = document.getElementById('pdfCompressOverlay');
-      const pdfCompressFerrofluid = document.getElementById('pdfCompressFerrofluid');
+      const pdfCompressPlasmaBg = document.getElementById('pdfCompressPlasmaBg');
       const pdfCompressBack = document.getElementById('pdfCompressBack');
-      let pdfCompressFerrofluidInstance = null;
+      let pdfCompressPlasmaInstance = null;
       const pdfCompressDropZone = document.getElementById('pdfCompressDropZone');
       const pdfCompressFiles = document.getElementById('pdfCompressFiles');
       const pdfCompressCta = document.getElementById('pdfCompressCta');
@@ -18032,11 +20956,8 @@
       function openPdfCompressOverlay() {
         if (!pdfCompressOverlay) return;
         pdfCompressOverlay.classList.add('visible');
-        if (pdfCompressFerrofluid && !pdfCompressFerrofluidInstance) {
-          pdfCompressFerrofluidInstance = initFerrofluid(pdfCompressFerrofluid, {
-            colors: ['#e8e8ec', '#a0a0a8', '#ffffff'],
-            opacity: 0.6,
-          });
+        if (pdfCompressPlasmaBg && !pdfCompressPlasmaInstance) {
+          pdfCompressPlasmaInstance = initStandardToolPlasma(pdfCompressPlasmaBg);
         }
       }
 
@@ -18047,10 +20968,7 @@
         }
         if (!pdfCompressOverlay) return;
         pdfCompressOverlay.classList.remove('visible');
-        if (pdfCompressFerrofluidInstance) {
-          pdfCompressFerrofluidInstance();
-          pdfCompressFerrofluidInstance = null;
-        }
+        pdfCompressPlasmaInstance = disposeStandardToolPlasma(pdfCompressPlasmaInstance);
         if (pdfCompressProcessMask) pdfCompressProcessMask.classList.remove('visible');
         if (pdfCompressProcessBarFill) pdfCompressProcessBarFill.style.width = '0%';
         clearPdfCompressFiles();
@@ -18404,7 +21322,7 @@
         lastPdfCompressSavedPath = savePath;
         const count = pdfCompressResults.length;
         if (pdfCompressSuccessCount) pdfCompressSuccessCount.textContent = String(count);
-        if (pdfCompressSuccessPath) pdfCompressSuccessPath.textContent = savePath;
+        if (pdfCompressSuccessPath) pdfCompressSuccessPath.textContent = displayFilesystemPath(savePath);
         if (type === 'all') {
           if (pdfCompressSuccessMeta) pdfCompressSuccessMeta.textContent = t('home.pdfCompress.successAllMeta', { count });
         } else {
@@ -18437,14 +21355,14 @@
       const toastText = document.getElementById('favToastText');
       let toastTimer = null;
 
-      function showToast(msg) {
+      function showFavoriteToast(msg) {
         if (!toastEl || !toastText) return;
         toastText.textContent = msg;
         toastEl.classList.add('visible');
         if (toastTimer) clearTimeout(toastTimer);
         toastTimer = setTimeout(() => {
           toastEl.classList.remove('visible');
-        }, 2000);
+        }, 3600);
       }
 
       function getFavorites() {
@@ -18466,7 +21384,7 @@
         if (isFavorited(toolId)) return false;
         const favs = getFavorites();
         if (favs.length >= MAX_FAVORITES) {
-          showToast(t('home.favLimit'));
+          showFavoriteToast(t('home.favLimit'));
           return false;
         }
         favs.push({ tool: toolId, name, iconHtml, category, ts: Date.now() });
@@ -18517,7 +21435,8 @@
       function seedDefaultFavorites() {
         if (localStorage.getItem(FAV_KEY) !== null) return;
 
-        const candidates = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'));
+        const candidates = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
+          .filter(item => item.dataset.availability !== 'planned');
         const defaults = candidates
           .sort(() => Math.random() - 0.5)
           .slice(0, MAX_FAVORITES)
@@ -18570,15 +21489,17 @@
       document.querySelectorAll('.audio-list-item').forEach(item => {
         item.addEventListener('contextmenu', (e) => {
           e.preventDefault();
+          if (item.dataset.availability === 'planned') return;
           const info = getToolInfo(item);
           if (isFavorited(info.toolId)) {
             removeFavorite(info.toolId);
-            showToast(t('home.favRemoved'));
+            showFavoriteToast(t('home.favRemoved'));
           } else if (addFavorite(info.toolId, info.name, info.iconHtml, info.category)) {
-            showToast(t('home.favAdded'));
+            showFavoriteToast(t('home.favAdded'));
           }
         });
         item.addEventListener('click', () => {
+          if (item.dataset.availability === 'planned') return;
           const info = getToolInfo(item);
           if (info.toolId) {
             addRecent(info.toolId, info.name, info.iconHtml, info.category);
@@ -18640,7 +21561,8 @@
       function renderRecommended() {
         const container = document.getElementById('recommendedContent');
         if (!container) return;
-        const allItems = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'));
+        const allItems = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
+          .filter(item => item.dataset.availability !== 'planned');
         if (allItems.length === 0) return;
 
         // Pick 3 random items
