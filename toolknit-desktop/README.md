@@ -116,12 +116,12 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 <table>
   <tr>
-    <th width="50%">微信支付</th>
     <th width="50%">支付宝</th>
+    <th width="50%">微信支付</th>
   </tr>
   <tr>
-    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="微信支付支持 ToolKnit" width="220" /></td>
-    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="支付宝支持 ToolKnit" width="220" /></td>
+    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="支付宝支持 ToolKnit" width="220" /></td>
+    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="微信支付支持 ToolKnit" width="220" /></td>
   </tr>
 </table>
 
@@ -143,6 +143,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 | 工具 | 说明 |
 | --- | --- |
+| PDF 转图像 | 按页导出 PNG / JPG，适合拆页、取图和后续拼接。 |
 | PDF 合并 | 选择多个文件和页码后按顺序生成一个 PDF。 |
 | PDF 拆分 | 按页导出，支持单页、全部或指定范围。 |
 | PDF 旋转 | 对选定页面进行 90/180/270 度旋转。 |

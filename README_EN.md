@@ -26,13 +26,15 @@
   A Windows app for PDFs, images, audio/video, text, AI documents, AI tables, CLI workflows, and IDE Agent automation. Files stay local by default.
 </p>
 
-<p align="center">
-  <a href="README.md"><img src="https://img.shields.io/badge/简体中文-README-111827?style=for-the-badge" alt="简体中文 README" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/Download-Desktop%20Release-111827?style=for-the-badge" alt="Download Desktop" /></a>
-  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/Web-Version-111827?style=for-the-badge" alt="Web Version" /></a>
-  <a href="#cli--ide-agent--mcp"><img src="https://img.shields.io/badge/CLI%20%2F%20Agent-MCP-111827?style=for-the-badge" alt="CLI / Agent" /></a>
-  <a href="toolknit-desktop/docs/agent-guide.en.md"><img src="https://img.shields.io/badge/Agent-Guide-111827?style=for-the-badge" alt="Agent Guide" /></a>
-</p>
+<table>
+  <tr>
+    <td align="center" width="20%"><a href="README.md"><strong>简体中文</strong><br /><sub>Chinese README</sub></a></td>
+    <td align="center" width="20%"><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>Download Desktop</strong><br /><sub>Windows installer</sub></a></td>
+    <td align="center" width="20%"><a href="https://toolknit.com"><strong>Web Version</strong><br /><sub>toolknit.com</sub></a></td>
+    <td align="center" width="20%"><a href="#cli--ide-agent--mcp"><strong>CLI / Agent</strong><br /><sub>MCP workflow</sub></a></td>
+    <td align="center" width="20%"><a href="toolknit-desktop/docs/agent-guide.en.md"><strong>Agent Guide</strong><br /><sub>Examples</sub></a></td>
+  </tr>
+</table>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
@@ -42,7 +44,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+  <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop home screen" width="100%" />
 </p>
 
 ## Overview
@@ -70,13 +72,13 @@ If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, d
 
 <table>
   <tr>
-    <th width="30%">WeChat Pay</th>
     <th width="30%">Alipay</th>
+    <th width="30%">WeChat Pay</th>
     <th width="40%">What support helps with</th>
   </tr>
   <tr>
-    <td align="center"><img src="assets/wechat-qr.jpg" alt="Support ToolKnit with WeChat Pay" width="230" /></td>
-    <td align="center"><img src="assets/alipay-qr.png" alt="Support ToolKnit with Alipay" width="230" /></td>
+    <td align="center"><img src="assets/wechat-qr.jpg" alt="Support ToolKnit with Alipay" width="230" /></td>
+    <td align="center"><img src="assets/alipay-qr.png" alt="Support ToolKnit with WeChat Pay" width="230" /></td>
     <td valign="top">
       <p>
         <img src="https://img.shields.io/badge/Feature%20requests-priority%20review-111827" alt="Feature requests priority review" />
@@ -249,6 +251,25 @@ If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, d
 | Creative | Typing test, color palette extraction. |
 
 Calculator tools and the typing test remain desktop-first because CLI/MCP would not add much value there.
+
+## Category Screenshot Placeholders
+
+Put one long screenshot for each category in `assets/readme/categories/` and use the names below:
+
+| Category | Suggested filename | Notes |
+| --- | --- | --- |
+| PDF | `assets/readme/categories/category-pdf.png` | Long screenshot for the PDF category. |
+| Image | `assets/readme/categories/category-image.png` | Long screenshot for the image category. |
+| Audio | `assets/readme/categories/category-audio.png` | Long screenshot for the audio category. |
+| Video | `assets/readme/categories/category-video.png` | Long screenshot for the video category. |
+| Text | `assets/readme/categories/category-text.png` | Long screenshot for the text category. |
+| AI | `assets/readme/categories/category-ai.png` | Long screenshot for the AI category. |
+| Calculator | `assets/readme/categories/category-calculator.png` | Long screenshot for the calculator category. |
+| Creative | `assets/readme/categories/category-creative.png` | Long screenshot for the creative category. |
+| Hardware | `assets/readme/categories/category-hardware.png` | Reserved for a hardware category screenshot. |
+| Cleanup | `assets/readme/categories/category-cleanup.png` | Reserved for a cleanup category screenshot. |
+
+See [assets/readme/categories/README.md](assets/readme/categories/README.md) for the full naming guide.
 
 ## Download and Usage
 
