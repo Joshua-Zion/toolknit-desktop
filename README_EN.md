@@ -12,7 +12,7 @@
       <br />
       <strong>Open tools, shared with care.</strong>
       <br />
-      <sub>Live Star badge from GitHub · Public donations: 25.88 CNY</sub>
+      <sub>Live Star badge from GitHub · Public donations: 80.88 CNY</sub>
     </td>
   </tr>
 </table>
@@ -22,7 +22,7 @@
 <p align="center"><em>人生何处不青山 · there is always another green mountain ahead</em></p>
 
 <p align="center">
-  <strong>Local-first multi-tool desktop app · Open-source desktop edition v1.2</strong><br />
+  <strong>Local-first multi-tool desktop app · Open-source desktop edition v1.3</strong><br />
   A Windows app for PDFs, images, audio/video, text, AI documents, AI tables, CLI workflows, and IDE Agent automation. Files stay local by default.
 </p>
 
@@ -38,7 +38,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-111827" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Tauri-2.x-111827" alt="Tauri 2.x" />
-  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.2-111827" alt="CLI and MCP" />
+  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.3-111827" alt="CLI and MCP" />
 </p>
 
 <p align="center">
@@ -60,10 +60,10 @@ Only AI-specific workflows send text to the model provider you configure yoursel
 
 ## Support
 
-If ToolKnit helps you, supporting the author keeps testing, mirrors, documentation, releases, and future development moving. Independent development takes time; support helps ToolKnit stay open-source, clean, local-first, and useful for Agent workflows.
+If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, documentation, releases, and future development moving. Independent development takes time; support helps ToolKnit stay open-source, clean, local-first, and useful for Agent workflows.
 
 <p align="center">
-  <strong>Public donations so far: 25.88 CNY</strong><br />
+  <strong>Public donations so far: 80.88 CNY</strong><br />
   <sub>Public record: <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
 </p>
 
@@ -83,7 +83,7 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
         <img src="https://img.shields.io/badge/Dependency%20mirrors-faster%20downloads-111827" alt="Dependency mirrors faster downloads" />
       </p>
       <ul>
-        <li><strong>Building is hard; maintaining open source is harder.</strong> Every bit of support helps ToolKnit keep moving.</li>
+        <li><strong>Building is hard; maintaining open source is harder.</strong> Every bit of support becomes the next steadier update.</li>
         <li>If you have a tool, format, or workflow improvement you really want, leave a note with your donation, open an Issue, or contact me through the web version.</li>
         <li>Clear, reproducible, maintainable requests are easier to evaluate and schedule for upcoming versions.</li>
       </ul>
@@ -108,7 +108,7 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
   <img src="https://img.shields.io/badge/Desktop-local%20first-111827" alt="Desktop local first" />
 </p>
 
-## v1.0 to v1.2
+## v1.0 to v1.3
 
 <table>
   <tr>
@@ -124,19 +124,19 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
     </td>
     <td width="4%" align="center" valign="middle"><strong>-></strong></td>
     <td width="48%" valign="top">
-      <h3>v1.2</h3>
-      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+      <h3>v1.3</h3>
+      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop home screen" width="100%" />
       <ul>
-        <li>30+ desktop tools, including video frame export, video-to-GIF, long image stitching, and audio/video transcription.</li>
+        <li>40+ desktop tools, including PDF to image, video frame export, video-to-GIF, long image stitching, audio/video transcription, hardware info, and AI cleanup.</li>
         <li>Custom output root, per-tool output folders, custom backgrounds, and default background fallback.</li>
-        <li>Most core file tools expose CLI contracts and MCP tools for IDE Agents.</li>
+        <li>Most core file tools expose CLI contracts and 31 MCP tools for IDE Agents.</li>
         <li>AI documents and AI tables now use inspectable, numbered, editable, undoable, re-renderable project workflows.</li>
       </ul>
     </td>
   </tr>
 </table>
 
-### AI Document Generation: 1.0 vs 1.2
+### AI Document Generation: 1.0 vs Project Workflow
 
 <table>
   <tr>
@@ -161,14 +161,14 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
   </tr>
 </table>
 
-### v1.2 Highlights
+### v1.3 Highlights
 
 | Update | What it enables |
 | --- | --- |
-| HD video frame export | Export PNG or high-quality JPG frames by time or frame position. |
-| Video to GIF | Choose start/end, FPS, and width, then export palette-optimized GIFs up to 30 seconds. |
+| HD video frame export | Export PNG or high-quality JPG frames by exact time or real frame rate. |
+| Video to GIF | Choose start/end frames, FPS, and width, then export palette-optimized GIFs up to 30 seconds. |
 | Long image stitching | Stitch images and PDF pages horizontally or vertically with spacing, background, and reference sizing. |
-| Audio/video transcription | Download a local Whisper model, then export TXT, SRT, and JSON; optional DeepSeek review is supported. |
+| Audio/video transcription | Download a local Whisper model, then export TXT, SRT, and JSON; optional AI review is supported. |
 | AI document upgrade | Generate PDF plus editable project, preview images, and numbered component maps; edit position, size, color, font, alignment, layer order, and undo history. |
 | AI table workflow | Export XLSX, CSV, PDF, PNG, and editable projects; modify rows, columns, formulas, charts, and render again. |
 | PDF page selection | Merge, split, and rotate flows now support preview, page picking, select all, clear all, and safe back navigation. |
@@ -237,7 +237,7 @@ Requirements: Windows 10/11, Node.js `20.12.0` or newer, and Rust stable for nat
 
 <a id="cli--ide-agent--mcp"></a>
 
-v1.2 extracts the desktop app's core file-processing capabilities into verifiable CLI/MCP contracts. The desktop app is best for preview and visual editing; CLI is best for scripts, batch processing, and CI; IDE Agents can call the same capabilities through MCP without keeping the desktop window open.
+v1.3 extracts the desktop app's core file-processing capabilities into verifiable CLI/MCP contracts. The desktop app is best for preview and visual editing; CLI is best for scripts, batch processing, and CI; IDE Agents can call the same capabilities through MCP without keeping the desktop window open.
 
 ### Install from npm (recommended)
 

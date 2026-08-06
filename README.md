@@ -12,7 +12,7 @@
       <br />
       <strong>不以私藏缚代码，愿将利器赠人间。</strong>
       <br />
-      <sub>Star 数由 GitHub 实时徽章展示 · 已获捐赠 25.88 元</sub>
+      <sub>Star 数由 GitHub 实时徽章展示 · 已获捐赠 80.88 元</sub>
     </td>
   </tr>
 </table>
@@ -22,7 +22,7 @@
 <p align="center"><em>人生何处不青山</em></p>
 
 <p align="center">
-  <strong>多功能本地工具箱 · 桌面端开源版 v1.2</strong><br />
+  <strong>多功能本地工具箱 · 桌面端开源版 v1.3</strong><br />
   一个 Windows 应用，整合 PDF、图片、音视频、文本、AI 文档、AI 表格与 CLI / IDE Agent 工作流。默认本地处理，文件不上传。
 </p>
 
@@ -38,7 +38,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-111827" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Tauri-2.x-111827" alt="Tauri 2.x" />
-  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.2-111827" alt="CLI and MCP" />
+  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.3-111827" alt="CLI and MCP" />
 </p>
 
 <p align="center">
@@ -60,10 +60,10 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 ## 支持作者
 
-如果 ToolKnit 帮到了你，欢迎支持作者继续维护。独立开发不容易，但我希望桌面端能继续保持开源、纯净、可离线、可被 Agent 调用。你的支持会用于测试设备、运行依赖镜像、文档维护、版本发布和后续功能开发。
+如果 ToolKnit 帮到了你，欢迎把一点点支持留给它。独立开发不容易，但我希望桌面端能继续保持开源、纯净、可离线、可被 Agent 调用。你的支持会被放回测试设备、运行依赖镜像、文档维护、版本发布和后续功能开发里。
 
 <p align="center">
-  <strong>当前公开捐赠总额：25.88 元</strong><br />
+  <strong>当前公开捐赠总额：80.88 元</strong><br />
   <sub>公开记录见 <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
 </p>
 
@@ -83,7 +83,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
         <img src="https://img.shields.io/badge/依赖镜像-更快下载-111827" alt="依赖镜像更快下载" />
       </p>
       <ul>
-        <li><strong>创作不易，开源更不易。</strong> 每一份支持都会让 ToolKnit 更有动力继续维护。</li>
+        <li><strong>创作不易，开源更不易。</strong> 每一份支持都会悄悄变成下一次更稳的更新。</li>
         <li>如果你有很想要的新工具、新格式或工作流优化，可以在捐赠留言、Issue 或网页端联系我。</li>
         <li>明确、可复现、可维护的需求会被优先评估和排期，让好想法更快进入版本计划。</li>
       </ul>
@@ -108,7 +108,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
   <img src="https://img.shields.io/badge/桌面端-本地优先-111827" alt="桌面端本地优先" />
 </p>
 
-## v1.0 到 v1.2
+## v1.0 到 v1.3
 
 <table>
   <tr>
@@ -124,19 +124,19 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
     </td>
     <td width="4%" align="center" valign="middle"><strong>-></strong></td>
     <td width="48%" valign="top">
-      <h3>v1.2</h3>
-      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+      <h3>v1.3</h3>
+      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop home screen" width="100%" />
       <ul>
-        <li>30+ 个桌面工具，新增视频单帧、视频转 GIF、长图拼接、音视频转文字。</li>
+        <li>40+ 个桌面工具，新增 PDF 转图像、视频单帧、视频转 GIF、长图拼接、音视频转文字、硬件信息和 AI 大文件清理。</li>
         <li>统一输出根目录、工具二级目录、自定义背景和默认动态背景回退。</li>
-        <li>大部分核心文件工具支持 CLI，并提供 MCP 能力给 IDE Agent 调用。</li>
+        <li>大部分核心文件工具支持 CLI，并提供 31 项 MCP 能力给 IDE Agent 调用。</li>
         <li>AI 文档和 AI 表格升级为可检查、可编号、可编辑、可撤销、可重新渲染的工程工作流。</li>
       </ul>
     </td>
   </tr>
 </table>
 
-### AI 文档生成：1.0 vs 1.2
+### AI 文档生成：1.0 vs 工程化工作流
 
 <table>
   <tr>
@@ -161,19 +161,18 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
   </tr>
 </table>
 
-### v1.2 重点更新
+### v1.3 重点更新
 
 | 更新 | 现在可以做什么 |
 | --- | --- |
-| 视频高清单帧图 | 按精确时间或帧定位，导出 PNG 无损图或高质量 JPG。 |
-| 视频截取 GIF | 选择起点、终点、帧率和宽度，导出最长 30 秒的调色板优化 GIF。 |
-| 长图拼接 | 支持图片和 PDF 页面导入，提供横向/纵向拼接、间距、背景和参考尺寸。 |
-| 音视频提取字幕文字 | 下载本地 Whisper 模型后离线转写音频或视频，输出 TXT、SRT、JSON，可选 DeepSeek 二次润色。 |
-| AI 文档大优化 | 输出 PDF、可编辑工程、预览图和控件编号图；支持位置、尺寸、颜色、字号、对齐、层级、撤销和重渲染。 |
-| AI 表格工程化 | 输出 XLSX、CSV、PDF、PNG 和可编辑工程；支持稳定行列编号、图表编号、试运行、修改、撤销和重渲染。 |
-| PDF 选页体验 | 合并、拆分、旋转等工具支持预览、逐页选择、全选、取消全选和安全返回。 |
-| 依赖管理 | FFmpeg 与离线识别模型按需下载，支持官方源和国内镜像源。 |
-| CLI 与 Agent | 核心文件处理工具拥有明确输入、输出、进度、错误码和帮助文档，可被 IDE Agent 自然语言调用。 |
+| 视频高清单帧图 | 按精确时间点或真实帧率定位，导出 PNG 无损图或高质量 JPG。 |
+| 视频截取 GIF | 选择起始与结束帧、帧率和宽度，导出最长 30 秒的调色板优化 GIF。 |
+| 音视频提取字幕文字 | 下载本地识别模型后离线转写音频或视频，输出 TXT、SRT、JSON；可选 AI 二次润色。 |
+| AI 文档大升级 | 生成多页专业 PDF，同时输出可编辑工程、控件编号图和预览图；支持位置互换、颜色、字号、图层与撤销。 |
+| AI 表格工程化 | 生成 CSV/XLSX/PDF/PNG，按稳定行、列、图表编号检查与修改，再重新渲染。 |
+| PDF 选页体验 | 合并、拆分、旋转等工作流支持预览、逐页选择、全选和安全的返回逻辑。 |
+| 输出与依赖管理 | 所有输出按工具分类到自定义目录；FFmpeg 和离线模型按需下载、校验与提示。 |
+| CLI 与 Agent | 大部分核心文件处理工具拥有确定的命令、进度、错误和输出契约，可由 MCP Agent 自然语言调用。 |
 
 ## 功能总览
 
@@ -237,7 +236,7 @@ npm run tauri dev
 
 <a id="cli--ide-agent--mcp"></a>
 
-v1.2 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
+v1.3 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
 
 ### 正式 npm 安装（推荐）
 
