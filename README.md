@@ -12,12 +12,12 @@
       <br />
       <strong>不以私藏缚代码，愿将利器赠人间。</strong>
       <br />
-      <sub>Star 数由 GitHub 实时徽章展示 · 已获捐赠 83.88 元 · 最近一笔：匿名开源支持者（工具编织）3 元</sub>
+      <sub>Star 数由 GitHub 实时徽章展示 · 已获捐赠 83.88 元 · 最近一笔：匿名开源支持者 3 元</sub>
     </td>
   </tr>
 </table>
 
-<h1 align="center">ToolKnit Desktop</h1>
+<h1 align="center">ToolKnit Desktop（工具编织）</h1>
 
 <p align="center"><em>人生何处不青山</em></p>
 
@@ -65,7 +65,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 <p align="center">
   <strong>当前公开捐赠总额：83.88 元</strong><br />
-  <sub>最近一笔：匿名开源支持者（工具编织）· 3 元</sub><br />
+  <sub>最近一笔：匿名开源支持者 · 3 元</sub><br />
   <sub>公开记录见 <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
 </p>
 
@@ -253,7 +253,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 ## 页面展示
 
-分类页不再强求长图拼接，直接截当前分类页最干净，也更方便以后替换。截图统一放在 `assets/readme/categories/`，命名说明见 [assets/readme/categories/README.md](assets/readme/categories/README.md)。
+分类页不再强求长图拼接，直接截当前分类页最干净，也更方便以后替换。截图统一放在 `assets/readme/categories/`，命名说明见下方文件。
 
 ### 设置页
 
