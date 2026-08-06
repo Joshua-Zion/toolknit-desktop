@@ -34,6 +34,10 @@
 </p>
 
 <p align="center">
+  <strong>❤️ <a href="#支持作者">如果 ToolKnit 曾帮你少熬一次夜，欢迎把一点点支持留给它。</a></strong>
+</p>
+
+<p align="center">
   <img src="./docs/assets/readme-home.png" alt="ToolKnit Desktop home screen" width="100%" />
 </p>
 
@@ -51,27 +55,6 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 - 希望通过 CLI、脚本或 IDE Agent 批量处理项目文件的开发者。
 
 只有在你明确调用 AI 润色、翻译、AI 文档、AI 表格或转写二次润色时，相关文字才会发送到你自行配置的 AI 服务；本地文件工具不会上传源文件。
-
-## 支持作者
-
-> **如果 ToolKnit 帮到了你，欢迎支持作者继续维护。**
->
-> 支持会用于测试设备、文档维护、运行时镜像、版本发布和后续功能开发。公开支持记录见 [docs/SUPPORT.md](docs/SUPPORT.md)。
-
-<table>
-  <tr>
-    <th width="50%">微信支付</th>
-    <th width="50%">支付宝</th>
-  </tr>
-  <tr>
-    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="微信支付支持 ToolKnit" width="220" /></td>
-    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="支付宝支持 ToolKnit" width="220" /></td>
-  </tr>
-</table>
-
-<p align="center">
-  想免安装使用更完整的在线能力？访问 <a href="https://toolknit.com"><strong>toolknit.com</strong></a>
-</p>
 
 ---
 
@@ -92,9 +75,9 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
     <td width="46%" valign="top">
       <h3>v1.3</h3>
       <ul>
-        <li>32 个桌面工具，加入视频单帧图、视频转 GIF、长图拼接和音视频转文字</li>
+        <li>40+ 个桌面工具，加入 PDF 转图像、视频单帧图、视频转 GIF、长图拼接、音视频转文字、硬件信息和 AI 大文件清理</li>
         <li>可自定义输出根目录、二级分类目录和应用背景</li>
-        <li>核心文件工具支持 CLI，并为 IDE Agent 提供 30 项 MCP 能力</li>
+        <li>核心文件工具支持 CLI，并为 IDE Agent 提供 31 项 MCP 能力</li>
         <li>AI 文档/AI 表格升级为可检查、可编号、可编辑、可撤销、可重渲染的工程工作流</li>
       </ul>
     </td>
@@ -113,6 +96,39 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 | PDF 选页体验 | 合并、拆分、旋转等工作流支持预览、逐页选择、全选和安全的返回逻辑。 |
 | 输出与依赖管理 | 所有输出按工具分类到自定义目录；FFmpeg 和离线模型按需下载、校验与提示。 |
 | CLI 与 AI Agent | 大部分核心文件处理工具拥有确定的命令、进度、错误和输出契约，可由 MCP Agent 自然语言调用。 |
+
+## 支持作者
+
+<p align="center">
+  <strong>每一份支持，都会被悄悄变成下一次更稳的更新。</strong>
+</p>
+
+> 如果 ToolKnit 曾替你省下一次重复劳动、一个晚上的加班，或者把原本散掉的文件重新拢回秩序，欢迎把一点点支持留给它。
+>
+> 这些支持不会只停在一句感谢里，它们会被放回到测试设备、依赖镜像、文档、版本发布和 bug 修复里。每一笔都不算大，但都在帮它更稳地活下去。
+
+<table>
+  <tr>
+    <th width="50%">微信支付</th>
+    <th width="50%">支付宝</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="微信支付支持 ToolKnit" width="220" /></td>
+    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="支付宝支持 ToolKnit" width="220" /></td>
+  </tr>
+</table>
+
+<p align="center">
+  想免安装使用更完整的在线能力？访问 <a href="https://toolknit.com"><strong>toolknit.com</strong></a>
+</p>
+
+<p align="center">
+  公开支持记录见 <a href="docs/SUPPORT.md">docs/SUPPORT.md</a>，每一次支持都会被认真记下。
+</p>
+
+<p align="center">
+  <strong>谢谢每一位愿意为它停一下的人。</strong>
+</p>
 
 ## 功能总览
 

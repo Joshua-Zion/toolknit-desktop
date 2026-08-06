@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 const releaseTests = [
   'test:pdf-merge',
   'test:pdf-split',
+  'test:pdf-to-image',
   'test:pdf-rotate',
   'test:pdf-encrypt',
   'test:pdf-decrypt',

@@ -26,13 +26,15 @@ npm install --global --no-audit --no-fund --prefer-offline .\toolknit-cli-1.3.0.
 
 ## Command help
 
-The installed command includes a Chinese help system. Start with the complete command index, then drill into the PDF category or one operation:
+The installed command includes a Chinese help system. Start with the complete command index, then drill into the PDF category, including PDF to image, or one operation:
 
 ```powershell
 toolknit --help
 toolknit pdf --help
 toolknit pdf merge --help
+toolknit pdf to-image --help
 toolknit help pdf merge
+toolknit help pdf to-image
 ```
 
 Each operation help describes its required parameters, optional parameters, examples, output behavior, and relevant safety constraints. This document contains the same contract for IDE and release integration.
@@ -52,6 +54,8 @@ toolknit pdf split --input .\report.pdf --pages 1,3-5 --output-dir .\pages --jso
 toolknit pdf rotate --input .\report.pdf --output .\rotated.pdf --rotation 90 --json
 toolknit pdf compress --input .\report.pdf --output .\report-smaller.pdf --level high --json
 toolknit pdf enhance --input .\scan.pdf --output .\scan-enhanced.pdf --strength medium --json
+toolknit pdf to-image --input .\report.pdf --output-dir .\toolknit-output --mode images --pages 1,3-5 --format png --clarity high --json
+toolknit pdf to-image --input .\report.pdf --output-dir .\toolknit-output --mode long --pages 1-5 --format webp --clarity print --output-name report-walkthrough --json
 toolknit audio convert --input .\\meeting.m4a --output-dir .\\toolknit-output --format mp3 --quality high --json
 toolknit audio bpm --input .\\beat.wav --json
 toolknit audio clip --input .\\meeting.m4a --start 12.5 --end 47 --output-dir .\\toolknit-output --json
@@ -100,6 +104,7 @@ The current MCP tools are:
 - `toolknit_pdf_decrypt`
 - `toolknit_pdf_compress`
 - `toolknit_pdf_enhance`
+- `toolknit_pdf_to_image`
 - `toolknit_audio_convert`
 - `toolknit_audio_bpm`
 - `toolknit_audio_clip`

@@ -1,6 +1,6 @@
 # ToolKnit AI Agent Quick Guide
 
-This guide helps users connect ToolKnit to Trae, Cursor, or another MCP-capable IDE so an AI Agent can safely process local PDFs, convert audio and video, and generate polished multi-page AI documents and editable AI tables.
+This guide helps users connect ToolKnit to Trae, Cursor, or another MCP-capable IDE so an AI Agent can safely process local PDFs, convert them into images or stitched long images, convert audio and video, and generate polished multi-page AI documents and editable AI tables.
 
 ## Connect once
 
@@ -25,8 +25,17 @@ C:\Users\<your-user-name>\AppData\Roaming\npm\node_modules\@toolknit\cli\toolkni
 
 Local PDF, image, audio/video, and text tools do not need an AI key. AI documents, AI tables, and transcription with `refine` require a real `DEEPSEEK_API_KEY` (or `TOOLKNIT_AI_API_KEY`) in the IDE's MCP environment/secret settings; restart the IDE after setting it. Never place the key in an Agent message, document brief, output path, or filename. CLI/MCP does not read the credential stored by ToolKnit Desktop.
 
-After a successful connection, the Agent exposes 30 ToolKnit tools: eight PDF tools, four audio tools, four offline model and transcription tools, three video tools, one text tool, two image tools, four AI document project tools, and four AI table project tools:
+After a successful connection, the Agent exposes 31 ToolKnit tools: nine PDF tools, four audio tools, four offline model and transcription tools, three video tools, one text tool, two image tools, four AI document project tools, and four AI table project tools:
 
+- `toolknit_pdf_inspect` inspects page counts, sizes, and page-by-page details.
+- `toolknit_pdf_merge` merges multiple local PDFs in order into one file.
+- `toolknit_pdf_split` splits one PDF by explicit page numbers.
+- `toolknit_pdf_rotate` rotates PDF page orientation.
+- `toolknit_pdf_encrypt` adds passwords and permissions to a PDF.
+- `toolknit_pdf_decrypt` unlocks a password-protected PDF.
+- `toolknit_pdf_compress` reduces PDF file size.
+- `toolknit_pdf_enhance` improves scanned-page readability.
+- `toolknit_pdf_to_image` exports PDF pages as individual images or a stitched long image.
 - `toolknit_ai_document` creates the PDF, editable project, clean previews, numbered control maps, and first revision.
 - `toolknit_ai_document_inspect` reads every stable control number, text, style, position, lock state, and diagnostic without writing files.
 - `toolknit_ai_document_edit` applies atomic numbered edits, including dry runs, styling, swaps, movement, resizing, image insertion, locking, grouping, relative alignment, overlap resolution, and undo.
@@ -66,6 +75,20 @@ Call ToolKnit MCP's toolknit_image_stitch. Stitch screenshots/01.png, screenshot
 
 ```text
 Call toolknit_image_stitch to place assets/left.png and assets/right.png side by side, normalize to the larger image height, use a 16px gap with an opaque black background, and export JPG quality 92. Keep left before right and save the result in this workspace's toolknit-output directory.
+```
+
+## PDF to image / stitched long image
+
+When the user drops a PDF into the IDE chat and asks for “convert this PDF to images” or “make it into a stitched long image,” the Agent must first resolve the PDF to an absolute path from the IDE file tree and translate “save it in this project” into `<absolute-workspace-path>\\toolknit-output`. It must not guess the output directory or rewrite the source PDF.
+
+Copy-ready request:
+
+```text
+Call ToolKnit MCP's toolknit_pdf_to_image to export this project's assets/demo.pdf as per-page images into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first. Do not replace the source file; if I say “stitched long image,” switch to long mode and keep the pages in order. When complete, report every output absolute path, page number, format, and byte size.
+```
+
+```text
+Call ToolKnit MCP's toolknit_pdf_to_image to export pages 1 through 5 of this project's assets/demo.pdf as a stitched long image into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first and do not guess the page range. Report the long-image path, page range, and byte size when finished.
 ```
 
 ## State four things in every request

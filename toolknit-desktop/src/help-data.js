@@ -6,7 +6,7 @@ export const HELP_CONTENT = {
     title: '功能概览',
     html: `<div class="help-doc">
       <h2>ToolKnit 功能概览</h2>
-      <p>ToolKnit 是一款<strong>纯本地</strong>多功能工具箱桌面应用，涵盖 PDF、图像、音频、视频、文本、计算器、创意和 AI 八大工具分类，所有文件处理均在本地完成，不上传服务器。</p>
+      <p>ToolKnit 是一款<strong>纯本地</strong>多功能工具箱桌面应用，涵盖 PDF、图像、音频、视频、文本、计算器、创意、清理、硬件和 AI 等工具分类，文件处理优先在本地完成，不上传服务器。</p>
 
       <h3>工具分类一览</h3>
       <div class="help-tool-grid">
@@ -17,6 +17,8 @@ export const HELP_CONTENT = {
         <div class="help-tool-card"><div class="help-tool-card-name">文本工具</div><div class="help-tool-card-desc">音视频转文字、文本统计、文本格式化</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">计算器工具</div><div class="help-tool-card-desc">体脂率、时间戳、房贷、利息、密码生成</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">创意工具</div><div class="help-tool-card-desc">配色提取、打字测试</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">清理工具</div><div class="help-tool-card-desc">扫描大文件、AI 元数据建议、移入回收站</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">硬件工具</div><div class="help-tool-card-desc">只读查看整机、CPU、内存、显卡、主板、磁盘、网络和传感器</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">AI 工具</div><div class="help-tool-card-desc">AI 润色、翻译、可编辑文档、可编辑表格</div></div>
       </div>
 
@@ -179,6 +181,38 @@ export const HELP_CONTENT = {
 
       <div class="help-note">
         <p>每个导出文件只包含一个原始页面。单次最多处理 25 个文件、150 MB 输入和 200 页预览。</p>
+      </div>
+    </div>`
+  },
+
+  'pdf-to-image': {
+    title: 'PDF 转图像',
+    html: `<div class="help-doc">
+      <h2>PDF 转图像</h2>
+      <p>从一个 PDF 中选择需要的页面，导出为独立图像，或按原页码顺序生成高清长图。读取、渲染和写入全部在本机完成，文件不会上传到服务器。</p>
+
+      <h3>使用方法</h3>
+      <ol class="help-steps">
+        <li>点击“上传 PDF 文件”，或将一个 PDF 拖入工具页</li>
+        <li>在真实页面缩略图中点击选择或取消页面，也可全选</li>
+        <li>选择 PNG、JPG 或 WebP 格式，再选择需要的清晰度</li>
+        <li>点击“导出图像”可将每个所选页面分别保存为一张图</li>
+        <li>点击“导出长图”可按页码顺序合成长图</li>
+        <li>完成后在弹框中查看输出数量和保存路径，或点击“打开文件夹”</li>
+      </ol>
+
+      <h3>清晰度</h3>
+      <ul>
+        <li><strong>标准（144 DPI）：</strong>文件较小，适合屏幕阅读和日常分享</li>
+        <li><strong>高清（200 DPI）：</strong>默认选项，兼顾细节和文件大小</li>
+        <li><strong>印刷（300 DPI）：</strong>适合需要放大文字、图表或后续印刷的场景</li>
+      </ul>
+
+      <h3>长图分组规则</h3>
+      <p>长图单次最多选择 20 页，优先每 5 页生成一张。例如选择 16 页时，通常会输出 4 张图：1-5、6-10、11-15 和第 16 页。如果某组在当前清晰度下超过安全边长或内存限制，工具会自动拆成更小的组，不通过压缩原始页面来勉强拼接。</p>
+
+      <div class="help-note">
+        <p>每次只能读取一个 PDF，文件最大 150 MB、最多 200 页。受密码保护的 PDF 需要先使用“PDF 文件解密”处理。导出期间可取消，工具会清理未完成的临时文件。</p>
       </div>
     </div>`
   },
@@ -690,7 +724,7 @@ export const HELP_CONTENT = {
       <p>把 ToolKnit CLI 连接到支持 MCP 的 IDE 后，你可以直接用自然语言让 Agent 处理项目里的本地文件。Agent 调用的是真正的 ToolKnit 工具，不需要打开桌面端，也不应把“我已经处理好了”当成没有调用工具时的替代答案。</p>
 
       <h3>当前可用范围</h3>
-      <div class="help-agent-scope"><p>当前 MCP 一共提供 <strong>30 项</strong>能力。下面按你平时会说的话归类，Agent 会自己转成明确的工具参数：</p><ul><li><strong>PDF（8 项）</strong>：查看页数和大小、合并、按页拆分、旋转、加密、解密、压缩、增强扫描件文字可读性。</li><li><strong>音频（4 项）</strong>：转格式、测 BPM、按明确起止时间剪辑、从视频提取指定音轨。</li><li><strong>音视频转文字（4 项）</strong>：查看本地模型、下载模型、切换当前模型、输出 TXT / SRT / JSON；可选把识别文字交给 AI 润色，媒体本身不会上传。</li><li><strong>视频（3 项）</strong>：转格式、按精确毫秒导出单帧 PNG/JPG、按明确起止时间截取最长 30 秒 GIF。</li><li><strong>文本和图像（3 项）</strong>：统计 UTF-8 文本文件、提取主色板、把 2-100 张图片拼成长图。</li><li><strong>AI 文档（4 项）</strong>：生成 PDF、检查可编辑工程、按编号修改控件、重新渲染 PDF 和编号图。</li><li><strong>AI 表格（4 项）</strong>：生成 CSV/XLSX/PDF/PNG、检查工程、按行列图表编号修改、重新渲染。</li></ul></div>
+      <div class="help-agent-scope"><p>当前 MCP 一共提供 <strong>31 项</strong>能力。下面按你平时会说的话归类，Agent 会自己转成明确的工具参数：</p><ul><li><strong>PDF（9 项）</strong>：查看页数和大小、合并、按页拆分、旋转、加密、解密、压缩、增强扫描件文字可读性，以及把 PDF 导出为逐页图像或拼成长图。</li><li><strong>音频（4 项）</strong>：转格式、测 BPM、按明确起止时间剪辑、从视频提取指定音轨。</li><li><strong>音视频转文字（4 项）</strong>：查看本地模型、下载模型、切换当前模型、输出 TXT / SRT / JSON；可选把识别文字交给 AI 润色，媒体本身不会上传。</li><li><strong>视频（3 项）</strong>：转格式、按精确毫秒导出单帧 PNG/JPG、按明确起止时间截取最长 30 秒 GIF。</li><li><strong>文本和图像（3 项）</strong>：统计 UTF-8 文本文件、提取主色板、把 2-100 张图片拼成长图。</li><li><strong>AI 文档（4 项）</strong>：生成 PDF、检查可编辑工程、按编号修改控件、重新渲染 PDF 和编号图。</li><li><strong>AI 表格（4 项）</strong>：生成 CSV/XLSX/PDF/PNG、检查工程、按行列图表编号修改、重新渲染。</li></ul></div>
 
       <h3>哪些功能不让 Agent 调用</h3>
       <p>图片格式转换、图片压缩、图标生成、文本格式化、计算器、密码生成器、打字测试、AI 润色和 AI 翻译目前是<strong>桌面端专用</strong>。这不是漏接：其中一部分不适合在终端或 Agent 对话里传递内容、密码或交互状态。</p>
@@ -914,6 +948,57 @@ export const HELP_CONTENT = {
   'transcription': {
     title: '音视频提取文字',
     html: `<div class="help-doc"><h2>音视频提取文字</h2><p>使用内置的离线 Whisper 引擎识别本机音频或视频中的中文和英文。媒体文件不会上传。</p><h3>首次使用</h3><ol class="help-steps"><li>进入设置，打开“离线识别模型”</li><li>推荐下载 Small；Base 更快且更小，Medium 质量更高但占用更多空间</li><li>选择自动、官方或国内镜像下载源，完成校验后模型可离线使用</li></ol><h3>输出与润色</h3><p>每次识别都会保留原始 JSON、SRT、TXT。开启 AI 二次润色后，仅识别出的字幕文字会提交给已配置的 AI 平台；字幕段编号和时间轴不会被增加、删除、拆分或合并。</p><div class="help-note"><p>AI 只能修正标点、语法和明显的上下文识别错误，不能听见原音频。涉及专有名词、数字或不清晰发音时，请以原始字幕和音频为准。</p></div></div>`
+  },
+
+  'large-file-cleanup': {
+    title: 'AI 大文件清理',
+    html: `<div class="help-doc">
+      <h2>AI 大文件清理</h2>
+      <p>这个工具用于找出指定文件夹里的大文件，并在你确认后把文件移入 Windows 回收站。它适合清理下载目录、临时导出目录、录屏目录、安装包和压缩包。</p>
+
+      <h3>推荐使用方式</h3>
+      <ol class="help-steps">
+        <li>选择一个具体目录，例如“下载”“视频”“桌面临时文件夹”，不要选择整个磁盘。</li>
+        <li>保留默认阈值 <strong>50MB</strong>，先用“视频优先”或“全部大文件”扫描。</li>
+        <li>查看列表里的大小、类别、目录线索和本地风险提示。</li>
+        <li>如果已配置 AI 密钥，可点击“AI 轮询分析”，让 AI 根据元数据给出 delete / keep / review 建议。</li>
+        <li>只勾选自己确认无误的项目，点击“移入回收站”。误删后可从回收站恢复。</li>
+      </ol>
+
+      <h3>隐私与安全</h3>
+      <ul>
+        <li><strong>扫描是本地只读</strong>：不会读取文件内容，也不会修改原文件。</li>
+        <li><strong>AI 只看元数据</strong>：只发送文件名、大小、类别、修改时间、相对目录线索和本地风险理由；不会发送文件内容，也不会发送完整绝对路径。</li>
+        <li><strong>高风险保护</strong>：聊天文件、项目/源码目录、模型/开发包会被标记为高风险。即使 AI 误判，本地也会把高风险 delete 改成人工复核。</li>
+        <li><strong>不会永久删除</strong>：删除动作默认移入 Windows 回收站，不做不可恢复清空。</li>
+      </ul>
+
+      <div class="help-note"><p>最稳的习惯是：先扫“下载目录”和“临时导出目录”。项目仓库、微信聊天目录、模型目录和重要资料目录，即使显示很大，也建议手动复核后再处理。</p></div>
+    </div>`
+  },
+
+  'hardware-tools': {
+    title: '硬件工具总览',
+    html: `<div class="help-doc">
+      <h2>硬件工具总览</h2>
+      <p>硬件工具用于本地只读查看电脑信息，定位配置、驱动、磁盘空间、网络设备和电源状态。它类似一个轻量系统信息面板，不会写入硬件配置，也不会上传设备数据。</p>
+
+      <h3>目前包含的页面</h3>
+      <ul>
+        <li><strong>整机概览</strong>：系统版本、设备型号、核心硬件、固件安全状态和磁盘空间摘要。</li>
+        <li><strong>CPU 与内存</strong>：CPU 核心/线程、频率、缓存、虚拟化状态、内存总量、插槽、品牌、型号和当前配置频率。</li>
+        <li><strong>显卡与显示器</strong>：显卡名称、显存、驱动版本、显示器分辨率和刷新率等系统可读取信息。</li>
+        <li><strong>主板与固件</strong>：主板、BIOS/UEFI、Secure Boot、TPM、PCI 设备等只读信息。</li>
+        <li><strong>磁盘与健康</strong>：物理磁盘、卷、容量、剩余空间、接口和可读取的健康状态。</li>
+        <li><strong>网络与设备</strong>：网络适配器、IP 配置、蓝牙、音频、摄像头、键鼠等外设摘要。</li>
+        <li><strong>电源与传感器</strong>：电源计划、电池、ACPI 温度区和风扇接口能返回的状态。</li>
+      </ul>
+
+      <h3>读取限制</h3>
+      <p>Windows 对部分硬件字段有限制：例如内存 SPD/XMP 频率、部分硬盘 SMART 细节、显卡实时温度等，普通应用不一定能稳定读取。ToolKnit 会展示系统接口能安全返回的数据，读取不到时会显示为空或不可用。</p>
+
+      <div class="help-note"><p>硬件工具是“查看器”，不是超频、驱动安装或清理器。它不会改 BIOS、电源计划、注册表或硬件驱动。</p></div>
+    </div>`
   },
 
   'faq-update': {

@@ -7,6 +7,7 @@ import { normalizeBannerMode, renderToolKnitBanner } from './lib/banner.mjs';
 import { errorPayload, EXIT_CODES, ToolKnitError, toToolKnitError } from './lib/errors.mjs';
 import { startMcpServer } from './lib/mcp-server.mjs';
 import { checkQpdfAvailability, compressPdfFile, decryptPdfFile, encryptPdfFile, enhancePdfFile, inspectPdf, mergePdf, rotatePdf, splitPdf } from './lib/pdf-runtime.mjs';
+import { convertPdfToImages } from './lib/pdf-to-image-runtime.mjs';
 import { checkFfmpegAvailability, convertAudioBatch } from './lib/audio-runtime.mjs';
 import { detectAudioBpm } from './lib/bpm-runtime.mjs';
 import { clipAudio } from './lib/audio-clip-runtime.mjs';
@@ -48,6 +49,7 @@ PDF 工具：
   decrypt   使用密码解密 PDF
   compress  通过 qpdf 压缩 PDF
   enhance   增强扫描件的视觉效果
+  to-image  将 PDF 页面导出为逐页图像或拼接长图
 
 音频工具：
   convert   将一个或多个本地音频文件转换为 MP3、AAC、WAV、FLAC、ALAC 或 OGG
@@ -82,6 +84,7 @@ PDF 工具：
   toolknit text stats --help
   toolknit image colors --help
   toolknit image stitch --help
+  toolknit pdf to-image --help
   toolknit ai-doc --help
   toolknit ai-table --help
   toolknit help pdf merge
@@ -118,11 +121,13 @@ const PDF_OVERVIEW = `ToolKnit PDF 工具
   decrypt   使用标准输入中的密码解密 PDF
   compress  使用 qpdf 压缩 PDF
   enhance   增强扫描件；输出会被重新栅格化
+  to-image  将 PDF 页面导出为逐页图像或拼接长图
 
 示例：
   toolknit pdf inspect --input .\\report.pdf --json
   toolknit pdf merge --input .\\part-a.pdf --input .\\part-b.pdf --output .\\merged.pdf
   toolknit pdf split --input .\\report.pdf --pages 1,3-5 --output-dir .\\pages
+  toolknit pdf to-image --input .\\report.pdf --output-dir .\\toolknit-output --mode long --pages 1-5 --json
 
 详细参数：
   toolknit pdf <工具> --help
@@ -210,7 +215,18 @@ const PDF_COMMAND_HELP = {
 增强等级默认为 medium，适用于扫描件或以图像为主的 PDF。此功能会重新栅格化页面，因此不保留可搜索文本、链接、表单和原生矢量内容。
 
 示例：
-  toolknit pdf enhance --input .\\scan.pdf --output .\\scan-enhanced.pdf --strength medium`
+  toolknit pdf enhance --input .\\scan.pdf --output .\\scan-enhanced.pdf --strength medium`,
+
+  'to-image': `PDF 转图像（to-image）
+
+用法：
+  toolknit pdf to-image --input <file.pdf> --output-dir <directory> [--pages <1,3-5>] [--mode images|long] [--format png|jpg|webp] [--clarity standard|high|print] [--output-name <name>] [--json]
+
+--mode images 会把每一页单独导出为图像；--mode long 会把所选页面按顺序拼接成长图，默认每 5 页生成一张。未指定 --pages 时，images 会导出全部页面，long 会在页面数不超过 20 时导出全部页面。
+
+示例：
+  toolknit pdf to-image --input .\\report.pdf --output-dir .\\toolknit-output --json
+  toolknit pdf to-image --input .\\report.pdf --output-dir .\\toolknit-output --mode long --pages 1,2,3,4,5 --format webp --clarity print --output-name report-walkthrough`
 };
 
 const AUDIO_OVERVIEW = `ToolKnit 音频工具
@@ -834,6 +850,26 @@ async function runPdfCommand(action, options) {
   if (action === 'enhance') {
     if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'pdf enhance requires exactly one --input.');
     return enhancePdfFile({ input_path: options.input[0], output_path: requireOption(options, 'output'), strength: options.strength, overwrite });
+  }
+  if (action === 'to-image') {
+    assertOnlyCommandOptions(options, new Set(['input', 'output-dir', 'pages', 'mode', 'format', 'clarity', 'output-name', 'json', 'banner']));
+    if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'pdf to-image requires exactly one --input.');
+    const pages = options.pages === undefined ? undefined : parsePageRanges(options.pages);
+    const mode = options.mode || 'images';
+    const format = options.format || 'png';
+    const clarity = options.clarity || 'high';
+    if (!['images', 'long'].includes(mode)) throw new ToolKnitError('USAGE', '--mode must be images or long.');
+    if (!['png', 'jpg', 'jpeg', 'webp'].includes(format)) throw new ToolKnitError('USAGE', '--format must be png, jpg, or webp.');
+    if (!['standard', 'high', 'print'].includes(clarity)) throw new ToolKnitError('USAGE', '--clarity must be standard, high, or print.');
+    return convertPdfToImages({
+      input_path: options.input[0],
+      output_dir: requireOption(options, 'output-dir'),
+      pages,
+      mode,
+      format,
+      clarity,
+      output_name: options['output-name']
+    }, runtimeOptions);
   }
   throw new ToolKnitError('USAGE', `Unknown PDF action: ${action}`);
 }

@@ -1,6 +1,6 @@
 # Support ToolKnit / 支持 ToolKnit
 
-ToolKnit Desktop is independently maintained. Financial support helps fund testing hardware, package distribution, documentation, runtime mirrors, and time spent improving the local-first desktop, CLI, and MCP experience.
+ToolKnit Desktop is independently maintained. If ToolKnit has ever saved you a late night, a tedious set of clicks, or a few minutes you would rather spend on something that matters more, that support is felt. Financial support helps fund testing hardware, package distribution, documentation, runtime mirrors, and the long, quiet work of keeping the local-first desktop, CLI, and MCP experience steady.
 
 ## Official support channels
 
@@ -12,8 +12,10 @@ The repository README contains the official WeChat and Alipay QR assets. If a mi
 
 | Date | Supporter | Amount | Note |
 | --- | --- | ---: | --- |
-| 2026-08-03 | Anonymous open-source supporter | CNY 23.88 | Thank you for supporting ToolKnit. |
-| 2026-08-04 | Anonymous open-source supporter | CNY 2.00 | Thanks for the sausage fund and for keeping ToolKnit warm. |
+| 2026-08-03 | Anonymous open-source supporter | CNY 23.88 | Thank you for letting ToolKnit keep growing. |
+| 2026-08-04 | Anonymous open-source supporter | CNY 2.00 | Sausage fund received — a tiny warm boost for the next bug fix. |
+| 2026-08-06 | Anonymous open-source supporter (sausage fund) | CNY 5.00 | Sausage fund topped up again. Thank you for walking with ToolKnit. |
+| 2026-08-06 | Anonymous open-source supporter | CNY 50.00 | Thank you for giving open-source maintenance a stronger heartbeat. |
 
 The machine-readable record used by the desktop home page is [public/contributors.json](../public/contributors.json). Personal information is not published without permission.
 
@@ -24,4 +26,4 @@ The machine-readable record used by the desktop home page is [public/contributor
 - Improve documentation, translations, tests, or accessibility.
 - Share ToolKnit with people who need privacy-preserving local file tools.
 
-Thank you for helping keep useful tools accessible to more people.
+Thank you for helping keep useful tools accessible to more people. Every contribution, no matter the size, becomes part of the next better build.

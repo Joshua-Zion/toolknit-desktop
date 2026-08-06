@@ -9,7 +9,11 @@ import {
 } from '../src/icon-gen-core.js';
 
 assert.equal(isSupportedIconSource('logo.PNG'), true);
+assert.equal(isSupportedIconSource('logo.jpg'), true);
+assert.equal(isSupportedIconSource('logo.JPEG'), true);
 assert.equal(isSupportedIconSource('logo.gif'), false);
+assertIconSource({ name: 'logo.jpg', size: 1024 });
+assertIconSource({ name: 'logo.jpeg', size: 1024 });
 assertIconSource({ name: 'logo.webp', size: 1024 });
 assert.throws(
   () => assertIconSource({ name: 'logo.gif', size: 1024 }),
