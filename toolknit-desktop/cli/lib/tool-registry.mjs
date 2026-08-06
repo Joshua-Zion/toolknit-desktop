@@ -1,4 +1,5 @@
 import { PDF_TOOL_HANDLERS } from './pdf-runtime.mjs';
+import { convertPdfToImages } from './pdf-to-image-runtime.mjs';
 import { convertAudioBatch } from './audio-runtime.mjs';
 import { detectAudioBpm } from './bpm-runtime.mjs';
 import { clipAudio } from './audio-clip-runtime.mjs';
@@ -26,6 +27,7 @@ import { ToolKnitError } from './errors.mjs';
 
 const PDF_PATH = { type: 'string', minLength: 1, description: 'Absolute or current-directory-relative path to a PDF file.' };
 const OUTPUT_PATH = { type: 'string', minLength: 1, description: 'Explicit destination path for a new PDF. In an IDE, resolve the active workspace root and pass an absolute path inside that workspace; do not rely on the MCP process working directory. Existing files are refused unless overwrite is true.' };
+const PDF_TO_IMAGE_OUTPUT_DIR = { type: 'string', minLength: 1, description: 'Explicit directory for exported PDF images. In an IDE, resolve the active workspace root and use an absolute path inside <workspace>/toolknit-output. Existing files are never replaced; ToolKnit allocates unique names.' };
 const TABLE_OUTPUT_PATH = { type: 'string', minLength: 1, description: 'Explicit destination path for a new CSV, XLSX, PDF, or PNG export. In an IDE, resolve the active workspace root and pass an absolute path inside that workspace; do not rely on the MCP process working directory. Existing files are refused unless overwrite is true.' };
 const OVERWRITE = { type: 'boolean', default: false, description: 'Replace an existing output file only when explicitly true.' };
 const PROJECT_PATH = { type: 'string', minLength: 1, description: 'Path to a ToolKnit editable document project.' };
@@ -191,6 +193,24 @@ export const TOOL_DEFINITIONS = Object.freeze([
     name: 'toolknit_pdf_enhance',
     description: 'Render and enhance a scanned or image-based PDF locally. Output pages are rasterized; searchable text, links, and forms are not preserved.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['input_path', 'output_path'], properties: { input_path: PDF_PATH, output_path: OUTPUT_PATH, strength: { enum: ['light', 'medium', 'strong'], default: 'medium' }, overwrite: OVERWRITE } }
+  },
+  {
+    name: 'toolknit_pdf_to_image',
+    description: 'Export one explicit local PDF as page images or as stitched long images. In images mode each selected page is exported separately; in long mode selected pages are stitched into one or more long images. Processing is local, the source PDF is never modified, and outputs are published with unique names only after successful rendering. Resolve paths from the IDE file tree; do not infer them from the MCP process directory.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['input_path', 'output_dir'],
+      properties: {
+        input_path: PDF_PATH,
+        output_dir: PDF_TO_IMAGE_OUTPUT_DIR,
+        pages: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Optional page numbers already expanded by the caller. Omit to export all pages in images mode or all pages up to the long-image limit in long mode.' },
+        mode: { enum: ['images', 'long'], default: 'images' },
+        format: { enum: ['png', 'jpg', 'webp'], default: 'png' },
+        clarity: { enum: ['standard', 'high', 'print'], default: 'high' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional file name stem without a path or extension. ToolKnit still adds a numeric suffix rather than overwriting an existing file.' }
+      }
+    }
   },
   {
     name: 'toolknit_audio_convert',
@@ -370,6 +390,7 @@ export const TOOL_DEFINITIONS = Object.freeze([
 const TOOL_BY_NAME = new Map(TOOL_DEFINITIONS.map(tool => [tool.name, tool]));
 const TOOL_HANDLERS = Object.freeze({
   ...PDF_TOOL_HANDLERS,
+  toolknit_pdf_to_image: convertPdfToImages,
   toolknit_audio_convert: convertAudioBatch,
   toolknit_audio_bpm: detectAudioBpm,
   toolknit_audio_clip: clipAudio,

@@ -45,83 +45,116 @@
         </button>
       </div>
       <div class="settings-content">
-        <div class="tk-mascot-lg" aria-hidden="true"></div>
-
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.language">语言</h3>
-          <div class="settings-row lang-options">
-            <button class="lang-option capsule-outline" data-lang="en" data-i18n="settings.english">English</button>
-            <button class="lang-option capsule-outline" data-lang="zh" data-i18n="settings.chinese">中文</button>
+        <aside class="settings-poster">
+          <div class="settings-poster-copy">
+            <div class="tk-mascot-lg" aria-hidden="true"></div>
+            <span class="settings-poster-kicker">TOOLKNIT SETTINGS</span>
+            <h2 data-i18n="settings.centerTitle">设置中心</h2>
+            <p data-i18n="settings.centerDesc">管理 AI 密钥、依赖、存储、背景和窗口外观。所有设置只保存在本机。</p>
+            <div class="settings-poster-meta">
+              <span data-i18n="settings.versionInfo">版本信息</span>
+              <strong>v1.3.0</strong>
+            </div>
           </div>
-        </div>
+        </aside>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.versionInfo">版本信息</h3>
-          <div class="settings-row">
-            <span class="settings-version">v1.2.8</span>
+        <div class="settings-grid">
+          <div class="settings-section settings-section-language">
+            <h3 class="settings-section-title" data-i18n="settings.language">语言</h3>
+            <div class="settings-row lang-options">
+              <button class="lang-option capsule-outline" data-lang="en" data-i18n="settings.english">English</button>
+              <button class="lang-option capsule-outline" data-lang="zh" data-i18n="settings.chinese">中文</button>
+            </div>
           </div>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.aiFeatures">AI 功能</h3>
-          <div class="settings-row">
-            <span class="settings-version" data-i18n="settings.aiFeaturesDesc">配置本地 AI 平台密钥</span>
-            <button class="settings-btn" id="settingsApiKey" data-i18n="settings.configureApiKey">配置密钥</button>
+          <div class="settings-section settings-section-ai">
+            <h3 class="settings-section-title" data-i18n="settings.aiFeatures">AI 功能</h3>
+            <div class="settings-row">
+              <span class="settings-version" data-i18n="settings.aiFeaturesDesc">配置本地 AI 平台密钥</span>
+              <button class="settings-btn" id="settingsApiKey" data-i18n="settings.configureApiKey">配置密钥</button>
+            </div>
           </div>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.offlineModels">离线识别模型</h3>
-          <div class="settings-row">
-            <span class="settings-path" id="offlineModelSummary" data-i18n="settings.offlineModelsEmpty">尚未安装离线识别模型</span>
-            <button class="settings-btn" id="manageOfflineModels" data-i18n="settings.manageModels">管理模型</button>
+          <div class="settings-section settings-section-dependency">
+            <h3 class="settings-section-title" data-i18n="settings.offlineModels">离线识别模型</h3>
+            <div class="settings-row">
+              <span class="settings-path" id="offlineModelSummary" data-i18n="settings.offlineModelsEmpty">尚未安装离线识别模型</span>
+              <button class="settings-btn" id="manageOfflineModels" data-i18n="settings.manageModels">管理模型</button>
+            </div>
+            <p class="settings-hint" data-i18n="settings.offlineModelsHint">模型只需下载一次，安装后可离线识别音频和视频中的中英文语音。</p>
           </div>
-          <p class="settings-hint" data-i18n="settings.offlineModelsHint">模型只需下载一次，安装后可离线识别音频和视频中的中英文语音。</p>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.ffmpegRuntime">FFmpeg 运行时</h3>
-          <div class="settings-row">
-            <span class="settings-path" id="ffmpegRuntimeSummary" data-i18n="settings.ffmpegRuntimeEmpty">未安装，音视频工具需要安装后才能使用</span>
-            <button class="settings-btn" id="manageFfmpegRuntime" data-i18n="settings.manageFfmpeg">管理 FFmpeg</button>
+          <div class="settings-section settings-section-dependency">
+            <h3 class="settings-section-title" data-i18n="settings.ffmpegRuntime">FFmpeg 运行时</h3>
+            <div class="settings-row">
+              <span class="settings-path" id="ffmpegRuntimeSummary" data-i18n="settings.ffmpegRuntimeEmpty">未安装，音视频工具需要安装后才能使用</span>
+              <button class="settings-btn" id="manageFfmpegRuntime" data-i18n="settings.manageFfmpeg">管理 FFmpeg</button>
+            </div>
+            <p class="settings-hint" data-i18n="settings.ffmpegRuntimeHint">FFmpeg 不再随安装包提供；可从官方源或国内镜像按需下载到本机。</p>
           </div>
-          <p class="settings-hint" data-i18n="settings.ffmpegRuntimeHint">FFmpeg 不再随安装包提供；可从官方源或国内镜像按需下载到本机。</p>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.storagePath">默认存储位置</h3>
-          <div class="settings-row">
-            <span class="settings-path" id="storagePathDisplay">--</span>
-            <button class="settings-btn" id="chooseStorageFolder" data-i18n="settings.customStorageFolder">自定义位置</button>
-            <button class="settings-btn" id="openStorageFolder" data-i18n="settings.openFolder">打开文件夹</button>
+          <div class="settings-section settings-section-wide">
+            <h3 class="settings-section-title" data-i18n="settings.storagePath">默认存储位置</h3>
+            <div class="settings-row">
+              <span class="settings-path" id="storagePathDisplay">--</span>
+              <button class="settings-btn" id="chooseStorageFolder" data-i18n="settings.customStorageFolder">自定义位置</button>
+              <button class="settings-btn" id="openStorageFolder" data-i18n="settings.openFolder">打开文件夹</button>
+            </div>
+            <p class="settings-hint" data-i18n="settings.storageHint">输出会自动按 PDF、图像、音频、视频、AI 文档等功能分类保存。</p>
           </div>
-          <p class="settings-hint" data-i18n="settings.storageHint">输出会自动按 PDF、图像、音频、视频、AI 文档等功能分类保存。</p>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.customBackground">自定义背景</h3>
-          <div class="settings-row">
-            <span class="settings-path" id="customBackgroundStatus" data-i18n="settings.defaultBackground">使用 ToolKnit 默认动态背景</span>
-            <button class="settings-btn" id="chooseCustomBackground" data-i18n="settings.uploadBackground">上传图像或视频</button>
-            <button class="settings-btn" id="clearCustomBackground" data-i18n="settings.clearBackground" disabled>清除</button>
+          <div class="settings-section settings-section-wide">
+            <h3 class="settings-section-title" data-i18n="settings.customBackground">自定义背景</h3>
+            <div class="settings-row">
+              <span class="settings-path" id="customBackgroundStatus" data-i18n="settings.defaultBackground">使用 ToolKnit 默认动态背景</span>
+              <button class="settings-btn" id="chooseCustomBackground" data-i18n="settings.uploadBackground">上传图像或视频</button>
+              <button class="settings-btn" id="clearCustomBackground" data-i18n="settings.clearBackground" disabled>清除</button>
+            </div>
+            <input id="customBackgroundInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/ogg,video/quicktime" hidden>
+            <p class="settings-hint" data-i18n="settings.backgroundHint">自定义背景会应用于首页和全部分类页面；清除后立即恢复默认设计。</p>
           </div>
-          <input id="customBackgroundInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/ogg,video/quicktime" hidden>
-          <p class="settings-hint" data-i18n="settings.backgroundHint">自定义背景会应用于首页和全部分类页面；清除后立即恢复默认设计。</p>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.helpFeedback">帮助与反馈</h3>
-          <div class="settings-links">
-            <a class="settings-link" href="#" id="helpLink" data-i18n="settings.helpCenter">帮助中心</a>
-            <a class="settings-link" href="#" id="feedbackLink" data-i18n="settings.feedbackBug">反馈 BUG</a>
+          <div class="settings-section settings-section-wide">
+            <h3 class="settings-section-title" data-i18n="settings.windowAppearance">窗口外观</h3>
+            <div class="settings-toggle-row">
+              <div class="settings-toggle-copy">
+                <strong data-i18n="settings.windowResize">允许窗口拉伸</strong>
+                <span data-i18n="settings.windowResizeDesc">开启后可拖拽放大或最大化，最小不会低于当前设计尺寸。</span>
+              </div>
+              <button class="settings-switch" id="windowResizeToggle" type="button" aria-pressed="false" data-i18n-title="settings.windowResize">
+                <span></span>
+              </button>
+            </div>
+            <div class="settings-radius-panel">
+              <div class="settings-radius-options" role="group" data-i18n-aria-label="settings.windowRadius">
+                <button type="button" class="settings-radius-option" data-window-radius-mode="none" data-i18n="settings.radiusNone">无圆角</button>
+                <button type="button" class="settings-radius-option" data-window-radius-mode="small" data-i18n="settings.radiusSmall">小圆角</button>
+                <button type="button" class="settings-radius-option" data-window-radius-mode="large" data-i18n="settings.radiusLarge">大圆角</button>
+                <button type="button" class="settings-radius-option" data-window-radius-mode="custom" data-i18n="settings.radiusCustom">自定义</button>
+              </div>
+              <label class="settings-radius-custom" id="windowRadiusCustomWrap">
+                <span data-i18n="settings.radiusValue">圆角值</span>
+                <input id="windowRadiusCustomInput" type="number" min="0" max="32" step="1" value="10">
+                <em id="windowRadiusValue">10px</em>
+              </label>
+            </div>
+            <p class="settings-hint" data-i18n="settings.windowRadiusHint">默认无圆角；如喜欢当前效果，可选择小圆角。自定义范围 0–32px。</p>
           </div>
-        </div>
 
-        <div class="settings-section">
-          <h3 class="settings-section-title" data-i18n="settings.legal">声明与规范</h3>
-          <div class="settings-links">
-            <a class="settings-link" href="#" id="declarationLink" data-i18n="settings.declaration">程序声明</a>
-            <a class="settings-link" href="#" id="usagePolicyLink" data-i18n="settings.usagePolicy">使用规范</a>
+          <div class="settings-section settings-section-links">
+            <h3 class="settings-section-title" data-i18n="settings.helpFeedback">帮助与反馈</h3>
+            <div class="settings-links">
+              <a class="settings-link" href="#" id="helpLink" data-i18n="settings.helpCenter">帮助中心</a>
+              <a class="settings-link" href="#" id="feedbackLink" data-i18n="settings.feedbackBug">反馈 BUG</a>
+            </div>
+          </div>
+
+          <div class="settings-section settings-section-links">
+            <h3 class="settings-section-title" data-i18n="settings.legal">声明与规范</h3>
+            <div class="settings-links">
+              <a class="settings-link" href="#" id="declarationLink" data-i18n="settings.declaration">程序声明</a>
+              <a class="settings-link" href="#" id="usagePolicyLink" data-i18n="settings.usagePolicy">使用规范</a>
+            </div>
           </div>
         </div>
       </div>
@@ -189,6 +222,7 @@
             <div class="help-nav-group-title" data-i18n="help.group.pdfTools">PDF 工具</div>
             <div class="help-nav-item" data-help-section="pdf-merge" data-i18n="help.nav.pdfMerge">PDF 合并</div>
             <div class="help-nav-item" data-help-section="pdf-split" data-i18n="help.nav.pdfSplit">PDF 拆分</div>
+            <div class="help-nav-item" data-help-section="pdf-to-image" data-i18n="help.nav.pdfToImage">PDF 转图像</div>
             <div class="help-nav-item" data-help-section="pdf-rotate" data-i18n="help.nav.pdfRotate">PDF 旋转</div>
             <div class="help-nav-item" data-help-section="pdf-encrypt" data-i18n="help.nav.pdfEncrypt">PDF 加密</div>
             <div class="help-nav-item" data-help-section="pdf-decrypt" data-i18n="help.nav.pdfDecrypt">PDF 解密</div>
@@ -233,6 +267,14 @@
             <div class="help-nav-group-title" data-i18n="help.group.creativeTools">创意工具</div>
             <div class="help-nav-item" data-help-section="color-extractor" data-i18n="help.nav.colorExtractor">配色提取器</div>
             <div class="help-nav-item" data-help-section="typing-test" data-i18n="help.nav.typingTest">打字测试器</div>
+          </div>
+          <div class="help-nav-group">
+            <div class="help-nav-group-title" data-i18n="help.group.cleanupTools">清理工具</div>
+            <div class="help-nav-item" data-help-section="large-file-cleanup" data-i18n="help.nav.largeFileCleanup">AI 大文件清理</div>
+          </div>
+          <div class="help-nav-group">
+            <div class="help-nav-group-title" data-i18n="help.group.hardwareTools">硬件工具</div>
+            <div class="help-nav-item" data-help-section="hardware-tools" data-i18n="help.nav.hardwareTools">硬件工具总览</div>
           </div>
           <div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.aiTools">AI 工具</div>
@@ -443,6 +485,330 @@
           <div class="audio-convert-conversion-map">
             <span class="map-text" data-i18n="home.audioConvert.mapText">六种格式可互相转换，WMA 仅支持作为源文件读取</span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="audio-convert-overlay hardware-overview-overlay" id="hardwareOverviewOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwareOverviewPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwareOverviewBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1">
+            <div class="svg-wrapper">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon">
+                <path d="M19 12H5M12 19l-7-7 7-7"></path>
+              </svg>
+            </div>
+          </div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-overview-body">
+        <div class="hardware-overview-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.hardwareOverviewPage.heroLabel">System Overview</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.hardwareOverviewPage.title">整机概览</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.hardwareOverviewPage.subtitle">本地读取系统与核心硬件信息，不上传任何数据。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwareOverviewRefresh" type="button" data-i18n-title="home.hardwareOverviewPage.refresh" data-i18n-aria-label="home.hardwareOverviewPage.refresh">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+            <span id="hardwareOverviewUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-overview-content" id="hardwareOverviewContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay hardware-cpu-memory-overlay" id="hardwareCpuMemoryOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwareCpuMemoryPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwareCpuMemoryBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1">
+            <div class="svg-wrapper">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon">
+                <path d="M19 12H5M12 19l-7-7 7-7"></path>
+              </svg>
+            </div>
+          </div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-cpu-memory-body">
+        <div class="hardware-cpu-memory-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.cpuMemoryPage.heroLabel">System Monitor</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.cpuMemoryPage.title">CPU 与内存</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.cpuMemoryPage.subtitle">本地读取处理器规格、内存拓扑与当前资源占用。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwareCpuMemoryRefresh" type="button" data-i18n-title="home.cpuMemoryPage.refresh" data-i18n-aria-label="home.cpuMemoryPage.refresh">
+              <i data-lucide="refresh-cw"></i>
+            </button>
+            <span id="hardwareCpuMemoryUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-cpu-memory-content" id="hardwareCpuMemoryContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay hardware-gpu-display-overlay" id="hardwareGpuDisplayOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwareGpuDisplayPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwareGpuDisplayBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-gpu-display-body">
+        <div class="hardware-gpu-display-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.gpuDisplayPage.heroLabel">Graphics & Displays</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.gpuDisplayPage.title">显卡与显示器</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.gpuDisplayPage.subtitle">本地读取图形适配器、驱动、显存与已连接显示器信息。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwareGpuDisplayRefresh" type="button" data-i18n-title="home.gpuDisplayPage.refresh" data-i18n-aria-label="home.gpuDisplayPage.refresh"><i data-lucide="refresh-cw"></i></button>
+            <span id="hardwareGpuDisplayUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-gpu-display-content" id="hardwareGpuDisplayContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay hardware-mainboard-overlay" id="hardwareMainboardOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwareMainboardPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwareMainboardBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-mainboard-body">
+        <div class="hardware-mainboard-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.mainboardPage.heroLabel">Mainboard & Firmware</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.mainboardPage.title">主板与固件</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.mainboardPage.subtitle">本地读取主板、BIOS/UEFI、启动安全能力与 PCI 设备信息。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwareMainboardRefresh" type="button" data-i18n-title="home.mainboardPage.refresh" data-i18n-aria-label="home.mainboardPage.refresh"><i data-lucide="refresh-cw"></i></button>
+            <span id="hardwareMainboardUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-mainboard-content" id="hardwareMainboardContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay hardware-storage-overlay" id="hardwareStorageOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwareStoragePlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwareStorageBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-storage-body">
+        <div class="hardware-storage-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.storagePage.heroLabel">Storage & Health</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.storagePage.title">磁盘与健康</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.storagePage.subtitle">本地读取物理磁盘、卷空间与系统实际提供的可靠性计数器。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwareStorageRefresh" type="button" data-i18n-title="home.storagePage.refresh" data-i18n-aria-label="home.storagePage.refresh"><i data-lucide="refresh-cw"></i></button>
+            <span id="hardwareStorageUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-storage-content" id="hardwareStorageContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay hardware-network-devices-overlay" id="hardwareNetworkDevicesOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwareNetworkDevicesPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwareNetworkDevicesBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-network-devices-body">
+        <div class="hardware-network-devices-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.networkDevicesPage.heroLabel">Network & Devices</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.networkDevicesPage.title">网络与设备</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.networkDevicesPage.subtitle">本地读取网卡、蓝牙、音频、USB 与摄像头设备状态，不显示网络地址。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwareNetworkDevicesRefresh" type="button" data-i18n-title="home.networkDevicesPage.refresh" data-i18n-aria-label="home.networkDevicesPage.refresh"><i data-lucide="refresh-cw"></i></button>
+            <span id="hardwareNetworkDevicesUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-network-devices-content" id="hardwareNetworkDevicesContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay hardware-power-sensors-overlay" id="hardwarePowerSensorsOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="hardwarePowerSensorsPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="hardwarePowerSensorsBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="hardware-power-sensors-body">
+        <div class="hardware-power-sensors-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.powerSensorsPage.heroLabel">Power & Sensors</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.powerSensorsPage.title">电源与传感器</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.powerSensorsPage.subtitle">本地读取电源计划、电池状态与固件实际提供的温度、风扇传感器。</p>
+          <div class="hardware-overview-refresh-row">
+            <button class="hardware-overview-refresh" id="hardwarePowerSensorsRefresh" type="button" data-i18n-title="home.powerSensorsPage.refresh" data-i18n-aria-label="home.powerSensorsPage.refresh"><i data-lucide="refresh-cw"></i></button>
+            <span id="hardwarePowerSensorsUpdatedAt" aria-live="polite"></span>
+          </div>
+        </div>
+        <div class="hardware-power-sensors-content" id="hardwarePowerSensorsContent" aria-live="polite"></div>
+      </main>
+    </div>
+
+    <div class="audio-convert-overlay cleanup-large-files-overlay" id="largeFileCleanupOverlay" aria-hidden="true">
+      <div class="plasma-bg" id="largeFileCleanupPlasmaBg"></div>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="largeFileCleanupBack" data-i18n-title="settings.back" type="button">
+          <div class="svg-wrapper-1"><div class="svg-wrapper"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg></div></div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <main class="cleanup-large-files-body">
+        <div class="cleanup-large-files-hero">
+          <div class="audio-convert-hero-label" data-i18n="home.cleanupLargeFilesPage.heroLabel">Cleanup Studio</div>
+          <h1 class="audio-convert-hero-title" data-i18n="home.cleanupLargeFilesPage.title">AI 大文件清理</h1>
+          <p class="audio-convert-hero-subtitle" data-i18n="home.cleanupLargeFilesPage.subtitle">先本地扫描，再让 AI 只根据文件元数据给出保留或删除建议，最终由你确认。</p>
+        </div>
+        <section class="cleanup-large-files-panel">
+          <div class="cleanup-large-files-controls">
+            <div class="cleanup-large-files-row">
+              <div class="cleanup-large-files-path">
+                <span class="cleanup-large-files-label" data-i18n="home.cleanupLargeFilesPage.selectedFolder">当前目录</span>
+                <span class="cleanup-large-files-value" id="largeFileCleanupFolder" data-i18n="home.cleanupLargeFilesPage.folderPlaceholder">请选择一个文件夹开始扫描</span>
+              </div>
+              <button class="cleanup-large-files-btn" id="largeFileCleanupChooseFolder" type="button" data-i18n="home.cleanupLargeFilesPage.pickFolder">选择扫描目录</button>
+            </div>
+            <div class="cleanup-large-files-row cleanup-large-files-row-tight">
+              <label class="cleanup-large-files-number">
+                <span data-i18n="home.cleanupLargeFilesPage.threshold">阈值</span>
+                <input id="largeFileCleanupThreshold" type="number" min="10" max="102400" step="10" value="50">
+                <em data-i18n="home.cleanupLargeFilesPage.thresholdUnit">MB 起</em>
+              </label>
+              <div class="cleanup-large-files-hint" data-i18n="home.cleanupLargeFilesPage.thresholdHint">默认 50MB，可按需提高到 100MB、500MB 或更高。</div>
+            </div>
+            <div class="cleanup-large-files-mode">
+              <span class="cleanup-large-files-label" data-i18n="home.cleanupLargeFilesPage.mode">扫描模式</span>
+              <div class="cleanup-large-files-chip-group" id="largeFileCleanupModeGroup">
+                <button type="button" class="cleanup-large-files-chip is-active" data-mode="video" data-i18n="home.cleanupLargeFilesPage.modeVideo">视频优先</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="all" data-i18n="home.cleanupLargeFilesPage.modeAll">全部大文件</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="archives" data-i18n="home.cleanupLargeFilesPage.modeArchives">压缩包</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="installers" data-i18n="home.cleanupLargeFilesPage.modeInstallers">安装包</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="documents" data-i18n="home.cleanupLargeFilesPage.modeDocuments">文档</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="images" data-i18n="home.cleanupLargeFilesPage.modeImages">图片素材</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="audio" data-i18n="home.cleanupLargeFilesPage.modeAudio">音频</button>
+                <button type="button" class="cleanup-large-files-chip" data-mode="models" data-i18n="home.cleanupLargeFilesPage.modeModels">模型 / 开发包</button>
+              </div>
+            </div>
+            <div class="cleanup-large-files-ai-card" id="largeFileCleanupAiCard" data-state="idle">
+              <div class="cleanup-large-files-ai-orb" aria-hidden="true">AI</div>
+              <div class="cleanup-large-files-ai-copy">
+                <div class="cleanup-large-files-ai-kicker" data-i18n="home.cleanupLargeFilesPage.aiKicker">AI 辅助判断</div>
+                <h3 id="largeFileCleanupAiTitle" data-i18n="home.cleanupLargeFilesPage.aiIdleTitle">先扫描，再让 AI 参与</h3>
+                <p id="largeFileCleanupAiDesc" data-i18n="home.cleanupLargeFilesPage.aiIdleDesc">AI 不扫描磁盘，也不会读取文件内容。扫描出候选文件后，它只根据文件名、大小、修改时间和目录线索给出建议。</p>
+                <div class="cleanup-large-files-ai-points">
+                  <span data-i18n="home.cleanupLargeFilesPage.aiPointLocal">本地扫描</span>
+                  <span data-i18n="home.cleanupLargeFilesPage.aiPointMeta">仅发元数据</span>
+                  <span data-i18n="home.cleanupLargeFilesPage.aiPointConfirm">删除前人工确认</span>
+                </div>
+                <div class="cleanup-large-files-ai-progress" id="largeFileCleanupAiProgress" aria-hidden="true">
+                  <span class="cleanup-large-files-ai-progress-bar"><i id="largeFileCleanupAiProgressFill"></i></span>
+                  <span id="largeFileCleanupAiProgressText"></span>
+                </div>
+              </div>
+              <button class="cleanup-large-files-action cleanup-large-files-ai-action" id="largeFileCleanupAiBtn" type="button" data-i18n="home.cleanupLargeFilesPage.aiAnalyze">AI 轮询分析</button>
+            </div>
+            <div class="cleanup-large-files-actions">
+              <button class="cleanup-large-files-action cleanup-large-files-action-primary" id="largeFileCleanupScanBtn" type="button" data-i18n="home.cleanupLargeFilesPage.scan">开始扫描</button>
+              <button class="cleanup-large-files-action" id="largeFileCleanupSelectAllBtn" type="button" data-i18n="home.cleanupLargeFilesPage.selectAll">全选</button>
+              <button class="cleanup-large-files-action" id="largeFileCleanupClearBtn" type="button" data-i18n="home.cleanupLargeFilesPage.clearSelection">取消选择</button>
+              <button class="cleanup-large-files-action cleanup-large-files-action-danger" id="largeFileCleanupDeleteBtn" type="button" data-i18n="home.cleanupLargeFilesPage.deleteSelected">移入回收站</button>
+            </div>
+          </div>
+          <div class="cleanup-large-files-summary" id="largeFileCleanupSummary"></div>
+          <div class="cleanup-large-files-list-wrap">
+            <table class="cleanup-large-files-table">
+              <thead>
+                <tr>
+                  <th><input id="largeFileCleanupSelectAllCheckbox" class="cleanup-large-files-check" type="checkbox" aria-label="select all"></th>
+                  <th data-i18n="home.cleanupLargeFilesPage.columnsName">文件</th>
+                  <th class="cleanup-large-files-size-sort-th">
+                    <div class="cleanup-large-files-size-sort" id="largeFileCleanupSizeSort">
+                      <button type="button" class="cleanup-large-files-size-sort-trigger" id="largeFileCleanupSizeSortTrigger" aria-haspopup="true" aria-expanded="false">
+                        <span data-i18n="home.cleanupLargeFilesPage.columnsSize">大小</span>
+                        <svg class="cleanup-large-files-size-sort-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>
+                      </button>
+                      <div class="cleanup-large-files-size-sort-menu" id="largeFileCleanupSizeSortMenu" role="menu">
+                        <button type="button" data-sort="default" role="menuitem" data-i18n="home.cleanupLargeFilesPage.sortDefault">默认</button>
+                        <button type="button" data-sort="desc" role="menuitem" data-i18n="home.cleanupLargeFilesPage.sortLargeFirst">文件大</button>
+                        <button type="button" data-sort="asc" role="menuitem" data-i18n="home.cleanupLargeFilesPage.sortSmallFirst">文件小</button>
+                      </div>
+                    </div>
+                  </th>
+                  <th data-i18n="home.cleanupLargeFilesPage.columnsCategory">类别</th>
+                  <th data-i18n="home.cleanupLargeFilesPage.columnsModified">修改时间</th>
+                  <th data-i18n="home.cleanupLargeFilesPage.columnsFolder">目录线索</th>
+                  <th data-i18n="home.cleanupLargeFilesPage.columnsRisk">风险</th>
+                  <th data-i18n="home.cleanupLargeFilesPage.columnsReason">本地规则 / AI 建议</th>
+                </tr>
+              </thead>
+              <tbody id="largeFileCleanupTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="audio-convert-success-overlay cleanup-large-files-success-overlay" id="largeFileCleanupSuccessOverlay">
+      <div class="audio-convert-success-dialog">
+        <div class="audio-convert-success-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        </div>
+        <h3 class="audio-convert-success-title" data-i18n="home.cleanupLargeFilesPage.deleteSuccessTitle">清理完成</h3>
+        <div class="audio-convert-success-meta" id="largeFileCleanupSuccessMeta"></div>
+        <div class="audio-convert-success-detail">
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.cleanupLargeFilesPage.successAnalyzedLabel">已分析候选</span>
+            <span class="audio-convert-success-value" id="largeFileCleanupSuccessAnalyzed"></span>
+          </div>
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.cleanupLargeFilesPage.deleteSelected">移入回收站</span>
+            <span class="audio-convert-success-value" id="largeFileCleanupSuccessMoved"></span>
+          </div>
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.cleanupLargeFilesPage.recycleBytes">待释放容量</span>
+            <span class="audio-convert-success-value" id="largeFileCleanupSuccessSize"></span>
+          </div>
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.cleanupLargeFilesPage.recycleNextStep">后续操作</span>
+            <span class="audio-convert-success-value" id="largeFileCleanupSuccessFolder"></span>
+          </div>
+        </div>
+        <div class="cleanup-large-files-success-failures" id="largeFileCleanupSuccessFailures" hidden></div>
+        <div class="audio-convert-success-actions">
+          <button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="largeFileCleanupSuccessOpenFolder" data-i18n="home.cleanupLargeFilesPage.openRecycleBin">打开回收站</button>
+          <button class="audio-convert-success-btn audio-convert-success-btn-primary" id="largeFileCleanupSuccessOk" data-i18n="home.audioConvert.ok">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ffmpeg-overlay cleanup-drive-root-overlay" id="largeFileCleanupDriveRootOverlay" aria-hidden="true">
+      <div class="ffmpeg-overlay-bg"></div>
+      <div class="ffmpeg-overlay-content">
+        <div class="tk-mascot-lg" aria-hidden="true"></div>
+        <h2 class="ffmpeg-overlay-title" id="largeFileCleanupDriveRootTitle">确认扫描整个数据盘？</h2>
+        <p class="ffmpeg-overlay-desc" id="largeFileCleanupDriveRootDesc">你正在扫描整个数据盘，可能耗时较长。建议优先选择具体文件夹；如果确认这是素材盘、下载盘或备份盘，可以继续。</p>
+        <div class="cleanup-drive-root-tips">
+          <span data-i18n="home.cleanupLargeFilesPage.dataRootTipSlow">可能耗时较长</span>
+          <span data-i18n="home.cleanupLargeFilesPage.dataRootTipProtected">仍会跳过保护目录</span>
+          <span data-i18n="home.cleanupLargeFilesPage.dataRootTipConfirm">删除前仍需确认</span>
+        </div>
+        <div class="ffmpeg-overlay-actions">
+          <button class="ffmpeg-overlay-btn ffmpeg-overlay-cancel" id="largeFileCleanupDriveRootCancel" data-i18n="home.cleanupLargeFilesPage.dataRootCancel">改选文件夹</button>
+          <button class="ffmpeg-overlay-btn ffmpeg-overlay-confirm" id="largeFileCleanupDriveRootConfirm" data-i18n="home.cleanupLargeFilesPage.dataRootConfirm">继续扫描</button>
         </div>
       </div>
     </div>
@@ -1380,7 +1746,7 @@
 
     <!-- PDF Merger Tool Page -->
     <div class="pdf-merge-overlay" id="pdfMergeOverlay">
-      <div class="ferrofluid-container" id="pdfMergeFerrofluid"></div>
+      <div class="plasma-bg" id="pdfMergePlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfMergeDropZone"><span class="drop-hint" data-i18n="home.pdfMerge.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfMergeBack" data-i18n-title="settings.back">
@@ -1506,7 +1872,7 @@
 
     <!-- PDF Split Tool Page -->
     <div class="pdf-merge-overlay" id="pdfSplitOverlay">
-      <div class="ferrofluid-container" id="pdfSplitFerrofluid"></div>
+      <div class="plasma-bg" id="pdfSplitPlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfSplitDropZone"><span class="drop-hint" data-i18n="home.pdfSplit.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfSplitBack" data-i18n-title="settings.back">
@@ -1619,9 +1985,165 @@
       </footer>
     </section>
 
+    <!-- PDF To Image Tool Page -->
+    <div class="pdf-merge-overlay" id="pdfToImageOverlay" role="dialog" aria-modal="true" aria-labelledby="pdfToImageTitle" aria-hidden="true" inert>
+      <div class="plasma-bg" id="pdfToImagePlasmaBg"></div>
+      <div class="audio-convert-drop-zone" id="pdfToImageDropZone"><span class="drop-hint" data-i18n="home.pdfToImageTool.dropHint">松手即可上传</span></div>
+      <input id="pdfToImageFileInput" type="file" accept="application/pdf,.pdf" hidden>
+      <div class="audio-convert-header">
+        <button class="settings-back" id="pdfToImageBack" data-i18n-title="settings.back">
+          <div class="svg-wrapper-1">
+            <div class="svg-wrapper">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" class="icon">
+                <path d="M19 12H5M12 19l-7-7 7-7"></path>
+              </svg>
+            </div>
+          </div>
+          <span data-i18n="settings.back">返回</span>
+        </button>
+      </div>
+      <div class="audio-convert-body" id="pdfToImageBody">
+        <div class="audio-convert-hero">
+          <div class="audio-convert-hero-top">
+            <div class="audio-convert-hero-label" data-i18n="home.pdfToImageTool.heroLabel">PDF To Image</div>
+            <h1 class="audio-convert-hero-title" id="pdfToImageTitle" data-i18n="home.pdfToImageTool.title">PDF 转图像</h1>
+            <p class="audio-convert-hero-subtitle" data-i18n="home.pdfToImageTool.subtitle">选择需要转换的 PDF 页面，逐页导出清晰图像，或按顺序生成便于阅读的长图。</p>
+            <button class="audio-convert-cta" id="pdfToImageCta">
+              <i data-lucide="upload"></i>
+              <span data-i18n="home.pdfToImageTool.cta">上传 PDF 文件</span>
+            </button>
+          </div>
+        </div>
+        <div class="audio-convert-formats">
+          <h3 class="audio-convert-formats-title" data-i18n="home.pdfToImageTool.infoTitle">转换说明</h3>
+          <div class="pdf-merge-info-grid">
+            <div class="pdf-merge-info-item">
+              <i data-lucide="mouse-pointer-click"></i>
+              <span data-i18n="home.pdfToImageTool.info1">可视化选择需要转换的 PDF 页面</span>
+            </div>
+            <div class="pdf-merge-info-item">
+              <i data-lucide="images"></i>
+              <span data-i18n="home.pdfToImageTool.info2">支持 PNG、JPG、WebP 逐页导出</span>
+            </div>
+            <div class="pdf-merge-info-item">
+              <i data-lucide="panels-top-left"></i>
+              <span data-i18n="home.pdfToImageTool.info3">所选页面可按顺序分组拼接为长图</span>
+            </div>
+            <div class="pdf-merge-info-item">
+              <i data-lucide="lock"></i>
+              <span data-i18n="home.pdfToImageTool.info4">纯本地处理，文件不上传服务器</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF To Image Page Workspace -->
+    <section class="pdf-page-workspace pdf-to-image-workspace" id="pdfToImageWorkspace" role="dialog" aria-modal="true" aria-labelledby="pdfToImageWorkspaceTitle" aria-hidden="true" inert>
+      <header class="pdf-page-workspace-header">
+        <div>
+          <p class="pdf-merge-selection-eyebrow" id="pdfToImageWorkspaceStatus"></p>
+          <h2 class="pdf-page-workspace-title" id="pdfToImageWorkspaceTitle" data-i18n="home.pdfToImageTool.workspaceTitle">选择转换页面</h2>
+          <p class="pdf-page-workspace-file" id="pdfToImageWorkspaceHint"></p>
+        </div>
+        <div class="pdf-page-workspace-header-actions">
+          <span class="pdf-page-workspace-count" id="pdfToImageSelectedCount"></span>
+          <button class="pdf-page-workspace-close" id="pdfToImageWorkspaceClose" type="button" data-i18n-aria-label="home.pdfToImageTool.closeWorkspace" aria-label="关闭选页">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+      <div class="pdf-merge-page-stage" id="pdfToImagePageStage">
+        <div class="pdf-merge-page-strip" id="pdfToImagePageStrip" aria-live="polite"></div>
+      </div>
+      <footer class="pdf-page-workspace-footer pdf-to-image-workspace-footer">
+        <div class="pdf-to-image-footer-options">
+          <div class="pdf-to-image-option-group">
+            <span class="pdf-to-image-option-label" data-i18n="home.pdfToImageTool.outputFormat">图像格式</span>
+            <div class="pdf-to-image-segmented" id="pdfToImageFormatOptions" role="group" data-i18n-aria-label="home.pdfToImageTool.outputFormat">
+              <button class="active" type="button" data-value="png" aria-pressed="true">PNG</button>
+              <button type="button" data-value="jpg" aria-pressed="false">JPG</button>
+              <button type="button" data-value="webp" aria-pressed="false">WebP</button>
+            </div>
+          </div>
+          <div class="pdf-to-image-option-group">
+            <span class="pdf-to-image-option-label" data-i18n="home.pdfToImageTool.clarity">清晰度</span>
+            <div class="pdf-to-image-segmented" id="pdfToImageClarityOptions" role="group" data-i18n-aria-label="home.pdfToImageTool.clarity">
+              <button type="button" data-value="standard" aria-pressed="false" data-i18n="home.pdfToImageTool.clarityStandard" data-i18n-title="home.pdfToImageTool.clarityStandardHint">标准</button>
+              <button class="active" type="button" data-value="high" aria-pressed="true" data-i18n="home.pdfToImageTool.clarityHigh" data-i18n-title="home.pdfToImageTool.clarityHighHint">高清</button>
+              <button type="button" data-value="print" aria-pressed="false" data-i18n="home.pdfToImageTool.clarityPrint" data-i18n-title="home.pdfToImageTool.clarityPrintHint">印刷</button>
+            </div>
+          </div>
+          <div class="pdf-to-image-limit-note">
+            <i data-lucide="layers-3" aria-hidden="true"></i>
+            <span data-i18n="home.pdfToImageTool.longImageLimit">长图最多选择 20 页，每 5 页自动生成一张</span>
+          </div>
+        </div>
+        <div class="pdf-to-image-footer-actions-row">
+          <div class="pdf-page-workspace-status" id="pdfToImageSelectionMeta"></div>
+          <div class="pdf-page-workspace-footer-actions">
+            <button class="pdf-merge-selection-btn pdf-merge-selection-btn-secondary" id="pdfToImageSelectAllBtn" data-i18n="home.pdfToImageTool.clearSelection">取消全选</button>
+            <button class="pdf-merge-selection-btn pdf-merge-selection-btn-secondary pdf-to-image-export-button" id="pdfToImageExportImagesBtn">
+              <i data-lucide="images" aria-hidden="true"></i>
+              <span data-i18n="home.pdfToImageTool.exportImages">导出图像</span>
+            </button>
+            <button class="pdf-merge-selection-btn pdf-merge-selection-btn-primary pdf-to-image-export-button" id="pdfToImageExportLongBtn">
+              <i data-lucide="panels-top-left" aria-hidden="true"></i>
+              <span data-i18n="home.pdfToImageTool.exportLongImage">导出长图</span>
+            </button>
+          </div>
+        </div>
+      </footer>
+    </section>
+
+    <!-- PDF To Image Process Mask -->
+    <div class="audio-convert-process-mask pdf-to-image-process-mask" id="pdfToImageProcessMask" role="dialog" aria-modal="true" aria-labelledby="pdfToImageProcessText" aria-hidden="true" inert>
+      <div class="tk-mascot-lg" aria-hidden="true"></div>
+      <div class="pdf-to-image-process-status" aria-live="polite">
+        <span class="audio-convert-process-text" id="pdfToImageProcessText" data-i18n="home.pdfToImageTool.preparing">正在准备导出...</span>
+        <strong id="pdfToImageProcessValue">0%</strong>
+      </div>
+      <div class="audio-convert-process-bar" id="pdfToImageProcessBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-i18n-aria-label="home.pdfToImageTool.progressLabel">
+        <div class="audio-convert-process-bar-fill" id="pdfToImageProcessBarFill"></div>
+      </div>
+      <button class="audio-convert-cancel-btn pdf-to-image-cancel-btn" id="pdfToImageCancel" type="button">
+        <i data-lucide="x" aria-hidden="true"></i>
+        <span data-i18n="home.pdfToImageTool.cancel">取消</span>
+      </button>
+    </div>
+
+    <!-- PDF To Image Success Overlay -->
+    <div class="audio-clip-success-overlay" id="pdfToImageSuccessOverlay" aria-hidden="true" inert>
+      <div class="audio-clip-success-dialog" role="dialog" aria-modal="true" aria-labelledby="pdfToImageSuccessTitle">
+        <div class="audio-clip-success-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </div>
+        <h3 class="audio-clip-success-title" id="pdfToImageSuccessTitle" data-i18n="home.pdfToImageTool.successTitle">导出完成</h3>
+        <div class="audio-clip-success-meta" id="pdfToImageSuccessMeta"></div>
+        <div class="audio-convert-success-detail">
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.pdfToImageTool.successType">输出类型</span>
+            <span class="audio-convert-success-value" id="pdfToImageSuccessType"></span>
+          </div>
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.pdfToImageTool.successCount">导出文件数</span>
+            <span class="audio-convert-success-value" id="pdfToImageSuccessCount"></span>
+          </div>
+          <div class="audio-convert-success-row">
+            <span class="audio-convert-success-key" data-i18n="home.pdfToImageTool.successPath">保存路径</span>
+            <span class="audio-convert-success-value" id="pdfToImageSuccessPath"></span>
+          </div>
+        </div>
+        <div class="audio-clip-success-actions">
+          <button class="audio-clip-success-btn audio-clip-success-btn-secondary" id="pdfToImageSuccessOpenFolder" type="button" data-i18n="home.pdfToImageTool.openFolder">打开文件夹</button>
+          <button class="audio-clip-success-btn audio-clip-success-btn-primary" id="pdfToImageSuccessOk" type="button" data-i18n="home.pdfToImageTool.ok">确定</button>
+        </div>
+      </div>
+    </div>
+
     <!-- PDF Rotate Tool Page -->
     <div class="pdf-merge-overlay" id="pdfRotateOverlay">
-      <div class="ferrofluid-container" id="pdfRotateFerrofluid"></div>
+      <div class="plasma-bg" id="pdfRotatePlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfRotateDropZone"><span class="drop-hint" data-i18n="home.pdfRotate.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfRotateBack" data-i18n-title="settings.back">
@@ -1737,7 +2259,7 @@
 
     <!-- PDF Encrypt Tool Page -->
     <div class="pdf-merge-overlay" id="pdfEncryptOverlay">
-      <div class="ferrofluid-container" id="pdfEncryptFerrofluid"></div>
+      <div class="plasma-bg" id="pdfEncryptPlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfEncryptDropZone"><span class="drop-hint" data-i18n="home.pdfEncrypt.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfEncryptBack" data-i18n-title="settings.back">
@@ -1902,7 +2424,7 @@
 
     <!-- PDF Decrypt Tool Page -->
     <div class="pdf-merge-overlay" id="pdfDecryptOverlay">
-      <div class="ferrofluid-container" id="pdfDecryptFerrofluid"></div>
+      <div class="plasma-bg" id="pdfDecryptPlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfDecryptDropZone"><span class="drop-hint" data-i18n="home.pdfDecrypt.dropHint">松手即可上传</span></div>
       <input id="pdfDecryptInput" type="file" accept=".pdf,application/pdf" hidden />
       <div class="audio-convert-header">
@@ -2014,7 +2536,7 @@
 
     <!-- PDF Enhance Tool Page -->
     <div class="pdf-merge-overlay" id="pdfEnhanceOverlay">
-      <div class="ferrofluid-container" id="pdfEnhanceFerrofluid"></div>
+      <div class="plasma-bg" id="pdfEnhancePlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfEnhanceDropZone"><span class="drop-hint" data-i18n="home.pdfEnhance.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfEnhanceBack" data-i18n-title="settings.back">
@@ -2113,7 +2635,7 @@
 
     <!-- ===== PDF Tool Template Page (设计标杆，复制后按需改动) ===== -->
     <div class="pdf-merge-overlay" id="pdfToolTemplateOverlay">
-      <div class="ferrofluid-container" id="pdfToolTemplateFerrofluid"></div>
+      <div class="plasma-bg" id="pdfToolTemplatePlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfToolTemplateDropZone"><span class="drop-hint" data-i18n="home.pdfMerge.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfToolTemplateBack" data-i18n-title="settings.back">
@@ -2220,7 +2742,7 @@
 
     <!-- ===== AI Polish Tool Page ===== -->
     <div class="pdf-merge-overlay ai-polish-overlay" id="aiPolishOverlay">
-      <div class="ai-polish-bg" id="aiPolishBg"></div>
+      <div class="plasma-bg" id="aiPolishBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="aiPolishBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2314,7 +2836,7 @@
 
     <!-- ===== AI Translate Tool Page ===== -->
     <div class="pdf-merge-overlay ai-polish-overlay" id="aiTranslateOverlay">
-      <div class="ai-polish-bg" id="aiTranslateBg"></div>
+      <div class="plasma-bg" id="aiTranslateBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="aiTranslateBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2408,7 +2930,7 @@
 
     <!-- ===== AI Document Tool Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="aiDocOverlay">
-      <div class="ai-polish-bg" id="aiDocBg"></div>
+      <div class="plasma-bg" id="aiDocBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="aiDocBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2492,7 +3014,7 @@
 
     <!-- ===== AI Table Tool Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="aiTableOverlay">
-      <div class="ai-polish-bg" id="aiTableBg"></div>
+      <div class="plasma-bg" id="aiTableBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="aiTableBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2512,13 +3034,6 @@
             <div class="audio-convert-hero-label" data-i18n="home.aiTable.heroLabel">AI Table</div>
             <h1 class="audio-convert-hero-title" data-i18n="home.aiTable.title">AI 表格生成</h1>
             <p class="audio-convert-hero-subtitle" data-i18n="home.aiTable.subtitle">对话式描述需求，AI 自动生成数据表与可视化图表，一键导出 Excel、PDF、PNG、CSV。</p>
-            <div class="ai-table-hero-actions">
-              <button class="ai-table-help-btn" id="aiTableHelpBtn" type="button">
-                <i data-lucide="circle-help"></i>
-                <span data-i18n="home.aiTable.help">使用说明</span>
-              </button>
-              <span class="ai-table-hero-tip" data-i18n="home.aiTable.heroTip">桌面可直接编辑，Agent 可按编号精修</span>
-            </div>
           </div>
         </div>
 
@@ -2614,7 +3129,7 @@
 
     <!-- ===== Color Extractor Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="colorExtractorOverlay">
-      <div class="ai-polish-bg" id="colorExtractorBg"></div>
+      <div class="plasma-bg" id="colorExtractorBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="colorExtractorBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2673,7 +3188,7 @@
 
     <!-- ===== Text Stats Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="textStatsOverlay">
-      <div class="ai-polish-bg" id="textStatsBg"></div>
+      <div class="plasma-bg" id="textStatsBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="textStatsBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2797,7 +3312,7 @@
 
     <!-- ===== Text Format Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="textFormatOverlay">
-      <div class="ai-polish-bg" id="textFormatBg"></div>
+      <div class="plasma-bg" id="textFormatBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="textFormatBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2858,7 +3373,7 @@
 
     <!-- ===== Typing Test Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="typingTestOverlay">
-      <div class="ai-polish-bg" id="typingTestBg"></div>
+      <div class="plasma-bg" id="typingTestBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="typingTestBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -2976,7 +3491,7 @@
 
     <!-- ===== Body Fat Calculator Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="bmiCalcOverlay">
-      <div class="ai-polish-bg" id="bmiCalcBg"></div>
+      <div class="plasma-bg" id="bmiCalcBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="bmiCalcBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -3125,7 +3640,7 @@
 
     <!-- ===== Timestamp Calculator Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="tsCalcOverlay">
-      <div class="ai-polish-bg" id="tsCalcBg"></div>
+      <div class="plasma-bg" id="tsCalcBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="tsCalcBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -3245,7 +3760,7 @@
 
     <!-- ===== Mortgage Calculator Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="mortgageCalcOverlay">
-      <div class="ai-polish-bg" id="mortgageCalcBg"></div>
+      <div class="plasma-bg" id="mortgageCalcBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="mortgageCalcBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -3356,7 +3871,7 @@
 
     <!-- ===== Interest Calculator Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="interestCalcOverlay">
-      <div class="ai-polish-bg" id="interestCalcBg"></div>
+      <div class="plasma-bg" id="interestCalcBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="interestCalcBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -3483,7 +3998,7 @@
 
     <!-- ===== Password Generator Page ===== -->
     <div class="pdf-merge-overlay ai-doc-overlay" id="passwordGenOverlay">
-      <div class="ai-polish-bg" id="passwordGenBg"></div>
+      <div class="plasma-bg" id="passwordGenBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="passwordGenBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -3596,7 +4111,7 @@
 
     <!-- AI Document Full-screen Edit Preview Overlay -->
     <div class="ai-doc-edit-overlay" id="aiDocEditOverlay">
-      <div class="ai-doc-edit-bg" id="aiDocEditBg"></div>
+      <div class="plasma-bg ai-doc-edit-bg" id="aiDocEditBg"></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="aiDocEditBack" data-i18n-title="settings.back">
           <div class="svg-wrapper-1">
@@ -3698,7 +4213,7 @@
 
     <!-- ===== PDF Compress Tool Page ===== -->
     <div class="pdf-merge-overlay" id="pdfCompressOverlay">
-      <div class="ferrofluid-container" id="pdfCompressFerrofluid"></div>
+      <div class="plasma-bg" id="pdfCompressPlasmaBg"></div>
       <div class="audio-convert-drop-zone" id="pdfCompressDropZone"><span class="drop-hint" data-i18n="home.pdfCompress.dropHint">松手即可上传</span></div>
       <div class="audio-convert-header">
         <button class="settings-back" id="pdfCompressBack" data-i18n-title="settings.back">
@@ -3850,9 +4365,17 @@
             <i data-lucide="lightbulb" class="nav-icon"></i>
             <span data-i18n="nav.creative">创意工具</span>
           </div>
+          <div class="nav-item" data-category="cleanup">
+            <i data-lucide="trash-2" class="nav-icon"></i>
+            <span data-i18n="nav.cleanupTools">清理工具</span>
+          </div>
           <div class="nav-item" data-category="ai">
             <i data-lucide="cpu" class="nav-icon"></i>
             <span data-i18n="nav.aiTools">AI工具</span>
+          </div>
+          <div class="nav-item" data-category="hardware">
+            <i data-lucide="monitor-cog" class="nav-icon"></i>
+            <span data-i18n="nav.hardware">硬件工具</span>
           </div>
         </div>
         <div class="sidebar-footer">
@@ -3867,7 +4390,7 @@
               <i data-lucide="settings"></i>
             </div>
           </div>
-          <div class="version-text" id="sidebarVersion">v1.2.8</div>
+          <div class="version-text" id="sidebarVersion">v1.3.0</div>
         </div>
       </div>
       <div class="divider"></div>
@@ -3889,7 +4412,7 @@
             <div class="home-grid">
               <header class="home-masthead">
                 <div class="home-brand-copy">
-                  <p class="home-kicker" data-i18n="home.posterKicker">TOOLKNIT / DESKTOP 1.2</p>
+                  <p class="home-kicker" data-i18n="home.posterKicker">TOOLKNIT / DESKTOP 1.3</p>
                   <h1>ToolKnit</h1>
                   <p class="home-tagline" data-i18n="home.posterDesc">为本地文件工作准备的处理台</p>
                 </div>
@@ -3953,7 +4476,7 @@
                   <div class="home-github-summary">
                     <span class="home-github-quote">不以私藏缚代码，愿将利器赠人间</span>
                     <span class="home-github-stat">当前 STAR <strong id="githubStarCount">--</strong></span>
-                    <span class="home-github-stat">已获捐赠 <strong id="githubDonationTotal">23.88</strong> 元</span>
+                    <span class="home-github-stat">已获捐赠 <strong id="githubDonationTotal">80.88</strong> 元</span>
                   </div>
                   <svg viewBox="0 0 280 76" preserveAspectRatio="none">
                     <polyline id="githubActivityLine" points="0,62 248,62 280,8"></polyline>
@@ -4008,6 +4531,20 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.pdfSplitMeta">页面选择 / 批量导出 / 纯本地处理</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="pdf-to-image" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.pdfToImage">
+                  <div class="audio-list-icon"><i data-lucide="images"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.pdfToImage">PDF 转图像</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.pdfToImageDesc">选择页面导出单图或长图</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.pdfCategoryTag">PDF工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.pdfToImageMeta">逐页图像 / 长图拼接 / 高清导出</div>
                   </div>
                 </div>
                 <div class="audio-list-item" data-tool="pdf-rotate" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.pdfRotate">
@@ -4462,6 +4999,39 @@
             </div>
           </div>
 
+          <div class="content-section" data-category="cleanup">
+            <div class="tools-page">
+              <div class="tools-hero-text">
+                <span class="tools-eyebrow" data-i18n="home.toolNames.cleanupCategoryTag">Cleanup Studio</span>
+                <h2 data-i18n="nav.cleanupTools">清理工具</h2>
+                <p data-i18n="home.cleanupCategoryDesc">扫描大文件、AI 辅助分析与安全清理，本地确认后再移入回收站。</p>
+              </div>
+              <div class="audio-search tools-search">
+                <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
+                <button class="audio-search-btn tools-search-btn" data-i18n-aria-label="home.searchBtn" aria-label="搜索">
+                  <i data-lucide="search"></i>
+                </button>
+                <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
+              </div>
+              <div class="audio-list">
+                <div class="audio-list-item" data-tool="large-file-cleanup" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.largeFileCleanup">
+                  <div class="audio-list-icon"><i data-lucide="trash-2"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.largeFileCleanup">AI 大文件清理</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.largeFileCleanupDesc">扫描 50MB 以上文件并给出删除建议</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.cleanupCategoryTag">清理工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.largeFileCleanupMeta">视频 / 安装包 / 压缩包 / AI 辅助分析</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="content-section" data-category="ai">
             <div class="tools-page">
               <div class="tools-hero-text">
@@ -4531,6 +5101,123 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.aiTableMeta">智能数据 / 图表可视化 / 导出 Excel·PDF·PNG·CSV</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-section" data-category="hardware">
+            <div class="tools-page">
+              <div class="tools-hero-text">
+                <span class="tools-eyebrow" data-i18n="home.toolNames.hardwareEyebrow">System Inspector</span>
+                <h2 data-i18n="nav.hardware">硬件工具</h2>
+                <p data-i18n="home.hardwareCategoryDesc">本地只读查看整机、核心硬件、存储与设备信息。</p>
+              </div>
+              <div class="audio-search tools-search">
+                <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
+                <button class="audio-search-btn tools-search-btn" data-i18n-aria-label="home.searchBtn" aria-label="搜索">
+                  <i data-lucide="search"></i>
+                </button>
+                <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
+              </div>
+              <div class="audio-list">
+                <div class="audio-list-item" data-tool="hardware-overview" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwareOverview">
+                  <div class="audio-list-icon"><i data-lucide="layout-dashboard"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareOverview">整机概览</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareOverviewDesc">系统、机型、BIOS 与安全状态</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareOverviewMeta">Windows / BIOS / 虚拟化 / 安全启动</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-cpu-memory" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwareCpuMemory">
+                  <div class="audio-list-icon"><i data-lucide="cpu"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareCpuMemory">CPU 与内存</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareCpuMemoryDesc">核心线程、频率、缓存与内存通道</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareCpuMemoryMeta">型号 / 核心线程 / 频率 / 插槽</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-gpu-display" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwareGpuDisplay">
+                  <div class="audio-list-icon"><i data-lucide="monitor"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareGpuDisplay">显卡与显示器</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareGpuDisplayDesc">显存、驱动、分辨率与刷新率</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareGpuDisplayMeta">GPU / 驱动 / HDR / 刷新率</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-mainboard" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwareMainboard">
+                  <div class="audio-list-icon"><i data-lucide="circuit-board"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareMainboard">主板与固件</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareMainboardDesc">主板、BIOS/UEFI 与 PCIe 设备</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareMainboardMeta">型号 / BIOS / 芯片组 / PCIe</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-storage" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwareStorage">
+                  <div class="audio-list-icon"><i data-lucide="hard-drive"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareStorage">磁盘与健康</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareStorageDesc">容量、接口、分区与可靠性状态</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareStorageMeta">SMART / 容量 / 分区 / 通电信息</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-network-devices" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwareNetworkDevices">
+                  <div class="audio-list-icon"><i data-lucide="network"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwareNetworkDevices">网络与设备</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwareNetworkDevicesDesc">网卡、蓝牙、音频、USB 与摄像头</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwareNetworkDevicesMeta">链路速率 / 适配器 / 外设清单</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="hardware-power-sensors" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hardwarePowerSensors">
+                  <div class="audio-list-icon"><i data-lucide="battery-charging"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.hardwarePowerSensors">电源与传感器</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.hardwarePowerSensorsDesc">电池健康与硬件可提供的传感器数据</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.hardwareCategoryTag">硬件工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.hardwarePowerSensorsMeta">电池健康 / 温度 / 风扇 / 驱动支持</div>
                   </div>
                 </div>
               </div>
@@ -4825,7 +5512,7 @@
         <div class="donation-qr-grid">
           <article class="donation-qr-card donation-qr-wechat">
             <div class="donation-qr-image-wrap">
-              <img src="assets/donate/wechat-qr.jpg" alt="微信收款码">
+              <img src="assets/donate/alipay-qr.png" alt="微信收款码">
             </div>
             <div>
               <h3>微信支持</h3>
@@ -4834,7 +5521,7 @@
           </article>
           <article class="donation-qr-card donation-qr-alipay">
             <div class="donation-qr-image-wrap">
-              <img src="assets/donate/alipay-qr.png" alt="支付宝收款码">
+              <img src="assets/donate/wechat-qr.jpg" alt="支付宝收款码">
             </div>
             <div>
               <h3>支付宝支持</h3>

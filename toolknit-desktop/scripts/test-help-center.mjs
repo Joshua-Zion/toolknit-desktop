@@ -58,6 +58,7 @@ for (const key of helpNavI18n) {
 const toolToHelp = new Map([
   ['pdf-merge', 'pdf-merge'],
   ['pdf-split', 'pdf-split'],
+  ['pdf-to-image', 'pdf-to-image'],
   ['pdf-rotate', 'pdf-rotate'],
   ['pdf-encrypt', 'pdf-encrypt'],
   ['pdf-decrypt', 'pdf-decrypt'],
@@ -84,6 +85,14 @@ const toolToHelp = new Map([
   ['password-gen', 'password-gen'],
   ['color-extractor', 'color-extractor'],
   ['typing-test', 'typing-test'],
+  ['large-file-cleanup', 'large-file-cleanup'],
+  ['hardware-overview', 'hardware-tools'],
+  ['hardware-cpu-memory', 'hardware-tools'],
+  ['hardware-gpu-display', 'hardware-tools'],
+  ['hardware-mainboard', 'hardware-tools'],
+  ['hardware-storage', 'hardware-tools'],
+  ['hardware-network-devices', 'hardware-tools'],
+  ['hardware-power-sensors', 'hardware-tools'],
   ['ai-polish', 'ai-polish'],
   ['ai-translate', 'ai-translate'],
   ['ai-doc', 'ai-doc'],
@@ -105,6 +114,23 @@ for (const content of [HELP_CONTENT, HELP_CONTENT_EN]) {
   assert.match(visibleHelp, /30/, 'Visible help must state the current 30 MCP capabilities.');
   assert.doesNotMatch(visibleHelp, /16\s*(项能力|capabilities)/i, 'Visible help must not advertise the retired 16-capability count.');
   assert.doesNotMatch(visibleHelp, /(自动检查更新|automatically checks.*update|forced update)/i, 'Visible help must not promise unsupported auto or forced updates.');
+}
+
+for (const [locale, section] of [
+  ['Chinese', HELP_CONTENT['pdf-to-image']],
+  ['English', HELP_CONTENT_EN['pdf-to-image']],
+]) {
+  const text = `${section.title}\n${section.html}`;
+  assert.match(text, /150\s*MB/i, `${locale} PDF-to-image help must state the 150 MB input limit.`);
+  assert.match(text, /200\s*(?:页|pages?)/i, `${locale} PDF-to-image help must state the 200-page limit.`);
+  for (const dpi of [144, 200, 300]) {
+    assert.match(text, new RegExp(`${dpi}\\s*DPI`, 'i'), `${locale} PDF-to-image help must explain the ${dpi} DPI preset.`);
+  }
+  assert.match(text, /20\s*(?:页|selected pages?)/i, `${locale} PDF-to-image help must state the 20-page long-image limit.`);
+  assert.match(text, /(?:每\s*5\s*页|groups? of five)/i, `${locale} PDF-to-image help must explain five-page grouping.`);
+  assert.match(text, /(?:打开文件夹|Open Folder)/i, `${locale} PDF-to-image help must explain how to open the output folder.`);
+  assert.match(text, /(?:本机|本地|locally)/i, `${locale} PDF-to-image help must explain local processing.`);
+  assert.doesNotMatch(text, /(?:界面原型|UI prototype|does not write files yet)/i, `${locale} PDF-to-image help must not describe the retired prototype.`);
 }
 
 console.log(`Help center contract passed: ${helpSections.length} visible sections, ${desktopTools.length} desktop tools.`);

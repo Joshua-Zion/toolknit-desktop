@@ -1,6 +1,7 @@
 import { Renderer, Program, Triangle, Mesh } from 'ogl';
 
 const DEFAULT_COLOR = '#ffffff';
+const BACKGROUND_DPR_MAX = 1.25;
 
 const hexToRgb = (hex) => {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -57,18 +58,32 @@ export function initLightRays(container, options = {}) {
   let mouse = { x: 0.5, y: 0.5 };
   let smoothMouse = { x: 0.5, y: 0.5 };
   let destroyed = false;
+  let pageVisible = typeof document === 'undefined' || !document.hidden;
+
+  function stopAnimation() {
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+  }
+
+  function startAnimation() {
+    if (!animationId && !destroyed && pageVisible && renderer && uniforms && mesh) {
+      animationId = requestAnimationFrame(loop);
+    }
+  }
 
   function cleanup() {
     if (destroyed) return;
     destroyed = true;
 
-    if (animationId) {
-      cancelAnimationFrame(animationId);
-      animationId = null;
-    }
+    stopAnimation();
 
     window.removeEventListener('resize', updatePlacement);
     window.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('pageshow', handlePageShow);
 
     if (renderer) {
       try {
@@ -101,7 +116,7 @@ export function initLightRays(container, options = {}) {
   function updatePlacement() {
     if (!container || !renderer || !uniforms) return;
 
-    renderer.dpr = Math.min(window.devicePixelRatio, 2);
+    renderer.dpr = Math.min(window.devicePixelRatio || 1, BACKGROUND_DPR_MAX);
     const { clientWidth: wCSS, clientHeight: hCSS } = container;
     renderer.setSize(wCSS, hCSS);
 
@@ -117,6 +132,8 @@ export function initLightRays(container, options = {}) {
 
   function loop(t) {
     if (destroyed || !renderer || !uniforms || !mesh) return;
+    animationId = null;
+    if (!pageVisible) return;
 
     uniforms.iTime.value = t * 0.001;
 
@@ -129,10 +146,26 @@ export function initLightRays(container, options = {}) {
 
     try {
       renderer.render({ scene: mesh });
-      animationId = requestAnimationFrame(loop);
+      startAnimation();
     } catch (error) {
       console.warn('WebGL rendering error:', error);
     }
+  }
+
+  function handleVisibilityChange() {
+    pageVisible = !document.hidden;
+    if (pageVisible) startAnimation();
+    else stopAnimation();
+  }
+
+  function handlePageHide() {
+    pageVisible = false;
+    stopAnimation();
+  }
+
+  function handlePageShow() {
+    pageVisible = !document.hidden;
+    startAnimation();
   }
 
   function initialize() {
@@ -140,7 +173,7 @@ export function initLightRays(container, options = {}) {
 
     try {
       renderer = new Renderer({
-        dpr: Math.min(window.devicePixelRatio, 2),
+        dpr: Math.min(window.devicePixelRatio || 1, BACKGROUND_DPR_MAX),
         alpha: true
       });
 
@@ -280,9 +313,12 @@ void main() {
       if (followMouse) {
         window.addEventListener('mousemove', handleMouseMove);
       }
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('pagehide', handlePageHide);
+      window.addEventListener('pageshow', handlePageShow);
 
       updatePlacement();
-      animationId = requestAnimationFrame(loop);
+      startAnimation();
     } catch (error) {
       console.warn('Failed to initialize LightRays:', error);
       cleanup();

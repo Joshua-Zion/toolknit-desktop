@@ -3,7 +3,7 @@ export const HELP_CONTENT_EN = {
     title: 'Overview',
     html: `<div class="help-doc">
       <h2>ToolKnit Overview</h2>
-      <p>ToolKnit is a <strong>fully local</strong> multi-functional toolbox desktop app, covering eight tool categories: PDF, Image, Audio, Video, Text, Calculator, Creative, and AI. All file processing is done locally — no uploads to servers.</p>
+      <p>ToolKnit is a <strong>local-first</strong> multi-functional toolbox desktop app, covering PDF, Image, Audio, Video, Text, Calculator, Creative, Cleanup, Hardware, and AI tools. File processing stays local whenever possible — no uploads to ToolKnit servers.</p>
 
       <h3>Tool Categories</h3>
       <div class="help-tool-grid">
@@ -14,6 +14,8 @@ export const HELP_CONTENT_EN = {
         <div class="help-tool-card"><div class="help-tool-card-name">Text Tools</div><div class="help-tool-card-desc">Audio/video transcription, text statistics, text formatting</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Calculator</div><div class="help-tool-card-desc">Body fat, timestamp, mortgage, interest, password generation</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Creative Tools</div><div class="help-tool-card-desc">Color extraction, typing test</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Cleanup Tools</div><div class="help-tool-card-desc">Large-file scanning, AI metadata suggestions, Recycle Bin cleanup</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Hardware Tools</div><div class="help-tool-card-desc">Read-only system, CPU, memory, GPU, board, disk, network, and sensor info</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">AI Tools</div><div class="help-tool-card-desc">AI polish, translate, editable documents, editable tables</div></div>
       </div>
 
@@ -156,6 +158,38 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-note">
         <p>Every output file contains one original page. Each run accepts up to 25 files, 150 MB of input, and 200 preview pages.</p>
+      </div>
+    </div>`
+  },
+
+  'pdf-to-image': {
+    title: 'PDF to Image',
+    html: `<div class="help-doc">
+      <h2>PDF to Image</h2>
+      <p>Choose pages from one PDF and export them as individual images, or combine them into high-resolution long images in original page order. Reading, rendering, and writing all happen locally; the source file is never uploaded to a server.</p>
+
+      <h3>How to Use</h3>
+      <ol class="help-steps">
+        <li>Click "Upload PDF File", or drag one PDF onto the tool page</li>
+        <li>Click real page thumbnails to select or clear pages, or use Select All</li>
+        <li>Choose PNG, JPG, or WebP, then choose the required clarity preset</li>
+        <li>Click "Export Images" to save every selected page as a separate image</li>
+        <li>Click "Export Long Images" to combine selected pages in page-number order</li>
+        <li>When the completion dialog appears, review the output count and path or click "Open Folder"</li>
+      </ol>
+
+      <h3>Clarity Presets</h3>
+      <ul>
+        <li><strong>Standard (144 DPI):</strong> smaller output for screen reading and everyday sharing</li>
+        <li><strong>High (200 DPI):</strong> the default balance between detail and file size</li>
+        <li><strong>Print (300 DPI):</strong> for enlarged text, detailed charts, and later printing</li>
+      </ul>
+
+      <h3>Long-image Grouping</h3>
+      <p>A long-image export accepts up to 20 selected pages and prefers groups of five. For example, 16 selected pages normally produce four files containing pages 1-5, 6-10, 11-15, and page 16. If a group would exceed the safe dimension or memory limit at the chosen clarity, ToolKnit automatically uses smaller groups instead of shrinking the original pages simply to force them into one image.</p>
+
+      <div class="help-note">
+        <p>Each run accepts one PDF up to 150 MB and 200 pages. Use PDF Decrypt first for password-protected files. You can cancel an export while it is running; ToolKnit removes unfinished temporary files.</p>
       </div>
     </div>`
   },
@@ -667,7 +701,7 @@ export const HELP_CONTENT_EN = {
       <p>After connecting ToolKnit CLI to an MCP-capable IDE, you can ask an Agent in plain language to process local files from the project. The Agent calls real ToolKnit tools; it does not need the desktop app to stay open and should not claim a result without a tool call.</p>
 
       <h3>Current scope</h3>
-      <div class="help-agent-scope"><p>The MCP server currently exposes <strong>30 capabilities</strong>. In everyday terms:</p><ul><li><strong>PDF (8)</strong>: inspect, merge, selected-page split, rotate, encrypt, decrypt, compress, and scan enhancement.</li><li><strong>Audio (4)</strong>: convert, BPM detection, clip by exact times, and extract a selected video track.</li><li><strong>Audio/video transcription (4)</strong>: list, install, and choose local models, then create TXT, SRT, and JSON. Optional AI refinement sends recognized text only, never media.</li><li><strong>Video (3)</strong>: convert, export a frame at an exact millisecond, and create a GIF from an explicit range up to 30 seconds.</li><li><strong>Text and images (3)</strong>: UTF-8 file statistics, dominant-color extraction, and 2-100 image stitching.</li><li><strong>AI document (4)</strong>: create a PDF, inspect its editable project, edit numbered controls, and render again.</li><li><strong>AI table (4)</strong>: create CSV/XLSX/PDF/PNG, inspect its project, edit stable row/column/chart IDs, and render again.</li></ul></div>
+      <div class="help-agent-scope"><p>The MCP server currently exposes <strong>31 capabilities</strong>. In everyday terms:</p><ul><li><strong>PDF (9)</strong>: inspect, merge, selected-page split, rotate, encrypt, decrypt, compress, scan enhancement, and export pages as images or stitched long images.</li><li><strong>Audio (4)</strong>: convert, BPM detection, clip by exact times, and extract a selected video track.</li><li><strong>Audio/video transcription (4)</strong>: list, install, and choose local models, then create TXT, SRT, and JSON. Optional AI refinement sends recognized text only, never media.</li><li><strong>Video (3)</strong>: convert, export a frame at an exact millisecond, and create a GIF from an explicit range up to 30 seconds.</li><li><strong>Text and images (3)</strong>: UTF-8 file statistics, dominant-color extraction, and 2-100 image stitching.</li><li><strong>AI document (4)</strong>: create a PDF, inspect its editable project, edit numbered controls, and render again.</li><li><strong>AI table (4)</strong>: create CSV/XLSX/PDF/PNG, inspect its project, edit stable row/column/chart IDs, and render again.</li></ul></div>
 
       <h3>Desktop-only tools</h3>
       <p>Image format conversion, image compression, icon generation, text formatting, calculators, password generation, typing test, AI Polish, and AI Translate are intentionally desktop-only today. Some are unsafe or impractical to run through a terminal or an Agent conversation.</p>
@@ -745,8 +779,8 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-agent-prompt">
         <h4>Generate a multi-page AI document</h4>
-        <p class="help-agent-prompt-text">You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled "ToolKnit v1.2 Product Plan" in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.</p>
-        <button class="help-prompt-copy" type="button" data-copy-prompt="You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled ToolKnit v1.2 Product Plan in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.">Copy prompt</button>
+        <p class="help-agent-prompt-text">You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled "ToolKnit v1.3 Product Plan" in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.</p>
+        <button class="help-prompt-copy" type="button" data-copy-prompt="You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled ToolKnit v1.3 Product Plan in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.">Copy prompt</button>
       </div>
 
       <div class="help-agent-prompt">
@@ -891,6 +925,57 @@ export const HELP_CONTENT_EN = {
   'transcription': {
     title: 'Audio & Video to Text',
     html: `<div class="help-doc"><h2>Audio & Video to Text</h2><p>Use the bundled offline Whisper engine to recognize Chinese and English in local audio or video. Media files are never uploaded.</p><h3>First use</h3><ol class="help-steps"><li>Open Settings and choose Offline transcription models</li><li>Small is recommended; Base is faster and smaller, while Medium uses more disk space for higher quality</li><li>Choose automatic, official, or China mirror download. A verified model works offline afterwards</li></ol><h3>Outputs and refinement</h3><p>Every run keeps the original JSON, SRT, and TXT. When AI refinement is enabled, only recognized subtitle text is sent to your configured AI provider; subtitle IDs and timecodes cannot be added, removed, split, or merged.</p><div class="help-note"><p>AI can improve punctuation, grammar, and clear context mistakes, but cannot hear the source audio. Verify names, numbers, and unclear speech against the original recording.</p></div></div>`
+  },
+
+  'large-file-cleanup': {
+    title: 'AI Large File Cleanup',
+    html: `<div class="help-doc">
+      <h2>AI Large File Cleanup</h2>
+      <p>This tool scans a chosen folder for large files and moves confirmed items to the Windows Recycle Bin. It is designed for Downloads, temporary export folders, screen recordings, installers, and archives.</p>
+
+      <h3>Recommended workflow</h3>
+      <ol class="help-steps">
+        <li>Choose a specific folder such as Downloads, Videos, Desktop temp, or an export folder. Do not scan an entire drive.</li>
+        <li>Keep the default <strong>50MB</strong> threshold and start with Video-first or All large files.</li>
+        <li>Review size, category, folder hint, and local risk notes in the table.</li>
+        <li>If an AI key is configured, click AI analysis to get delete / keep / review suggestions from metadata only.</li>
+        <li>Select only files you personally confirm, then click Move to Recycle Bin. Files can be restored from the Recycle Bin.</li>
+      </ol>
+
+      <h3>Privacy and safety</h3>
+      <ul>
+        <li><strong>Scanning is local and read-only</strong>: file contents are not opened and original files are not modified.</li>
+        <li><strong>AI receives metadata only</strong>: name, size, category, modified time, relative folder hint, and local risk reason. File contents and absolute local paths are not sent.</li>
+        <li><strong>High-risk protection</strong>: chat folders, project/source folders, and model/development packages are marked high-risk. Even if AI says delete, the desktop safety layer changes that to manual review.</li>
+        <li><strong>No permanent deletion</strong>: cleanup moves files to the Windows Recycle Bin by default.</li>
+      </ul>
+
+      <div class="help-note"><p>The safest habit: scan Downloads and temporary export folders first. Project repositories, chat folders, model folders, and important document folders should always be reviewed manually.</p></div>
+    </div>`
+  },
+
+  'hardware-tools': {
+    title: 'Hardware Tools Overview',
+    html: `<div class="help-doc">
+      <h2>Hardware Tools Overview</h2>
+      <p>Hardware tools provide local, read-only system information for checking configuration, drivers, disk space, network devices, and power status. They are a lightweight system-info panel, not a hardware writer or optimizer.</p>
+
+      <h3>Available pages</h3>
+      <ul>
+        <li><strong>System Overview</strong>: Windows version, device model, core hardware, firmware security, and disk-space summary.</li>
+        <li><strong>CPU & Memory</strong>: CPU cores/threads, clocks, cache, virtualization flags, memory total, slots, brand, model, and configured clock.</li>
+        <li><strong>GPU & Display</strong>: GPU name, memory, driver version, display resolution, refresh rate, and other fields Windows exposes.</li>
+        <li><strong>Mainboard & Firmware</strong>: motherboard, BIOS/UEFI, Secure Boot, TPM, and PCI-device information.</li>
+        <li><strong>Storage & Health</strong>: physical disks, volumes, capacity, free space, interface, and readable health status.</li>
+        <li><strong>Network & Devices</strong>: network adapters, IP summary, Bluetooth, audio, camera, keyboard, mouse, and peripheral summaries.</li>
+        <li><strong>Power & Sensors</strong>: power plan, battery, ACPI thermal zones, and fan fields when Windows exposes them.</li>
+      </ul>
+
+      <h3>Read limitations</h3>
+      <p>Some hardware fields are restricted by Windows or by the device vendor. Memory SPD/XMP profiles, detailed SMART fields, and real-time GPU temperatures are not always available to a normal desktop app. ToolKnit shows what the system can safely return and marks missing data as unavailable.</p>
+
+      <div class="help-note"><p>Hardware tools are viewers only. They do not change BIOS settings, power plans, registry values, or drivers.</p></div>
+    </div>`
   },
 
   'faq-update': {

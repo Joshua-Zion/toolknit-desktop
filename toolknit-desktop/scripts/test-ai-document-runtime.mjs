@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadImage } from '@napi-rs/canvas';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { generateAiDocument } from '../cli/lib/ai-document-runtime.mjs';
 
 const fixtureDirectory = await mkdtemp(path.join(os.tmpdir(), 'toolknit-ai-document-runtime-'));
@@ -35,6 +35,22 @@ function providerResponse(layout) {
     headers: { get: () => null },
     text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(layout) } }] })
   };
+}
+
+function pixelAt(image, x, y) {
+  const canvas = createCanvas(image.width, image.height);
+  const context = canvas.getContext('2d');
+  context.drawImage(image, 0, 0);
+  return context.getImageData(
+    Math.max(0, Math.min(image.width - 1, Math.round(x))),
+    Math.max(0, Math.min(image.height - 1, Math.round(y))),
+    1,
+    1
+  ).data;
+}
+
+function isNearBlack(pixel) {
+  return pixel[3] > 0 && pixel[0] < 35 && pixel[1] < 35 && pixel[2] < 35;
 }
 
 try {
@@ -72,6 +88,15 @@ try {
   const pageMap = await loadImage(await readFile(demoOutput.page_files[0]));
   assert.ok(pageMap.width >= 1400, `Expected a high-resolution numbered map, received ${pageMap.width}px.`);
   assert.ok(pageMap.height >= 2000, `Expected a high-resolution numbered map, received ${pageMap.height}px.`);
+  const scaleX = pageMap.width / 794;
+  const scaleY = pageMap.height / 1123;
+  const labelHeight = Math.max(28, Math.round(22 * scaleY));
+  const wouldCoverContentProbe = pixelAt(pageMap, 56 * scaleX + 18, 342 * scaleY - labelHeight / 2);
+  assert.equal(
+    isNearBlack(wouldCoverContentProbe),
+    false,
+    'Numbered-map labels must stay in the page gutter instead of covering document content.'
+  );
   const overview = await loadImage(await readFile(demoOutput.path));
   assert.ok(overview.width >= 900, `Expected a readable single-column overview, received ${overview.width}px.`);
 

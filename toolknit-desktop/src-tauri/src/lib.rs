@@ -1,5 +1,5 @@
-use tauri::{Emitter, Manager};
 use std::sync::OnceLock;
+use tauri::{Emitter, Manager};
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
 
@@ -112,12 +112,14 @@ fn configured_output_root() -> Option<std::path::PathBuf> {
     let config = std::fs::read_to_string(config_path)
         .ok()
         .and_then(|content| serde_json::from_str::<OutputRootConfig>(&content).ok())?;
-    config.output_root.and_then(|path| std::path::PathBuf::from(path).canonicalize().ok())
+    config
+        .output_root
+        .and_then(|path| std::path::PathBuf::from(path).canonicalize().ok())
 }
 
 #[tauri::command]
 fn get_output_root() -> Result<Option<String>, String> {
-    Ok(configured_output_root().map(|path| path.to_string_lossy().into_owned()))
+    Ok(configured_output_root().map(|path| cleanup_display_path(&path)))
 }
 
 #[tauri::command]
@@ -129,7 +131,7 @@ fn get_default_output_root() -> Result<String, String> {
     std::fs::create_dir_all(&root)
         .map_err(|error| format!("Cannot create default output folder: {}", error))?;
     root.canonicalize()
-        .map(|path| path.to_string_lossy().into_owned())
+        .map(|path| cleanup_display_path(&path))
         .map_err(|error| format!("Cannot access default output folder: {}", error))
 }
 
@@ -146,23 +148,73 @@ fn set_output_root(output_dir: Option<String>) -> Result<(), String> {
             if !canonical.is_dir() {
                 return Err("Output location must be a folder".to_string());
             }
-            Some(canonical.to_string_lossy().into_owned())
+            Some(cleanup_display_path(&canonical))
         }
         _ => None,
     };
 
     let config_path = output_root_config_path()?;
     let parent = config_path.parent().ok_or("Invalid AppData folder")?;
-    std::fs::create_dir_all(parent).map_err(|error| format!("Cannot create settings folder: {}", error))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("Cannot create settings folder: {}", error))?;
     let content = serde_json::to_vec(&OutputRootConfig { output_root })
         .map_err(|error| format!("Cannot save output location: {}", error))?;
-    std::fs::write(config_path, content).map_err(|error| format!("Cannot save output location: {}", error))
+    std::fs::write(config_path, content)
+        .map_err(|error| format!("Cannot save output location: {}", error))
 }
 
 #[derive(serde::Serialize)]
 struct CustomBackgroundAsset {
     path: String,
     media_type: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LargeFileCandidate {
+    id: String,
+    path: String,
+    name: String,
+    extension: String,
+    category: String,
+    size_bytes: u64,
+    modified_at: Option<i64>,
+    folder_hint: String,
+    risk: String,
+    local_reason: String,
+}
+
+#[derive(serde::Serialize)]
+struct LargeFileScanResult {
+    root_path: String,
+    min_size_bytes: u64,
+    mode: String,
+    scanned_files: u64,
+    skipped_dirs: u64,
+    drive_space: Option<CleanupDriveSpace>,
+    candidates: Vec<LargeFileCandidate>,
+}
+
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct CleanupDriveSpace {
+    drive: String,
+    free_bytes: u64,
+    total_bytes: u64,
+}
+
+#[derive(serde::Serialize)]
+struct RecycleBinMoveItem {
+    path: String,
+    ok: bool,
+    error: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct RecycleBinMoveResult {
+    requested: usize,
+    moved: usize,
+    failed: usize,
+    freed_bytes: u64,
+    items: Vec<RecycleBinMoveItem>,
 }
 
 fn custom_background_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -211,7 +263,8 @@ fn import_custom_background_blocking(
         .and_then(|value| value.to_str())
         .ok_or("Unsupported background file")?
         .to_ascii_lowercase();
-    let media_type = custom_background_media_type(&extension).ok_or("Unsupported background format")?;
+    let media_type =
+        custom_background_media_type(&extension).ok_or("Unsupported background format")?;
 
     let target_dir = custom_background_dir(app)?;
     std::fs::create_dir_all(&target_dir)
@@ -223,20 +276,37 @@ fn import_custom_background_blocking(
     let target = target_dir.join(format!(
         "background-{}.{}",
         unique_id,
-        if media_type == "video" { "mp4" } else { extension.as_str() }
+        if media_type == "video" {
+            "mp4"
+        } else {
+            extension.as_str()
+        }
     ));
 
     if media_type == "video" {
         let ffmpeg = get_ffmpeg_path()?;
         if !ffmpeg.is_file() {
-            return Err("Background video conversion requires the bundled FFmpeg engine".to_string());
+            return Err(
+                "Background video conversion requires the bundled FFmpeg engine".to_string(),
+            );
         }
         let output = std::process::Command::new(&ffmpeg)
             .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
             .arg(&source)
             .args([
-                "-map", "0:v:0", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                "-map",
+                "0:v:0",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "22",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
             ])
             .arg(&target)
             .output()
@@ -262,9 +332,14 @@ fn import_custom_background_blocking(
 
     let target_metadata = std::fs::metadata(&target)
         .map_err(|error| format!("Cannot read imported background: {}", error))?;
-    if !target_metadata.is_file() || target_metadata.len() == 0 || target_metadata.len() > MAX_BACKGROUND_BYTES {
+    if !target_metadata.is_file()
+        || target_metadata.len() == 0
+        || target_metadata.len() > MAX_BACKGROUND_BYTES
+    {
         let _ = std::fs::remove_file(&target);
-        return Err("Converted background must be a non-empty file no larger than 250MB".to_string());
+        return Err(
+            "Converted background must be a non-empty file no larger than 250MB".to_string(),
+        );
     }
 
     if let Ok(entries) = std::fs::read_dir(&target_dir) {
@@ -286,7 +361,10 @@ fn import_custom_background_blocking(
 fn log_custom_background_event(event: String) {
     // Browser media errors are only observable in the webview, so retain a bounded trace in the app log.
     let safe_event = event.replace(['\r', '\n'], " ");
-    log::info!("Custom background: {}", safe_event.chars().take(1_500).collect::<String>());
+    log::info!(
+        "Custom background: {}",
+        safe_event.chars().take(1_500).collect::<String>()
+    );
 }
 
 fn custom_background_content_type(path: &std::path::Path) -> &'static str {
@@ -301,20 +379,23 @@ fn custom_background_content_type(path: &std::path::Path) -> &'static str {
     }
 }
 
-fn write_background_http_error(stream: &mut std::net::TcpStream, status: &str) -> std::io::Result<()> {
+fn write_background_http_error(
+    stream: &mut std::net::TcpStream,
+    status: &str,
+) -> std::io::Result<()> {
     use std::io::Write;
     stream.write_all(
-        format!(
-            "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        )
-        .as_bytes(),
+        format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes(),
     )
 }
 
 fn parse_background_range(request: &str, file_len: u64) -> Option<(u64, u64)> {
     let range = request
         .lines()
-        .find_map(|line| line.strip_prefix("Range:").or_else(|| line.strip_prefix("range:")))?
+        .find_map(|line| {
+            line.strip_prefix("Range:")
+                .or_else(|| line.strip_prefix("range:"))
+        })?
         .trim()
         .strip_prefix("bytes=")?;
     let (start, end) = range.split_once('-')?;
@@ -355,13 +436,24 @@ fn serve_custom_background_connection(
         }
     }
     let request = String::from_utf8_lossy(&request_bytes);
-    let mut request_parts = request.lines().next().unwrap_or_default().split_whitespace();
+    let mut request_parts = request
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .split_whitespace();
     let method = request_parts.next().unwrap_or_default();
-    let url_path = request_parts.next().unwrap_or_default().split('?').next().unwrap_or_default();
+    let url_path = request_parts
+        .next()
+        .unwrap_or_default()
+        .split('?')
+        .next()
+        .unwrap_or_default();
     if !matches!(method, "GET" | "HEAD") {
         return write_background_http_error(&mut stream, "405 Method Not Allowed");
     }
-    let filename = url_path.strip_prefix("/custom-background/").unwrap_or_default();
+    let filename = url_path
+        .strip_prefix("/custom-background/")
+        .unwrap_or_default();
     if filename.is_empty()
         || filename.contains(['/', '\\'])
         || filename.contains("..")
@@ -378,7 +470,9 @@ fn serve_custom_background_connection(
     if file_len == 0 {
         return write_background_http_error(&mut stream, "404 Not Found");
     }
-    let range_header_present = request.lines().any(|line| line.to_ascii_lowercase().starts_with("range:"));
+    let range_header_present = request
+        .lines()
+        .any(|line| line.to_ascii_lowercase().starts_with("range:"));
     let range = parse_background_range(&request, file_len);
     if range_header_present && range.is_none() {
         return write_background_http_error(&mut stream, "416 Range Not Satisfiable");
@@ -392,7 +486,9 @@ fn serve_custom_background_connection(
         custom_background_content_type(&path)
     );
     if status.starts_with("206") {
-        response.push_str(&format!("Content-Range: bytes {start}-{end}/{file_len}\r\n"));
+        response.push_str(&format!(
+            "Content-Range: bytes {start}-{end}/{file_len}\r\n"
+        ));
     }
     response.push_str("\r\n");
     stream.write_all(response.as_bytes())?;
@@ -448,7 +544,9 @@ fn get_custom_background_media_url(app: tauri::AppHandle, path: String) -> Resul
         .filter(|name| name.starts_with("background-"))
         .ok_or("Invalid imported background file")?;
     let port = custom_background_server_port(root)?;
-    Ok(format!("http://127.0.0.1:{port}/custom-background/{filename}"))
+    Ok(format!(
+        "http://127.0.0.1:{port}/custom-background/{filename}"
+    ))
 }
 
 #[cfg(test)]
@@ -458,10 +556,8 @@ mod custom_background_media_tests {
 
     #[test]
     fn serves_custom_background_with_http_range_support() {
-        let root = std::env::temp_dir().join(format!(
-            "toolknit-background-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("toolknit-background-test-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let background = root.join("background-test.mp4");
         std::fs::write(&background, b"0123456789").unwrap();
@@ -651,46 +747,96 @@ fn begin_conversion() -> Result<ConversionGuard, String> {
 
 const FFMPEG_RUNTIME_DIRECTORY: &str = "ffmpeg";
 const FFMPEG_ARCHIVE_BYTES: u64 = 29_581_307;
-const FFMPEG_ARCHIVE_SHA256: &str = "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77";
-const FFMPEG_OFFICIAL_URL: &str = "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz";
-const FFMPEG_CHINA_URL: &str = "https://cdn.npmmirror.com/binaries/ffmpeg-static/b6.1.1/ffmpeg-win32-x64.gz";
+const FFMPEG_ARCHIVE_SHA256: &str =
+    "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77";
+const FFMPEG_OFFICIAL_URL: &str =
+    "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz";
+const FFMPEG_CHINA_URL: &str =
+    "https://cdn.npmmirror.com/binaries/ffmpeg-static/b6.1.1/ffmpeg-win32-x64.gz";
 const FFMPEG_CHINA_FALLBACK_URL: &str = "https://gh-proxy.com/https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz";
 
-fn ffmpeg_runtime_dir() -> Result<std::path::PathBuf, String> { Ok(toolknit_app_data_dir()?.join(FFMPEG_RUNTIME_DIRECTORY)) }
-fn ffmpeg_runtime_path() -> Result<std::path::PathBuf, String> { Ok(ffmpeg_runtime_dir()?.join(if cfg!(target_os = "windows") { "ffmpeg.exe" } else { "ffmpeg" })) }
+fn ffmpeg_runtime_dir() -> Result<std::path::PathBuf, String> {
+    Ok(toolknit_app_data_dir()?.join(FFMPEG_RUNTIME_DIRECTORY))
+}
+fn ffmpeg_runtime_path() -> Result<std::path::PathBuf, String> {
+    Ok(ffmpeg_runtime_dir()?.join(if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    }))
+}
 fn path_ffmpeg() -> Option<std::path::PathBuf> {
-    let name = if cfg!(target_os = "windows") { "ffmpeg.exe" } else { "ffmpeg" };
-    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(name)).find(|candidate| candidate.is_file()))
+    let name = if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|dir| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    })
 }
 
 fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
     let runtime = ffmpeg_runtime_path()?;
-    if runtime.is_file() { return Ok(runtime); }
+    if runtime.is_file() {
+        return Ok(runtime);
+    }
 
     // Keep the checked-in fixture available for local debug builds and Rust tests,
     // but never let a release build silently use it after the managed runtime is removed.
     #[cfg(debug_assertions)]
     {
-    let exe_name = if cfg!(target_os = "windows") { "ffmpeg.exe" } else { "ffmpeg" };
-    let source_resource = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources").join("ffmpeg").join(exe_name);
-    if source_resource.is_file() { return Ok(source_resource); }
+        let exe_name = if cfg!(target_os = "windows") {
+            "ffmpeg.exe"
+        } else {
+            "ffmpeg"
+        };
+        let source_resource = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("ffmpeg")
+            .join(exe_name);
+        if source_resource.is_file() {
+            return Ok(source_resource);
+        }
     }
 
-    if let Some(system) = path_ffmpeg() { return Ok(system); }
+    if let Some(system) = path_ffmpeg() {
+        return Ok(system);
+    }
     Err("ffmpeg not installed. Open Settings > FFmpeg Runtime to download it.".to_string())
 }
 
 #[tauri::command]
-fn check_ffmpeg() -> bool { get_ffmpeg_path().map(|path| path.is_file()).unwrap_or(false) }
+fn check_ffmpeg() -> bool {
+    get_ffmpeg_path()
+        .map(|path| path.is_file())
+        .unwrap_or(false)
+}
 
 #[derive(Clone, serde::Serialize)]
-struct FfmpegRuntimeStatus { installed: bool, path: Option<String>, bytes: u64, source: Option<String> }
+struct FfmpegRuntimeStatus {
+    installed: bool,
+    path: Option<String>,
+    bytes: u64,
+    source: Option<String>,
+}
 #[derive(Clone, serde::Serialize)]
-struct FfmpegDownloadProgress { downloaded_bytes: u64, total_bytes: u64, phase: String }
+struct FfmpegDownloadProgress {
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    phase: String,
+}
 struct FfmpegDownloadGuard;
-impl Drop for FfmpegDownloadGuard { fn drop(&mut self) { IS_FFMPEG_DOWNLOADING.store(false, Ordering::SeqCst); } }
+impl Drop for FfmpegDownloadGuard {
+    fn drop(&mut self) {
+        IS_FFMPEG_DOWNLOADING.store(false, Ordering::SeqCst);
+    }
+}
 fn begin_ffmpeg_download() -> Result<FfmpegDownloadGuard, String> {
-    IS_FFMPEG_DOWNLOADING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+    IS_FFMPEG_DOWNLOADING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .map_err(|_| "An FFmpeg download is already in progress".to_string())?;
     CANCEL_FFMPEG_DOWNLOAD.store(false, Ordering::SeqCst);
     Ok(FfmpegDownloadGuard)
@@ -700,11 +846,23 @@ fn begin_ffmpeg_download() -> Result<FfmpegDownloadGuard, String> {
 fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String> {
     let path = ffmpeg_runtime_path()?;
     let installed = path.is_file();
-    Ok(FfmpegRuntimeStatus { installed, path: installed.then(|| path.to_string_lossy().into_owned()), bytes: if installed { std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0) } else { 0 }, source: installed.then(|| "managed".to_string()) })
+    Ok(FfmpegRuntimeStatus {
+        installed,
+        path: installed.then(|| cleanup_display_path(&path)),
+        bytes: if installed {
+            std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0)
+        } else {
+            0
+        },
+        source: installed.then(|| "managed".to_string()),
+    })
 }
 
 fn ffmpeg_download_candidates(source: &str) -> Result<Vec<(&'static str, &'static str)>, String> {
-    let china = [("china", FFMPEG_CHINA_URL), ("china-fallback", FFMPEG_CHINA_FALLBACK_URL)];
+    let china = [
+        ("china", FFMPEG_CHINA_URL),
+        ("china-fallback", FFMPEG_CHINA_FALLBACK_URL),
+    ];
     let official = [("official", FFMPEG_OFFICIAL_URL)];
     Ok(match source {
         "auto" | "auto-china" => china.into_iter().chain(official).collect(),
@@ -715,85 +873,242 @@ fn ffmpeg_download_candidates(source: &str) -> Result<Vec<(&'static str, &'stati
     })
 }
 
-fn extract_ffmpeg_executable(archive: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
+fn extract_ffmpeg_executable(
+    archive: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use std::io::{Read, Write};
-    let file = std::fs::File::open(archive).map_err(|error| format!("Cannot open FFmpeg archive: {}", error))?;
+    let file = std::fs::File::open(archive)
+        .map_err(|error| format!("Cannot open FFmpeg archive: {}", error))?;
     let mut entry = GzDecoder::new(file);
     let temporary = destination.with_extension("exe.part");
-    let mut output = std::fs::File::create(&temporary).map_err(|error| format!("Cannot create FFmpeg runtime: {}", error))?;
+    let mut output = std::fs::File::create(&temporary)
+        .map_err(|error| format!("Cannot create FFmpeg runtime: {}", error))?;
     let mut buffer = [0_u8; 64 * 1024];
     let mut extracted = 0_u64;
     loop {
-        let count = entry.read(&mut buffer).map_err(|error| format!("Cannot extract FFmpeg: {}", error))?;
-        if count == 0 { break; }
+        let count = entry
+            .read(&mut buffer)
+            .map_err(|error| format!("Cannot extract FFmpeg: {}", error))?;
+        if count == 0 {
+            break;
+        }
         extracted = extracted.saturating_add(count as u64);
-        if extracted > 250 * 1024 * 1024 { drop(output); let _ = std::fs::remove_file(&temporary); return Err("FFmpeg executable in archive is invalid".to_string()); }
-        output.write_all(&buffer[..count]).map_err(|error| format!("Cannot write FFmpeg runtime: {}", error))?;
+        if extracted > 250 * 1024 * 1024 {
+            drop(output);
+            let _ = std::fs::remove_file(&temporary);
+            return Err("FFmpeg executable in archive is invalid".to_string());
+        }
+        output
+            .write_all(&buffer[..count])
+            .map_err(|error| format!("Cannot write FFmpeg runtime: {}", error))?;
     }
-    if extracted < 1024 * 1024 { drop(output); let _ = std::fs::remove_file(&temporary); return Err("FFmpeg executable in archive is invalid".to_string()); }
-    output.sync_all().map_err(|error| format!("Cannot finalize FFmpeg runtime: {}", error))?; drop(output);
-    if destination.exists() { let _ = std::fs::remove_file(destination); }
-    std::fs::rename(&temporary, destination).map_err(|error| format!("Cannot install FFmpeg runtime: {}", error))
+    if extracted < 1024 * 1024 {
+        drop(output);
+        let _ = std::fs::remove_file(&temporary);
+        return Err("FFmpeg executable in archive is invalid".to_string());
+    }
+    output
+        .sync_all()
+        .map_err(|error| format!("Cannot finalize FFmpeg runtime: {}", error))?;
+    drop(output);
+    if destination.exists() {
+        let _ = std::fs::remove_file(destination);
+    }
+    std::fs::rename(&temporary, destination)
+        .map_err(|error| format!("Cannot install FFmpeg runtime: {}", error))
 }
 
 #[tauri::command]
-async fn download_ffmpeg_runtime(app_handle: tauri::AppHandle, source: Option<String>) -> Result<FfmpegRuntimeStatus, String> {
+async fn download_ffmpeg_runtime(
+    app_handle: tauri::AppHandle,
+    source: Option<String>,
+) -> Result<FfmpegRuntimeStatus, String> {
     use std::io::Write;
     let _guard = begin_ffmpeg_download()?;
-    let directory = ffmpeg_runtime_dir()?; std::fs::create_dir_all(&directory).map_err(|error| format!("Cannot create FFmpeg runtime directory: {}", error))?;
+    let directory = ffmpeg_runtime_dir()?;
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| format!("Cannot create FFmpeg runtime directory: {}", error))?;
     let archive = directory.join("ffmpeg-download.gz.part");
     let _ = std::fs::remove_file(directory.join("ffmpeg-download.zip.part"));
-    let requested = source.as_deref().unwrap_or("auto").trim().to_ascii_lowercase();
+    let requested = source
+        .as_deref()
+        .unwrap_or("auto")
+        .trim()
+        .to_ascii_lowercase();
     let candidates = ffmpeg_download_candidates(&requested)?;
-    let client = reqwest::Client::builder().user_agent("ToolKnit/1.2 ffmpeg-runtime-manager").connect_timeout(std::time::Duration::from_secs(12)).build().map_err(|error| format!("Cannot initialize FFmpeg download: {}", error))?;
+    let client = reqwest::Client::builder()
+        .user_agent("ToolKnit/1.3 ffmpeg-runtime-manager")
+        .connect_timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|error| format!("Cannot initialize FFmpeg download: {}", error))?;
     let mut last_error = None;
     for (candidate, url) in candidates {
-        if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) { return Err("dependency-download:cancelled".to_string()); }
-        let mut resume_from = std::fs::metadata(&archive).map(|metadata| metadata.len()).unwrap_or(0);
-        if resume_from > FFMPEG_ARCHIVE_BYTES { let _ = std::fs::remove_file(&archive); resume_from = 0; }
+        if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".to_string());
+        }
+        let mut resume_from = std::fs::metadata(&archive)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        if resume_from > FFMPEG_ARCHIVE_BYTES {
+            let _ = std::fs::remove_file(&archive);
+            resume_from = 0;
+        }
         let mut request = client.get(url);
-        if resume_from > 0 { request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from)); }
-        let mut response = match request.send().await { Ok(response) if response.status().is_success() => response, Ok(response) => { last_error = Some(format!("{}: HTTP {}", candidate, response.status())); continue; }, Err(error) => { last_error = Some(format!("{}: {}", candidate, error)); continue; } };
+        if resume_from > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
+        }
+        let mut response = match request.send().await {
+            Ok(response) if response.status().is_success() => response,
+            Ok(response) => {
+                last_error = Some(format!("{}: HTTP {}", candidate, response.status()));
+                continue;
+            }
+            Err(error) => {
+                last_error = Some(format!("{}: {}", candidate, error));
+                continue;
+            }
+        };
         let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-        if !append && resume_from > 0 { resume_from = 0; }
+        if !append && resume_from > 0 {
+            resume_from = 0;
+        }
         let mut downloaded = if append { resume_from } else { 0 };
-        let mut file = std::fs::OpenOptions::new().create(true).write(true).append(append).truncate(!append).open(&archive).map_err(|error| format!("Cannot create FFmpeg download: {}", error))?;
-        let _ = app_handle.emit("ffmpeg-runtime-download-progress", FfmpegDownloadProgress { downloaded_bytes: downloaded, total_bytes: FFMPEG_ARCHIVE_BYTES, phase: "downloading".to_string() });
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(&archive)
+            .map_err(|error| format!("Cannot create FFmpeg download: {}", error))?;
+        let _ = app_handle.emit(
+            "ffmpeg-runtime-download-progress",
+            FfmpegDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: FFMPEG_ARCHIVE_BYTES,
+                phase: "downloading".to_string(),
+            },
+        );
         let mut failed = None;
         loop {
-            if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) { let _ = file.sync_all(); return Err("dependency-download:cancelled".to_string()); }
+            if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
+                let _ = file.sync_all();
+                return Err("dependency-download:cancelled".to_string());
+            }
             match response.chunk().await {
                 Ok(Some(chunk)) => {
                     downloaded = downloaded.saturating_add(chunk.len() as u64);
-                    if downloaded > FFMPEG_ARCHIVE_BYTES { failed = Some("FFmpeg package is larger than the expected size".to_string()); break; }
-                    if let Err(error) = file.write_all(&chunk) { failed = Some(format!("Cannot write FFmpeg download: {}", error)); break; }
-                    let _ = app_handle.emit("ffmpeg-runtime-download-progress", FfmpegDownloadProgress { downloaded_bytes: downloaded, total_bytes: FFMPEG_ARCHIVE_BYTES, phase: "downloading".to_string() });
+                    if downloaded > FFMPEG_ARCHIVE_BYTES {
+                        failed =
+                            Some("FFmpeg package is larger than the expected size".to_string());
+                        break;
+                    }
+                    if let Err(error) = file.write_all(&chunk) {
+                        failed = Some(format!("Cannot write FFmpeg download: {}", error));
+                        break;
+                    }
+                    let _ = app_handle.emit(
+                        "ffmpeg-runtime-download-progress",
+                        FfmpegDownloadProgress {
+                            downloaded_bytes: downloaded,
+                            total_bytes: FFMPEG_ARCHIVE_BYTES,
+                            phase: "downloading".to_string(),
+                        },
+                    );
                 }
                 Ok(None) => break,
-                Err(error) => { failed = Some(format!("FFmpeg download interrupted: {}", error)); break; }
+                Err(error) => {
+                    failed = Some(format!("FFmpeg download interrupted: {}", error));
+                    break;
+                }
             }
         }
-        let _ = file.sync_all(); drop(file);
-        if let Some(error) = failed { last_error = Some(error); continue; }
-        if downloaded != FFMPEG_ARCHIVE_BYTES { last_error = Some(format!("Downloaded FFmpeg package is incomplete ({}/{})", downloaded, FFMPEG_ARCHIVE_BYTES)); continue; }
+        let _ = file.sync_all();
+        drop(file);
+        if let Some(error) = failed {
+            last_error = Some(error);
+            continue;
+        }
+        if downloaded != FFMPEG_ARCHIVE_BYTES {
+            last_error = Some(format!(
+                "Downloaded FFmpeg package is incomplete ({}/{})",
+                downloaded, FFMPEG_ARCHIVE_BYTES
+            ));
+            continue;
+        }
         let archive_for_hash = archive.clone();
-        let actual_hash = tokio::task::spawn_blocking(move || sha256_file(&archive_for_hash)).await.map_err(|error| format!("Cannot verify FFmpeg package: {}", error))??;
-        if actual_hash != FFMPEG_ARCHIVE_SHA256 { let _ = std::fs::remove_file(&archive); last_error = Some("FFmpeg package integrity check failed".to_string()); continue; }
-        let _ = app_handle.emit("ffmpeg-runtime-download-progress", FfmpegDownloadProgress { downloaded_bytes: downloaded, total_bytes: FFMPEG_ARCHIVE_BYTES, phase: "installing".to_string() });
-        let archive_for_extract = archive.clone(); let executable = ffmpeg_runtime_path()?;
-        let extraction = tokio::task::spawn_blocking(move || extract_ffmpeg_executable(&archive_for_extract, &executable)).await.map_err(|error| format!("Cannot install FFmpeg runtime: {}", error))?;
-        if let Err(error) = extraction { last_error = Some(error); let _ = std::fs::remove_file(&archive); continue; }
-        let _ = std::fs::remove_file(&archive); let executable = ffmpeg_runtime_path()?;
-        let valid = tokio::task::spawn_blocking(move || std::process::Command::new(&executable).arg("-version").output().map(|result| result.status.success()).unwrap_or(false)).await.map_err(|error| format!("Cannot validate FFmpeg runtime: {}", error))?;
-        if !valid { let _ = std::fs::remove_file(ffmpeg_runtime_path()?); return Err("FFmpeg executable validation failed; the downloaded runtime was removed".to_string()); }
-        let _ = app_handle.emit("ffmpeg-runtime-download-progress", FfmpegDownloadProgress { downloaded_bytes: downloaded, total_bytes: FFMPEG_ARCHIVE_BYTES, phase: "complete".to_string() }); return get_ffmpeg_runtime_status();
+        let actual_hash = tokio::task::spawn_blocking(move || sha256_file(&archive_for_hash))
+            .await
+            .map_err(|error| format!("Cannot verify FFmpeg package: {}", error))??;
+        if actual_hash != FFMPEG_ARCHIVE_SHA256 {
+            let _ = std::fs::remove_file(&archive);
+            last_error = Some("FFmpeg package integrity check failed".to_string());
+            continue;
+        }
+        let _ = app_handle.emit(
+            "ffmpeg-runtime-download-progress",
+            FfmpegDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: FFMPEG_ARCHIVE_BYTES,
+                phase: "installing".to_string(),
+            },
+        );
+        let archive_for_extract = archive.clone();
+        let executable = ffmpeg_runtime_path()?;
+        let extraction = tokio::task::spawn_blocking(move || {
+            extract_ffmpeg_executable(&archive_for_extract, &executable)
+        })
+        .await
+        .map_err(|error| format!("Cannot install FFmpeg runtime: {}", error))?;
+        if let Err(error) = extraction {
+            last_error = Some(error);
+            let _ = std::fs::remove_file(&archive);
+            continue;
+        }
+        let _ = std::fs::remove_file(&archive);
+        let executable = ffmpeg_runtime_path()?;
+        let valid = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(&executable)
+                .arg("-version")
+                .output()
+                .map(|result| result.status.success())
+                .unwrap_or(false)
+        })
+        .await
+        .map_err(|error| format!("Cannot validate FFmpeg runtime: {}", error))?;
+        if !valid {
+            let _ = std::fs::remove_file(ffmpeg_runtime_path()?);
+            return Err(
+                "FFmpeg executable validation failed; the downloaded runtime was removed"
+                    .to_string(),
+            );
+        }
+        let _ = app_handle.emit(
+            "ffmpeg-runtime-download-progress",
+            FfmpegDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: FFMPEG_ARCHIVE_BYTES,
+                phase: "complete".to_string(),
+            },
+        );
+        return get_ffmpeg_runtime_status();
     }
-    Err(format!("Cannot download FFmpeg: {}", last_error.unwrap_or_else(|| "unknown error".to_string())))
+    Err(format!(
+        "Cannot download FFmpeg: {}",
+        last_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
 }
 
 #[tauri::command]
-fn delete_ffmpeg_runtime() -> Result<(), String> { let directory = ffmpeg_runtime_dir()?; if directory.exists() { std::fs::remove_dir_all(directory).map_err(|error| format!("Cannot delete FFmpeg runtime: {}", error))?; } Ok(()) }
+fn delete_ffmpeg_runtime() -> Result<(), String> {
+    let directory = ffmpeg_runtime_dir()?;
+    if directory.exists() {
+        std::fs::remove_dir_all(directory)
+            .map_err(|error| format!("Cannot delete FFmpeg runtime: {}", error))?;
+    }
+    Ok(())
+}
 
 #[tauri::command]
 fn cancel_dependency_downloads() {
@@ -912,13 +1227,20 @@ fn read_transcription_model_config() -> TranscriptionModelConfig {
 
 fn write_transcription_model_config(config: &TranscriptionModelConfig) -> Result<(), String> {
     let path = transcription_model_config_path()?;
-    let parent = path.parent().ok_or("Invalid model configuration directory")?;
-    std::fs::create_dir_all(parent).map_err(|error| format!("Cannot create model configuration directory: {}", error))?;
-    let encoded = serde_json::to_vec(config).map_err(|error| format!("Cannot save model configuration: {}", error))?;
-    std::fs::write(path, encoded).map_err(|error| format!("Cannot save model configuration: {}", error))
+    let parent = path
+        .parent()
+        .ok_or("Invalid model configuration directory")?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("Cannot create model configuration directory: {}", error))?;
+    let encoded = serde_json::to_vec(config)
+        .map_err(|error| format!("Cannot save model configuration: {}", error))?;
+    std::fs::write(path, encoded)
+        .map_err(|error| format!("Cannot save model configuration: {}", error))
 }
 
-fn installed_model_file(model: &TranscriptionModelSpec) -> Result<Option<std::path::PathBuf>, String> {
+fn installed_model_file(
+    model: &TranscriptionModelSpec,
+) -> Result<Option<std::path::PathBuf>, String> {
     let path = transcription_model_path(model)?;
     let metadata = match std::fs::metadata(&path) {
         Ok(metadata) => metadata,
@@ -932,7 +1254,10 @@ fn installed_model_file(model: &TranscriptionModelSpec) -> Result<Option<std::pa
     }
 }
 
-fn transcription_model_source(model: &TranscriptionModelSpec, source: Option<&str>) -> Result<String, String> {
+fn transcription_model_source(
+    model: &TranscriptionModelSpec,
+    source: Option<&str>,
+) -> Result<String, String> {
     let source = source.unwrap_or("auto").trim().to_ascii_lowercase();
     let root = match source.as_str() {
         "official" => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main",
@@ -948,33 +1273,55 @@ fn sha256_file(path: &std::path::Path) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
 
-    let mut file = std::fs::File::open(path).map_err(|error| format!("Cannot open model file: {}", error))?;
+    let mut file =
+        std::fs::File::open(path).map_err(|error| format!("Cannot open model file: {}", error))?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 1024 * 1024];
     loop {
-        let read = file.read(&mut buffer).map_err(|error| format!("Cannot read model file: {}", error))?;
-        if read == 0 { break; }
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Cannot read model file: {}", error))?;
+        if read == 0 {
+            break;
+        }
         digest.update(&buffer[..read]);
     }
     Ok(format!("{:x}", digest.finalize()))
 }
 
 fn get_whisper_cli_path() -> Result<std::path::PathBuf, String> {
-    let executable = if cfg!(target_os = "windows") { "whisper-cli.exe" } else { "whisper-cli" };
+    let executable = if cfg!(target_os = "windows") {
+        "whisper-cli.exe"
+    } else {
+        "whisper-cli"
+    };
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let exe_dir = exe.parent().ok_or("Cannot find executable directory")?;
-    let bundled = exe_dir.join("resources").join("whisper").join("Release").join(executable);
-    if bundled.is_file() { return Ok(bundled); }
+    let bundled = exe_dir
+        .join("resources")
+        .join("whisper")
+        .join("Release")
+        .join(executable);
+    if bundled.is_file() {
+        return Ok(bundled);
+    }
 
     let source_resource = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("resources").join("whisper").join("Release").join(executable);
-    if source_resource.is_file() { return Ok(source_resource); }
+        .join("resources")
+        .join("whisper")
+        .join("Release")
+        .join(executable);
+    if source_resource.is_file() {
+        return Ok(source_resource);
+    }
     Err("Offline transcription engine is unavailable. Please reinstall ToolKnit.".to_string())
 }
 
 #[tauri::command]
 fn check_transcription_engine() -> bool {
-    get_whisper_cli_path().map(|path| path.is_file()).unwrap_or(false)
+    get_whisper_cli_path()
+        .map(|path| path.is_file())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -1001,7 +1348,9 @@ fn set_current_transcription_model(model_id: String) -> Result<(), String> {
     if installed_model_file(model)?.is_none() {
         return Err("Install this offline model before selecting it".to_string());
     }
-    write_transcription_model_config(&TranscriptionModelConfig { current_model: Some(model.id.to_string()) })
+    write_transcription_model_config(&TranscriptionModelConfig {
+        current_model: Some(model.id.to_string()),
+    })
 }
 
 #[tauri::command]
@@ -1009,8 +1358,12 @@ fn delete_transcription_model(model_id: String) -> Result<(), String> {
     let model = transcription_model_spec(&model_id)?;
     let path = transcription_model_path(model)?;
     let partial = path.with_extension("bin.part");
-    if path.exists() { std::fs::remove_file(&path).map_err(|error| format!("Cannot delete model: {}", error))?; }
-    if partial.exists() { let _ = std::fs::remove_file(partial); }
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|error| format!("Cannot delete model: {}", error))?;
+    }
+    if partial.exists() {
+        let _ = std::fs::remove_file(partial);
+    }
     let mut config = read_transcription_model_config();
     if config.current_model.as_deref() == Some(model.id) {
         config.current_model = None;
@@ -1031,7 +1384,8 @@ async fn download_transcription_model(
     let model = transcription_model_spec(&model_id)?;
     let target = transcription_model_path(model)?;
     let parent = target.parent().ok_or("Invalid model directory")?;
-    std::fs::create_dir_all(parent).map_err(|error| format!("Cannot create model directory: {}", error))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("Cannot create model directory: {}", error))?;
 
     if let Some(existing) = installed_model_file(model)? {
         let expected = model.sha256.to_string();
@@ -1051,10 +1405,14 @@ async fn download_transcription_model(
 
     let partial = target.with_extension("bin.part");
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/1.2 offline-model-manager")
+        .user_agent("ToolKnit/1.3 offline-model-manager")
         .build()
         .map_err(|error| format!("Cannot initialize model download: {}", error))?;
-    let requested_source = source.as_deref().unwrap_or("auto").trim().to_ascii_lowercase();
+    let requested_source = source
+        .as_deref()
+        .unwrap_or("auto")
+        .trim()
+        .to_ascii_lowercase();
     let candidates: Vec<&str> = match requested_source.as_str() {
         "auto" => vec!["official", "china"],
         "official" | "china" => vec![requested_source.as_str()],
@@ -1067,7 +1425,9 @@ async fn download_transcription_model(
         }
         // A failed stream may have extended the partial file. Read its size
         // again for every mirror attempt so the Range header stays correct.
-        let mut resume_from = std::fs::metadata(&partial).map(|metadata| metadata.len()).unwrap_or(0);
+        let mut resume_from = std::fs::metadata(&partial)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
         if resume_from > model.bytes {
             let _ = std::fs::remove_file(&partial);
             resume_from = 0;
@@ -1078,7 +1438,9 @@ async fn download_transcription_model(
             request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
         }
         let mut response = match request.send().await {
-            Ok(candidate_response) if candidate_response.status().is_success() => candidate_response,
+            Ok(candidate_response) if candidate_response.status().is_success() => {
+                candidate_response
+            }
             Ok(candidate_response) => {
                 last_error = Some(format!("HTTP {}", candidate_response.status()));
                 continue;
@@ -1089,7 +1451,9 @@ async fn download_transcription_model(
             }
         };
         let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-        if !append && resume_from > 0 { resume_from = 0; }
+        if !append && resume_from > 0 {
+            resume_from = 0;
+        }
         let mut downloaded = if append { resume_from } else { 0 };
         let mut output = std::fs::OpenOptions::new()
             .create(true)
@@ -1098,51 +1462,82 @@ async fn download_transcription_model(
             .truncate(!append)
             .open(&partial)
             .map_err(|error| format!("Cannot create model download: {}", error))?;
-        let _ = app_handle.emit("transcription-model-download-progress", ModelDownloadProgress {
-            model_id: model.id.to_string(), downloaded_bytes: downloaded, total_bytes: model.bytes, phase: "downloading".to_string(),
-        });
+        let _ = app_handle.emit(
+            "transcription-model-download-progress",
+            ModelDownloadProgress {
+                model_id: model.id.to_string(),
+                downloaded_bytes: downloaded,
+                total_bytes: model.bytes,
+                phase: "downloading".to_string(),
+            },
+        );
         let stream_error = loop {
             if CANCEL_MODEL_DOWNLOAD.load(Ordering::SeqCst) {
-                output.sync_all().map_err(|error| format!("Cannot preserve model download: {}", error))?;
+                output
+                    .sync_all()
+                    .map_err(|error| format!("Cannot preserve model download: {}", error))?;
                 return Err("dependency-download:cancelled".to_string());
             }
             match response.chunk().await {
                 Ok(Some(chunk)) => {
-                    output.write_all(&chunk).map_err(|error| format!("Cannot write model download: {}", error))?;
+                    output
+                        .write_all(&chunk)
+                        .map_err(|error| format!("Cannot write model download: {}", error))?;
                     downloaded = downloaded.saturating_add(chunk.len() as u64);
-                    let _ = app_handle.emit("transcription-model-download-progress", ModelDownloadProgress {
-                        model_id: model.id.to_string(), downloaded_bytes: downloaded, total_bytes: model.bytes, phase: "downloading".to_string(),
-                    });
+                    let _ = app_handle.emit(
+                        "transcription-model-download-progress",
+                        ModelDownloadProgress {
+                            model_id: model.id.to_string(),
+                            downloaded_bytes: downloaded,
+                            total_bytes: model.bytes,
+                            phase: "downloading".to_string(),
+                        },
+                    );
                 }
                 Ok(None) => break None,
                 Err(error) => break Some(error.to_string()),
             }
         };
-        output.sync_all().map_err(|error| format!("Cannot finalize model download: {}", error))?;
+        output
+            .sync_all()
+            .map_err(|error| format!("Cannot finalize model download: {}", error))?;
         drop(output);
         if let Some(error) = stream_error {
             last_error = Some(format!("Model download interrupted: {}", error));
             continue;
         }
         if downloaded != model.bytes {
-            if downloaded >= model.bytes { let _ = std::fs::remove_file(&partial); }
-            last_error = Some("Downloaded model size does not match the expected package".to_string());
+            if downloaded >= model.bytes {
+                let _ = std::fs::remove_file(&partial);
+            }
+            last_error =
+                Some("Downloaded model size does not match the expected package".to_string());
             continue;
         }
-        let _ = app_handle.emit("transcription-model-download-progress", ModelDownloadProgress {
-            model_id: model.id.to_string(), downloaded_bytes: downloaded, total_bytes: model.bytes, phase: "verifying".to_string(),
-        });
+        let _ = app_handle.emit(
+            "transcription-model-download-progress",
+            ModelDownloadProgress {
+                model_id: model.id.to_string(),
+                downloaded_bytes: downloaded,
+                total_bytes: model.bytes,
+                phase: "verifying".to_string(),
+            },
+        );
         let path_for_hash = partial.clone();
         let actual_hash = tokio::task::spawn_blocking(move || sha256_file(&path_for_hash))
             .await
             .map_err(|error| format!("Cannot verify model: {}", error))??;
         if actual_hash != model.sha256 {
             let _ = std::fs::remove_file(&partial);
-            last_error = Some("Model integrity check failed. The incomplete file was removed.".to_string());
+            last_error =
+                Some("Model integrity check failed. The incomplete file was removed.".to_string());
             continue;
         }
-        if target.exists() { let _ = std::fs::remove_file(&target); }
-        std::fs::rename(&partial, &target).map_err(|error| format!("Cannot install model: {}", error))?;
+        if target.exists() {
+            let _ = std::fs::remove_file(&target);
+        }
+        std::fs::rename(&partial, &target)
+            .map_err(|error| format!("Cannot install model: {}", error))?;
 
         let mut config = read_transcription_model_config();
         if config.current_model.is_none() || model.id == "small" {
@@ -1150,12 +1545,25 @@ async fn download_transcription_model(
             write_transcription_model_config(&config)?;
         }
         let current = config.current_model.as_deref() == Some(model.id);
-        let _ = app_handle.emit("transcription-model-download-progress", ModelDownloadProgress {
-            model_id: model.id.to_string(), downloaded_bytes: model.bytes, total_bytes: model.bytes, phase: "complete".to_string(),
+        let _ = app_handle.emit(
+            "transcription-model-download-progress",
+            ModelDownloadProgress {
+                model_id: model.id.to_string(),
+                downloaded_bytes: model.bytes,
+                total_bytes: model.bytes,
+                phase: "complete".to_string(),
+            },
+        );
+        return Ok(ModelDownloadResult {
+            model_id: model.id.to_string(),
+            path: target.to_string_lossy().into_owned(),
+            current,
         });
-        return Ok(ModelDownloadResult { model_id: model.id.to_string(), path: target.to_string_lossy().into_owned(), current });
     }
-    Err(format!("Cannot download model: {}", last_error.unwrap_or_else(|| "unknown error".to_string())))
+    Err(format!(
+        "Cannot download model: {}",
+        last_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
 }
 
 #[derive(serde::Serialize)]
@@ -1174,15 +1582,27 @@ struct TranscriptionProgress {
 
 fn transcription_input_path(input_path: &str) -> Result<std::path::PathBuf, String> {
     const SUPPORTED_EXTENSIONS: &[&str] = &[
-        "mp3", "aac", "m4a", "wav", "flac", "alac", "ogg", "wma", "mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "ts",
+        "mp3", "aac", "m4a", "wav", "flac", "alac", "ogg", "wma", "mp4", "mkv", "avi", "mov",
+        "webm", "flv", "wmv", "ts",
     ];
     if input_path.trim().is_empty() || input_path.contains('\0') {
         return Err("transcription:invalid-input".to_string());
     }
-    let path = std::path::PathBuf::from(input_path).canonicalize().map_err(|_| "transcription:input-not-found".to_string())?;
-    let metadata = std::fs::metadata(&path).map_err(|_| "transcription:input-not-found".to_string())?;
-    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
-    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > 10 * 1024 * 1024 * 1024 || !SUPPORTED_EXTENSIONS.contains(&extension.as_str()) {
+    let path = std::path::PathBuf::from(input_path)
+        .canonicalize()
+        .map_err(|_| "transcription:input-not-found".to_string())?;
+    let metadata =
+        std::fs::metadata(&path).map_err(|_| "transcription:input-not-found".to_string())?;
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !metadata.is_file()
+        || metadata.len() == 0
+        || metadata.len() > 10 * 1024 * 1024 * 1024
+        || !SUPPORTED_EXTENSIONS.contains(&extension.as_str())
+    {
         return Err("transcription:invalid-input".to_string());
     }
     Ok(path)
@@ -1195,7 +1615,9 @@ fn transcription_output_dir(output_dir: &str) -> Result<std::path::PathBuf, Stri
     let path = std::path::PathBuf::from(output_dir);
     is_path_safe(&path).map_err(|_| "transcription:invalid-output".to_string())?;
     std::fs::create_dir_all(&path).map_err(|_| "transcription:invalid-output".to_string())?;
-    let path = path.canonicalize().map_err(|_| "transcription:invalid-output".to_string())?;
+    let path = path
+        .canonicalize()
+        .map_err(|_| "transcription:invalid-output".to_string())?;
     is_path_safe(&path).map_err(|_| "transcription:invalid-output".to_string())?;
     Ok(path)
 }
@@ -1210,18 +1632,42 @@ fn transcription_language(language: &str) -> Result<&str, String> {
 }
 
 fn transcription_output_stem(input: &std::path::Path) -> String {
-    let stem = input.file_stem().and_then(|value| value.to_str()).unwrap_or("transcript");
-    let normalized: String = stem.chars()
-        .map(|character| if matches!(character, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0') || character.is_control() { '_' } else { character })
+    let stem = input
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("transcript");
+    let normalized: String = stem
+        .chars()
+        .map(|character| {
+            if matches!(
+                character,
+                '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0'
+            ) || character.is_control()
+            {
+                '_'
+            } else {
+                character
+            }
+        })
         .collect();
     let normalized = normalized.trim().trim_end_matches('.').trim_end();
-    if normalized.is_empty() { "transcript".to_string() } else { normalized.chars().take(96).collect() }
+    if normalized.is_empty() {
+        "transcript".to_string()
+    } else {
+        normalized.chars().take(96).collect()
+    }
 }
 
-fn create_transcription_temp_dir(output_dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+fn create_transcription_temp_dir(
+    output_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
     for _ in 0..10_000 {
         let id = TRANSCRIPTION_TEMP_ID.fetch_add(1, Ordering::SeqCst);
-        let candidate = output_dir.join(format!(".toolknit-transcription-{}-{}", std::process::id(), id));
+        let candidate = output_dir.join(format!(
+            ".toolknit-transcription-{}-{}",
+            std::process::id(),
+            id
+        ));
         match std::fs::create_dir(&candidate) {
             Ok(()) => return Ok(candidate),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -1231,19 +1677,32 @@ fn create_transcription_temp_dir(output_dir: &std::path::Path) -> Result<std::pa
     Err("transcription:invalid-output".to_string())
 }
 
-async fn run_transcription_command(command: &std::path::Path, arguments: &[std::ffi::OsString]) -> Result<std::process::Output, String> {
+async fn run_transcription_command(
+    command: &std::path::Path,
+    arguments: &[std::ffi::OsString],
+) -> Result<std::process::Output, String> {
     let mut process = tokio::process::Command::new(command);
-    process.args(arguments)
+    process
+        .args(arguments)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     #[cfg(target_os = "windows")]
-    { process.creation_flags(0x08000000); }
-    let child = process.spawn().map_err(|_| "transcription:engine-failed".to_string())?;
+    {
+        process.creation_flags(0x08000000);
+    }
+    let child = process
+        .spawn()
+        .map_err(|_| "transcription:engine-failed".to_string())?;
     CURRENT_CHILD_ID.store(child.id().unwrap_or(0), Ordering::SeqCst);
-    let output = child.wait_with_output().await.map_err(|_| "transcription:engine-failed".to_string())?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|_| "transcription:engine-failed".to_string())?;
     CURRENT_CHILD_ID.store(0, Ordering::SeqCst);
-    if CANCEL_FLAG.load(Ordering::SeqCst) { return Err("transcription:cancelled".to_string()); }
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
+        return Err("transcription:cancelled".to_string());
+    }
     Ok(output)
 }
 
@@ -1259,12 +1718,20 @@ fn publish_transcription_outputs(
         return Err("transcription:engine-failed".to_string());
     }
     for index in 0..10_000_u32 {
-        let suffix = if index == 0 { String::new() } else { format!("_{}", index) };
+        let suffix = if index == 0 {
+            String::new()
+        } else {
+            format!("_{}", index)
+        };
         let json = output_dir.join(format!("{}_transcript{}.json", stem, suffix));
         let srt = output_dir.join(format!("{}_transcript{}.srt", stem, suffix));
         let txt = output_dir.join(format!("{}_transcript{}.txt", stem, suffix));
-        if json.exists() || srt.exists() || txt.exists() { continue; }
-        if std::fs::hard_link(&source_json, &json).is_err() { continue; }
+        if json.exists() || srt.exists() || txt.exists() {
+            continue;
+        }
+        if std::fs::hard_link(&source_json, &json).is_err() {
+            continue;
+        }
         if std::fs::hard_link(&source_srt, &srt).is_err() {
             let _ = std::fs::remove_file(&json);
             continue;
@@ -1291,44 +1758,90 @@ async fn transcribe_media(
     let output_dir = transcription_output_dir(&output_dir)?;
     let language = transcription_language(&language)?;
     let config = read_transcription_model_config();
-    let model_id = config.current_model.ok_or("transcription:model-not-installed".to_string())?;
+    let model_id = config
+        .current_model
+        .ok_or("transcription:model-not-installed".to_string())?;
     let model = transcription_model_spec(&model_id)?;
-    let model_path = installed_model_file(model)?.ok_or("transcription:model-not-installed".to_string())?;
+    let model_path =
+        installed_model_file(model)?.ok_or("transcription:model-not-installed".to_string())?;
     let ffmpeg = get_ffmpeg_path().map_err(|_| "transcription:ffmpeg-unavailable".to_string())?;
-    let whisper = get_whisper_cli_path().map_err(|_| "transcription:engine-unavailable".to_string())?;
+    let whisper =
+        get_whisper_cli_path().map_err(|_| "transcription:engine-unavailable".to_string())?;
     let temp_dir = create_transcription_temp_dir(&output_dir)?;
     let wav = temp_dir.join("input.wav");
-    let _ = app_handle.emit("transcription-progress", TranscriptionProgress { phase: "preparing".to_string(), progress: 5 });
+    let _ = app_handle.emit(
+        "transcription-progress",
+        TranscriptionProgress {
+            phase: "preparing".to_string(),
+            progress: 5,
+        },
+    );
 
     let ffmpeg_args = vec![
-        std::ffi::OsString::from("-hide_banner"), std::ffi::OsString::from("-nostdin"), std::ffi::OsString::from("-y"),
-        std::ffi::OsString::from("-i"), input.as_os_str().to_os_string(), std::ffi::OsString::from("-vn"),
-        std::ffi::OsString::from("-ac"), std::ffi::OsString::from("1"), std::ffi::OsString::from("-ar"), std::ffi::OsString::from("16000"),
-        std::ffi::OsString::from("-c:a"), std::ffi::OsString::from("pcm_s16le"), wav.as_os_str().to_os_string(),
+        std::ffi::OsString::from("-hide_banner"),
+        std::ffi::OsString::from("-nostdin"),
+        std::ffi::OsString::from("-y"),
+        std::ffi::OsString::from("-i"),
+        input.as_os_str().to_os_string(),
+        std::ffi::OsString::from("-vn"),
+        std::ffi::OsString::from("-ac"),
+        std::ffi::OsString::from("1"),
+        std::ffi::OsString::from("-ar"),
+        std::ffi::OsString::from("16000"),
+        std::ffi::OsString::from("-c:a"),
+        std::ffi::OsString::from("pcm_s16le"),
+        wav.as_os_str().to_os_string(),
     ];
     let prepared = run_transcription_command(&ffmpeg, &ffmpeg_args).await?;
     if !prepared.status.success() || !wav.is_file() {
         let _ = std::fs::remove_dir_all(&temp_dir);
         return Err("transcription:prepare-failed".to_string());
     }
-    let _ = app_handle.emit("transcription-progress", TranscriptionProgress { phase: "transcribing".to_string(), progress: 15 });
+    let _ = app_handle.emit(
+        "transcription-progress",
+        TranscriptionProgress {
+            phase: "transcribing".to_string(),
+            progress: 15,
+        },
+    );
     let whisper_args = vec![
-        std::ffi::OsString::from("-m"), model_path.as_os_str().to_os_string(), std::ffi::OsString::from("-f"), wav.as_os_str().to_os_string(),
-        std::ffi::OsString::from("-l"), std::ffi::OsString::from(language), std::ffi::OsString::from("-otxt"),
-        std::ffi::OsString::from("-osrt"), std::ffi::OsString::from("-oj"), std::ffi::OsString::from("-ojf"),
-        std::ffi::OsString::from("-np"), std::ffi::OsString::from("-of"), temp_dir.join("transcript").as_os_str().to_os_string(),
+        std::ffi::OsString::from("-m"),
+        model_path.as_os_str().to_os_string(),
+        std::ffi::OsString::from("-f"),
+        wav.as_os_str().to_os_string(),
+        std::ffi::OsString::from("-l"),
+        std::ffi::OsString::from(language),
+        std::ffi::OsString::from("-otxt"),
+        std::ffi::OsString::from("-osrt"),
+        std::ffi::OsString::from("-oj"),
+        std::ffi::OsString::from("-ojf"),
+        std::ffi::OsString::from("-np"),
+        std::ffi::OsString::from("-of"),
+        temp_dir.join("transcript").as_os_str().to_os_string(),
     ];
     let transcribed = run_transcription_command(&whisper, &whisper_args).await?;
     if !transcribed.status.success() {
         let _ = std::fs::remove_dir_all(&temp_dir);
         return Err("transcription:engine-failed".to_string());
     }
-    let _ = app_handle.emit("transcription-progress", TranscriptionProgress { phase: "publishing".to_string(), progress: 95 });
+    let _ = app_handle.emit(
+        "transcription-progress",
+        TranscriptionProgress {
+            phase: "publishing".to_string(),
+            progress: 95,
+        },
+    );
     let stem = transcription_output_stem(&input);
     let published = publish_transcription_outputs(&temp_dir, &output_dir, &stem);
     let _ = std::fs::remove_dir_all(&temp_dir);
     let (raw_json_path, raw_srt_path, raw_txt_path) = published?;
-    let _ = app_handle.emit("transcription-progress", TranscriptionProgress { phase: "complete".to_string(), progress: 100 });
+    let _ = app_handle.emit(
+        "transcription-progress",
+        TranscriptionProgress {
+            phase: "complete".to_string(),
+            progress: 100,
+        },
+    );
     Ok(TranscriptionResult {
         model_id: model.id.to_string(),
         raw_json_path: raw_json_path.to_string_lossy().into_owned(),
@@ -1525,13 +2038,21 @@ fn map_qpdf_decrypt_error(output: &std::process::Output) -> String {
 }
 
 #[tauri::command]
-async fn decrypt_pdf(input_path: String, mut password: String, output_dir: Option<String>) -> Result<String, String> {
+async fn decrypt_pdf(
+    input_path: String,
+    mut password: String,
+    output_dir: Option<String>,
+) -> Result<String, String> {
     let result = decrypt_pdf_inner(&input_path, &password, output_dir.as_deref()).await;
     clear_pdf_decrypt_password(&mut password);
     result
 }
 
-async fn decrypt_pdf_inner(input_path: &str, password: &str, requested_output_dir: Option<&str>) -> Result<String, String> {
+async fn decrypt_pdf_inner(
+    input_path: &str,
+    password: &str,
+    requested_output_dir: Option<&str>,
+) -> Result<String, String> {
     let input = std::path::Path::new(&input_path);
     if input_path.contains('\0')
         || !input.is_file()
@@ -1551,7 +2072,12 @@ async fn decrypt_pdf_inner(input_path: &str, password: &str, requested_output_di
     let output_dir = requested_output_dir
         .filter(|value| !value.trim().is_empty() && !value.contains('\0'))
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| dirs::document_dir().unwrap_or_default().join("ToolKnit").join("PDF_Decrypt"));
+        .unwrap_or_else(|| {
+            dirs::document_dir()
+                .unwrap_or_default()
+                .join("ToolKnit")
+                .join("PDF_Decrypt")
+        });
     is_path_safe(&output_dir).map_err(|_| "pdf-decrypt:output-path".to_string())?;
     std::fs::create_dir_all(&output_dir)
         .map_err(|_| "pdf-decrypt:decryption-failed".to_string())?;
@@ -1721,7 +2247,11 @@ fn map_qpdf_compress_error(output: &std::process::Output) -> String {
 }
 
 #[tauri::command]
-async fn compress_pdf(input_path: String, level: String, output_dir: Option<String>) -> Result<PdfCompressResult, String> {
+async fn compress_pdf(
+    input_path: String,
+    level: String,
+    output_dir: Option<String>,
+) -> Result<PdfCompressResult, String> {
     let input = std::path::Path::new(&input_path);
     if input_path.contains('\0')
         || !input.is_file()
@@ -1770,7 +2300,12 @@ async fn compress_pdf(input_path: String, level: String, output_dir: Option<Stri
     let output_dir = output_dir
         .filter(|value| !value.trim().is_empty() && !value.contains('\0'))
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| dirs::document_dir().unwrap_or_default().join("ToolKnit").join("PDF_Compress"));
+        .unwrap_or_else(|| {
+            dirs::document_dir()
+                .unwrap_or_default()
+                .join("ToolKnit")
+                .join("PDF_Compress")
+        });
     is_path_safe(&output_dir).map_err(|_| "pdf-compress:output-path".to_string())?;
     std::fs::create_dir_all(&output_dir)
         .map_err(|_| "pdf-compress:compression-failed".to_string())?;
@@ -2934,7 +3469,10 @@ fn write_converted_image(
     }
 }
 
-fn write_raster_svg(image: &image::DynamicImage, output_path: &std::path::Path) -> Result<(), String> {
+fn write_raster_svg(
+    image: &image::DynamicImage,
+    output_path: &std::path::Path,
+) -> Result<(), String> {
     use base64::Engine;
     use image::ImageEncoder;
 
@@ -3086,12 +3624,12 @@ fn calculate_image_stitch_layout(
             if vertical {
                 let target_height = ((u64::from(*height) * fixed + u64::from(*width) / 2)
                     / u64::from(*width))
-                    .max(1);
+                .max(1);
                 (fixed as u32, target_height as u32)
             } else {
                 let target_width = ((u64::from(*width) * fixed + u64::from(*height) / 2)
                     / u64::from(*height))
-                    .max(1);
+                .max(1);
                 (target_width as u32, fixed as u32)
             }
         })
@@ -3100,11 +3638,15 @@ fn calculate_image_stitch_layout(
     let width = if vertical {
         fixed
     } else {
-        sizes.iter().try_fold(gap, |sum, item| sum.checked_add(u64::from(item.0)))
+        sizes
+            .iter()
+            .try_fold(gap, |sum, item| sum.checked_add(u64::from(item.0)))
             .ok_or_else(|| "image-stitch:output-too-large".to_string())?
     };
     let height = if vertical {
-        sizes.iter().try_fold(gap, |sum, item| sum.checked_add(u64::from(item.1)))
+        sizes
+            .iter()
+            .try_fold(gap, |sum, item| sum.checked_add(u64::from(item.1)))
             .ok_or_else(|| "image-stitch:output-too-large".to_string())?
     } else {
         fixed
@@ -3112,7 +3654,11 @@ fn calculate_image_stitch_layout(
     if width > 65_535 || height > 65_535 {
         return Err("image-stitch:output-too-large".to_string());
     }
-    Ok(ImageStitchLayout { sizes, width: width as u32, height: height as u32 })
+    Ok(ImageStitchLayout {
+        sizes,
+        width: width as u32,
+        height: height as u32,
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -3133,8 +3679,108 @@ fn available_image_stitch_pixels() -> u64 {
 
 static IMAGE_STITCH_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 static IMAGE_STITCH_PDF_SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
+static PDF_TO_IMAGE_SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
+static PDF_TO_IMAGE_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const IMAGE_STITCH_PDF_SESSION_ROOT: &str = "toolknit-image-stitch-pdf";
+const PDF_TO_IMAGE_SESSION_ROOT: &str = "toolknit-pdf-to-image";
+const PDF_TO_IMAGE_MAX_PAGE_BYTES: usize = 192 * 1024 * 1024;
+const PDF_TO_IMAGE_MAX_SESSION_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const PDF_TO_IMAGE_MAX_PAGES: usize = 200;
+const PDF_TO_IMAGE_MAX_LONG_PAGES: usize = 20;
+const PDF_TO_IMAGE_MAX_PAGES_PER_LONG_IMAGE: usize = 5;
+const PDF_TO_IMAGE_MAX_RENDER_SIDE: u32 = 16_384;
+const PDF_TO_IMAGE_MAX_RENDER_PIXELS: u64 = 40_000_000;
+const PDF_TO_IMAGE_MAX_LONG_SIDE: u32 = 32_767;
+const PDF_TO_IMAGE_MAX_LONG_PIXELS: u64 = 60_000_000;
+const PDF_TO_IMAGE_MAX_ESTIMATED_WORKING_BYTES: u64 = 384 * 1024 * 1024;
+struct PdfToImageJobState {
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    active: bool,
+}
+
+static PDF_TO_IMAGE_JOBS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::BTreeMap<String, PdfToImageJobState>>,
+> = std::sync::OnceLock::new();
+
+fn pdf_to_image_jobs(
+) -> &'static std::sync::Mutex<std::collections::BTreeMap<String, PdfToImageJobState>> {
+    PDF_TO_IMAGE_JOBS.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeMap::new()))
+}
+
+fn valid_pdf_to_image_job_id(job_id: &str) -> bool {
+    !job_id.is_empty()
+        && job_id.len() <= 128
+        && job_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+struct PdfToImageJobGuard {
+    job_id: String,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl PdfToImageJobGuard {
+    fn register(job_id: String) -> Result<Self, String> {
+        if !valid_pdf_to_image_job_id(&job_id) {
+            return Err("pdf-to-image:invalid-job-id".to_string());
+        }
+        let mut jobs = pdf_to_image_jobs()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = jobs
+            .entry(job_id.clone())
+            .or_insert_with(|| PdfToImageJobState {
+                cancelled: std::sync::Arc::new(AtomicBool::new(false)),
+                active: false,
+            });
+        if state.active {
+            return Err("pdf-to-image:duplicate-job".to_string());
+        }
+        state.active = true;
+        let cancelled = std::sync::Arc::clone(&state.cancelled);
+        Ok(Self { job_id, cancelled })
+    }
+}
+
+impl Drop for PdfToImageJobGuard {
+    fn drop(&mut self) {
+        let mut jobs = pdf_to_image_jobs()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if jobs
+            .get(&self.job_id)
+            .is_some_and(|current| std::sync::Arc::ptr_eq(&current.cancelled, &self.cancelled))
+        {
+            jobs.remove(&self.job_id);
+        }
+    }
+}
+
+#[tauri::command]
+fn cancel_pdf_to_image(job_id: String) -> Result<(), String> {
+    if !valid_pdf_to_image_job_id(&job_id) {
+        return Err("pdf-to-image:invalid-job-id".to_string());
+    }
+    let mut jobs = pdf_to_image_jobs()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !jobs.contains_key(&job_id) && jobs.len() >= 128 {
+        jobs.retain(|_, state| state.active || !state.cancelled.load(Ordering::SeqCst));
+    }
+    if !jobs.contains_key(&job_id) && jobs.len() >= 128 {
+        return Err("pdf-to-image:too-many-jobs".to_string());
+    }
+    jobs.entry(job_id)
+        .or_insert_with(|| PdfToImageJobState {
+            cancelled: std::sync::Arc::new(AtomicBool::new(false)),
+            active: false,
+        })
+        .cancelled
+        .store(true, Ordering::SeqCst);
+    Ok(())
+}
 
 #[derive(serde::Serialize)]
 struct ImageStitchPdfSession {
@@ -3240,9 +3886,7 @@ fn write_image_stitch_pdf_page(
     drop(output);
     let valid = image::image_dimensions(&output_path)
         .map(|(width, height)| {
-            width > 0
-                && height > 0
-                && u64::from(width) * u64::from(height) <= MAX_IMAGE_PIXELS
+            width > 0 && height > 0 && u64::from(width) * u64::from(height) <= MAX_IMAGE_PIXELS
         })
         .unwrap_or(false);
     if !valid {
@@ -3298,7 +3942,11 @@ fn publish_image_stitch_output(
 ) -> Result<String, String> {
     let stem = normalize_image_stitch_output_name(output_name)?;
     for index in 0..10_000u32 {
-        let suffix = if index == 0 { String::new() } else { format!("_{}", index) };
+        let suffix = if index == 0 {
+            String::new()
+        } else {
+            format!("_{}", index)
+        };
         let target = directory.join(format!("{}{}{}", stem, suffix, extension));
         match std::fs::hard_link(&temporary.path, &target) {
             Ok(()) => {
@@ -3317,12 +3965,15 @@ fn publish_image_stitch_output(
 fn normalize_image_stitch_output_name(value: Option<&str>) -> Result<String, String> {
     let value = value.unwrap_or("stitched_image").trim();
     if value.is_empty()
-        || value.len() > 96
+        || value.chars().count() > 96
         || value == "."
         || value == ".."
         || value.chars().any(|character| {
             character.is_control()
-                || matches!(character, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+                || matches!(
+                    character,
+                    '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
         })
         || value.ends_with([' ', '.'])
     {
@@ -3361,7 +4012,21 @@ fn encode_image_stitch(
     if format == "jpg" {
         let rgb = image::DynamicImage::ImageRgba8(canvas.clone()).to_rgb8();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, jpeg_quality)
-            .encode(&rgb, canvas.width(), canvas.height(), image::ExtendedColorType::Rgb8)
+            .encode(
+                &rgb,
+                canvas.width(),
+                canvas.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .map_err(|_| "image-stitch:encode-failed".to_string())?;
+    } else if format == "webp" {
+        image::codecs::webp::WebPEncoder::new_lossless(&mut writer)
+            .encode(
+                canvas.as_raw(),
+                canvas.width(),
+                canvas.height(),
+                image::ExtendedColorType::Rgba8,
+            )
             .map_err(|_| "image-stitch:encode-failed".to_string())?;
     } else {
         image::codecs::png::PngEncoder::new(&mut writer)
@@ -3373,21 +4038,26 @@ fn encode_image_stitch(
             )
             .map_err(|_| "image-stitch:encode-failed".to_string())?;
     }
-    writer.flush().map_err(|_| "image-stitch:output-path".to_string())?;
+    writer
+        .flush()
+        .map_err(|_| "image-stitch:output-path".to_string())?;
     writer
         .get_ref()
         .sync_all()
         .map_err(|_| "image-stitch:output-path".to_string())
 }
 
-fn stitch_images_blocking<F>(options: ImageStitchOptions, mut progress: F) -> Result<ImageStitchResult, String>
+fn stitch_images_blocking<F>(
+    options: ImageStitchOptions,
+    mut progress: F,
+) -> Result<ImageStitchResult, String>
 where
     F: FnMut(&str, usize, usize, u8),
 {
     validate_image_batch_inputs(&options.input_paths)?;
     if options.input_paths.len() < 2
         || !(60..=100).contains(&options.jpeg_quality)
-        || !matches!(options.format.as_str(), "png" | "jpg")
+        || !matches!(options.format.as_str(), "png" | "jpg" | "webp")
     {
         return Err("image-stitch:invalid-settings".to_string());
     }
@@ -3411,7 +4081,12 @@ where
             return Err("image-stitch:cancelled".to_string());
         }
         dimensions.push(oriented_image_dimensions(input)?);
-        progress("inspect", index + 1, inputs.len(), 10 + ((index + 1) * 15 / inputs.len()) as u8);
+        progress(
+            "inspect",
+            index + 1,
+            inputs.len(),
+            10 + ((index + 1) * 15 / inputs.len()) as u8,
+        );
     }
 
     let layout = calculate_image_stitch_layout(
@@ -3431,11 +4106,7 @@ where
     let mut canvas = image::RgbaImage::from_pixel(layout.width, layout.height, canvas_background);
     let vertical = options.mode == "vertical";
     let mut cursor = 0u32;
-    for (index, (input, (width, height))) in inputs
-        .iter()
-        .zip(layout.sizes.iter())
-        .enumerate()
-    {
+    for (index, (input, (width, height))) in inputs.iter().zip(layout.sizes.iter()).enumerate() {
         if CANCEL_FLAG.load(Ordering::SeqCst) {
             return Err("image-stitch:cancelled".to_string());
         }
@@ -3451,7 +4122,12 @@ where
         cursor = cursor
             .saturating_add(if vertical { *height } else { *width })
             .saturating_add(options.spacing_px);
-        progress("compose", index + 1, inputs.len(), 25 + ((index + 1) * 60 / inputs.len()) as u8);
+        progress(
+            "compose",
+            index + 1,
+            inputs.len(),
+            25 + ((index + 1) * 60 / inputs.len()) as u8,
+        );
     }
 
     if CANCEL_FLAG.load(Ordering::SeqCst) {
@@ -3459,11 +4135,21 @@ where
     }
     progress("encode", inputs.len(), inputs.len(), 88);
     let mut temporary = ImageStitchTemporaryFile::new(&output_directory);
-    encode_image_stitch(&canvas, &temporary.path, &options.format, options.jpeg_quality)?;
+    encode_image_stitch(
+        &canvas,
+        &temporary.path,
+        &options.format,
+        options.jpeg_quality,
+    )?;
     if CANCEL_FLAG.load(Ordering::SeqCst) {
         return Err("image-stitch:cancelled".to_string());
     }
-    let extension = if options.format == "png" { ".png" } else { ".jpg" };
+    let extension = match options.format.as_str() {
+        "png" => ".png",
+        "jpg" => ".jpg",
+        "webp" => ".webp",
+        _ => unreachable!("validated image stitch format"),
+    };
     let output_path = publish_image_stitch_output(
         &mut temporary,
         &output_directory,
@@ -3481,7 +4167,9 @@ where
 }
 
 #[tauri::command]
-async fn inspect_image_stitch_inputs(input_paths: Vec<String>) -> Result<Vec<ImageStitchInputPreview>, String> {
+async fn inspect_image_stitch_inputs(
+    input_paths: Vec<String>,
+) -> Result<Vec<ImageStitchInputPreview>, String> {
     tokio::task::spawn_blocking(move || {
         use base64::Engine;
         use image::ImageEncoder;
@@ -3569,6 +4257,1522 @@ async fn stitch_images(
     })
     .await
     .map_err(|error| format!("image-stitch:worker-failed:{error}"))?
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfToImageSession {
+    session_id: String,
+    directory: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfToImagePageWriteResult {
+    page_number: u32,
+    path: String,
+    width: u32,
+    height: u32,
+    byte_length: u64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfToImageExportRequest {
+    session_id: String,
+    #[serde(rename = "pages", alias = "pageNumbers")]
+    page_numbers: Vec<u32>,
+    page_count: u32,
+    output_dir: String,
+    output_name: Option<String>,
+    format: String,
+    #[serde(rename = "mode", alias = "exportMode")]
+    export_mode: String,
+    pages_per_long_image: Option<u8>,
+    jpeg_quality: Option<u8>,
+    background_rgba: Option<String>,
+    job_id: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfToImageExportItem {
+    output_path: String,
+    width: u32,
+    height: u32,
+    page_numbers: Vec<u32>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfToImageExportResult {
+    output_dir: String,
+    outputs: Vec<PdfToImageExportItem>,
+    output_count: usize,
+    page_count: usize,
+    format: String,
+    export_mode: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PdfToImageExportMode {
+    Pages,
+    Long,
+}
+
+#[derive(Clone, Debug)]
+struct PdfToImageSourcePage {
+    page_number: u32,
+    path: std::path::PathBuf,
+    width: u32,
+    height: u32,
+}
+
+struct PdfToImageTemporaryFile {
+    path: std::path::PathBuf,
+}
+
+impl PdfToImageTemporaryFile {
+    fn new(directory: &std::path::Path) -> Self {
+        let counter = PDF_TO_IMAGE_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        Self {
+            path: directory.join(format!(
+                ".toolknit-pdf-image-{}-{}-{}.tmp",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos(),
+                counter
+            )),
+        }
+    }
+}
+
+impl Drop for PdfToImageTemporaryFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+struct PdfToImagePreparedOutput {
+    temporary: PdfToImageTemporaryFile,
+    logical_stem: String,
+    extension: String,
+    width: u32,
+    height: u32,
+    page_numbers: Vec<u32>,
+}
+
+fn pdf_to_image_session_root() -> std::path::PathBuf {
+    std::env::temp_dir().join(PDF_TO_IMAGE_SESSION_ROOT)
+}
+
+fn valid_pdf_to_image_session_id(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id.len() <= 96
+        && session_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
+}
+
+fn pdf_to_image_session_directory(session_id: &str) -> Result<std::path::PathBuf, String> {
+    if !valid_pdf_to_image_session_id(session_id) {
+        return Err("pdf-to-image:invalid-session".to_string());
+    }
+    let root = pdf_to_image_session_root();
+    let directory = root.join(session_id);
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|_| "pdf-to-image:invalid-session".to_string())?;
+    let canonical_directory = directory
+        .canonicalize()
+        .map_err(|_| "pdf-to-image:invalid-session".to_string())?;
+    if !canonical_directory.starts_with(&canonical_root) || !canonical_directory.is_dir() {
+        return Err("pdf-to-image:invalid-session".to_string());
+    }
+    Ok(canonical_directory)
+}
+
+fn remove_pdf_to_image_session(session_id: &str) -> Result<(), String> {
+    if !valid_pdf_to_image_session_id(session_id) {
+        return Err("pdf-to-image:invalid-session".to_string());
+    }
+    let directory = pdf_to_image_session_root().join(session_id);
+    if !directory.exists() {
+        return Ok(());
+    }
+    let directory = pdf_to_image_session_directory(session_id)?;
+    std::fs::remove_dir_all(directory)
+        .map_err(|_| "pdf-to-image:session-cleanup-failed".to_string())
+}
+
+fn cleanup_pdf_to_image_sessions() {
+    let root = pdf_to_image_session_root();
+    if root.is_dir() {
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[tauri::command]
+fn create_pdf_to_image_session() -> Result<PdfToImageSession, String> {
+    let root = pdf_to_image_session_root();
+    std::fs::create_dir_all(&root).map_err(|_| "pdf-to-image:session-create-failed".to_string())?;
+    for _ in 0..10_000 {
+        let counter = PDF_TO_IMAGE_SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let session_id = format!(
+            "{}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos(),
+            counter
+        );
+        let directory = root.join(&session_id);
+        match std::fs::create_dir(&directory) {
+            Ok(()) => {
+                return Ok(PdfToImageSession {
+                    session_id,
+                    directory: cleanup_display_path(&directory),
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("pdf-to-image:session-create-failed".to_string()),
+        }
+    }
+    Err("pdf-to-image:session-create-failed".to_string())
+}
+
+fn pdf_to_image_session_usage(directory: &std::path::Path) -> Result<(usize, u64), String> {
+    let mut count = 0usize;
+    let mut bytes = 0u64;
+    for entry in
+        std::fs::read_dir(directory).map_err(|_| "pdf-to-image:invalid-session".to_string())?
+    {
+        let entry = entry.map_err(|_| "pdf-to-image:invalid-session".to_string())?;
+        let metadata = entry
+            .metadata()
+            .map_err(|_| "pdf-to-image:invalid-session".to_string())?;
+        if metadata.is_file() {
+            count = count.saturating_add(1);
+            bytes = bytes.saturating_add(metadata.len());
+        }
+    }
+    Ok((count, bytes))
+}
+
+fn pdf_to_image_page_number_from_file_name(file_name: &str) -> Option<u32> {
+    let digits = file_name.strip_prefix("page_")?.strip_suffix(".png")?;
+    if digits.len() != 5 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let page_number = digits.parse::<u32>().ok()?;
+    if page_number == 0
+        || page_number > 10_000
+        || file_name != format!("page_{:05}.png", page_number)
+    {
+        return None;
+    }
+    Some(page_number)
+}
+
+fn write_pdf_to_image_page_bytes(
+    session_id: &str,
+    file_name: &str,
+    bytes: &[u8],
+) -> Result<PdfToImagePageWriteResult, String> {
+    use std::io::Write;
+
+    let page_number = pdf_to_image_page_number_from_file_name(file_name)
+        .ok_or_else(|| "pdf-to-image:invalid-page-name".to_string())?;
+    if bytes.len() < 8
+        || bytes.len() > PDF_TO_IMAGE_MAX_PAGE_BYTES
+        || bytes[..8] != [137, 80, 78, 71, 13, 10, 26, 10]
+    {
+        return Err("pdf-to-image:invalid-page".to_string());
+    }
+    let directory = pdf_to_image_session_directory(session_id)?;
+    let output_path = directory.join(file_name);
+    if output_path.exists() {
+        return Err("pdf-to-image:duplicate-page".to_string());
+    }
+    let (page_count, session_bytes) = pdf_to_image_session_usage(&directory)?;
+    if page_count >= PDF_TO_IMAGE_MAX_PAGES {
+        return Err("pdf-to-image:too-many-pages".to_string());
+    }
+    if session_bytes.saturating_add(bytes.len() as u64) > PDF_TO_IMAGE_MAX_SESSION_BYTES {
+        return Err("pdf-to-image:session-too-large".to_string());
+    }
+
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&output_path)
+        .map_err(|_| "pdf-to-image:page-write-failed".to_string())?;
+    if let Err(error) = output.write_all(&bytes).and_then(|_| output.sync_all()) {
+        drop(output);
+        let _ = std::fs::remove_file(&output_path);
+        return Err(format!("pdf-to-image:page-write-failed:{error}"));
+    }
+    drop(output);
+
+    let dimensions = image::image_dimensions(&output_path).ok();
+    let Some((width, height)) = dimensions else {
+        let _ = std::fs::remove_file(&output_path);
+        return Err("pdf-to-image:invalid-page".to_string());
+    };
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    if width == 0
+        || height == 0
+        || width > PDF_TO_IMAGE_MAX_RENDER_SIDE
+        || height > PDF_TO_IMAGE_MAX_RENDER_SIDE
+        || pixels > PDF_TO_IMAGE_MAX_RENDER_PIXELS
+    {
+        let _ = std::fs::remove_file(&output_path);
+        return Err("pdf-to-image:invalid-page".to_string());
+    }
+    Ok(PdfToImagePageWriteResult {
+        page_number,
+        path: cleanup_display_path(&output_path),
+        width,
+        height,
+        byte_length: bytes.len() as u64,
+    })
+}
+
+#[tauri::command]
+fn write_pdf_to_image_page(
+    request: tauri::ipc::Request<'_>,
+) -> Result<PdfToImagePageWriteResult, String> {
+    let session_id = request
+        .headers()
+        .get("session-id")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "pdf-to-image:invalid-session".to_string())?;
+    let file_name = request
+        .headers()
+        .get("file-name")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| "pdf-to-image:invalid-page-name".to_string())?;
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.as_slice(),
+        _ => return Err("pdf-to-image:raw-body-required".to_string()),
+    };
+    write_pdf_to_image_page_bytes(session_id, file_name, bytes)
+}
+
+#[tauri::command]
+fn write_pdf_to_image_page_json(
+    session_id: String,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<PdfToImagePageWriteResult, String> {
+    write_pdf_to_image_page_bytes(&session_id, &file_name, &bytes)
+}
+
+#[tauri::command]
+fn read_pdf_to_image_source(path: String) -> Result<tauri::ipc::Response, String> {
+    use std::io::Read;
+
+    const MAX_PDF_BYTES: u64 = 150 * 1024 * 1024;
+    if path.contains('\0') {
+        return Err("pdf-to-image:invalid-pdf".to_string());
+    }
+    let requested = std::path::PathBuf::from(path);
+    let requested_metadata = std::fs::symlink_metadata(&requested)
+        .map_err(|_| "pdf-to-image:invalid-pdf".to_string())?;
+    if requested_metadata.file_type().is_symlink() || !requested_metadata.is_file() {
+        return Err("pdf-to-image:invalid-pdf".to_string());
+    }
+    let input = requested
+        .canonicalize()
+        .map_err(|_| "pdf-to-image:invalid-pdf".to_string())?;
+    if !input
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+    {
+        return Err("pdf-to-image:invalid-pdf".to_string());
+    }
+    if requested_metadata.len() < 5 || requested_metadata.len() > MAX_PDF_BYTES {
+        return Err(if requested_metadata.len() > MAX_PDF_BYTES {
+            "pdf-to-image:pdf-too-large".to_string()
+        } else {
+            "pdf-to-image:invalid-pdf".to_string()
+        });
+    }
+    let file = std::fs::File::open(&input).map_err(|_| "pdf-to-image:invalid-pdf".to_string())?;
+    let mut reader = file.take(MAX_PDF_BYTES + 1);
+    let mut bytes = Vec::with_capacity(requested_metadata.len() as usize);
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|_| "pdf-to-image:invalid-pdf".to_string())?;
+    if bytes.len() as u64 > MAX_PDF_BYTES {
+        return Err("pdf-to-image:pdf-too-large".to_string());
+    }
+    let header_length = bytes.len().min(1024);
+    if !bytes[..header_length]
+        .windows(5)
+        .any(|window| window == b"%PDF-")
+    {
+        return Err("pdf-to-image:invalid-pdf".to_string());
+    }
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+fn discard_pdf_to_image_session(session_id: String) -> Result<(), String> {
+    remove_pdf_to_image_session(&session_id)
+}
+
+fn normalize_pdf_to_image_format(value: &str) -> Result<(String, String), String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "png" => Ok(("png".to_string(), ".png".to_string())),
+        "jpg" | "jpeg" => Ok(("jpg".to_string(), ".jpg".to_string())),
+        "webp" => Ok(("webp".to_string(), ".webp".to_string())),
+        _ => Err("pdf-to-image:invalid-format".to_string()),
+    }
+}
+
+fn normalize_pdf_to_image_mode(value: &str) -> Result<PdfToImageExportMode, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "images" | "pages" => Ok(PdfToImageExportMode::Pages),
+        "long" => Ok(PdfToImageExportMode::Long),
+        _ => Err("pdf-to-image:invalid-mode".to_string()),
+    }
+}
+
+fn load_pdf_to_image_source_pages(
+    session_directory: &std::path::Path,
+    page_numbers: &[u32],
+) -> Result<Vec<PdfToImageSourcePage>, String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut pages = Vec::with_capacity(page_numbers.len());
+    for page_number in page_numbers {
+        if *page_number == 0 || *page_number > 10_000 || !seen.insert(*page_number) {
+            return Err("pdf-to-image:invalid-selection".to_string());
+        }
+        let path = session_directory.join(format!("page_{:05}.png", page_number));
+        let metadata = std::fs::symlink_metadata(&path)
+            .map_err(|_| "pdf-to-image:missing-page".to_string())?;
+        if metadata.file_type().is_symlink()
+            || !metadata.is_file()
+            || metadata.len() == 0
+            || metadata.len() > PDF_TO_IMAGE_MAX_PAGE_BYTES as u64
+        {
+            return Err("pdf-to-image:invalid-page".to_string());
+        }
+        let canonical = path
+            .canonicalize()
+            .map_err(|_| "pdf-to-image:invalid-page".to_string())?;
+        if !canonical.starts_with(session_directory) {
+            return Err("pdf-to-image:invalid-page".to_string());
+        }
+        let (width, height) = image::image_dimensions(&canonical)
+            .map_err(|_| "pdf-to-image:invalid-page".to_string())?;
+        let pixels = u64::from(width).saturating_mul(u64::from(height));
+        if width == 0
+            || height == 0
+            || width > PDF_TO_IMAGE_MAX_RENDER_SIDE
+            || height > PDF_TO_IMAGE_MAX_RENDER_SIDE
+            || pixels > PDF_TO_IMAGE_MAX_RENDER_PIXELS
+        {
+            return Err("pdf-to-image:invalid-page".to_string());
+        }
+        pages.push(PdfToImageSourcePage {
+            page_number: *page_number,
+            path: canonical,
+            width,
+            height,
+        });
+    }
+    Ok(pages)
+}
+
+fn pdf_to_image_group_layout(
+    pages: &[PdfToImageSourcePage],
+    max_pixels: u64,
+) -> Result<ImageStitchLayout, String> {
+    if pages.is_empty() {
+        return Err("pdf-to-image:invalid-selection".to_string());
+    }
+    let width = pages
+        .iter()
+        .map(|page| page.width)
+        .max()
+        .ok_or_else(|| "pdf-to-image:invalid-selection".to_string())?;
+    let height = pages.iter().try_fold(0u64, |sum, page| {
+        sum.checked_add(u64::from(page.height))
+            .ok_or_else(|| "pdf-to-image:output-too-large".to_string())
+    })?;
+    if width > PDF_TO_IMAGE_MAX_LONG_SIDE || height > u64::from(PDF_TO_IMAGE_MAX_LONG_SIDE) {
+        return Err("pdf-to-image:output-too-large".to_string());
+    }
+    let pixels = u64::from(width)
+        .checked_mul(height)
+        .ok_or_else(|| "pdf-to-image:output-too-large".to_string())?;
+    if pixels > max_pixels {
+        return Err("pdf-to-image:output-too-large-for-memory".to_string());
+    }
+    let max_page_pixels = pages
+        .iter()
+        .map(|page| u64::from(page.width) * u64::from(page.height))
+        .max()
+        .unwrap_or(0);
+    let estimated_working_bytes = pixels
+        .checked_mul(6)
+        .and_then(|value| value.checked_add(max_page_pixels.saturating_mul(4)))
+        .ok_or_else(|| "pdf-to-image:output-too-large-for-memory".to_string())?;
+    if estimated_working_bytes > PDF_TO_IMAGE_MAX_ESTIMATED_WORKING_BYTES {
+        return Err("pdf-to-image:output-too-large-for-memory".to_string());
+    }
+    Ok(ImageStitchLayout {
+        sizes: pages.iter().map(|page| (page.width, page.height)).collect(),
+        width,
+        height: height as u32,
+    })
+}
+
+fn build_pdf_to_image_groups(
+    pages: &[PdfToImageSourcePage],
+    mode: PdfToImageExportMode,
+    pages_per_long_image: usize,
+    max_pixels: u64,
+) -> Result<Vec<Vec<PdfToImageSourcePage>>, String> {
+    if mode == PdfToImageExportMode::Pages {
+        for page in pages {
+            pdf_to_image_group_layout(std::slice::from_ref(page), max_pixels)?;
+        }
+        return Ok(pages.iter().cloned().map(|page| vec![page]).collect());
+    }
+
+    let mut groups = Vec::new();
+    let mut current = Vec::new();
+    for page in pages.iter().cloned() {
+        if current.len() >= pages_per_long_image {
+            groups.push(std::mem::take(&mut current));
+        }
+        let mut candidate = current.clone();
+        candidate.push(page.clone());
+        if pdf_to_image_group_layout(&candidate, max_pixels).is_ok() {
+            current = candidate;
+            continue;
+        }
+        if !current.is_empty() {
+            groups.push(std::mem::take(&mut current));
+        }
+        pdf_to_image_group_layout(std::slice::from_ref(&page), max_pixels)?;
+        current.push(page);
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+    Ok(groups)
+}
+
+fn compose_pdf_to_image_group(
+    pages: &[PdfToImageSourcePage],
+    layout: &ImageStitchLayout,
+    background: image::Rgba<u8>,
+    format: &str,
+    cancelled: &AtomicBool,
+) -> Result<image::RgbaImage, String> {
+    let canvas_background = if format == "jpg" {
+        image::Rgba([background.0[0], background.0[1], background.0[2], 255])
+    } else {
+        background
+    };
+    let mut canvas = image::RgbaImage::from_pixel(layout.width, layout.height, canvas_background);
+    let mut cursor = 0u32;
+    for (page, (width, height)) in pages.iter().zip(layout.sizes.iter()) {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("pdf-to-image:cancelled".to_string());
+        }
+        let decoded =
+            read_oriented_image(&page.path).map_err(|_| "pdf-to-image:invalid-page".to_string())?;
+        if decoded.width() != *width || decoded.height() != *height {
+            return Err("pdf-to-image:invalid-page".to_string());
+        }
+        let rendered = decoded.into_rgba8();
+        let x = (layout.width.saturating_sub(*width)) / 2;
+        image::imageops::overlay(&mut canvas, &rendered, i64::from(x), i64::from(cursor));
+        cursor = cursor.saturating_add(*height);
+    }
+    Ok(canvas)
+}
+
+fn encode_pdf_to_image(
+    canvas: image::RgbaImage,
+    temporary: &std::path::Path,
+    format: &str,
+    jpeg_quality: u8,
+) -> Result<(), String> {
+    use image::ImageEncoder;
+    use std::io::{BufWriter, Write};
+
+    let file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(temporary)
+        .map_err(|_| "pdf-to-image:output-path".to_string())?;
+    let mut writer = BufWriter::new(file);
+    match format {
+        "jpg" => {
+            let width = canvas.width();
+            let height = canvas.height();
+            let rgb = image::DynamicImage::ImageRgba8(canvas).into_rgb8();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, jpeg_quality)
+                .encode(&rgb, width, height, image::ExtendedColorType::Rgb8)
+                .map_err(|_| "pdf-to-image:encode-failed".to_string())?;
+        }
+        "webp" => {
+            image::codecs::webp::WebPEncoder::new_lossless(&mut writer)
+                .encode(
+                    canvas.as_raw(),
+                    canvas.width(),
+                    canvas.height(),
+                    image::ExtendedColorType::Rgba8,
+                )
+                .map_err(|_| "pdf-to-image:encode-failed".to_string())?;
+        }
+        "png" => {
+            image::codecs::png::PngEncoder::new(&mut writer)
+                .write_image(
+                    canvas.as_raw(),
+                    canvas.width(),
+                    canvas.height(),
+                    image::ExtendedColorType::Rgba8,
+                )
+                .map_err(|_| "pdf-to-image:encode-failed".to_string())?;
+        }
+        _ => return Err("pdf-to-image:invalid-format".to_string()),
+    }
+    writer
+        .flush()
+        .and_then(|_| writer.get_ref().sync_all())
+        .map_err(|_| "pdf-to-image:output-path".to_string())
+}
+
+fn pdf_to_image_logical_stem(
+    base: &str,
+    mode: PdfToImageExportMode,
+    output_index: usize,
+    pages: &[PdfToImageSourcePage],
+    page_count: u32,
+) -> String {
+    let digits = std::cmp::max(2, page_count.to_string().len());
+    if mode == PdfToImageExportMode::Pages {
+        return format!(
+            "{}_page_{:0width$}",
+            base,
+            pages[0].page_number,
+            width = digits
+        );
+    }
+    let page_label = pages
+        .iter()
+        .map(|page| format!("{:0width$}", page.page_number, width = digits))
+        .collect::<Vec<_>>()
+        .join("_");
+    format!("{}_long_{:02}_pages_{}", base, output_index + 1, page_label)
+}
+
+fn pdf_to_image_candidate_path(
+    directory: &std::path::Path,
+    prepared: &PdfToImagePreparedOutput,
+    batch_suffix: u32,
+) -> std::path::PathBuf {
+    let suffix = if batch_suffix == 0 {
+        String::new()
+    } else {
+        format!("_{}", batch_suffix)
+    };
+    directory.join(format!(
+        "{}{}{}",
+        prepared.logical_stem, suffix, prepared.extension
+    ))
+}
+
+fn copy_pdf_to_image_output(
+    source: &std::path::Path,
+    target: &std::path::Path,
+    cancelled: &AtomicBool,
+) -> std::io::Result<()> {
+    use std::io::{Read, Write};
+
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "PDF image export cancelled",
+        ));
+    }
+    let input = std::fs::File::open(source)?;
+    let output = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(target)?;
+    let mut reader = std::io::BufReader::with_capacity(256 * 1024, input);
+    let mut writer = std::io::BufWriter::with_capacity(256 * 1024, output);
+    let result = (|| -> std::io::Result<()> {
+        let mut buffer = vec![0u8; 256 * 1024];
+        loop {
+            if cancelled.load(Ordering::SeqCst) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "PDF image export cancelled",
+                ));
+            }
+            let read = reader.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            writer.write_all(&buffer[..read])?;
+        }
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "PDF image export cancelled",
+            ));
+        }
+        writer.flush()?;
+        writer.get_ref().sync_all()
+    })();
+    if result.is_err() {
+        drop(writer);
+        let _ = std::fs::remove_file(target);
+    }
+    result
+}
+
+fn publish_pdf_to_image_output(
+    source: &std::path::Path,
+    target: &std::path::Path,
+    cancelled: &AtomicBool,
+) -> std::io::Result<()> {
+    match std::fs::hard_link(source, target) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(error),
+        Err(_) => copy_pdf_to_image_output(source, target, cancelled),
+    }
+}
+
+fn publish_pdf_to_image_batch(
+    prepared: &[PdfToImagePreparedOutput],
+    directory: &std::path::Path,
+    cancelled: &AtomicBool,
+) -> Result<Vec<PdfToImageExportItem>, String> {
+    if prepared.is_empty() {
+        return Err("pdf-to-image:no-output".to_string());
+    }
+    for batch_suffix in 0..10_000u32 {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("pdf-to-image:cancelled".to_string());
+        }
+        let candidates = prepared
+            .iter()
+            .map(|item| pdf_to_image_candidate_path(directory, item, batch_suffix))
+            .collect::<Vec<_>>();
+        if candidates.iter().any(|candidate| candidate.exists()) {
+            continue;
+        }
+
+        let mut published = Vec::with_capacity(prepared.len());
+        let mut collision = false;
+        let mut fatal = false;
+        for (item, candidate) in prepared.iter().zip(candidates.iter()) {
+            if cancelled.load(Ordering::SeqCst) {
+                fatal = true;
+                break;
+            }
+            match publish_pdf_to_image_output(&item.temporary.path, candidate, cancelled) {
+                Ok(()) => published.push(candidate.clone()),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    collision = true;
+                    break;
+                }
+                Err(_) => {
+                    fatal = true;
+                    break;
+                }
+            }
+        }
+        if cancelled.load(Ordering::SeqCst) {
+            fatal = true;
+        }
+        if collision || fatal {
+            for path in &published {
+                let _ = std::fs::remove_file(path);
+            }
+            if collision {
+                continue;
+            }
+            return Err(if cancelled.load(Ordering::SeqCst) {
+                "pdf-to-image:cancelled".to_string()
+            } else {
+                "pdf-to-image:publish-failed".to_string()
+            });
+        }
+
+        return Ok(prepared
+            .iter()
+            .zip(candidates)
+            .map(|(item, output_path)| PdfToImageExportItem {
+                output_path: cleanup_display_path(&output_path),
+                width: item.width,
+                height: item.height,
+                page_numbers: item.page_numbers.clone(),
+            })
+            .collect());
+    }
+    Err("pdf-to-image:output-path".to_string())
+}
+
+fn export_pdf_to_images_blocking<F>(
+    request: PdfToImageExportRequest,
+    cancelled: &AtomicBool,
+    mut progress: F,
+) -> Result<PdfToImageExportResult, String>
+where
+    F: FnMut(&str, usize, usize, u8),
+{
+    if cancelled.load(Ordering::SeqCst) {
+        return Err("pdf-to-image:cancelled".to_string());
+    }
+    let mode = normalize_pdf_to_image_mode(&request.export_mode)?;
+    let unique_page_numbers = request
+        .page_numbers
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    if request.page_count == 0
+        || request.page_count as usize > PDF_TO_IMAGE_MAX_PAGES
+        || request.page_numbers.is_empty()
+        || request.page_numbers.len() > PDF_TO_IMAGE_MAX_PAGES
+        || unique_page_numbers.len() != request.page_numbers.len()
+        || request
+            .page_numbers
+            .iter()
+            .any(|page_number| *page_number == 0 || *page_number > request.page_count)
+    {
+        return Err("pdf-to-image:invalid-selection".to_string());
+    }
+    if mode == PdfToImageExportMode::Long
+        && request.page_numbers.len() > PDF_TO_IMAGE_MAX_LONG_PAGES
+    {
+        return Err("pdf-to-image:too-many-long-pages".to_string());
+    }
+    let pages_per_long_image = usize::from(
+        request
+            .pages_per_long_image
+            .unwrap_or(PDF_TO_IMAGE_MAX_PAGES_PER_LONG_IMAGE as u8),
+    );
+    if pages_per_long_image == 0 || pages_per_long_image > PDF_TO_IMAGE_MAX_PAGES_PER_LONG_IMAGE {
+        return Err("pdf-to-image:invalid-group-size".to_string());
+    }
+    let jpeg_quality = request.jpeg_quality.unwrap_or(92);
+    if !(60..=100).contains(&jpeg_quality) {
+        return Err("pdf-to-image:invalid-quality".to_string());
+    }
+    let (format, extension) = normalize_pdf_to_image_format(&request.format)?;
+    let background = stitch_background(request.background_rgba.as_deref().unwrap_or("#FFFFFFFF"))
+        .map_err(|_| "pdf-to-image:invalid-background".to_string())?;
+    let base_name =
+        normalize_image_stitch_output_name(request.output_name.as_deref().or(Some("document")))
+            .map_err(|_| "pdf-to-image:invalid-output-name".to_string())?
+            .trim()
+            .to_string();
+    let session_directory = pdf_to_image_session_directory(&request.session_id)?;
+    let output_directory = validate_image_output_dir(&request.output_dir)
+        .map_err(|_| "pdf-to-image:output-path".to_string())?;
+
+    progress("prepare", 0, request.page_numbers.len(), 2);
+    let pages = load_pdf_to_image_source_pages(&session_directory, &request.page_numbers)?;
+    for (index, _) in pages.iter().enumerate() {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("pdf-to-image:cancelled".to_string());
+        }
+        progress(
+            "inspect",
+            index + 1,
+            pages.len(),
+            2 + (((index + 1) * 10 / pages.len()) as u8),
+        );
+    }
+
+    let max_output_pixels = available_image_stitch_pixels().min(PDF_TO_IMAGE_MAX_LONG_PIXELS);
+    let groups = build_pdf_to_image_groups(&pages, mode, pages_per_long_image, max_output_pixels)?;
+    let mut prepared = Vec::with_capacity(groups.len());
+    for (index, group) in groups.iter().enumerate() {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("pdf-to-image:cancelled".to_string());
+        }
+        let layout = pdf_to_image_group_layout(group, max_output_pixels)?;
+        progress(
+            "compose",
+            index,
+            groups.len(),
+            12 + ((index * 65 / groups.len()) as u8),
+        );
+        let canvas = compose_pdf_to_image_group(group, &layout, background, &format, cancelled)?;
+        let temporary = PdfToImageTemporaryFile::new(&output_directory);
+        encode_pdf_to_image(canvas, &temporary.path, &format, jpeg_quality)?;
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("pdf-to-image:cancelled".to_string());
+        }
+        prepared.push(PdfToImagePreparedOutput {
+            temporary,
+            logical_stem: pdf_to_image_logical_stem(
+                &base_name,
+                mode,
+                index,
+                group,
+                request.page_count,
+            ),
+            extension: extension.clone(),
+            width: layout.width,
+            height: layout.height,
+            page_numbers: group.iter().map(|page| page.page_number).collect(),
+        });
+        progress(
+            "encode",
+            index + 1,
+            groups.len(),
+            12 + (((index + 1) * 73 / groups.len()) as u8),
+        );
+    }
+
+    progress("publish", prepared.len(), prepared.len(), 90);
+    let outputs = publish_pdf_to_image_batch(&prepared, &output_directory, cancelled)?;
+    progress("complete", outputs.len(), outputs.len(), 100);
+    Ok(PdfToImageExportResult {
+        output_dir: cleanup_display_path(&output_directory),
+        output_count: outputs.len(),
+        page_count: pages.len(),
+        outputs,
+        format: format.to_ascii_uppercase(),
+        export_mode: match mode {
+            PdfToImageExportMode::Pages => "images".to_string(),
+            PdfToImageExportMode::Long => "long".to_string(),
+        },
+    })
+}
+
+#[tauri::command]
+async fn export_pdf_to_images(
+    app_handle: tauri::AppHandle,
+    request: PdfToImageExportRequest,
+) -> Result<PdfToImageExportResult, String> {
+    let job_id = request
+        .job_id
+        .clone()
+        .unwrap_or_else(|| "desktop".to_string());
+    let job_guard = PdfToImageJobGuard::register(job_id.clone())?;
+    let _guard = begin_conversion().map_err(|_| "pdf-to-image:busy".to_string())?;
+    let cleanup_session_id = request.session_id.clone();
+    let cancelled = std::sync::Arc::clone(&job_guard.cancelled);
+    let worker = tokio::task::spawn_blocking(move || {
+        export_pdf_to_images_blocking(request, &cancelled, |phase, current, total, percent| {
+            let _ = app_handle.emit(
+                "pdf-to-image-progress",
+                serde_json::json!({
+                    "jobId": job_id,
+                    "phase": phase,
+                    "current": current,
+                    "total": total,
+                    "percent": percent
+                }),
+            );
+        })
+    })
+    .await
+    .map_err(|error| format!("pdf-to-image:worker-failed:{error}"));
+    let _ = remove_pdf_to_image_session(&cleanup_session_id);
+    worker?
+}
+
+#[cfg(test)]
+mod pdf_to_image_backend_tests {
+    use super::*;
+    use image::{GenericImageView, ImageEncoder};
+    use tauri::ipc::IpcResponse;
+
+    fn test_directory(label: &str) -> std::path::PathBuf {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock must be after Unix epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-pdf-to-image-test-{}-{}-{}",
+            label,
+            std::process::id(),
+            suffix
+        ));
+        std::fs::create_dir_all(&directory).expect("create PDF-to-image test directory");
+        directory
+    }
+
+    fn solid_png(width: u32, height: u32, color: image::Rgba<u8>) -> Vec<u8> {
+        let image = image::RgbaImage::from_pixel(width, height, color);
+        let mut bytes = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut bytes)
+            .write_image(
+                image.as_raw(),
+                width,
+                height,
+                image::ExtendedColorType::Rgba8,
+            )
+            .expect("encode test PNG");
+        bytes
+    }
+
+    #[test]
+    fn pdf_to_image_names_match_the_frontend_contract() {
+        let page = PdfToImageSourcePage {
+            page_number: 7,
+            path: std::path::PathBuf::new(),
+            width: 10,
+            height: 20,
+        };
+        assert_eq!(
+            pdf_to_image_logical_stem(
+                "document",
+                PdfToImageExportMode::Pages,
+                0,
+                std::slice::from_ref(&page),
+                8,
+            ),
+            "document_page_07"
+        );
+        let mut second = page.clone();
+        second.page_number = 105;
+        assert_eq!(
+            pdf_to_image_logical_stem(
+                "document",
+                PdfToImageExportMode::Long,
+                1,
+                &[page, second],
+                200,
+            ),
+            "document_long_02_pages_007_105"
+        );
+        assert_eq!(
+            pdf_to_image_page_number_from_file_name("page_00007.png"),
+            Some(7)
+        );
+        assert_eq!(
+            pdf_to_image_page_number_from_file_name("../page_00007.png"),
+            None
+        );
+        assert!(normalize_image_stitch_output_name(Some(&"页面".repeat(32))).is_ok());
+    }
+
+    #[test]
+    fn pdf_to_image_native_grouping_matches_the_frontend_plan() {
+        let pages = (1..=16)
+            .map(|page_number| PdfToImageSourcePage {
+                page_number,
+                path: std::path::PathBuf::new(),
+                width: 100,
+                height: 200,
+            })
+            .collect::<Vec<_>>();
+        let groups = build_pdf_to_image_groups(
+            &pages,
+            PdfToImageExportMode::Long,
+            PDF_TO_IMAGE_MAX_PAGES_PER_LONG_IMAGE,
+            PDF_TO_IMAGE_MAX_LONG_PIXELS,
+        )
+        .expect("build 16-page long-image groups");
+
+        assert_eq!(
+            groups.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![5, 5, 5, 1]
+        );
+        assert_eq!(
+            groups
+                .iter()
+                .map(|group| group
+                    .iter()
+                    .map(|page| page.page_number)
+                    .collect::<Vec<_>>())
+                .collect::<Vec<_>>(),
+            vec![
+                vec![1, 2, 3, 4, 5],
+                vec![6, 7, 8, 9, 10],
+                vec![11, 12, 13, 14, 15],
+                vec![16],
+            ]
+        );
+
+        let memory_limited = build_pdf_to_image_groups(
+            &pages[..6],
+            PdfToImageExportMode::Long,
+            PDF_TO_IMAGE_MAX_PAGES_PER_LONG_IMAGE,
+            60_000,
+        )
+        .expect("split groups to respect the native pixel budget");
+        assert_eq!(
+            memory_limited.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![3, 3]
+        );
+    }
+
+    #[test]
+    fn pdf_to_image_source_read_uses_a_raw_ipc_response() {
+        let root = test_directory("raw-read");
+        let input = root.join("sample.pdf");
+        let expected = b"\xef\xbb\xbf%PDF-1.7\n%%EOF\n".to_vec();
+        std::fs::write(&input, &expected).expect("write PDF fixture");
+        let response = read_pdf_to_image_source(input.to_string_lossy().into_owned())
+            .expect("read PDF fixture");
+        match response.body().expect("build raw IPC body") {
+            tauri::ipc::InvokeResponseBody::Raw(bytes) => assert_eq!(bytes, expected),
+            tauri::ipc::InvokeResponseBody::Json(_) => panic!("PDF response must stay binary"),
+        }
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_json_writer_accepts_frontend_page_bytes() {
+        let session = create_pdf_to_image_session().expect("create page session");
+        let bytes = solid_png(12, 8, image::Rgba([10, 20, 30, 255]));
+        let result = write_pdf_to_image_page_json(
+            session.session_id.clone(),
+            "page_00003.png".to_string(),
+            bytes,
+        )
+        .expect("write page through JSON command");
+
+        assert_eq!(result.page_number, 3);
+        assert_eq!(result.width, 12);
+        assert_eq!(result.height, 8);
+        remove_pdf_to_image_session(&session.session_id).expect("remove page session");
+    }
+
+    #[test]
+    fn pdf_to_image_pre_cancelled_job_stops_before_file_access() {
+        let _conversion_lock = test_conversion_lock();
+        let job_id = format!(
+            "pre-cancel-{}",
+            PDF_TO_IMAGE_TEMP_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        cancel_pdf_to_image(job_id.clone()).expect("pre-cancel PDF export job");
+        let job_guard = PdfToImageJobGuard::register(job_id).expect("register cancelled job");
+
+        let error = export_pdf_to_images_blocking(
+            PdfToImageExportRequest {
+                session_id: "missing-session".to_string(),
+                page_numbers: vec![1],
+                page_count: 1,
+                output_dir: "missing-output".to_string(),
+                output_name: Some("cancelled".to_string()),
+                format: "png".to_string(),
+                export_mode: "images".to_string(),
+                pages_per_long_image: Some(5),
+                jpeg_quality: Some(92),
+                background_rgba: Some("#FFFFFFFF".to_string()),
+                job_id: None,
+            },
+            &job_guard.cancelled,
+            |_, _, _, _| panic!("pre-cancelled export must not report progress"),
+        )
+        .expect_err("pre-cancelled export must stop immediately");
+
+        assert_eq!(error, "pdf-to-image:cancelled");
+    }
+
+    #[test]
+    fn pdf_to_image_rejects_duplicate_and_zero_page_numbers() {
+        let _conversion_lock = test_conversion_lock();
+        let cancelled = AtomicBool::new(false);
+        let request_for = |page_numbers| PdfToImageExportRequest {
+            session_id: "missing-session".to_string(),
+            page_numbers,
+            page_count: 2,
+            output_dir: "missing-output".to_string(),
+            output_name: Some("invalid-selection".to_string()),
+            format: "png".to_string(),
+            export_mode: "images".to_string(),
+            pages_per_long_image: Some(5),
+            jpeg_quality: Some(92),
+            background_rgba: Some("#FFFFFFFF".to_string()),
+            job_id: None,
+        };
+
+        for page_numbers in [vec![1, 1], vec![0]] {
+            assert_eq!(
+                export_pdf_to_images_blocking(
+                    request_for(page_numbers),
+                    &cancelled,
+                    |_, _, _, _| panic!("invalid selection must not report progress"),
+                )
+                .expect_err("invalid page selection must fail before file access"),
+                "pdf-to-image:invalid-selection"
+            );
+        }
+    }
+
+    #[test]
+    fn pdf_to_image_cancel_does_not_touch_shared_conversion_flag() {
+        let _conversion_lock = test_conversion_lock();
+        CANCEL_FLAG.store(false, Ordering::SeqCst);
+        let job_id = format!(
+            "isolated-cancel-{}",
+            PDF_TO_IMAGE_TEMP_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+
+        cancel_pdf_to_image(job_id.clone()).expect("cancel isolated PDF export job");
+
+        assert!(!CANCEL_FLAG.load(Ordering::SeqCst));
+        let job_guard = PdfToImageJobGuard::register(job_id).expect("register cancelled job");
+        assert!(job_guard.cancelled.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn pdf_to_image_duplicate_job_cannot_orphan_the_active_cancel_token() {
+        let _conversion_lock = test_conversion_lock();
+        let job_id = format!(
+            "duplicate-job-{}",
+            PDF_TO_IMAGE_TEMP_COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let active = PdfToImageJobGuard::register(job_id.clone()).expect("register active job");
+
+        assert_eq!(
+            PdfToImageJobGuard::register(job_id.clone())
+                .err()
+                .expect("duplicate job must fail"),
+            "pdf-to-image:duplicate-job"
+        );
+        cancel_pdf_to_image(job_id).expect("cancel the original active job");
+        assert!(active.cancelled.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn pdf_to_image_exports_a_single_page_long_group_as_webp() {
+        let _conversion_lock = test_conversion_lock();
+        let cancelled = AtomicBool::new(false);
+        let root = test_directory("webp-single");
+        let output = root.join("outputs");
+        std::fs::create_dir_all(&output).expect("create output directory");
+        let session = create_pdf_to_image_session().expect("create page session");
+        let bytes = solid_png(6, 4, image::Rgba([12, 34, 56, 255]));
+        write_pdf_to_image_page_bytes(&session.session_id, "page_00006.png", &bytes)
+            .expect("write rendered PDF page");
+
+        let result = export_pdf_to_images_blocking(
+            PdfToImageExportRequest {
+                session_id: session.session_id.clone(),
+                page_numbers: vec![6],
+                page_count: 6,
+                output_dir: output.to_string_lossy().into_owned(),
+                output_name: Some("sample".to_string()),
+                format: "webp".to_string(),
+                export_mode: "long".to_string(),
+                pages_per_long_image: Some(5),
+                jpeg_quality: Some(97),
+                background_rgba: Some("#FFFFFFFF".to_string()),
+                job_id: None,
+            },
+            &cancelled,
+            |_, _, _, _| {},
+        )
+        .expect("export single-page WebP long group");
+        assert_eq!(result.output_count, 1);
+        assert_eq!(result.outputs[0].page_numbers, vec![6]);
+        assert!(result.outputs[0]
+            .output_path
+            .ends_with("sample_long_01_pages_06.webp"));
+        let decoded = image::open(&result.outputs[0].output_path)
+            .expect("decode WebP output")
+            .to_rgba8();
+        assert_eq!(decoded.dimensions(), (6, 4));
+        assert_eq!(decoded.get_pixel(2, 2).0, [12, 34, 56, 255]);
+
+        remove_pdf_to_image_session(&session.session_id).expect("remove page session");
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_encodes_png_and_jpg_outputs() {
+        let _conversion_lock = test_conversion_lock();
+        let root = test_directory("png-jpg-encoding");
+        let source = image::RgbaImage::from_pixel(8, 5, image::Rgba([48, 96, 144, 255]));
+
+        for format in ["png", "jpg"] {
+            let temporary = PdfToImageTemporaryFile::new(&root);
+            encode_pdf_to_image(source.clone(), &temporary.path, format, 94)
+                .expect("encode PDF page image");
+            let decoded = image::ImageReader::open(&temporary.path)
+                .expect("open encoded PDF page image")
+                .with_guessed_format()
+                .expect("detect encoded PDF page image format")
+                .decode()
+                .expect("decode encoded PDF page image");
+            assert_eq!(decoded.dimensions(), (8, 5));
+        }
+
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_exports_sixteen_pages_as_four_png_long_images() {
+        let _conversion_lock = test_conversion_lock();
+        let cancelled = AtomicBool::new(false);
+        let root = test_directory("sixteen-page-long-images");
+        let output = root.join("outputs");
+        std::fs::create_dir_all(&output).expect("create output directory");
+        let session = create_pdf_to_image_session().expect("create page session");
+        for page_number in 1..=16u32 {
+            let color = image::Rgba([page_number as u8, 40, 80, 255]);
+            let bytes = solid_png(2, 2, color);
+            write_pdf_to_image_page_bytes(
+                &session.session_id,
+                &format!("page_{page_number:05}.png"),
+                &bytes,
+            )
+            .expect("write rendered PDF page");
+        }
+
+        let result = export_pdf_to_images_blocking(
+            PdfToImageExportRequest {
+                session_id: session.session_id.clone(),
+                page_numbers: (1..=16).collect(),
+                page_count: 16,
+                output_dir: output.to_string_lossy().into_owned(),
+                output_name: Some("sixteen".to_string()),
+                format: "png".to_string(),
+                export_mode: "long".to_string(),
+                pages_per_long_image: Some(5),
+                jpeg_quality: Some(94),
+                background_rgba: Some("#FFFFFFFF".to_string()),
+                job_id: None,
+            },
+            &cancelled,
+            |_, _, _, _| {},
+        )
+        .expect("export sixteen PDF pages");
+
+        assert_eq!(result.output_count, 4);
+        assert_eq!(
+            result
+                .outputs
+                .iter()
+                .map(|item| item.page_numbers.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                vec![1, 2, 3, 4, 5],
+                vec![6, 7, 8, 9, 10],
+                vec![11, 12, 13, 14, 15],
+                vec![16],
+            ]
+        );
+        assert_eq!(
+            result
+                .outputs
+                .iter()
+                .map(|item| (item.width, item.height))
+                .collect::<Vec<_>>(),
+            vec![(2, 10), (2, 10), (2, 10), (2, 2)]
+        );
+        for item in &result.outputs {
+            image::open(&item.output_path).expect("decode exported PNG long image");
+        }
+        assert!(result.outputs[3]
+            .output_path
+            .ends_with("sixteen_long_04_pages_16.png"));
+
+        remove_pdf_to_image_session(&session.session_id).expect("remove page session");
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_long_layout_preserves_page_pixels_and_centers_narrow_pages() {
+        let _conversion_lock = test_conversion_lock();
+        let cancelled = AtomicBool::new(false);
+        let root = test_directory("centering");
+        let narrow_path = root.join("narrow.png");
+        let wide_path = root.join("wide.png");
+        std::fs::write(&narrow_path, solid_png(2, 2, image::Rgba([255, 0, 0, 255])))
+            .expect("write narrow page");
+        std::fs::write(&wide_path, solid_png(4, 1, image::Rgba([0, 0, 255, 255])))
+            .expect("write wide page");
+        let pages = vec![
+            PdfToImageSourcePage {
+                page_number: 1,
+                path: narrow_path,
+                width: 2,
+                height: 2,
+            },
+            PdfToImageSourcePage {
+                page_number: 2,
+                path: wide_path,
+                width: 4,
+                height: 1,
+            },
+        ];
+        let layout = pdf_to_image_group_layout(&pages, PDF_TO_IMAGE_MAX_LONG_PIXELS)
+            .expect("calculate centered long layout");
+        assert_eq!((layout.width, layout.height), (4, 3));
+        assert_eq!(layout.sizes, vec![(2, 2), (4, 1)]);
+        let canvas = compose_pdf_to_image_group(
+            &pages,
+            &layout,
+            image::Rgba([255, 255, 255, 255]),
+            "png",
+            &cancelled,
+        )
+        .expect("compose centered long image");
+        assert_eq!(canvas.get_pixel(0, 0).0, [255, 255, 255, 255]);
+        assert_eq!(canvas.get_pixel(1, 0).0, [255, 0, 0, 255]);
+        assert_eq!(canvas.get_pixel(0, 2).0, [0, 0, 255, 255]);
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_batch_publish_rolls_back_on_failure() {
+        let _conversion_lock = test_conversion_lock();
+        let cancelled = AtomicBool::new(false);
+        let root = test_directory("rollback");
+        let first_temporary = PdfToImageTemporaryFile::new(&root);
+        let missing_temporary = PdfToImageTemporaryFile::new(&root);
+        std::fs::write(&first_temporary.path, b"complete first output")
+            .expect("write first temporary output");
+        let prepared = vec![
+            PdfToImagePreparedOutput {
+                temporary: first_temporary,
+                logical_stem: "rollback_first".to_string(),
+                extension: ".png".to_string(),
+                width: 1,
+                height: 1,
+                page_numbers: vec![1],
+            },
+            PdfToImagePreparedOutput {
+                temporary: missing_temporary,
+                logical_stem: "rollback_second".to_string(),
+                extension: ".png".to_string(),
+                width: 1,
+                height: 1,
+                page_numbers: vec![2],
+            },
+        ];
+        assert_eq!(
+            publish_pdf_to_image_batch(&prepared, &root, &cancelled)
+                .expect_err("missing second temporary output must fail"),
+            "pdf-to-image:publish-failed"
+        );
+        assert!(!root.join("rollback_first.png").exists());
+        assert!(!root.join("rollback_second.png").exists());
+        drop(prepared);
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_cancelled_batch_publishes_no_outputs() {
+        let _conversion_lock = test_conversion_lock();
+        let cancelled = AtomicBool::new(true);
+        let root = test_directory("cancelled-publish");
+        let temporary = PdfToImageTemporaryFile::new(&root);
+        std::fs::write(&temporary.path, b"complete temporary output")
+            .expect("write temporary output");
+        let prepared = vec![PdfToImagePreparedOutput {
+            temporary,
+            logical_stem: "must_not_publish".to_string(),
+            extension: ".png".to_string(),
+            width: 1,
+            height: 1,
+            page_numbers: vec![1],
+        }];
+
+        assert_eq!(
+            publish_pdf_to_image_batch(&prepared, &root, &cancelled)
+                .expect_err("cancelled batch must not publish"),
+            "pdf-to-image:cancelled"
+        );
+        assert!(!root.join("must_not_publish.png").exists());
+
+        drop(prepared);
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn pdf_to_image_copy_fallback_is_complete_and_never_overwrites() {
+        let _conversion_lock = test_conversion_lock();
+        let root = test_directory("copy-fallback");
+        let source = root.join("source.tmp");
+        let target = root.join("target.png");
+        let cancelled_target = root.join("cancelled.png");
+        let payload = vec![0x5au8; 700_000];
+        std::fs::write(&source, &payload).expect("write fallback source");
+
+        let running = AtomicBool::new(false);
+        copy_pdf_to_image_output(&source, &target, &running).expect("copy fallback output");
+        assert_eq!(
+            std::fs::read(&target).expect("read fallback output"),
+            payload
+        );
+
+        std::fs::write(&source, b"replacement").expect("replace fallback source");
+        assert_eq!(
+            copy_pdf_to_image_output(&source, &target, &running)
+                .expect_err("fallback must not overwrite an existing output")
+                .kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            std::fs::metadata(&target)
+                .expect("read target metadata")
+                .len(),
+            700_000
+        );
+
+        let cancelled = AtomicBool::new(true);
+        assert_eq!(
+            copy_pdf_to_image_output(&source, &cancelled_target, &cancelled)
+                .expect_err("cancelled fallback must stop before publication")
+                .kind(),
+            std::io::ErrorKind::Interrupted
+        );
+        assert!(!cancelled_target.exists());
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn shared_image_stitch_backend_accepts_webp() {
+        let _conversion_lock = test_conversion_lock();
+        let root = test_directory("shared-webp");
+        let first = root.join("first.png");
+        let second = root.join("second.png");
+        std::fs::write(&first, solid_png(3, 2, image::Rgba([255, 0, 0, 255])))
+            .expect("write first stitch page");
+        std::fs::write(&second, solid_png(3, 1, image::Rgba([0, 0, 255, 255])))
+            .expect("write second stitch page");
+        let result = stitch_images_blocking(
+            ImageStitchOptions {
+                input_paths: vec![
+                    first.to_string_lossy().into_owned(),
+                    second.to_string_lossy().into_owned(),
+                ],
+                output_dir: root.to_string_lossy().into_owned(),
+                output_name: Some("shared-stitch".to_string()),
+                mode: "vertical".to_string(),
+                reference: "first".to_string(),
+                spacing_px: 0,
+                scale_percent: 100,
+                format: "webp".to_string(),
+                jpeg_quality: 92,
+                background_rgba: "#FFFFFFFF".to_string(),
+            },
+            |_, _, _, _| {},
+        )
+        .expect("export shared WebP stitch");
+        assert!(result.output_path.ends_with("shared-stitch.webp"));
+        assert_eq!(
+            image::open(&result.output_path).unwrap().dimensions(),
+            (3, 3)
+        );
+        std::fs::remove_dir_all(root).expect("remove test directory");
+    }
 }
 
 #[cfg(test)]
@@ -3696,36 +5900,21 @@ mod image_conversion_tests {
 
     #[test]
     fn image_stitch_layout_rounds_and_counts_only_between_item_gaps() {
-        let layout = calculate_image_stitch_layout(
-            &[(101, 10), (5, 7)],
-            "vertical",
-            "first",
-            9,
-            50,
-        )
-        .expect("calculate vertical layout");
+        let layout =
+            calculate_image_stitch_layout(&[(101, 10), (5, 7)], "vertical", "first", 9, 50)
+                .expect("calculate vertical layout");
         assert_eq!(layout.width, 51);
         assert_eq!(layout.sizes, vec![(51, 5), (51, 71)]);
         assert_eq!(layout.height, 5 + 9 + 71);
 
         let one_hundred = vec![(1, 1); 100];
-        let boundary = calculate_image_stitch_layout(
-            &one_hundred,
-            "vertical",
-            "smallest",
-            0,
-            100,
-        )
-        .expect("100-image boundary should be valid");
+        let boundary = calculate_image_stitch_layout(&one_hundred, "vertical", "smallest", 0, 100)
+            .expect("100-image boundary should be valid");
         assert_eq!((boundary.width, boundary.height), (1, 100));
-        assert!(calculate_image_stitch_layout(
-            &vec![(1, 1); 101],
-            "vertical",
-            "first",
-            0,
-            100,
-        )
-        .is_err());
+        assert!(
+            calculate_image_stitch_layout(&vec![(1, 1); 101], "vertical", "first", 0, 100,)
+                .is_err()
+        );
     }
 
     #[test]
@@ -3756,7 +5945,13 @@ mod image_conversion_tests {
         CANCEL_FLAG.store(false, Ordering::SeqCst);
 
         let first = stitch_images_blocking(
-            stitch_test_options(&[red.clone(), blue.clone()], &output, "vertical", "png", "#FFFFFFFF"),
+            stitch_test_options(
+                &[red.clone(), blue.clone()],
+                &output,
+                "vertical",
+                "png",
+                "#FFFFFFFF",
+            ),
             |_, _, _, _| {},
         )
         .expect("stitch vertical PNG");
@@ -3790,7 +5985,13 @@ mod image_conversion_tests {
         assert_eq!(horizontal.get_pixel(8, 5).0, [0, 0, 255, 255]);
 
         let alpha_result = stitch_images_blocking(
-            stitch_test_options(&[transparent.clone(), blue.clone()], &output, "vertical", "png", "#12345600"),
+            stitch_test_options(
+                &[transparent.clone(), blue.clone()],
+                &output,
+                "vertical",
+                "png",
+                "#12345600",
+            ),
             |_, _, _, _| {},
         )
         .expect("stitch transparent PNG");
@@ -3800,7 +6001,13 @@ mod image_conversion_tests {
         assert_eq!(alpha.get_pixel(2, 2).0[3], 0);
 
         let jpeg_result = stitch_images_blocking(
-            stitch_test_options(&[transparent, blue], &output, "vertical", "jpg", "#FF00FF00"),
+            stitch_test_options(
+                &[transparent, blue],
+                &output,
+                "vertical",
+                "jpg",
+                "#FF00FF00",
+            ),
             |_, _, _, _| {},
         )
         .expect("stitch flattened JPEG");
@@ -3812,7 +6019,10 @@ mod image_conversion_tests {
         assert!(!std::fs::read_dir(&output)
             .expect("read output directory")
             .filter_map(Result::ok)
-            .any(|entry| entry.file_name().to_string_lossy().starts_with(".toolknit-stitch-")));
+            .any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".toolknit-stitch-")));
         std::fs::remove_dir_all(&directory).expect("remove stitch test directory");
     }
 
@@ -5506,7 +7716,9 @@ async fn render_video_preview_clip(
     validate_video_preview_clip_range(start_ms, end_ms)?;
     let input = validate_audio_extract_input(&input_path)?;
     let ffmpeg = get_ffmpeg_path()?;
-    let source_duration = probe_video_convert_duration(&ffmpeg, &input).await.unwrap_or(0.0);
+    let source_duration = probe_video_convert_duration(&ffmpeg, &input)
+        .await
+        .unwrap_or(0.0);
     if source_duration > 0.0 && end_ms as f64 > source_duration * 1000.0 + 1.0 {
         return Err("video-preview:timestamp-out-of-range".to_string());
     }
@@ -5662,12 +7874,29 @@ struct VideoFrameResult {
     format: String,
 }
 
-fn publish_video_frame_output(temporary_path: &std::path::Path, output_dir: &std::path::Path, source_stem: &str, timestamp_ms: u64, extension: &str) -> Result<String, String> {
+fn publish_video_frame_output(
+    temporary_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    source_stem: &str,
+    timestamp_ms: u64,
+    extension: &str,
+) -> Result<String, String> {
     for counter in 0..10_000_u32 {
-        let suffix = if counter == 0 { String::new() } else { format!("_{}", counter) };
-        let candidate = output_dir.join(format!("{}_frame_{}ms{}{}", source_stem, timestamp_ms, suffix, extension));
+        let suffix = if counter == 0 {
+            String::new()
+        } else {
+            format!("_{}", counter)
+        };
+        let candidate = output_dir.join(format!(
+            "{}_frame_{}ms{}{}",
+            source_stem, timestamp_ms, suffix, extension
+        ));
         match std::fs::hard_link(temporary_path, &candidate) {
-            Ok(()) => { std::fs::remove_file(temporary_path).map_err(|_| "video-frame:output-path".to_string())?; return Ok(candidate.to_string_lossy().into_owned()); }
+            Ok(()) => {
+                std::fs::remove_file(temporary_path)
+                    .map_err(|_| "video-frame:output-path".to_string())?;
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
             Err(_) if candidate.exists() => continue,
             Err(_) => return Err("video-frame:output-path".to_string()),
         }
@@ -5676,31 +7905,106 @@ fn publish_video_frame_output(temporary_path: &std::path::Path, output_dir: &std
 }
 
 #[tauri::command]
-async fn extract_video_frame(app_handle: tauri::AppHandle, input_path: String, output_dir: String, timestamp_ms: u64, format: String) -> Result<VideoFrameResult, String> {
+async fn extract_video_frame(
+    app_handle: tauri::AppHandle,
+    input_path: String,
+    output_dir: String,
+    timestamp_ms: u64,
+    format: String,
+) -> Result<VideoFrameResult, String> {
     use tauri::Emitter;
     let _guard = begin_conversion()?;
     let input = validate_audio_extract_input(&input_path)?;
-    if timestamp_ms > 24 * 60 * 60 * 1000 { return Err("video-frame:invalid-timestamp".to_string()); }
-    let normalized_format = match format.trim().to_ascii_lowercase().as_str() { "png" => "png", "jpg" | "jpeg" => "jpg", _ => return Err("video-frame:invalid-format".to_string()) };
+    if timestamp_ms > 24 * 60 * 60 * 1000 {
+        return Err("video-frame:invalid-timestamp".to_string());
+    }
+    let normalized_format = match format.trim().to_ascii_lowercase().as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        _ => return Err("video-frame:invalid-format".to_string()),
+    };
     let output_dir = validate_audio_extract_output_dir(&output_dir)?;
     let ffmpeg = get_ffmpeg_path()?;
-    let duration = probe_video_convert_duration(&ffmpeg, &input).await.unwrap_or(0.0);
-    if duration > 0.0 && timestamp_ms as f64 > duration * 1000.0 + 1.0 { return Err("video-frame:timestamp-out-of-range".to_string()); }
-    let extension = if normalized_format == "png" { ".png" } else { ".jpg" };
+    let duration = probe_video_convert_duration(&ffmpeg, &input)
+        .await
+        .unwrap_or(0.0);
+    if duration > 0.0 && timestamp_ms as f64 > duration * 1000.0 + 1.0 {
+        return Err("video-frame:timestamp-out-of-range".to_string());
+    }
+    let extension = if normalized_format == "png" {
+        ".png"
+    } else {
+        ".jpg"
+    };
     let temporary = create_audio_extract_temp_path(&output_dir, extension)?;
-    let _ = app_handle.emit("video-frame-progress", serde_json::json!({ "progress": 0.1, "phase": "prepare" }));
+    let _ = app_handle.emit(
+        "video-frame-progress",
+        serde_json::json!({ "progress": 0.1, "phase": "prepare" }),
+    );
     let mut command = tokio::process::Command::new(&ffmpeg);
-    command.arg("-hide_banner").arg("-nostdin").arg("-y").arg("-i").arg(&input).arg("-ss").arg(format!("{:.3}", timestamp_ms as f64 / 1000.0)).arg("-map").arg("0:v:0").arg("-frames:v").arg("1");
-    if normalized_format == "png" { command.arg("-c:v").arg("png"); } else { command.arg("-q:v").arg("2"); }
-    command.arg(&temporary).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    #[cfg(target_os = "windows")] { command.creation_flags(0x08000000); }
-    let result = command.spawn().map_err(|_| "video-frame:engine-failed".to_string())?.wait_with_output().await.map_err(|_| "video-frame:engine-failed".to_string())?;
-    if CANCEL_FLAG.load(Ordering::SeqCst) { let _ = std::fs::remove_file(&temporary); return Err("video-frame:cancelled".to_string()); }
-    if !result.status.success() || !temporary.is_file() || std::fs::metadata(&temporary).map(|m| m.len()).unwrap_or(0) == 0 { let _ = std::fs::remove_file(&temporary); return Err("video-frame:engine-failed".to_string()); }
-    let _ = app_handle.emit("video-frame-progress", serde_json::json!({ "progress": 0.9, "phase": "publish" }));
-    let output_path = publish_video_frame_output(&temporary, &output_dir, &audio_extract_file_stem(&input), timestamp_ms, extension)?;
-    let _ = app_handle.emit("video-frame-progress", serde_json::json!({ "progress": 1.0, "phase": "complete" }));
-    Ok(VideoFrameResult { output_path, timestamp_ms, format: normalized_format.to_string() })
+    command
+        .arg("-hide_banner")
+        .arg("-nostdin")
+        .arg("-y")
+        .arg("-i")
+        .arg(&input)
+        .arg("-ss")
+        .arg(format!("{:.3}", timestamp_ms as f64 / 1000.0))
+        .arg("-map")
+        .arg("0:v:0")
+        .arg("-frames:v")
+        .arg("1");
+    if normalized_format == "png" {
+        command.arg("-c:v").arg("png");
+    } else {
+        command.arg("-q:v").arg("2");
+    }
+    command
+        .arg(&temporary)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(0x08000000);
+    }
+    let result = command
+        .spawn()
+        .map_err(|_| "video-frame:engine-failed".to_string())?
+        .wait_with_output()
+        .await
+        .map_err(|_| "video-frame:engine-failed".to_string())?;
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("video-frame:cancelled".to_string());
+    }
+    if !result.status.success()
+        || !temporary.is_file()
+        || std::fs::metadata(&temporary).map(|m| m.len()).unwrap_or(0) == 0
+    {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("video-frame:engine-failed".to_string());
+    }
+    let _ = app_handle.emit(
+        "video-frame-progress",
+        serde_json::json!({ "progress": 0.9, "phase": "publish" }),
+    );
+    let output_path = publish_video_frame_output(
+        &temporary,
+        &output_dir,
+        &audio_extract_file_stem(&input),
+        timestamp_ms,
+        extension,
+    )?;
+    let _ = app_handle.emit(
+        "video-frame-progress",
+        serde_json::json!({ "progress": 1.0, "phase": "complete" }),
+    );
+    Ok(VideoFrameResult {
+        output_path,
+        timestamp_ms,
+        format: normalized_format.to_string(),
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -5715,12 +8019,29 @@ struct VideoGifResult {
     output_size: u64,
 }
 
-fn publish_video_gif_output(temporary_path: &std::path::Path, output_dir: &std::path::Path, source_stem: &str, start_ms: u64, end_ms: u64) -> Result<String, String> {
+fn publish_video_gif_output(
+    temporary_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    source_stem: &str,
+    start_ms: u64,
+    end_ms: u64,
+) -> Result<String, String> {
     for counter in 0..10_000_u32 {
-        let suffix = if counter == 0 { String::new() } else { format!("_{}", counter) };
-        let candidate = output_dir.join(format!("{}_clip_{}-{}ms{}.gif", source_stem, start_ms, end_ms, suffix));
+        let suffix = if counter == 0 {
+            String::new()
+        } else {
+            format!("_{}", counter)
+        };
+        let candidate = output_dir.join(format!(
+            "{}_clip_{}-{}ms{}.gif",
+            source_stem, start_ms, end_ms, suffix
+        ));
         match std::fs::hard_link(temporary_path, &candidate) {
-            Ok(()) => { std::fs::remove_file(temporary_path).map_err(|_| "video-gif:output-path".to_string())?; return Ok(candidate.to_string_lossy().into_owned()); }
+            Ok(()) => {
+                std::fs::remove_file(temporary_path)
+                    .map_err(|_| "video-gif:output-path".to_string())?;
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
             Err(_) if candidate.exists() => continue,
             Err(_) => return Err("video-gif:output-path".to_string()),
         }
@@ -5729,17 +8050,34 @@ fn publish_video_gif_output(temporary_path: &std::path::Path, output_dir: &std::
 }
 
 #[tauri::command]
-async fn extract_video_gif(app_handle: tauri::AppHandle, input_path: String, output_dir: String, start_ms: u64, end_ms: u64, frame_rate: Option<u32>, width: Option<u32>, quality: Option<String>) -> Result<VideoGifResult, String> {
+async fn extract_video_gif(
+    app_handle: tauri::AppHandle,
+    input_path: String,
+    output_dir: String,
+    start_ms: u64,
+    end_ms: u64,
+    frame_rate: Option<u32>,
+    width: Option<u32>,
+    quality: Option<String>,
+) -> Result<VideoGifResult, String> {
     use tauri::Emitter;
     const MAX_GIF_DURATION_MS: u64 = 30_000;
     const MAX_GIF_OUTPUT_BYTES: u64 = 500 * 1024 * 1024;
     let _guard = begin_conversion()?;
     let input = validate_audio_extract_input(&input_path)?;
-    if end_ms <= start_ms || end_ms - start_ms > MAX_GIF_DURATION_MS || end_ms > 24 * 60 * 60 * 1000 { return Err("video-gif:invalid-range".to_string()); }
+    if end_ms <= start_ms || end_ms - start_ms > MAX_GIF_DURATION_MS || end_ms > 24 * 60 * 60 * 1000
+    {
+        return Err("video-gif:invalid-range".to_string());
+    }
     let frame_rate = frame_rate.unwrap_or(12);
     let width = width.unwrap_or(640);
-    if !(1..=20).contains(&frame_rate) || !(160..=1920).contains(&width) { return Err("video-gif:invalid-settings".to_string()); }
-    let quality = quality.unwrap_or_else(|| "balanced".to_string()).trim().to_ascii_lowercase();
+    if !(1..=20).contains(&frame_rate) || !(160..=1920).contains(&width) {
+        return Err("video-gif:invalid-settings".to_string());
+    }
+    let quality = quality
+        .unwrap_or_else(|| "balanced".to_string())
+        .trim()
+        .to_ascii_lowercase();
     let (max_colors, dither) = match quality.as_str() {
         "high" => (256_u32, "sierra2_4a"),
         "balanced" => (192_u32, "bayer:bayer_scale=3"),
@@ -5749,24 +8087,89 @@ async fn extract_video_gif(app_handle: tauri::AppHandle, input_path: String, out
     };
     let output_dir = validate_audio_extract_output_dir(&output_dir)?;
     let ffmpeg = get_ffmpeg_path()?;
-    let duration = probe_video_convert_duration(&ffmpeg, &input).await.unwrap_or(0.0);
-    if duration > 0.0 && end_ms as f64 > duration * 1000.0 + 1.0 { return Err("video-gif:timestamp-out-of-range".to_string()); }
+    let duration = probe_video_convert_duration(&ffmpeg, &input)
+        .await
+        .unwrap_or(0.0);
+    if duration > 0.0 && end_ms as f64 > duration * 1000.0 + 1.0 {
+        return Err("video-gif:timestamp-out-of-range".to_string());
+    }
     let temporary = create_audio_extract_temp_path(&output_dir, ".gif")?;
-    let _ = app_handle.emit("video-gif-progress", serde_json::json!({ "progress": 0.05, "phase": "prepare" }));
+    let _ = app_handle.emit(
+        "video-gif-progress",
+        serde_json::json!({ "progress": 0.05, "phase": "prepare" }),
+    );
     let filter = format!("fps={},scale=w='min({},iw)':h=-2:flags=lanczos,split[a][b];[a]palettegen=max_colors={}:stats_mode=diff[p];[b][p]paletteuse=dither={}:diff_mode=rectangle[out]", frame_rate, width, max_colors, dither);
     let mut command = tokio::process::Command::new(&ffmpeg);
-    command.arg("-hide_banner").arg("-nostdin").arg("-y").arg("-i").arg(&input).arg("-ss").arg(format!("{:.3}", start_ms as f64 / 1000.0)).arg("-t").arg(format!("{:.3}", (end_ms - start_ms) as f64 / 1000.0)).arg("-filter_complex").arg(filter).arg("-map").arg("[out]").arg("-loop").arg("0").arg(&temporary).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    #[cfg(target_os = "windows")] { command.creation_flags(0x08000000); }
-    let result = command.spawn().map_err(|_| "video-gif:engine-failed".to_string())?.wait_with_output().await.map_err(|_| "video-gif:engine-failed".to_string())?;
-    if CANCEL_FLAG.load(Ordering::SeqCst) { let _ = std::fs::remove_file(&temporary); return Err("video-gif:cancelled".to_string()); }
-    let metadata = std::fs::metadata(&temporary).map_err(|_| "video-gif:engine-failed".to_string())?;
-    if !result.status.success() || !metadata.is_file() || metadata.len() == 0 { let _ = std::fs::remove_file(&temporary); return Err("video-gif:engine-failed".to_string()); }
-    if metadata.len() > MAX_GIF_OUTPUT_BYTES { let _ = std::fs::remove_file(&temporary); return Err("video-gif:output-too-large".to_string()); }
+    command
+        .arg("-hide_banner")
+        .arg("-nostdin")
+        .arg("-y")
+        .arg("-i")
+        .arg(&input)
+        .arg("-ss")
+        .arg(format!("{:.3}", start_ms as f64 / 1000.0))
+        .arg("-t")
+        .arg(format!("{:.3}", (end_ms - start_ms) as f64 / 1000.0))
+        .arg("-filter_complex")
+        .arg(filter)
+        .arg("-map")
+        .arg("[out]")
+        .arg("-loop")
+        .arg("0")
+        .arg(&temporary)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(0x08000000);
+    }
+    let result = command
+        .spawn()
+        .map_err(|_| "video-gif:engine-failed".to_string())?
+        .wait_with_output()
+        .await
+        .map_err(|_| "video-gif:engine-failed".to_string())?;
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("video-gif:cancelled".to_string());
+    }
+    let metadata =
+        std::fs::metadata(&temporary).map_err(|_| "video-gif:engine-failed".to_string())?;
+    if !result.status.success() || !metadata.is_file() || metadata.len() == 0 {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("video-gif:engine-failed".to_string());
+    }
+    if metadata.len() > MAX_GIF_OUTPUT_BYTES {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("video-gif:output-too-large".to_string());
+    }
     let output_size = metadata.len();
-    let _ = app_handle.emit("video-gif-progress", serde_json::json!({ "progress": 0.92, "phase": "publish" }));
-    let output_path = publish_video_gif_output(&temporary, &output_dir, &audio_extract_file_stem(&input), start_ms, end_ms)?;
-    let _ = app_handle.emit("video-gif-progress", serde_json::json!({ "progress": 1.0, "phase": "complete" }));
-    Ok(VideoGifResult { output_path, start_ms, end_ms, duration_ms: end_ms - start_ms, frame_rate, width, quality, output_size })
+    let _ = app_handle.emit(
+        "video-gif-progress",
+        serde_json::json!({ "progress": 0.92, "phase": "publish" }),
+    );
+    let output_path = publish_video_gif_output(
+        &temporary,
+        &output_dir,
+        &audio_extract_file_stem(&input),
+        start_ms,
+        end_ms,
+    )?;
+    let _ = app_handle.emit(
+        "video-gif-progress",
+        serde_json::json!({ "progress": 1.0, "phase": "complete" }),
+    );
+    Ok(VideoGifResult {
+        output_path,
+        start_ms,
+        end_ms,
+        duration_ms: end_ms - start_ms,
+        frame_rate,
+        width,
+        quality,
+        output_size,
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -6211,6 +8614,75 @@ fn read_file_bytes_limited(path: String, max_bytes: u64) -> Result<Vec<u8>, Stri
     Ok(bytes)
 }
 
+#[derive(serde::Serialize)]
+struct PreparedIconSourceImage {
+    bytes: Vec<u8>,
+    width: u32,
+    height: u32,
+    source_bytes: u64,
+}
+
+#[tauri::command]
+fn prepare_icon_source_image(path: String) -> Result<PreparedIconSourceImage, String> {
+    use image::ImageEncoder;
+
+    const MAX_INPUT_BYTES: u64 = 20 * 1024 * 1024;
+    const MAX_INPUT_PIXELS: u64 = 20_000_000;
+    if path.contains('\0') {
+        return Err("Invalid image path".to_string());
+    }
+    let source = std::path::PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| format!("Cannot access image file: {}", error))?;
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp") {
+        return Err("Only PNG, JPEG, and WebP images can be used for icon generation.".to_string());
+    }
+    let metadata = std::fs::metadata(&source)
+        .map_err(|error| format!("Cannot read image file metadata: {}", error))?;
+    if !metadata.is_file() {
+        return Err("Input path must be an image file".to_string());
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_INPUT_BYTES {
+        return Err(
+            "The image file is empty or exceeds the supported file size limit.".to_string(),
+        );
+    }
+
+    let image = image::ImageReader::open(&source)
+        .map_err(|error| format!("Cannot open image file: {}", error))?
+        .with_guessed_format()
+        .map_err(|error| format!("Cannot detect image format: {}", error))?
+        .decode()
+        .map_err(|error| format!("Cannot decode image file: {}", error))?;
+    let width = image.width();
+    let height = image.height();
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    if width == 0 || height == 0 || pixels > MAX_INPUT_PIXELS {
+        return Err("Image dimensions exceed the supported pixel limit.".to_string());
+    }
+
+    let rgba = image.to_rgba8();
+    let mut bytes = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut bytes)
+        .write_image(&rgba, width, height, image::ColorType::Rgba8.into())
+        .map_err(|error| format!("Cannot prepare image for icon generation: {}", error))?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_INPUT_BYTES {
+        return Err("Prepared image exceeds the supported file size limit.".to_string());
+    }
+
+    Ok(PreparedIconSourceImage {
+        bytes,
+        width,
+        height,
+        source_bytes: metadata.len(),
+    })
+}
+
 #[tauri::command]
 fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
     use std::fs;
@@ -6302,44 +8774,92 @@ fn write_unique_file_pair(
     use std::path::Path;
 
     const MAX_BYTES_PER_FILE: usize = 10 * 1024 * 1024;
-    if directory.contains('\0') || first_file_name.contains('\0') || second_file_name.contains('\0')
-        || first_bytes.len() > MAX_BYTES_PER_FILE || second_bytes.len() > MAX_BYTES_PER_FILE {
+    if directory.contains('\0')
+        || first_file_name.contains('\0')
+        || second_file_name.contains('\0')
+        || first_bytes.len() > MAX_BYTES_PER_FILE
+        || second_bytes.len() > MAX_BYTES_PER_FILE
+    {
         return Err("Invalid paired output request".to_string());
     }
     let directory = Path::new(&directory);
     let first_path = Path::new(&first_file_name);
     let second_path = Path::new(&second_file_name);
     if first_file_name == second_file_name
-        || first_path.is_absolute() || second_path.is_absolute()
-        || first_path.components().count() != 1 || second_path.components().count() != 1 {
+        || first_path.is_absolute()
+        || second_path.is_absolute()
+        || first_path.components().count() != 1
+        || second_path.components().count() != 1
+    {
         return Err("Output file names must be distinct base names without paths".to_string());
     }
     is_path_safe(directory)?;
-    fs::create_dir_all(directory).map_err(|error| format!("Failed to create directory: {}", error))?;
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("Failed to create directory: {}", error))?;
 
-    let first_stem = first_path.file_stem().and_then(|value| value.to_str()).ok_or("Invalid first output name")?;
-    let first_extension = first_path.extension().and_then(|value| value.to_str()).unwrap_or("");
-    let second_stem = second_path.file_stem().and_then(|value| value.to_str()).ok_or("Invalid second output name")?;
-    let second_extension = second_path.extension().and_then(|value| value.to_str()).unwrap_or("");
+    let first_stem = first_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or("Invalid first output name")?;
+    let first_extension = first_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    let second_stem = second_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or("Invalid second output name")?;
+    let second_extension = second_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
 
     for counter in 0..10_000_u32 {
-        let suffix = if counter == 0 { String::new() } else { format!("_{}", counter) };
-        let first_name = if first_extension.is_empty() { format!("{}{}", first_stem, suffix) } else { format!("{}{}.{}", first_stem, suffix, first_extension) };
-        let second_name = if second_extension.is_empty() { format!("{}{}", second_stem, suffix) } else { format!("{}{}.{}", second_stem, suffix, second_extension) };
+        let suffix = if counter == 0 {
+            String::new()
+        } else {
+            format!("_{}", counter)
+        };
+        let first_name = if first_extension.is_empty() {
+            format!("{}{}", first_stem, suffix)
+        } else {
+            format!("{}{}.{}", first_stem, suffix, first_extension)
+        };
+        let second_name = if second_extension.is_empty() {
+            format!("{}{}", second_stem, suffix)
+        } else {
+            format!("{}{}.{}", second_stem, suffix, second_extension)
+        };
         let first_output = directory.join(first_name);
         let second_output = directory.join(second_name);
-        let mut first = match OpenOptions::new().write(true).create_new(true).open(&first_output) {
+        let mut first = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&first_output)
+        {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(format!("Failed to create refined subtitle output: {}", error)),
+            Err(error) => {
+                return Err(format!(
+                    "Failed to create refined subtitle output: {}",
+                    error
+                ))
+            }
         };
         if let Err(error) = first.write_all(&first_bytes).and_then(|_| first.sync_all()) {
             drop(first);
             let _ = fs::remove_file(&first_output);
-            return Err(format!("Failed to write refined subtitle output: {}", error));
+            return Err(format!(
+                "Failed to write refined subtitle output: {}",
+                error
+            ));
         }
         drop(first);
-        let mut second = match OpenOptions::new().write(true).create_new(true).open(&second_output) {
+        let mut second = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&second_output)
+        {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 let _ = fs::remove_file(&first_output);
@@ -6350,7 +8870,10 @@ fn write_unique_file_pair(
                 return Err(format!("Failed to create refined text output: {}", error));
             }
         };
-        if let Err(error) = second.write_all(&second_bytes).and_then(|_| second.sync_all()) {
+        if let Err(error) = second
+            .write_all(&second_bytes)
+            .and_then(|_| second.sync_all())
+        {
             drop(second);
             let _ = fs::remove_file(&first_output);
             let _ = fs::remove_file(&second_output);
@@ -6404,8 +8927,14 @@ mod paired_file_write_tests {
         assert!(first.second_path.ends_with("meeting_refined.txt"));
         assert!(second.first_path.ends_with("meeting_refined_1.srt"));
         assert!(second.second_path.ends_with("meeting_refined_1.txt"));
-        assert_eq!(std::fs::read_to_string(&first.first_path).expect("read first SRT"), "first srt");
-        assert_eq!(std::fs::read_to_string(&second.second_path).expect("read second TXT"), "second txt");
+        assert_eq!(
+            std::fs::read_to_string(&first.first_path).expect("read first SRT"),
+            "first srt"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&second.second_path).expect("read second TXT"),
+            "second txt"
+        );
 
         std::fs::remove_dir_all(&directory).expect("remove test directory");
     }
@@ -6568,7 +9097,7 @@ fn finalize_icon_archive_write(session_id: u64) -> Result<String, String> {
             let output_path =
                 unique_icon_archive_path(&write.output_directory, &write.file_name, counter)?;
             match std::fs::hard_link(&write.temporary_path, &output_path) {
-                Ok(()) => return Ok(output_path.to_string_lossy().into_owned()),
+                Ok(()) => return Ok(cleanup_display_path(&output_path)),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(format!("Cannot publish icon archive: {}", error)),
             }
@@ -6631,10 +9160,1668 @@ fn get_file_size(path: String) -> Result<u64, String> {
         .map_err(|e| format!("Failed to read file metadata: {}", e))
 }
 
+#[cfg(target_os = "windows")]
+fn run_windows_powershell_json(script: &str, context: &str) -> Result<serde_json::Value, String> {
+    use std::os::windows::process::CommandExt;
+
+    // Windows PowerShell 5.1 can still write redirected stdout using the active
+    // ANSI/OEM code page on some machines even after OutputEncoding is set.
+    // Capture the script's JSON inside PowerShell, then write explicit UTF-8
+    // bytes to stdout so localized device names never become mojibake.
+    let wrapped_script = format!(
+        r#"
+$ErrorActionPreference = 'SilentlyContinue'
+try {{
+  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+  $OutputEncoding = [Console]::OutputEncoding
+}} catch {{}}
+$__toolknit_payload = & {{
+{script}
+}}
+if ($null -eq $__toolknit_payload) {{ $__toolknit_payload = '' }}
+$__toolknit_text = ($__toolknit_payload | Out-String).Trim()
+$__toolknit_bytes = [System.Text.UTF8Encoding]::new($false).GetBytes([string]$__toolknit_text)
+$__toolknit_stdout = [Console]::OpenStandardOutput()
+$__toolknit_stdout.Write($__toolknit_bytes, 0, $__toolknit_bytes.Length)
+"#
+    );
+
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &wrapped_script,
+        ])
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|error| format!("Cannot start {}: {}", context, error))?;
+    if !output.status.success() {
+        let details = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .replace(['\r', '\n'], " ");
+        return Err(if details.is_empty() {
+            format!("{} failed", context)
+        } else {
+            format!(
+                "{} failed: {}",
+                context,
+                details.chars().take(240).collect::<String>()
+            )
+        });
+    }
+    let payload = String::from_utf8(output.stdout)
+        .unwrap_or_else(|error| String::from_utf8_lossy(&error.into_bytes()).into_owned())
+        .trim()
+        .to_string();
+    if payload.is_empty() {
+        return Err(format!("{} returned no data", context));
+    }
+    serde_json::from_str(&payload)
+        .map_err(|error| format!("{} returned invalid data: {}", context, error))
+}
+
+#[tauri::command]
+async fn get_hardware_overview() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_hardware_overview)
+        .await
+        .map_err(|error| format!("Hardware inspection worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_hardware_overview() -> Result<serde_json::Value, String> {
+    // A single read-only PowerShell/CIM request avoids a chain of WMI calls on
+    // the UI thread. The payload deliberately excludes serial numbers, UUIDs,
+    // account names, MAC addresses, and any other machine-identifying values.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+# Windows PowerShell 5.1 otherwise writes non-ASCII JSON using the active
+# console code page. The Rust process correctly expects UTF-8 JSON.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+function Epoch($value) {
+  if ($null -eq $value) { return $null }
+  try { return ([DateTimeOffset]$value).ToUnixTimeMilliseconds() } catch { return $null }
+}
+function DeviceType($value) {
+  switch ([int]$value) {
+    1 { 'desktop' }
+    2 { 'laptop' }
+    3 { 'workstation' }
+    4 { 'server' }
+    default { 'other' }
+  }
+}
+$computer = Get-CimInstance Win32_ComputerSystem
+$system = Get-CimInstance Win32_OperatingSystem
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$board = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
+$bios = Get-CimInstance Win32_BIOS | Select-Object -First 1
+$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object {
+  [ordered]@{ name = [string]$_.Name; driver_version = [string]$_.DriverVersion }
+})
+$disks = @(Get-CimInstance Win32_DiskDrive | ForEach-Object {
+  [ordered]@{ model = [string]$_.Model; size_bytes = [Int64]$_.Size }
+})
+$volumes = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType = 3' | ForEach-Object {
+  [ordered]@{ id = [string]$_.DeviceID; size_bytes = [Int64]$_.Size; free_bytes = [Int64]$_.FreeSpace }
+})
+$secureBoot = 'unavailable'
+try { if (Confirm-SecureBootUEFI) { $secureBoot = 'enabled' } else { $secureBoot = 'disabled' } } catch {}
+$bootMode = if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State') { 'uefi' } else { 'legacy_or_unavailable' }
+$tpm = Get-Tpm
+$batteries = @(Get-CimInstance Win32_Battery)
+[ordered]@{
+  device = [ordered]@{
+    manufacturer = [string]$computer.Manufacturer
+    model = [string]$computer.Model
+    device_type = DeviceType $computer.PCSystemType
+  }
+  system = [ordered]@{
+    caption = [string]$system.Caption
+    version = [string]$system.Version
+    build = [string]$system.BuildNumber
+    architecture = [string]$system.OSArchitecture
+    install_at = Epoch $system.InstallDate
+    boot_at = Epoch $system.LastBootUpTime
+  }
+  core = [ordered]@{
+    cpu_name = [string]$cpu.Name
+    cpu_cores = [int]$cpu.NumberOfCores
+    cpu_threads = [int]$cpu.NumberOfLogicalProcessors
+    memory_total_bytes = [Int64]$computer.TotalPhysicalMemory
+    memory_available_bytes = [Int64]$system.FreePhysicalMemory * 1024
+    gpus = $gpus
+    disks = $disks
+    volumes = $volumes
+  }
+  firmware = [ordered]@{
+    mainboard = @([string]$board.Manufacturer, [string]$board.Product | Where-Object { $_ } ) -join ' '
+    bios_version = [string]$bios.SMBIOSBIOSVersion
+    bios_release_at = Epoch $bios.ReleaseDate
+    boot_mode = $bootMode
+    secure_boot = $secureBoot
+    tpm_present = [bool]$tpm.TpmPresent
+    tpm_ready = [bool]$tpm.TpmReady
+    virtualization_enabled = [bool]$cpu.VirtualizationFirmwareEnabled
+  }
+  battery = [ordered]@{
+    status = if ($batteries.Count -gt 0) { 'present' } else { 'not_detected' }
+  }
+} | ConvertTo-Json -Depth 6 -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "Windows hardware inspection")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_hardware_overview() -> Result<serde_json::Value, String> {
+    Err("Hardware inspection is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn get_cpu_memory_info() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_cpu_memory_info)
+        .await
+        .map_err(|error| format!("CPU and memory inspection worker failed: {}", error))?
+}
+
+#[tauri::command]
+async fn get_cpu_memory_live_stats() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_cpu_memory_live_stats)
+        .await
+        .map_err(|error| format!("CPU and memory live stats worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_cpu_memory_info() -> Result<serde_json::Value, String> {
+    // Keep identifiers private: memory serial numbers and physical addresses
+    // are intentionally not read or included in this local-only payload.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$system = Get-CimInstance Win32_OperatingSystem
+$memoryArray = Get-CimInstance Win32_PhysicalMemoryArray | Select-Object -First 1
+$memoryModules = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object {
+  [ordered]@{
+    slot = [string]$_.DeviceLocator
+    bank = [string]$_.BankLabel
+    manufacturer = [string]$_.Manufacturer
+    part_number = [string]$_.PartNumber
+    capacity_bytes = [Int64]$_.Capacity
+    speed_mhz = [int]$_.Speed
+    configured_clock_mhz = [int]$_.ConfiguredClockSpeed
+    smbios_memory_type = [int]$_.SMBIOSMemoryType
+  }
+})
+$perfCpu = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
+$perfMemory = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory | Select-Object -First 1
+$cpuUsage = if ($null -ne $perfCpu -and $null -ne $perfCpu.PercentProcessorTime) { [int]$perfCpu.PercentProcessorTime } else { [int]$cpu.LoadPercentage }
+$availableBytes = if ($null -ne $perfMemory -and $null -ne $perfMemory.AvailableBytes) { [Int64]$perfMemory.AvailableBytes } else { [Int64]$system.FreePhysicalMemory * 1024 }
+[ordered]@{
+  cpu = [ordered]@{
+    name = [string]$cpu.Name
+    manufacturer = [string]$cpu.Manufacturer
+    socket = [string]$cpu.SocketDesignation
+    address_width = [int]$cpu.AddressWidth
+    cores = [int]$cpu.NumberOfCores
+    threads = [int]$cpu.NumberOfLogicalProcessors
+    max_clock_mhz = [int]$cpu.MaxClockSpeed
+    current_clock_mhz = [int]$cpu.CurrentClockSpeed
+    l2_cache_kb = [int]$cpu.L2CacheSize
+    l3_cache_kb = [int]$cpu.L3CacheSize
+    virtualization_firmware_enabled = [bool]$cpu.VirtualizationFirmwareEnabled
+    vm_monitor_extensions = [bool]$cpu.VMMonitorModeExtensions
+    slat_extensions = [bool]$cpu.SecondLevelAddressTranslationExtensions
+  }
+  memory = [ordered]@{
+    total_bytes = [Int64]$system.TotalVisibleMemorySize * 1024
+    available_bytes = $availableBytes
+    slots_reported = [int]$memoryArray.MemoryDevices
+    error_correction_code = [int]$memoryArray.MemoryErrorCorrection
+    modules = $memoryModules
+  }
+  current = [ordered]@{
+    cpu_usage_percent = $cpuUsage
+    memory_available_bytes = $availableBytes
+    committed_bytes = if ($null -ne $perfMemory) { [Int64]$perfMemory.CommittedBytes } else { 0 }
+    commit_limit_bytes = if ($null -ne $perfMemory) { [Int64]$perfMemory.CommitLimit } else { 0 }
+  }
+} | ConvertTo-Json -Depth 6 -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "CPU and memory inspection")
+}
+
+#[cfg(target_os = "windows")]
+fn collect_cpu_memory_live_stats() -> Result<serde_json::Value, String> {
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$system = Get-CimInstance Win32_OperatingSystem
+$perfCpu = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
+$perfMemory = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory | Select-Object -First 1
+[ordered]@{
+  cpu_usage_percent = if ($null -ne $perfCpu -and $null -ne $perfCpu.PercentProcessorTime) { [int]$perfCpu.PercentProcessorTime } else { [int]$cpu.LoadPercentage }
+  memory_available_bytes = if ($null -ne $perfMemory -and $null -ne $perfMemory.AvailableBytes) { [Int64]$perfMemory.AvailableBytes } else { [Int64]$system.FreePhysicalMemory * 1024 }
+  committed_bytes = if ($null -ne $perfMemory) { [Int64]$perfMemory.CommittedBytes } else { 0 }
+  commit_limit_bytes = if ($null -ne $perfMemory) { [Int64]$perfMemory.CommitLimit } else { 0 }
+} | ConvertTo-Json -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "CPU and memory live stats")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_cpu_memory_info() -> Result<serde_json::Value, String> {
+    Err("CPU and memory inspection is currently available on Windows only".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_cpu_memory_live_stats() -> Result<serde_json::Value, String> {
+    Err("CPU and memory inspection is currently available on Windows only".to_string())
+}
+
+#[derive(serde::Serialize)]
+struct DxgiAdapterInfo {
+    description: String,
+    vendor_id: u32,
+    device_id: u32,
+    dedicated_video_memory: u64,
+    shared_system_memory: u64,
+    flags: u32,
+}
+
+#[derive(serde::Serialize)]
+struct ActiveDisplayConfiguration {
+    adapter_name: String,
+    device_name: String,
+    monitor_key: String,
+    width: u32,
+    height: u32,
+    refresh_hz: u32,
+}
+
+#[tauri::command]
+async fn get_gpu_display_info() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_gpu_display_info)
+        .await
+        .map_err(|error| format!("GPU and display inspection worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_gpu_display_info() -> Result<serde_json::Value, String> {
+    // WMI supplies display EDID and driver metadata. DXGI and GDI below are
+    // intentionally used for data WMI cannot represent correctly, especially
+    // dedicated memory on modern GPUs and per-display refresh rates.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+function DecodeWmiText($values) {
+  if ($null -eq $values) { return '' }
+  return (($values | Where-Object { $_ -ne 0 } | ForEach-Object { [char]$_ }) -join '').Trim()
+}
+$gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object {
+  [ordered]@{
+    name = [string]$_.Name
+    video_processor = [string]$_.VideoProcessor
+    driver_version = [string]$_.DriverVersion
+    driver_date = if ($_.DriverDate) { ([DateTime]$_.DriverDate).ToString('yyyy-MM-dd') } else { '' }
+  }
+})
+$basicByInstance = @{}
+Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams | Where-Object { $_.Active } | ForEach-Object { $basicByInstance[$_.InstanceName] = $_ }
+$connectionByInstance = @{}
+Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorConnectionParams | Where-Object { $_.Active } | ForEach-Object { $connectionByInstance[$_.InstanceName] = $_ }
+$monitors = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID | Where-Object { $_.Active } | ForEach-Object {
+  $basic = $basicByInstance[$_.InstanceName]
+  $connection = $connectionByInstance[$_.InstanceName]
+  $displayKey = if ([string]$_.InstanceName -match 'DISPLAY\\([^\\]+)') { $Matches[1] } else { '' }
+  [ordered]@{
+    display_key = $displayKey
+    manufacturer = DecodeWmiText $_.ManufacturerName
+    model = DecodeWmiText $_.UserFriendlyName
+    product_code = DecodeWmiText $_.ProductCodeID
+    width_cm = if ($basic) { [int]$basic.MaxHorizontalImageSize } else { 0 }
+    height_cm = if ($basic) { [int]$basic.MaxVerticalImageSize } else { 0 }
+    connection_code = if ($connection) { [int]$connection.VideoOutputTechnology } else { -1 }
+  }
+})
+[ordered]@{ gpus = $gpus; monitors = $monitors } | ConvertTo-Json -Depth 5 -Compress
+"#;
+
+    let mut value = run_windows_powershell_json(SCRIPT, "GPU and display inspection")?;
+    let object = value
+        .as_object_mut()
+        .ok_or("GPU and display inspection returned an invalid payload")?;
+    object.insert(
+        "dxgi_adapters".to_string(),
+        serde_json::to_value(enumerate_dxgi_adapters()).map_err(|error| error.to_string())?,
+    );
+    object.insert(
+        "display_configurations".to_string(),
+        serde_json::to_value(enumerate_active_displays()).map_err(|error| error.to_string())?,
+    );
+    Ok(value)
+}
+
+#[cfg(target_os = "windows")]
+fn utf16z_to_string(value: &[u16]) -> String {
+    let end = value
+        .iter()
+        .position(|character| *character == 0)
+        .unwrap_or(value.len());
+    String::from_utf16_lossy(&value[..end]).trim().to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_display_match_key(value: &str) -> String {
+    let uppercase = value.to_ascii_uppercase();
+    for prefix in ["MONITOR\\", "DISPLAY\\", "MONITOR#", "DISPLAY#"] {
+        if let Some(start) = uppercase.find(prefix) {
+            let rest = &value[start + prefix.len()..];
+            let end = rest
+                .find(|character| character == '\\' || character == '#')
+                .unwrap_or(rest.len());
+            return rest[..end].trim().to_string();
+        }
+    }
+    String::new()
+}
+
+#[cfg(target_os = "windows")]
+fn enumerate_dxgi_adapters() -> Vec<DxgiAdapterInfo> {
+    use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_DESC1};
+
+    let factory: IDXGIFactory1 = match unsafe { CreateDXGIFactory1() } {
+        Ok(factory) => factory,
+        Err(error) => {
+            log::warn!("DXGI adapter enumeration is unavailable: {}", error);
+            return Vec::new();
+        }
+    };
+    let mut adapters = Vec::new();
+    for index in 0..32_u32 {
+        let adapter = match unsafe { factory.EnumAdapters1(index) } {
+            Ok(adapter) => adapter,
+            Err(_) => break,
+        };
+        let mut description = DXGI_ADAPTER_DESC1::default();
+        if unsafe { adapter.GetDesc1(&mut description) }.is_err() {
+            continue;
+        }
+        adapters.push(DxgiAdapterInfo {
+            description: utf16z_to_string(&description.Description),
+            vendor_id: description.VendorId,
+            device_id: description.DeviceId,
+            dedicated_video_memory: description.DedicatedVideoMemory as u64,
+            shared_system_memory: description.SharedSystemMemory as u64,
+            flags: description.Flags,
+        });
+    }
+    adapters
+}
+
+#[cfg(target_os = "windows")]
+fn enumerate_active_displays() -> Vec<ActiveDisplayConfiguration> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::{
+        EnumDisplayDevicesW, EnumDisplaySettingsW, DEVMODEW, DISPLAY_DEVICEW,
+        DISPLAY_DEVICE_ATTACHED_TO_DESKTOP, ENUM_CURRENT_SETTINGS,
+    };
+
+    let mut displays = Vec::new();
+    for index in 0..32_u32 {
+        let mut adapter = DISPLAY_DEVICEW::default();
+        adapter.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        if !unsafe { EnumDisplayDevicesW(None, index, &mut adapter, 0) }.as_bool() {
+            break;
+        }
+        if adapter.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP == 0 {
+            continue;
+        }
+        let mut mode = DEVMODEW::default();
+        mode.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+        if !unsafe {
+            EnumDisplaySettingsW(
+                PCWSTR(adapter.DeviceName.as_ptr()),
+                ENUM_CURRENT_SETTINGS,
+                &mut mode,
+            )
+        }
+        .as_bool()
+        {
+            continue;
+        }
+        let mut monitor = DISPLAY_DEVICEW::default();
+        monitor.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        let has_monitor =
+            unsafe { EnumDisplayDevicesW(PCWSTR(adapter.DeviceName.as_ptr()), 0, &mut monitor, 0) }
+                .as_bool();
+        displays.push(ActiveDisplayConfiguration {
+            adapter_name: utf16z_to_string(&adapter.DeviceString),
+            device_name: utf16z_to_string(&adapter.DeviceName),
+            monitor_key: if has_monitor {
+                windows_display_match_key(&utf16z_to_string(&monitor.DeviceID))
+            } else {
+                String::new()
+            },
+            width: mode.dmPelsWidth,
+            height: mode.dmPelsHeight,
+            refresh_hz: mode.dmDisplayFrequency,
+        });
+    }
+    displays
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_gpu_display_info() -> Result<serde_json::Value, String> {
+    Err("GPU and display inspection is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn get_mainboard_firmware_info() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_mainboard_firmware_info)
+        .await
+        .map_err(|error| format!("Mainboard and firmware inspection worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_mainboard_firmware_info() -> Result<serde_json::Value, String> {
+    // This inventory intentionally leaves out board serial numbers, UUIDs,
+    // PnP instance paths, and any other machine-identifying values. Windows
+    // exposes PCI device names and status without needing those identifiers.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+function Epoch($value) {
+  if ($null -eq $value) { return $null }
+  try { return ([DateTimeOffset]$value).ToUnixTimeMilliseconds() } catch { return $null }
+}
+$board = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
+$bios = Get-CimInstance Win32_BIOS | Select-Object -First 1
+$computer = Get-CimInstance Win32_ComputerSystem
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$enclosure = Get-CimInstance Win32_SystemEnclosure | Select-Object -First 1
+$secureBoot = 'unavailable'
+try { if (Confirm-SecureBootUEFI) { $secureBoot = 'enabled' } else { $secureBoot = 'disabled' } } catch {}
+$bootMode = if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State') { 'uefi' } else { 'legacy_or_unavailable' }
+$tpm = Get-Tpm
+$rawPci = @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -like 'PCI\*' } | Sort-Object PNPClass, Name)
+$pciDevices = @($rawPci | Group-Object { "$($_.PNPClass)`u001f$($_.Name)`u001f$($_.Manufacturer)`u001f$($_.Status)`u001f$($_.ConfigManagerErrorCode)" } | ForEach-Object {
+  $sample = $_.Group | Select-Object -First 1
+  [ordered]@{
+    name = [string]$sample.Name
+    manufacturer = [string]$sample.Manufacturer
+    pnp_class = [string]$sample.PNPClass
+    status = [string]$sample.Status
+    problem_code = [int]$sample.ConfigManagerErrorCode
+    count = [int]$_.Count
+  }
+} | Select-Object -First 40)
+[ordered]@{
+  board = [ordered]@{
+    manufacturer = [string]$board.Manufacturer
+    product = [string]$board.Product
+    version = [string]$board.Version
+    status = [string]$board.Status
+  }
+  firmware = [ordered]@{
+    manufacturer = [string]$bios.Manufacturer
+    bios_version = [string]$bios.SMBIOSBIOSVersion
+    release_at = Epoch $bios.ReleaseDate
+    smbios_major = [int]$bios.SMBIOSMajorVersion
+    smbios_minor = [int]$bios.SMBIOSMinorVersion
+    boot_mode = $bootMode
+  }
+  security = [ordered]@{
+    secure_boot = $secureBoot
+    tpm_present = [bool]$tpm.TpmPresent
+    tpm_ready = [bool]$tpm.TpmReady
+    tpm_manufacturer = ([string]$tpm.ManufacturerIdTxt).Trim([char]0)
+    virtualization_enabled = [bool]$cpu.VirtualizationFirmwareEnabled
+  }
+  chassis = [ordered]@{
+    types = @($enclosure.ChassisTypes | ForEach-Object { [int]$_ })
+    manufacturer = [string]$computer.Manufacturer
+    model = [string]$computer.Model
+  }
+  pci_devices = $pciDevices
+} | ConvertTo-Json -Depth 6 -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "Mainboard and firmware inspection")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_mainboard_firmware_info() -> Result<serde_json::Value, String> {
+    Err("Mainboard and firmware inspection is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn get_storage_health_info() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_storage_health_info)
+        .await
+        .map_err(|error| format!("Storage and health inspection worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_storage_health_info() -> Result<serde_json::Value, String> {
+    // Storage serials and volume labels are deliberately excluded. The page
+    // needs only non-identifying capacity, health, and reliability data.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+function MaybeInt($value) {
+  if ($null -eq $value) { return $null }
+  return [Int64]$value
+}
+$physicalDisks = @(Get-PhysicalDisk)
+$physicalById = @{}
+foreach ($physical in $physicalDisks) { $physicalById[[string]$physical.DeviceId] = $physical }
+$reliabilityById = @{}
+if ($physicalDisks.Count -gt 0) {
+  foreach ($physical in $physicalDisks) {
+    @(Get-StorageReliabilityCounter -PhysicalDisk $physical) | ForEach-Object {
+      $reliabilityById[[string]$_.DeviceId] = $_
+    }
+  }
+}
+$disks = @(Get-Disk | ForEach-Object {
+  $disk = $_
+  $physical = $physicalById[[string]$disk.Number]
+  if ($null -eq $physical) {
+    $physical = $physicalDisks | Where-Object { $_.FriendlyName -eq $disk.FriendlyName } | Select-Object -First 1
+  }
+  $reliability = if ($physical) { $reliabilityById[[string]$physical.DeviceId] } else { $reliabilityById[[string]$disk.Number] }
+  [ordered]@{
+    number = [int]$disk.Number
+    friendly_name = if ($physical) { [string]$physical.FriendlyName } else { [string]$disk.FriendlyName }
+    media_type = if ($physical) { [string]$physical.MediaType } else { '' }
+    bus_type = if ($physical) { [string]$physical.BusType } else { [string]$disk.BusType }
+    size_bytes = [Int64]$disk.Size
+    firmware_version = if ($physical) { [string]$physical.FirmwareVersion } else { '' }
+    partition_style = [string]$disk.PartitionStyle
+    health_status = if ($physical -and $physical.HealthStatus) { [string]$physical.HealthStatus } else { [string]$disk.HealthStatus }
+    operational_status = if ($physical -and $physical.OperationalStatus) { @($physical.OperationalStatus) -join ', ' } else { @($disk.OperationalStatus) -join ', ' }
+    is_system = [bool]$disk.IsSystem
+    is_boot = [bool]$disk.IsBoot
+    is_offline = [bool]$disk.IsOffline
+    reliability = [ordered]@{
+      temperature_c = if ($reliability -and $null -ne $reliability.Temperature) { MaybeInt $reliability.Temperature } else { $null }
+      wear_percent = if ($reliability -and $null -ne $reliability.Wear) { MaybeInt $reliability.Wear } else { $null }
+      power_on_hours = if ($reliability -and $null -ne $reliability.PowerOnHours) { MaybeInt $reliability.PowerOnHours } else { $null }
+      read_errors_total = if ($reliability -and $null -ne $reliability.ReadErrorsTotal) { MaybeInt $reliability.ReadErrorsTotal } else { $null }
+      write_errors_total = if ($reliability -and $null -ne $reliability.WriteErrorsTotal) { MaybeInt $reliability.WriteErrorsTotal } else { $null }
+    }
+  }
+})
+$volumes = @(Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' } | Sort-Object DriveLetter | ForEach-Object {
+  [ordered]@{
+    drive_letter = [string]$_.DriveLetter
+    file_system = [string]$_.FileSystem
+    size_bytes = [Int64]$_.Size
+    free_bytes = [Int64]$_.SizeRemaining
+    health_status = [string]$_.HealthStatus
+  }
+})
+[ordered]@{ disks = $disks; volumes = $volumes } | ConvertTo-Json -Depth 6 -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "Storage and health inspection")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_storage_health_info() -> Result<serde_json::Value, String> {
+    Err("Storage and health inspection is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn get_network_devices_info() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_network_devices_info)
+        .await
+        .map_err(|error| format!("Network and device inspection worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_network_devices_info() -> Result<serde_json::Value, String> {
+    // Deliberately exclude addresses and identifiers: IP, MAC, Bluetooth
+    // address, device instance path, and serial values do not help this page.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+function GroupDevices($items) {
+  return @($items | Group-Object { "$($_.name)`u001f$($_.manufacturer)`u001f$($_.status)" } | ForEach-Object {
+    $sample = $_.Group | Select-Object -First 1
+    [ordered]@{
+      name = [string]$sample.name
+      manufacturer = [string]$sample.manufacturer
+      status = [string]$sample.status
+      count = [int]$_.Count
+    }
+  } | Select-Object -First 40)
+}
+$networkAdapters = @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -ne 'Not Present' } | ForEach-Object {
+  [ordered]@{
+    name = [string]$_.Name
+    description = [string]$_.InterfaceDescription
+    status = [string]$_.Status
+    link_speed = [string]$_.LinkSpeed
+    physical = [bool]$_.HardwareInterface
+  }
+})
+$bluetoothRaw = @(Get-CimInstance Win32_PnPEntity | Where-Object {
+  $_.PNPClass -eq 'Bluetooth' -and $_.Present -and $_.Name -notmatch '(?i)(service|profile|enumerator|rfcomm|服务|配置文件|枚举器)'
+} | ForEach-Object { [ordered]@{ name = [string]$_.Name; manufacturer = [string]$_.Manufacturer; status = [string]$_.Status } })
+$usbRaw = @(Get-CimInstance Win32_PnPEntity | Where-Object {
+  $_.PNPClass -eq 'USB' -and $_.Present
+} | ForEach-Object { [ordered]@{ name = [string]$_.Name; manufacturer = [string]$_.Manufacturer; status = [string]$_.Status } })
+$cameraRaw = @(Get-CimInstance Win32_PnPEntity | Where-Object {
+  $_.PNPClass -in @('Camera', 'Image') -and $_.Present
+} | ForEach-Object { [ordered]@{ name = [string]$_.Name; manufacturer = [string]$_.Manufacturer; status = [string]$_.Status } })
+$audioRaw = @(Get-CimInstance Win32_SoundDevice | ForEach-Object {
+  [ordered]@{ name = [string]$_.Name; manufacturer = [string]$_.Manufacturer; status = [string]$_.Status }
+})
+[ordered]@{
+  network_adapters = $networkAdapters
+  bluetooth_devices = GroupDevices $bluetoothRaw
+  audio_devices = GroupDevices $audioRaw
+  usb_devices = GroupDevices $usbRaw
+  cameras = GroupDevices $cameraRaw
+} | ConvertTo-Json -Depth 6 -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "Network and device inspection")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_network_devices_info() -> Result<serde_json::Value, String> {
+    Err("Network and device inspection is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn get_power_sensors_info() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(collect_power_sensors_info)
+        .await
+        .map_err(|error| format!("Power and sensor inspection worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn collect_power_sensors_info() -> Result<serde_json::Value, String> {
+    // Battery serial numbers, power-plan GUIDs, and sensor instance paths are
+    // deliberately omitted. This page only needs human-readable read-only data.
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+function MaybeInt($value) {
+  if ($null -eq $value) { return $null }
+  return [Int64]$value
+}
+function MaybeFloat($value) {
+  if ($null -eq $value) { return $null }
+  return [double]$value
+}
+function CelsiusFromAcpi($value) {
+  if ($null -eq $value -or [double]$value -le 0) { return $null }
+  return [math]::Round(([double]$value / 10.0) - 273.15, 1)
+}
+function BatteryStatusName($value) {
+  switch ([int]$value) {
+    1 { 'other' }
+    2 { 'unknown' }
+    3 { 'fully_charged' }
+    4 { 'low' }
+    5 { 'critical' }
+    6 { 'charging' }
+    7 { 'charging_high' }
+    8 { 'charging_low' }
+    9 { 'charging_critical' }
+    10 { 'undefined' }
+    11 { 'partially_charged' }
+    default { 'unknown' }
+  }
+}
+$activePlan = Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan | Where-Object { $_.IsActive } | Select-Object -First 1
+$batteryStatic = @(Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData)
+$batteryFull = @(Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity)
+$batteries = @(Get-CimInstance Win32_Battery)
+$batteryItems = @()
+for ($i = 0; $i -lt $batteries.Count; $i++) {
+  $battery = $batteries[$i]
+  $static = if ($i -lt $batteryStatic.Count) { $batteryStatic[$i] } else { $null }
+  $full = if ($i -lt $batteryFull.Count) { $batteryFull[$i] } else { $null }
+  $designCapacity = if ($static -and $null -ne $static.DesignedCapacity) { MaybeInt $static.DesignedCapacity } else { $null }
+  $fullCapacity = if ($full -and $null -ne $full.FullChargedCapacity) { MaybeInt $full.FullChargedCapacity } else { $null }
+  $health = if ($designCapacity -and $designCapacity -gt 0 -and $fullCapacity -and $fullCapacity -gt 0) { [math]::Round(($fullCapacity / $designCapacity) * 100, 0) } else { $null }
+  $batteryItems += [ordered]@{
+    name = [string]$battery.Name
+    status = BatteryStatusName $battery.BatteryStatus
+    status_code = MaybeInt $battery.BatteryStatus
+    charge_percent = MaybeInt $battery.EstimatedChargeRemaining
+    estimated_run_time_min = if ($battery.EstimatedRunTime -and [int]$battery.EstimatedRunTime -lt 71582788) { MaybeInt $battery.EstimatedRunTime } else { $null }
+    design_capacity_mwh = $designCapacity
+    full_charge_capacity_mwh = $fullCapacity
+    health_percent = $health
+  }
+}
+$thermalZones = @(Get-CimInstance -Namespace root\wmi -ClassName MSAcpi_ThermalZoneTemperature | ForEach-Object -Begin { $zoneIndex = 0 } -Process {
+  $zoneIndex += 1
+  [ordered]@{
+    name = "ACPI Thermal Zone $zoneIndex"
+    source = 'acpi'
+    current_c = CelsiusFromAcpi $_.CurrentTemperature
+    critical_c = CelsiusFromAcpi $_.CriticalTripPoint
+    passive_c = CelsiusFromAcpi $_.PassiveTripPoint
+  }
+})
+$fans = @(Get-CimInstance Win32_Fan | ForEach-Object {
+  [ordered]@{
+    name = [string]$_.Name
+    status = [string]$_.Status
+    desired_speed_rpm = MaybeInt $_.DesiredSpeed
+    active_cooling = if ($null -ne $_.ActiveCooling) { [bool]$_.ActiveCooling } else { $null }
+  }
+})
+[ordered]@{
+  power_plan = [ordered]@{
+    name = if ($activePlan) { [string]$activePlan.ElementName } else { '' }
+    caption = if ($activePlan) { [string]$activePlan.Caption } else { '' }
+    active = [bool]($activePlan -and $activePlan.IsActive)
+  }
+  batteries = $batteryItems
+  thermal_zones = $thermalZones
+  fans = $fans
+} | ConvertTo-Json -Depth 6 -Compress
+"#;
+
+    run_windows_powershell_json(SCRIPT, "Power and sensor inspection")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn collect_power_sensors_info() -> Result<serde_json::Value, String> {
+    Err("Power and sensor inspection is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn scan_large_files(
+    root_path: String,
+    min_size_mb: Option<u64>,
+    mode: Option<String>,
+) -> Result<LargeFileScanResult, String> {
+    tokio::task::spawn_blocking(move || collect_large_files(root_path, min_size_mb, mode))
+        .await
+        .map_err(|error| format!("Large file scan worker failed: {}", error))?
+}
+
+fn collect_large_files(
+    root_path: String,
+    min_size_mb: Option<u64>,
+    mode: Option<String>,
+) -> Result<LargeFileScanResult, String> {
+    let root = canonical_scan_root(&root_path)?;
+    let min_size_mb = min_size_mb.unwrap_or(50).clamp(10, 102_400);
+    let min_size_bytes = min_size_mb.saturating_mul(1024 * 1024);
+    let mode = normalize_large_file_mode(mode.as_deref());
+    let mut scanned_files = 0_u64;
+    let mut skipped_dirs = 0_u64;
+    let mut candidates = Vec::new();
+    let mut stack = vec![root.clone()];
+    const MAX_SCAN_FILES: u64 = 250_000;
+    const MAX_RESULTS: usize = 1200;
+
+    while let Some(directory) = stack.pop() {
+        if should_skip_cleanup_dir(&directory, &root) {
+            skipped_dirs += 1;
+            continue;
+        }
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(_) => {
+                skipped_dirs += 1;
+                continue;
+            }
+        };
+        for entry in entries.flatten() {
+            if scanned_files >= MAX_SCAN_FILES {
+                break;
+            }
+            let path = entry.path();
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            if metadata.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !metadata.is_file() {
+                continue;
+            }
+            scanned_files += 1;
+            let size_bytes = metadata.len();
+            if size_bytes < min_size_bytes {
+                continue;
+            }
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let category = cleanup_file_category(&extension);
+            if category == "other" || !cleanup_mode_allows(&mode, category) {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let modified_at = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|duration| i64::try_from(duration.as_millis()).ok());
+            let (risk, local_reason) = cleanup_local_risk(&path, category, size_bytes);
+            candidates.push(LargeFileCandidate {
+                id: format!("lf-{}", candidates.len() + 1),
+                path: cleanup_display_path(&path),
+                name,
+                extension,
+                category: category.to_string(),
+                size_bytes,
+                modified_at,
+                folder_hint: cleanup_folder_hint(&path, &root),
+                risk,
+                local_reason,
+            });
+            if candidates.len() >= MAX_RESULTS {
+                break;
+            }
+        }
+        if scanned_files >= MAX_SCAN_FILES || candidates.len() >= MAX_RESULTS {
+            break;
+        }
+    }
+
+    candidates.sort_by(|a, b| {
+        b.size_bytes
+            .cmp(&a.size_bytes)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    let drive_space = cleanup_drive_space_from_path(&cleanup_display_path(&root))
+        .ok()
+        .flatten();
+    Ok(LargeFileScanResult {
+        root_path: cleanup_display_path(&root),
+        min_size_bytes,
+        mode,
+        scanned_files,
+        skipped_dirs,
+        drive_space,
+        candidates,
+    })
+}
+
+#[tauri::command]
+fn get_cleanup_drive_space(root_path: String) -> Result<Option<CleanupDriveSpace>, String> {
+    cleanup_drive_space_from_path(&root_path)
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_drive_space_from_path(root_path: &str) -> Result<Option<CleanupDriveSpace>, String> {
+    use std::os::windows::process::CommandExt;
+
+    if root_path.contains('\0') {
+        return Err("Invalid drive path".to_string());
+    }
+    let Some(drive) = cleanup_drive_root_letter_from_input(root_path) else {
+        return Ok(None);
+    };
+    let script = format!(
+        r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='{}:'" | Select-Object -First 1
+if ($null -ne $disk) {{
+  [ordered]@{{ drive = '{}:\'; free_bytes = [Int64]$disk.FreeSpace; total_bytes = [Int64]$disk.Size }} | ConvertTo-Json -Compress
+}}
+"#,
+        drive, drive
+    );
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|error| format!("Cannot read drive space: {}", error))?;
+    if !output.status.success() {
+        let details = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .replace(['\r', '\n'], " ");
+        return Err(if details.is_empty() {
+            "Cannot read drive space".to_string()
+        } else {
+            format!(
+                "Cannot read drive space: {}",
+                details.chars().take(240).collect::<String>()
+            )
+        });
+    }
+    let payload = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if payload.is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str::<CleanupDriveSpace>(&payload)
+        .map(Some)
+        .map_err(|error| format!("Drive space returned invalid data: {}", error))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cleanup_drive_space_from_path(_root_path: &str) -> Result<Option<CleanupDriveSpace>, String> {
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_drive_root_letter_from_input(root_path: &str) -> Option<char> {
+    let trimmed = root_path.trim();
+    let without_verbatim = trimmed.strip_prefix(r"\\?\").unwrap_or(trimmed);
+    let bytes = without_verbatim.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let rest = &without_verbatim[2..];
+        if rest.is_empty() || rest.chars().all(|ch| ch == '\\' || ch == '/') {
+            return Some((bytes[0] as char).to_ascii_uppercase());
+        }
+    }
+    cleanup_drive_root_letter(std::path::Path::new(root_path))
+}
+
+fn canonical_scan_root(root_path: &str) -> Result<std::path::PathBuf, String> {
+    if root_path.contains('\0') {
+        return Err("Invalid scan folder".to_string());
+    }
+    let root = std::path::PathBuf::from(root_path)
+        .canonicalize()
+        .map_err(|error| format!("Cannot access scan folder: {}", error))?;
+    if !root.is_dir() {
+        return Err("Scan target must be a folder".to_string());
+    }
+    if is_broad_or_protected_cleanup_root(&root) {
+        return Err("System drive root is blocked. Please choose a user folder such as Downloads, Desktop, Videos, or a project export folder.".to_string());
+    }
+    Ok(root)
+}
+
+fn normalize_large_file_mode(mode: Option<&str>) -> String {
+    match mode.unwrap_or("video").to_ascii_lowercase().as_str() {
+        "all" | "video" | "archives" | "installers" | "documents" | "images" | "audio"
+        | "models" => mode.unwrap_or("video").to_ascii_lowercase(),
+        _ => "video".to_string(),
+    }
+}
+
+fn cleanup_file_category(extension: &str) -> &'static str {
+    match extension {
+        "mp4" | "mov" | "mkv" | "avi" | "webm" | "flv" | "m4v" | "wmv" | "ts" | "mpeg" | "mpg" => {
+            "video"
+        }
+        "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "iso" => "archives",
+        "exe" | "msi" | "msix" | "appx" => "installers",
+        "pdf" | "ppt" | "pptx" | "doc" | "docx" | "xls" | "xlsx" | "csv" => "documents",
+        "psd" | "ai" | "fig" | "raw" | "arw" | "cr2" | "nef" | "tif" | "tiff" | "png" | "jpg"
+        | "jpeg" | "webp" | "bmp" => "images",
+        "wav" | "flac" | "mp3" | "aac" | "m4a" | "ogg" | "wma" | "alac" => "audio",
+        "gguf" | "safetensors" | "pth" | "pt" | "onnx" | "bin" | "ckpt" | "model" => "models",
+        _ => "other",
+    }
+}
+
+fn cleanup_mode_allows(mode: &str, category: &str) -> bool {
+    mode == "all" || mode == category
+}
+
+fn is_broad_or_protected_cleanup_root(path: &std::path::Path) -> bool {
+    let text = path.to_string_lossy().to_ascii_lowercase();
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(drive) = cleanup_drive_root_letter(path) {
+            return drive == 'C';
+        }
+    }
+    let mut normal_components = 0_usize;
+    let mut has_root_or_prefix = false;
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(_) => normal_components += 1,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                has_root_or_prefix = true
+            }
+            _ => {}
+        }
+    }
+    if (has_root_or_prefix && normal_components == 0) || text == r"\" || text == "/" {
+        return true;
+    }
+    protected_cleanup_dir_names(path).iter().any(|name| {
+        matches!(
+            name.as_str(),
+            "windows"
+                | "program files"
+                | "program files (x86)"
+                | "programdata"
+                | "$recycle.bin"
+                | "system volume information"
+        )
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_drive_root_letter(path: &std::path::Path) -> Option<char> {
+    let mut components = path.components();
+    let drive = match components.next() {
+        Some(std::path::Component::Prefix(prefix)) => match prefix.kind() {
+            std::path::Prefix::Disk(letter) | std::path::Prefix::VerbatimDisk(letter) => {
+                Some((letter as char).to_ascii_uppercase())
+            }
+            _ => None,
+        },
+        _ => None,
+    }?;
+    if !matches!(components.next(), Some(std::path::Component::RootDir)) {
+        return None;
+    }
+    if components.next().is_some() {
+        return None;
+    }
+    Some(drive)
+}
+
+fn cleanup_display_path(path: &std::path::Path) -> String {
+    let text = path.to_string_lossy().into_owned();
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{}", rest);
+        }
+        if let Some(rest) = text.strip_prefix(r"\\?\") {
+            return rest.to_string();
+        }
+    }
+    text
+}
+
+fn protected_cleanup_dir_names(path: &std::path::Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => {
+                Some(value.to_string_lossy().to_ascii_lowercase())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn should_skip_cleanup_dir(path: &std::path::Path, root: &std::path::Path) -> bool {
+    if path != root && is_broad_or_protected_cleanup_root(path) {
+        return true;
+    }
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        name.as_str(),
+        ".git"
+            | "node_modules"
+            | "target"
+            | "dist"
+            | "build"
+            | ".venv"
+            | "venv"
+            | "__pycache__"
+            | ".cache"
+            | "cache"
+            | "tmp"
+            | "temp"
+    )
+}
+
+fn cleanup_folder_hint(path: &std::path::Path, root: &std::path::Path) -> String {
+    let parent = path.parent().unwrap_or(root);
+    let relative = parent.strip_prefix(root).unwrap_or(parent);
+    let hint = relative.to_string_lossy().trim().to_string();
+    if hint.is_empty() || hint == "." {
+        "selected folder".to_string()
+    } else {
+        hint
+    }
+}
+
+fn cleanup_local_risk(path: &std::path::Path, category: &str, size_bytes: u64) -> (String, String) {
+    let text = path.to_string_lossy().to_ascii_lowercase();
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if text.contains("\\wechat") || text.contains("\\xwechat") || text.contains("\\wxid_") {
+        return (
+            "high".to_string(),
+            "聊天文件目录，默认不建议自动删除".to_string(),
+        );
+    }
+    if text.contains("\\projects\\")
+        || text.contains("\\source\\")
+        || text.contains("\\repo")
+        || text.contains("\\src\\")
+    {
+        return (
+            "high".to_string(),
+            "疑似项目或源码目录，需要人工确认".to_string(),
+        );
+    }
+    if matches!(category, "models") {
+        return (
+            "high".to_string(),
+            "模型或开发资源通常可重新下载但体积大，删除前需要确认".to_string(),
+        );
+    }
+    if matches!(category, "installers" | "archives")
+        && (text.contains("\\download") || text.contains("\\downloads") || text.contains("\\下载"))
+    {
+        return (
+            "low".to_string(),
+            "下载目录中的安装包或压缩包，通常适合清理".to_string(),
+        );
+    }
+    if category == "video"
+        && (file_name.contains("录屏")
+            || file_name.contains("record")
+            || file_name.contains("capture")
+            || file_name.contains("temp"))
+    {
+        return ("low".to_string(), "疑似录屏、导出或临时视频".to_string());
+    }
+    if size_bytes >= 1024 * 1024 * 1024 {
+        return (
+            "medium".to_string(),
+            "体积超过 1GB，建议优先人工确认用途".to_string(),
+        );
+    }
+    (
+        "medium".to_string(),
+        "大文件候选项，需要结合用途确认".to_string(),
+    )
+}
+
+#[tauri::command]
+async fn move_files_to_recycle_bin(paths: Vec<String>) -> Result<RecycleBinMoveResult, String> {
+    tokio::task::spawn_blocking(move || move_files_to_recycle_bin_blocking(paths))
+        .await
+        .map_err(|error| format!("Recycle bin worker failed: {}", error))?
+}
+
+#[cfg(target_os = "windows")]
+fn move_files_to_recycle_bin_blocking(paths: Vec<String>) -> Result<RecycleBinMoveResult, String> {
+    let mut items = Vec::new();
+    let mut moved = 0_usize;
+    let mut failed = 0_usize;
+    let mut freed_bytes = 0_u64;
+
+    for path in paths.into_iter().take(200) {
+        if path.contains('\0') {
+            failed += 1;
+            items.push(RecycleBinMoveItem {
+                path,
+                ok: false,
+                error: Some("Invalid file path".to_string()),
+            });
+            continue;
+        }
+        let canonical = match std::path::PathBuf::from(&path).canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                failed += 1;
+                items.push(RecycleBinMoveItem {
+                    path,
+                    ok: false,
+                    error: Some(format!("Cannot access file: {}", error)),
+                });
+                continue;
+            }
+        };
+        let display_path = cleanup_display_path(&canonical);
+        if !canonical.is_file() || is_broad_or_protected_cleanup_root(&canonical) {
+            failed += 1;
+            items.push(RecycleBinMoveItem {
+                path: display_path,
+                ok: false,
+                error: Some(if canonical.is_file() {
+                    "Protected file path is not allowed".to_string()
+                } else {
+                    "Target is not a regular file".to_string()
+                }),
+            });
+            continue;
+        }
+        let size = std::fs::metadata(&canonical)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        match move_single_file_to_recycle_bin(&canonical) {
+            Ok(()) if !canonical.exists() => {
+                moved += 1;
+                freed_bytes = freed_bytes.saturating_add(size);
+                items.push(RecycleBinMoveItem {
+                    path: display_path,
+                    ok: true,
+                    error: None,
+                });
+            }
+            Ok(()) => {
+                failed += 1;
+                items.push(RecycleBinMoveItem {
+                    path: display_path,
+                    ok: false,
+                    error: Some("Windows reported success, but the file still exists. It may be in use or blocked by permissions.".to_string()),
+                });
+            }
+            Err(error) => {
+                failed += 1;
+                items.push(RecycleBinMoveItem {
+                    path: display_path,
+                    ok: false,
+                    error: Some(error),
+                });
+            }
+        }
+    }
+
+    Ok(RecycleBinMoveResult {
+        requested: items.len(),
+        moved,
+        failed,
+        freed_bytes,
+        items,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn move_single_file_to_recycle_bin(path: &std::path::Path) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE,
+        SHFILEOPSTRUCTW,
+    };
+
+    // SHFileOperationW expects a double-null-terminated UTF-16 path list.
+    // Use the display path instead of the canonical \\?\ form because the
+    // legacy Shell operation is more reliable with normal absolute paths.
+    let display_path = cleanup_display_path(path);
+    let mut from: Vec<u16> = display_path.encode_utf16().collect();
+    from.push(0);
+    from.push(0);
+
+    let mut operation = SHFILEOPSTRUCTW::default();
+    operation.wFunc = FO_DELETE;
+    operation.pFrom = PCWSTR(from.as_ptr());
+    operation.fFlags =
+        (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0 | FOF_NOERRORUI.0 | FOF_SILENT.0) as u16;
+
+    let result = unsafe { SHFileOperationW(&mut operation) };
+    if result != 0 {
+        return Err(format!(
+            "Windows Recycle Bin API failed with code {}",
+            result
+        ));
+    }
+    if operation.fAnyOperationsAborted.as_bool() {
+        return Err("Recycle bin operation was cancelled or blocked by Windows".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+#[allow(dead_code)]
+fn move_files_to_recycle_bin_blocking_powershell_fallback(
+    paths: Vec<String>,
+) -> Result<RecycleBinMoveResult, String> {
+    use std::io::Write;
+    use std::os::windows::process::CommandExt;
+
+    let mut entries = Vec::new();
+    let mut preflight_items = Vec::new();
+    for path in paths.into_iter().take(200) {
+        if path.contains('\0') {
+            preflight_items.push(RecycleBinMoveItem {
+                path,
+                ok: false,
+                error: Some("Invalid file path".to_string()),
+            });
+            continue;
+        }
+        let canonical = match std::path::PathBuf::from(&path).canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                preflight_items.push(RecycleBinMoveItem {
+                    path,
+                    ok: false,
+                    error: Some(format!("Cannot access file: {}", error)),
+                });
+                continue;
+            }
+        };
+        if !canonical.is_file() || is_broad_or_protected_cleanup_root(&canonical) {
+            preflight_items.push(RecycleBinMoveItem {
+                path: cleanup_display_path(&canonical),
+                ok: false,
+                error: Some(if canonical.is_file() {
+                    "Protected file path is not allowed".to_string()
+                } else {
+                    "Target is not a regular file".to_string()
+                }),
+            });
+            continue;
+        }
+        let size = std::fs::metadata(&canonical)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        entries.push(serde_json::json!({
+            "path": cleanup_display_path(&canonical),
+            "size": size
+        }));
+    }
+    if entries.is_empty() {
+        return Ok(RecycleBinMoveResult {
+            requested: preflight_items.len(),
+            moved: 0,
+            failed: preflight_items.len(),
+            freed_bytes: 0,
+            items: preflight_items,
+        });
+    }
+    let payload = serde_json::to_string(&entries).map_err(|error| error.to_string())?;
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+$items = ConvertFrom-Json ([Console]::In.ReadToEnd())
+Add-Type -AssemblyName Microsoft.VisualBasic
+$ui = [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs
+$recycle = [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+$result = @()
+foreach ($item in @($items)) {
+  $path = [string]$item.path
+  $ok = $false
+  $err = $null
+    try {
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+      [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($path, $ui, $recycle)
+      $ok = -not (Test-Path -LiteralPath $path -PathType Leaf)
+      if (-not $ok -and -not $err) {
+        $err = 'Windows did not move the file to the Recycle Bin. The file may be in use, protected, or blocked by permissions.'
+      }
+    } else {
+      $err = 'File no longer exists'
+    }
+  } catch {
+    $err = $_.Exception.Message
+  }
+  $result += [ordered]@{ path = $path; ok = [bool]$ok; error = $err; size = [Int64]$item.size }
+}
+$result | ConvertTo-Json -Depth 4 -Compress
+"#;
+    let mut child = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            SCRIPT,
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .creation_flags(0x08000000)
+        .spawn()
+        .map_err(|error| format!("Cannot start recycle bin operation: {}", error))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(payload.as_bytes())
+            .map_err(|error| format!("Cannot send recycle bin payload: {}", error))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("Recycle bin operation failed: {}", error))?;
+    if !output.status.success() {
+        let details = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .replace(['\r', '\n'], " ");
+        return Err(if details.is_empty() {
+            "Recycle bin operation failed".to_string()
+        } else {
+            format!(
+                "Recycle bin operation failed: {}",
+                details.chars().take(240).collect::<String>()
+            )
+        });
+    }
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|error| format!("Recycle bin operation returned invalid data: {}", error))?;
+    let rows = match parsed {
+        serde_json::Value::Array(rows) => rows,
+        serde_json::Value::Object(_) => vec![parsed],
+        _ => Vec::new(),
+    };
+    let mut moved = 0_usize;
+    let mut failed = preflight_items.len();
+    let mut freed_bytes = 0_u64;
+    let mut items = preflight_items;
+    for row in rows {
+        let path = row
+            .get("path")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .to_string();
+        let ok = row
+            .get("ok")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let size = row
+            .get("size")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0);
+        let error = row
+            .get("error")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        if ok {
+            moved += 1;
+            freed_bytes = freed_bytes.saturating_add(size);
+        } else {
+            failed += 1;
+        }
+        items.push(RecycleBinMoveItem { path, ok, error });
+    }
+    Ok(RecycleBinMoveResult {
+        requested: items.len(),
+        moved,
+        failed,
+        freed_bytes,
+        items,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn move_files_to_recycle_bin_blocking(_paths: Vec<String>) -> Result<RecycleBinMoveResult, String> {
+    Err("Recycle bin cleanup is currently available on Windows only".to_string())
+}
+
+#[cfg(test)]
+mod cleanup_large_file_tests {
+    use super::*;
+    use std::io::Write;
+
+    const MB: u64 = 1024 * 1024;
+
+    fn cleanup_test_dir(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "toolknit-cleanup-{}-{}-{}",
+            label,
+            std::process::id(),
+            nanos
+        ));
+        std::fs::create_dir_all(&dir).expect("create cleanup test dir");
+        dir
+    }
+
+    fn make_sparse_file(path: &std::path::Path, size: u64) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create file parent");
+        }
+        let mut file = std::fs::File::create(path).expect("create sparse file");
+        file.write_all(b"toolknit").expect("seed sparse file");
+        file.set_len(size).expect("resize sparse file");
+    }
+
+    #[test]
+    fn cleanup_scan_filters_mode_and_skips_dependency_dirs() {
+        let dir = cleanup_test_dir("mode-skip");
+        make_sparse_file(&dir.join("screen-record.mp4"), 11 * MB);
+        make_sparse_file(&dir.join("installer.zip"), 12 * MB);
+        make_sparse_file(&dir.join("node_modules").join("cached-video.mp4"), 12 * MB);
+
+        let result = collect_large_files(
+            dir.to_string_lossy().into_owned(),
+            Some(10),
+            Some("video".to_string()),
+        )
+        .expect("scan video mode");
+
+        assert_eq!(result.candidates.len(), 1);
+        assert_eq!(result.candidates[0].name, "screen-record.mp4");
+        assert_eq!(result.candidates[0].category, "video");
+        assert!(result.skipped_dirs >= 1);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cleanup_scan_all_keeps_supported_large_files_only() {
+        let dir = cleanup_test_dir("all-supported");
+        make_sparse_file(&dir.join("backup.iso"), 11 * MB);
+        make_sparse_file(&dir.join("notes.tmp"), 12 * MB);
+        make_sparse_file(&dir.join("report.pdf"), 13 * MB);
+
+        let result = collect_large_files(
+            dir.to_string_lossy().into_owned(),
+            Some(10),
+            Some("all".to_string()),
+        )
+        .expect("scan all mode");
+        let names: Vec<_> = result
+            .candidates
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect();
+
+        assert!(names.contains(&"backup.iso"));
+        assert!(names.contains(&"report.pdf"));
+        assert!(!names.contains(&"notes.tmp"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cleanup_scan_rejects_system_drive_root_only() {
+        #[cfg(target_os = "windows")]
+        {
+            assert!(is_broad_or_protected_cleanup_root(std::path::Path::new(
+                "C:\\"
+            )));
+            assert!(!is_broad_or_protected_cleanup_root(std::path::Path::new(
+                "D:\\"
+            )));
+            let error =
+                match collect_large_files("C:\\".to_string(), Some(10), Some("all".to_string())) {
+                    Ok(_) => panic!("system drive root should be rejected"),
+                    Err(error) => error,
+                };
+            assert!(error.contains("System drive root is blocked"));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn cleanup_recycle_bin_moves_temp_file() {
+        let dir = cleanup_test_dir("recycle");
+        let file_path = dir.join("delete-me.tmp");
+        make_sparse_file(&file_path, 1024);
+
+        let result =
+            move_files_to_recycle_bin_blocking(vec![file_path.to_string_lossy().into_owned()])
+                .expect("move temp file to recycle bin");
+
+        assert_eq!(result.requested, 1);
+        assert_eq!(result.moved, 1);
+        assert_eq!(result.failed, 0);
+        assert!(!file_path.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn cleanup_recycle_bin_moves_unicode_video_file() {
+        let dir = cleanup_test_dir("recycle-unicode");
+        let file_path = dir.join("error [レッドゾーン] (1080p_60fps_H264-128kbit_AAC).mp4");
+        make_sparse_file(&file_path, 1024);
+
+        let result =
+            move_files_to_recycle_bin_blocking(vec![file_path.to_string_lossy().into_owned()])
+                .expect("move unicode video file to recycle bin");
+
+        assert_eq!(result.requested, 1);
+        assert_eq!(
+            result.moved,
+            1,
+            "items: {}",
+            serde_json::to_string(&result.items).unwrap()
+        );
+        assert_eq!(result.failed, 0);
+        assert!(!file_path.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
     // Legacy frontend builds used this command name for output actions. Keep
-    // the command available for compatibility, but enforce the v1.2 rule that
+    // the command available for compatibility, but enforce the v1.3 rule that
     // an "open folder" action opens a directory only and never selects or opens
     // the output file itself.
     open_path(path)
@@ -6680,6 +10867,24 @@ fn open_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_recycle_bin() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer")
+            .arg("shell:RecycleBinFolder")
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Opening the Recycle Bin is currently available on Windows only.".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -6705,9 +10910,11 @@ pub fn run() {
             convert_audio_batch,
             cancel_convert,
             open_path,
+            open_recycle_bin,
             reveal_in_folder,
             read_file_bytes,
             read_file_bytes_limited,
+            prepare_icon_source_image,
             write_file_bytes,
             write_unique_file_bytes,
             write_unique_file_pair,
@@ -6718,6 +10925,17 @@ pub fn run() {
             discard_icon_archive_write,
             exists_path,
             get_file_size,
+            get_hardware_overview,
+            get_cpu_memory_info,
+            get_cpu_memory_live_stats,
+            get_gpu_display_info,
+            get_mainboard_firmware_info,
+            get_storage_health_info,
+            get_network_devices_info,
+            get_power_sensors_info,
+            scan_large_files,
+            get_cleanup_drive_space,
+            move_files_to_recycle_bin,
             decrypt_pdf,
             compress_pdf,
             trim_audio,
@@ -6739,10 +10957,20 @@ pub fn run() {
             write_image_stitch_pdf_page,
             discard_image_stitch_pdf_session,
             stitch_images,
+            create_pdf_to_image_session,
+            read_pdf_to_image_source,
+            write_pdf_to_image_page,
+            write_pdf_to_image_page_json,
+            discard_pdf_to_image_session,
+            cancel_pdf_to_image,
+            export_pdf_to_images,
             convert_video_batch,
             set_tray_lang,
         ])
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            show_main_window(app);
+        }))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -6751,6 +10979,7 @@ pub fn run() {
         })
         .setup(|app| {
             cleanup_image_stitch_pdf_sessions();
+            cleanup_pdf_to_image_sessions();
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Info)
@@ -6767,10 +10996,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_main_window(app);
                     }
                     "quit" => {
                         app.exit(0);
@@ -6787,10 +11013,7 @@ pub fn run() {
                         if button == tauri::tray::MouseButton::Left
                             && button_state == tauri::tray::MouseButtonState::Up
                         {
-                            if let Some(window) = tray.app_handle().get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            show_main_window(tray.app_handle());
                         }
                     }
                 })
@@ -6805,4 +11028,12 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }

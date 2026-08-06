@@ -5,13 +5,31 @@
       "name": "匿名开源支持者",
       "amount_cny": 23.88,
       "recorded_at": "2026-08-03",
-      "message": "感谢支持 ToolKnit 开源项目。"
+      "message": "感谢你让 ToolKnit 有力气继续往前长。"
     },
     {
       "name": "匿名开源支持者",
       "amount_cny": 2,
       "recorded_at": "2026-08-04",
-      "message": "烤肠基金到账，感谢支持 ToolKnit。"
+      "message": "烤肠基金到账，下一次修 bug 也多了一点温度。"
+    },
+    {
+      "name": "匿名开源支持者（烤肠基金）",
+      "amount_cny": 5,
+      "recorded_at": "2026-08-06",
+      "message": "烤肠基金再加一笔，感谢你陪 ToolKnit 继续往前走。"
+    },
+    {
+      "name": "匿名开源支持者",
+      "amount_cny": 50,
+      "recorded_at": "2026-08-06",
+      "message": "感谢这位匿名朋友，让这份开源维护多了一颗稳定的心。"
+    },
+    {
+      "name": "匿名开源支持者（工具编织）",
+      "amount_cny": 3,
+      "recorded_at": "2026-08-06",
+      "message": "工具编织基金到账，感谢你让 ToolKnit 再往前走一小步。"
     }
   ]
 }

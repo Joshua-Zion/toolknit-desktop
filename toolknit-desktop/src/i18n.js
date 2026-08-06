@@ -13,7 +13,12 @@ let currentLang = normalizeLang(localStorage.getItem(STORAGE_KEY));
 const langChangeCallbacks = [];
 
 export function onLangChange(cb) {
+  if (typeof cb !== 'function') return () => {};
   langChangeCallbacks.push(cb);
+  return () => {
+    const index = langChangeCallbacks.indexOf(cb);
+    if (index >= 0) langChangeCallbacks.splice(index, 1);
+  };
 }
 
 // On launch, check if installer language changed (reinstall with different language)

@@ -1,5 +1,7 @@
 import { Renderer, Program, Mesh, Triangle, Vec2 } from 'ogl';
 
+const BACKGROUND_DPR_MAX = 1.25;
+
 const vertex = `
 attribute vec2 position;
 void main(){gl_Position=vec4(position,0.0,1.0);}
@@ -88,7 +90,7 @@ export function initDarkVeil(container, options = {}) {
   container.appendChild(canvas);
 
   const renderer = new Renderer({
-    dpr: Math.min(window.devicePixelRatio, 2),
+    dpr: Math.min(window.devicePixelRatio || 1, BACKGROUND_DPR_MAX),
     canvas
   });
 
@@ -123,8 +125,24 @@ export function initDarkVeil(container, options = {}) {
 
   const start = performance.now();
   let frame = 0;
+  let pageVisible = typeof document === 'undefined' || !document.hidden;
+
+  const stopLoop = () => {
+    if (frame) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    }
+  };
+
+  const startLoop = () => {
+    if (!frame && pageVisible) {
+      frame = requestAnimationFrame(loop);
+    }
+  };
 
   const loop = () => {
+    frame = 0;
+    if (!pageVisible) return;
     program.uniforms.uTime.value = ((performance.now() - start) / 1000) * speed;
     program.uniforms.uHueShift.value = hueShift;
     program.uniforms.uNoise.value = noiseIntensity;
@@ -132,14 +150,39 @@ export function initDarkVeil(container, options = {}) {
     program.uniforms.uScanFreq.value = scanlineFrequency;
     program.uniforms.uWarp.value = warpAmount;
     renderer.render({ scene: mesh });
-    frame = requestAnimationFrame(loop);
+    startLoop();
   };
 
-  loop();
+  const handleVisibilityChange = () => {
+    pageVisible = !document.hidden;
+    if (pageVisible) startLoop();
+    else stopLoop();
+  };
+  const handlePageHide = () => {
+    pageVisible = false;
+    stopLoop();
+  };
+  const handlePageShow = () => {
+    pageVisible = !document.hidden;
+    startLoop();
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('pageshow', handlePageShow);
+
+  startLoop();
 
   return () => {
-    cancelAnimationFrame(frame);
+    stopLoop();
     window.removeEventListener('resize', resize);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('pageshow', handlePageShow);
+    try {
+      const loseExt = gl.getExtension('WEBGL_lose_context');
+      if (loseExt) loseExt.loseContext();
+    } catch {}
     if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
   };
 }

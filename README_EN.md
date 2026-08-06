@@ -12,7 +12,7 @@
       <br />
       <strong>Open tools, shared with care.</strong>
       <br />
-      <sub>Live Star badge from GitHub · Public donations: 25.88 CNY</sub>
+      <sub>Live Star badge from GitHub · Public donations: 83.88 CNY · Latest: Anonymous supporter (Tool Weaving) CNY 3</sub>
     </td>
   </tr>
 </table>
@@ -22,27 +22,28 @@
 <p align="center"><em>人生何处不青山 · there is always another green mountain ahead</em></p>
 
 <p align="center">
-  <strong>Local-first multi-tool desktop app · Open-source desktop edition v1.2</strong><br />
+  <strong>Local-first multi-tool desktop app · Open-source desktop edition v1.3</strong><br />
   A Windows app for PDFs, images, audio/video, text, AI documents, AI tables, CLI workflows, and IDE Agent automation. Files stay local by default.
 </p>
 
 <p align="center">
-  <a href="README.md">简体中文</a> ·
-  <a href="https://github.com/ZihangDong/toolknit-desktop/releases">Download Desktop</a> ·
-  <a href="https://toolknit.com">Web Version</a> ·
-  <a href="#cli--ide-agent--mcp">CLI / Agent</a> ·
-  <a href="toolknit-desktop/docs/agent-guide.en.md">Agent Guide</a>
+  <a href="README.md"><img src="https://img.shields.io/badge/简体中文-Chinese_README-111827?style=for-the-badge&labelColor=111827" alt="Chinese README" /></a>
+  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/Download_Desktop-Windows_installer-111827?style=for-the-badge&labelColor=111827" alt="Download Desktop" /></a>
+  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/Web_Version-toolknit.com-111827?style=for-the-badge&labelColor=111827" alt="Web Version" /></a>
+  <br />
+  <a href="#cli--ide-agent--mcp"><img src="https://img.shields.io/badge/CLI%20%2F%20Agent-MCP_workflow-111827?style=for-the-badge&labelColor=111827" alt="CLI / Agent" /></a>
+  <a href="toolknit-desktop/docs/agent-guide.en.md"><img src="https://img.shields.io/badge/Agent_Guide-Examples-111827?style=for-the-badge&labelColor=111827" alt="Agent Guide" /></a>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-111827" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Tauri-2.x-111827" alt="Tauri 2.x" />
-  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.2-111827" alt="CLI and MCP" />
+  <img src="https://img.shields.io/badge/CLI%20%2B%20MCP-v1.3-111827" alt="CLI and MCP" />
 </p>
 
 <p align="center">
-  <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+  <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop home screen" width="100%" />
 </p>
 
 ## Overview
@@ -60,22 +61,23 @@ Only AI-specific workflows send text to the model provider you configure yoursel
 
 ## Support
 
-If ToolKnit helps you, supporting the author keeps testing, mirrors, documentation, releases, and future development moving. Independent development takes time; support helps ToolKnit stay open-source, clean, local-first, and useful for Agent workflows.
+If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, documentation, releases, and future development moving. Independent development takes time; support helps ToolKnit stay open-source, clean, local-first, and useful for Agent workflows.
 
 <p align="center">
-  <strong>Public donations so far: 25.88 CNY</strong><br />
+  <strong>Public donations so far: 83.88 CNY</strong><br />
+  <sub>Latest public donation: Anonymous supporter (Tool Weaving) · CNY 3</sub><br />
   <sub>Public record: <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
 </p>
 
 <table>
   <tr>
-    <th width="30%">WeChat Pay</th>
     <th width="30%">Alipay</th>
+    <th width="30%">WeChat Pay</th>
     <th width="40%">What support helps with</th>
   </tr>
   <tr>
-    <td align="center"><img src="assets/wechat-qr.jpg" alt="Support ToolKnit with WeChat Pay" width="230" /></td>
-    <td align="center"><img src="assets/alipay-qr.png" alt="Support ToolKnit with Alipay" width="230" /></td>
+    <td align="center"><img src="assets/wechat-qr.jpg" alt="Support ToolKnit with Alipay" width="230" /></td>
+    <td align="center"><img src="assets/alipay-qr.png" alt="Support ToolKnit with WeChat Pay" width="230" /></td>
     <td valign="top">
       <p>
         <img src="https://img.shields.io/badge/Feature%20requests-priority%20review-111827" alt="Feature requests priority review" />
@@ -83,7 +85,7 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
         <img src="https://img.shields.io/badge/Dependency%20mirrors-faster%20downloads-111827" alt="Dependency mirrors faster downloads" />
       </p>
       <ul>
-        <li><strong>Building is hard; maintaining open source is harder.</strong> Every bit of support helps ToolKnit keep moving.</li>
+        <li><strong>Building is hard; maintaining open source is harder.</strong> Every bit of support becomes the next steadier update.</li>
         <li>If you have a tool, format, or workflow improvement you really want, leave a note with your donation, open an Issue, or contact me through the web version.</li>
         <li>Clear, reproducible, maintainable requests are easier to evaluate and schedule for upcoming versions.</li>
       </ul>
@@ -108,7 +110,7 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
   <img src="https://img.shields.io/badge/Desktop-local%20first-111827" alt="Desktop local first" />
 </p>
 
-## v1.0 to v1.2
+## v1.0 to v1.3
 
 <table>
   <tr>
@@ -124,19 +126,19 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
     </td>
     <td width="4%" align="center" valign="middle"><strong>-></strong></td>
     <td width="48%" valign="top">
-      <h3>v1.2</h3>
-      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop v1.2 home screen" width="100%" />
+      <h3>v1.3</h3>
+      <img src="assets/readme/home-v1.2.png" alt="ToolKnit Desktop home screen" width="100%" />
       <ul>
-        <li>30+ desktop tools, including video frame export, video-to-GIF, long image stitching, and audio/video transcription.</li>
+        <li>40+ desktop tools, including PDF to image, video frame export, video-to-GIF, long image stitching, audio/video transcription, hardware info, and AI cleanup.</li>
         <li>Custom output root, per-tool output folders, custom backgrounds, and default background fallback.</li>
-        <li>Most core file tools expose CLI contracts and MCP tools for IDE Agents.</li>
+        <li>Most core file tools expose CLI contracts and 31 MCP tools for IDE Agents.</li>
         <li>AI documents and AI tables now use inspectable, numbered, editable, undoable, re-renderable project workflows.</li>
       </ul>
     </td>
   </tr>
 </table>
 
-### AI Document Generation: 1.0 vs 1.2
+### AI Document Generation: 1.0 vs Project Workflow
 
 <table>
   <tr>
@@ -161,19 +163,125 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
   </tr>
 </table>
 
-### v1.2 Highlights
+### v1.3 Highlights
 
-| Update | What it enables |
-| --- | --- |
-| HD video frame export | Export PNG or high-quality JPG frames by time or frame position. |
-| Video to GIF | Choose start/end, FPS, and width, then export palette-optimized GIFs up to 30 seconds. |
-| Long image stitching | Stitch images and PDF pages horizontally or vertically with spacing, background, and reference sizing. |
-| Audio/video transcription | Download a local Whisper model, then export TXT, SRT, and JSON; optional DeepSeek review is supported. |
-| AI document upgrade | Generate PDF plus editable project, preview images, and numbered component maps; edit position, size, color, font, alignment, layer order, and undo history. |
-| AI table workflow | Export XLSX, CSV, PDF, PNG, and editable projects; modify rows, columns, formulas, charts, and render again. |
-| PDF page selection | Merge, split, and rotate flows now support preview, page picking, select all, clear all, and safe back navigation. |
-| Dependency management | FFmpeg and transcription models are downloaded on demand from official or mirror sources. |
-| CLI and Agent support | Core file tools have explicit input, output, progress, error-code, and help contracts for natural-language IDE Agent usage. |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📄 PDF to Image</strong><br />
+      <sub>Export selected pages as PNG or JPG, one page per image, for reuse and stitching.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🧵 Long Image Stitching</strong><br />
+      <sub>Import images or PDF pages and stitch them horizontally or vertically with spacing, background, and reference sizing.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎞 HD Video Frame Export</strong><br />
+      <sub>Export PNG or high-quality JPG frames by exact time or real frame rate.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🎬 Video to GIF</strong><br />
+      <sub>Choose start and end frames, FPS, and width, then export palette-optimized GIFs up to 30 seconds.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎙 Audio/Video Transcription</strong><br />
+      <sub>Download a local Whisper model, then export TXT, SRT, and JSON; optional AI review is supported.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🧩 AI Document Upgrade</strong><br />
+      <sub>Generate PDF plus editable project, preview images, and numbered component maps; edit position, size, color, font, alignment, layer order, and undo history.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📊 AI Table Workflow</strong><br />
+      <sub>Export XLSX, CSV, PDF, PNG, and editable projects; modify rows, columns, formulas, charts, and render again.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🗂 PDF Page Selection</strong><br />
+      <sub>Merge, split, and rotate flows now support preview, page picking, select all, clear all, and safe back navigation.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>⚙ Dependency Management</strong><br />
+      <sub>FFmpeg and transcription models are downloaded on demand from official or mirror sources.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🖇 CLI and Agent Support</strong><br />
+      <sub>Core file tools have explicit input, output, progress, error-code, and help contracts for natural-language IDE Agent usage.</sub>
+    </td>
+  </tr>
+</table>
+
+## Page previews
+
+Category pages no longer need stitched long screenshots. A direct capture of each category page is cleaner and easier to update. All preview assets live in `assets/readme/categories/`; the naming guide is in [assets/readme/categories/README.md](assets/readme/categories/README.md).
+
+### Settings page
+
+<p align="center">
+  <img src="assets/readme/categories/shezhi.png" alt="ToolKnit settings page preview" width="100%" />
+</p>
+
+### Category screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>PDF Tools</strong><br />
+      <img src="assets/readme/categories/category-pdf.png" alt="PDF tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Image Tools</strong><br />
+      <img src="assets/readme/categories/category-image.png" alt="Image tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Audio Tools</strong><br />
+      <img src="assets/readme/categories/category-audio.png" alt="Audio tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Video Tools</strong><br />
+      <img src="assets/readme/categories/category-video.png" alt="Video tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Text Tools</strong><br />
+      <img src="assets/readme/categories/category-text.png" alt="Text tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>AI Tools</strong><br />
+      <img src="assets/readme/categories/category-ai.png" alt="AI tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Calculator Tools</strong><br />
+      <img src="assets/readme/categories/category-calculator.png" alt="Calculator tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Creative Tools</strong><br />
+      <img src="assets/readme/categories/category-creative.png" alt="Creative tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Hardware Tools</strong><br />
+      <img src="assets/readme/categories/category-hardware.png" alt="Hardware tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Cleanup Tools</strong><br />
+      <img src="assets/readme/categories/category-cleanup.png" alt="Cleanup tools category screenshot" width="100%" />
+    </td>
+  </tr>
+</table>
 
 ## Tools
 
@@ -181,6 +289,7 @@ If ToolKnit helps you, supporting the author keeps testing, mirrors, documentati
 
 | Tool | Description |
 | --- | --- |
+| PDF to Image | Export selected pages as PNG or JPG, one page per image. |
 | PDF Merge | Pick files and pages, then merge in order. |
 | PDF Split | Export selected pages, all pages, or ranges. |
 | PDF Rotate | Rotate selected pages by 90/180/270 degrees. |
@@ -221,6 +330,8 @@ In Settings, you can:
 - Configure DeepSeek/OpenAI-compatible AI providers.
 - Download FFmpeg and Whisper models from official or mirror sources.
 - Upload an image or video as the home/category background and restore the default animated background at any time.
+- The support section is also available from Settings for QR codes and donation details.
+- View the support section to see public donation totals, recent donations, and QR-code entry points.
 
 ### Run from Source
 
@@ -237,7 +348,7 @@ Requirements: Windows 10/11, Node.js `20.12.0` or newer, and Rust stable for nat
 
 <a id="cli--ide-agent--mcp"></a>
 
-v1.2 extracts the desktop app's core file-processing capabilities into verifiable CLI/MCP contracts. The desktop app is best for preview and visual editing; CLI is best for scripts, batch processing, and CI; IDE Agents can call the same capabilities through MCP without keeping the desktop window open.
+v1.3 extracts the desktop app's core file-processing capabilities into verifiable CLI/MCP contracts. The desktop app is best for preview and visual editing; CLI is best for scripts, batch processing, and CI; IDE Agents can call the same capabilities through MCP without keeping the desktop window open.
 
 ### Install from npm (recommended)
 

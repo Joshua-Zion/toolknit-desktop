@@ -166,14 +166,24 @@ try {
   assert.match(mergeHelp.stdout, /PDF 合并/);
   assert.match(mergeHelp.stdout, /page-selections/);
 
+  const pdfToImageHelp = await runCli(['pdf', 'to-image', '--help']);
+  assert.equal(pdfToImageHelp.code, 0, pdfToImageHelp.stderr);
+  assert.match(pdfToImageHelp.stdout, /PDF 转图像|PDF to Image/);
+  assert.match(pdfToImageHelp.stdout, /toolknit pdf to-image --input/);
+
   const aliasHelp = await runCli(['help', 'pdf', 'merge']);
   assert.equal(aliasHelp.code, 0, aliasHelp.stderr);
   assert.equal(aliasHelp.stdout, mergeHelp.stdout);
 
+  const aliasPdfToImageHelp = await runCli(['help', 'pdf', 'to-image']);
+  assert.equal(aliasPdfToImageHelp.code, 0, aliasPdfToImageHelp.stderr);
+  assert.equal(aliasPdfToImageHelp.stdout, pdfToImageHelp.stdout);
+
   const agentGuide = await runCli(['agent', 'guide']);
   assert.equal(agentGuide.code, 0, agentGuide.stderr);
   assert.match(agentGuide.stdout, /ToolKnit AI Agent/);
-  assert.match(agentGuide.stdout, /30 项 ToolKnit 工具/);
+  assert.match(agentGuide.stdout, /31 项 ToolKnit 工具/);
+  assert.match(agentGuide.stdout, /toolknit_pdf_to_image/);
   assert.match(agentGuide.stdout, /toolknit_ai_document/);
   assert.match(agentGuide.stdout, /toolknit_ai_document_edit/);
   assert.match(agentGuide.stdout, /toolknit_ai_table/);
@@ -192,7 +202,8 @@ try {
   const englishAgentGuide = await runCli(['agent', 'guide', '--lang', 'en']);
   assert.equal(englishAgentGuide.code, 0, englishAgentGuide.stderr);
   assert.match(englishAgentGuide.stdout, /ToolKnit AI Agent Quick Guide/);
-  assert.match(englishAgentGuide.stdout, /30 ToolKnit tools/);
+  assert.match(englishAgentGuide.stdout, /31 ToolKnit tools/);
+  assert.match(englishAgentGuide.stdout, /toolknit_pdf_to_image/);
   assert.match(englishAgentGuide.stdout, /toolknit_ai_document/);
   assert.match(englishAgentGuide.stdout, /toolknit_ai_document_edit/);
   assert.match(englishAgentGuide.stdout, /toolknit_ai_table/);
@@ -428,7 +439,7 @@ try {
       { regions: [
         { type: 'title', x: 56, y: 60, w: 682, h: 50, text: 'ToolKnit 多页文档测试', fontSize: 30, bold: true, align: 'center' },
         { type: 'subtitle', x: 56, y: 120, w: 682, h: 24, text: 'MCP / PAGE 01', fontSize: 14, bold: false, align: 'center' },
-        { type: 'table-row', x: 56, y: 170, w: 682, h: 42, text: '版本 | v1.2 | 形态 | CLI + MCP', fontSize: 13, bold: false, align: 'left' },
+        { type: 'table-row', x: 56, y: 170, w: 682, h: 42, text: '版本 | v1.3 | 形态 | CLI + MCP', fontSize: 13, bold: false, align: 'left' },
         { type: 'section-heading', x: 56, y: 242, w: 682, h: 34, text: '01 / 执行摘要', fontSize: 18, bold: true, align: 'left' },
         { type: 'emphasis', x: 56, y: 296, w: 682, h: 58, text: 'Agent 必须真实调用 ToolKnit，并在发布前校验输出页数。', fontSize: 14, bold: true, align: 'left' },
         { type: 'body', x: 56, y: 374, w: 682, h: 66, text: '此测试通过本地模拟的 OpenAI 兼容端点生成布局，不访问外部服务，也不会把测试密钥写入结果。', fontSize: 14, bold: false, align: 'left' },
@@ -514,7 +525,7 @@ try {
   };
   const cliPromptPath = path.join(fixtureDirectory, 'document-brief.txt');
   const cliAiDocumentPath = path.join(fixtureDirectory, 'cli-ai-document.pdf');
-  await writeFile(cliPromptPath, '生成四页 ToolKnit CLI 验证文档。使用以下明确提供的模拟数据：版本 v1.2，文档内列出的测试结果均允许写为通过。');
+  await writeFile(cliPromptPath, '生成四页 ToolKnit CLI 验证文档。使用以下明确提供的模拟数据：版本 v1.3，文档内列出的测试结果均允许写为通过。');
   const cliCreate = await runCli([
     'ai-doc', 'create', '--prompt-file', cliPromptPath, '--output', cliAiDocumentPath,
     '--page-count', '4', '--locale', 'zh-CN', '--json'
@@ -566,7 +577,8 @@ try {
   assert.match(initialize.result.instructions, /stable row, column, and chart numbers/i);
   client.notify('notifications/initialized');
   const listed = await client.request('tools/list', {});
-  assert.equal(listed.result.tools.length, 30);
+  assert.equal(listed.result.tools.length, 31);
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_pdf_to_image'));
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_pdf_merge'));
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_pdf_enhance'));
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_audio_convert'));
@@ -699,12 +711,58 @@ try {
   assert.equal(mcpEnhance.result.isError, false);
   assert.equal(await pdfPageCount(mcpEnhancedPdf), 2);
 
+  const mcpPdfToImageImagesDir = path.join(fixtureDirectory, 'mcp-pdf-to-image-images');
+  const mcpPdfToImageImages = await client.request('tools/call', {
+    name: 'toolknit_pdf_to_image',
+    _meta: { progressToken: 'pdf-to-image-images-test' },
+    arguments: {
+      input_path: firstPdf,
+      output_dir: mcpPdfToImageImagesDir,
+      pages: [2, 1],
+      mode: 'images',
+      format: 'png',
+      clarity: 'high',
+      output_name: 'mcp-pages'
+    }
+  });
+  assert.equal(mcpPdfToImageImages.result.isError, false, mcpPdfToImageImages.result.content[0].text);
+  assert.equal(mcpPdfToImageImages.result.structuredContent.result.tool, 'pdf.to-image');
+  assert.equal(mcpPdfToImageImages.result.structuredContent.result.mode, 'images');
+  assert.equal(mcpPdfToImageImages.result.structuredContent.result.output_count, 2);
+  assert.deepEqual(mcpPdfToImageImages.result.structuredContent.result.selected_pages, [1, 2]);
+  assert.equal(path.basename(mcpPdfToImageImages.result.structuredContent.result.outputs[0].path), 'mcp-pages_page_01.png');
+  assert.ok(await stat(mcpPdfToImageImages.result.structuredContent.result.outputs[0].path).then(file => file.size > 0));
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'pdf-to-image-images-test' && message.params.progress === 100));
+
+  const mcpPdfToImageLongDir = path.join(fixtureDirectory, 'mcp-pdf-to-image-long');
+  const mcpPdfToImageLong = await client.request('tools/call', {
+    name: 'toolknit_pdf_to_image',
+    _meta: { progressToken: 'pdf-to-image-long-test' },
+    arguments: {
+      input_path: firstPdf,
+      output_dir: mcpPdfToImageLongDir,
+      pages: [1, 2],
+      mode: 'long',
+      format: 'webp',
+      clarity: 'print',
+      output_name: 'mcp-long'
+    }
+  });
+  assert.equal(mcpPdfToImageLong.result.isError, false, mcpPdfToImageLong.result.content[0].text);
+  assert.equal(mcpPdfToImageLong.result.structuredContent.result.tool, 'pdf.to-image');
+  assert.equal(mcpPdfToImageLong.result.structuredContent.result.mode, 'long');
+  assert.equal(mcpPdfToImageLong.result.structuredContent.result.output_count, 1);
+  assert.deepEqual(mcpPdfToImageLong.result.structuredContent.result.selected_pages, [1, 2]);
+  assert.equal(path.basename(mcpPdfToImageLong.result.structuredContent.result.outputs[0].path), 'mcp-long_long_01_pages_01_02.webp');
+  assert.ok(await stat(mcpPdfToImageLong.result.structuredContent.result.outputs[0].path).then(file => file.size > 0));
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'pdf-to-image-long-test' && message.params.progress === 100));
+
   const mcpAiDocument = path.join(fixtureDirectory, 'mcp-ai-document.pdf');
   const aiDocument = await client.request('tools/call', {
     name: 'toolknit_ai_document',
     _meta: { progressToken: 'ai-document-test' },
     arguments: {
-      prompt: '生成四页 ToolKnit MCP 验证文档。使用以下明确提供的模拟数据：版本 v1.2，文档内列出的测试结果均允许写为通过。',
+      prompt: '生成四页 ToolKnit MCP 验证文档。使用以下明确提供的模拟数据：版本 v1.3，文档内列出的测试结果均允许写为通过。',
       output_path: mcpAiDocument,
       page_count: 4,
       locale: 'zh-CN',
