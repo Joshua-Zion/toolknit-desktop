@@ -26,35 +26,14 @@
   一个 Windows 应用，整合 PDF、图片、音视频、文本、AI 文档、AI 表格与 CLI / IDE Agent 工作流。默认本地处理，文件不上传。
 </p>
 
-<table align="center" cellpadding="0" cellspacing="0" bgcolor="#0b0b0d" style="margin: 0 auto; border: 1px solid #2a2a31; border-radius: 18px; overflow: hidden;">
-  <tr>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="README_EN.md" style="color: #ffffff; text-decoration: none;">
-        <strong>英文 README</strong><br /><sub style="color: #cbd5e1;">English version</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="https://github.com/ZihangDong/toolknit-desktop/releases" style="color: #ffffff; text-decoration: none;">
-        <strong>下载桌面端</strong><br /><sub style="color: #cbd5e1;">Windows 安装包</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="https://toolknit.com" style="color: #ffffff; text-decoration: none;">
-        <strong>访问网页端</strong><br /><sub style="color: #cbd5e1;">toolknit.com</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="#cli--ide-agent--mcp" style="color: #ffffff; text-decoration: none;">
-        <strong>CLI / Agent</strong><br /><sub style="color: #cbd5e1;">MCP 调用</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px;">
-      <a href="toolknit-desktop/docs/agent-guide.zh-CN.md" style="color: #ffffff; text-decoration: none;">
-        <strong>中文 Agent 手册</strong><br /><sub style="color: #cbd5e1;">使用示例</sub>
-      </a>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <a href="README_EN.md"><img src="https://img.shields.io/badge/英文_README-English_version-111827?style=for-the-badge&labelColor=111827" alt="英文 README" /></a>
+  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/下载桌面端-Windows_安装包-111827?style=for-the-badge&labelColor=111827" alt="下载桌面端" /></a>
+  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/访问网页端-toolknit.com-111827?style=for-the-badge&labelColor=111827" alt="访问网页端" /></a>
+  <br />
+  <a href="#cli--ide-agent--mcp"><img src="https://img.shields.io/badge/CLI%20%2F%20Agent-MCP_调用-111827?style=for-the-badge&labelColor=111827" alt="CLI / Agent" /></a>
+  <a href="toolknit-desktop/docs/agent-guide.zh-CN.md"><img src="https://img.shields.io/badge/中文_Agent_手册-使用示例-111827?style=for-the-badge&labelColor=111827" alt="中文 Agent 手册" /></a>
+</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
@@ -352,6 +331,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 - 下载 FFmpeg、Whisper 模型，并选择官方源或镜像源。
 - 上传图片或视频作为首页和分类页背景，也可以一键恢复默认动态背景。
 - 查看“支持作者”说明，了解公开捐赠金额、最近支持记录和收款码入口。
+- 也可以直接在设置页进入“支持作者”，查看二维码和支持说明。
 
 ### 从源码运行
 

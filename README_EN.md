@@ -26,35 +26,14 @@
   A Windows app for PDFs, images, audio/video, text, AI documents, AI tables, CLI workflows, and IDE Agent automation. Files stay local by default.
 </p>
 
-<table align="center" cellpadding="0" cellspacing="0" bgcolor="#0b0b0d" style="margin: 0 auto; border: 1px solid #2a2a31; border-radius: 18px; overflow: hidden;">
-  <tr>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="README.md" style="color: #ffffff; text-decoration: none;">
-        <strong>简体中文</strong><br /><sub style="color: #cbd5e1;">Chinese README</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="https://github.com/ZihangDong/toolknit-desktop/releases" style="color: #ffffff; text-decoration: none;">
-        <strong>Download Desktop</strong><br /><sub style="color: #cbd5e1;">Windows installer</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="https://toolknit.com" style="color: #ffffff; text-decoration: none;">
-        <strong>Web Version</strong><br /><sub style="color: #cbd5e1;">toolknit.com</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
-      <a href="#cli--ide-agent--mcp" style="color: #ffffff; text-decoration: none;">
-        <strong>CLI / Agent</strong><br /><sub style="color: #cbd5e1;">MCP workflow</sub>
-      </a>
-    </td>
-    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px;">
-      <a href="toolknit-desktop/docs/agent-guide.en.md" style="color: #ffffff; text-decoration: none;">
-        <strong>Agent Guide</strong><br /><sub style="color: #cbd5e1;">Examples</sub>
-      </a>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/简体中文-Chinese_README-111827?style=for-the-badge&labelColor=111827" alt="Chinese README" /></a>
+  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/Download_Desktop-Windows_installer-111827?style=for-the-badge&labelColor=111827" alt="Download Desktop" /></a>
+  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/Web_Version-toolknit.com-111827?style=for-the-badge&labelColor=111827" alt="Web Version" /></a>
+  <br />
+  <a href="#cli--ide-agent--mcp"><img src="https://img.shields.io/badge/CLI%20%2F%20Agent-MCP_workflow-111827?style=for-the-badge&labelColor=111827" alt="CLI / Agent" /></a>
+  <a href="toolknit-desktop/docs/agent-guide.en.md"><img src="https://img.shields.io/badge/Agent_Guide-Examples-111827?style=for-the-badge&labelColor=111827" alt="Agent Guide" /></a>
+</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-blue.svg" alt="Apache-2.0 license" /></a>
@@ -351,6 +330,7 @@ In Settings, you can:
 - Configure DeepSeek/OpenAI-compatible AI providers.
 - Download FFmpeg and Whisper models from official or mirror sources.
 - Upload an image or video as the home/category background and restore the default animated background at any time.
+- The support section is also available from Settings for QR codes and donation details.
 - View the support section to see public donation totals, recent donations, and QR-code entry points.
 
 ### Run from Source
