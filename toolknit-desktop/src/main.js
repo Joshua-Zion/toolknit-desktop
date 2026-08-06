@@ -10697,8 +10697,8 @@
 
       async function loadDonationTotal() {
         const sources = [
-          { url: GITHUB_CONTRIBUTORS_URL, isLive: true },
-          { url: GITHUB_LOCAL_CONTRIBUTORS_URL, isLive: false }
+          { url: GITHUB_LOCAL_CONTRIBUTORS_URL, isLive: false },
+          { url: GITHUB_CONTRIBUTORS_URL, isLive: true }
         ];
         let lastError = null;
         for (const source of sources) {
