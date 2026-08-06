@@ -1,6 +1,8 @@
-# ToolKnit README category screenshots
+# ToolKnit README screenshots
 
-Put one merged long screenshot for each desktop category in this folder.
+Put the screenshots used by the GitHub README in this folder.
+
+Category pages no longer need stitched long images; a clean direct capture of each category page is fine.
 
 Recommended names:
 
@@ -16,5 +18,6 @@ Recommended names:
 | 创意工具 | `category-creative.png` |
 | 硬件工具 | `category-hardware.png` |
 | 清理工具 | `category-cleanup.png` |
+| 设置页 | `shezhi.png` |
 
 Keep images optimized for GitHub README display. PNG is preferred for crisp UI screenshots.

@@ -26,13 +26,33 @@
   A Windows app for PDFs, images, audio/video, text, AI documents, AI tables, CLI workflows, and IDE Agent automation. Files stay local by default.
 </p>
 
-<table>
+<table align="center" cellpadding="0" cellspacing="0" bgcolor="#0b0b0d" style="margin: 0 auto; border: 1px solid #2a2a31; border-radius: 18px; overflow: hidden;">
   <tr>
-    <td align="center" width="20%"><a href="README.md"><strong>简体中文</strong><br /><sub>Chinese README</sub></a></td>
-    <td align="center" width="20%"><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>Download Desktop</strong><br /><sub>Windows installer</sub></a></td>
-    <td align="center" width="20%"><a href="https://toolknit.com"><strong>Web Version</strong><br /><sub>toolknit.com</sub></a></td>
-    <td align="center" width="20%"><a href="#cli--ide-agent--mcp"><strong>CLI / Agent</strong><br /><sub>MCP workflow</sub></a></td>
-    <td align="center" width="20%"><a href="toolknit-desktop/docs/agent-guide.en.md"><strong>Agent Guide</strong><br /><sub>Examples</sub></a></td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="README.md" style="color: #ffffff; text-decoration: none;">
+        <strong>简体中文</strong><br /><sub style="color: #cbd5e1;">Chinese README</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="https://github.com/ZihangDong/toolknit-desktop/releases" style="color: #ffffff; text-decoration: none;">
+        <strong>Download Desktop</strong><br /><sub style="color: #cbd5e1;">Windows installer</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="https://toolknit.com" style="color: #ffffff; text-decoration: none;">
+        <strong>Web Version</strong><br /><sub style="color: #cbd5e1;">toolknit.com</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="#cli--ide-agent--mcp" style="color: #ffffff; text-decoration: none;">
+        <strong>CLI / Agent</strong><br /><sub style="color: #cbd5e1;">MCP workflow</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px;">
+      <a href="toolknit-desktop/docs/agent-guide.en.md" style="color: #ffffff; text-decoration: none;">
+        <strong>Agent Guide</strong><br /><sub style="color: #cbd5e1;">Examples</sub>
+      </a>
+    </td>
   </tr>
 </table>
 
@@ -219,6 +239,71 @@ If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, d
   </tr>
 </table>
 
+## Page previews
+
+Category pages no longer need stitched long screenshots. A direct capture of each category page is cleaner and easier to update. All preview assets live in `assets/readme/categories/`; the naming guide is in [assets/readme/categories/README.md](assets/readme/categories/README.md).
+
+### Settings page
+
+<p align="center">
+  <img src="assets/readme/categories/shezhi.png" alt="ToolKnit settings page preview" width="100%" />
+</p>
+
+### Category screenshots
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>PDF Tools</strong><br />
+      <img src="assets/readme/categories/category-pdf.png" alt="PDF tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Image Tools</strong><br />
+      <img src="assets/readme/categories/category-image.png" alt="Image tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Audio Tools</strong><br />
+      <img src="assets/readme/categories/category-audio.png" alt="Audio tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Video Tools</strong><br />
+      <img src="assets/readme/categories/category-video.png" alt="Video tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Text Tools</strong><br />
+      <img src="assets/readme/categories/category-text.png" alt="Text tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>AI Tools</strong><br />
+      <img src="assets/readme/categories/category-ai.png" alt="AI tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Calculator Tools</strong><br />
+      <img src="assets/readme/categories/category-calculator.png" alt="Calculator tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Creative Tools</strong><br />
+      <img src="assets/readme/categories/category-creative.png" alt="Creative tools category screenshot" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Hardware Tools</strong><br />
+      <img src="assets/readme/categories/category-hardware.png" alt="Hardware tools category screenshot" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>Cleanup Tools</strong><br />
+      <img src="assets/readme/categories/category-cleanup.png" alt="Cleanup tools category screenshot" width="100%" />
+    </td>
+  </tr>
+</table>
+
 ## Tools
 
 ### PDF
@@ -252,25 +337,6 @@ If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, d
 
 Calculator tools and the typing test remain desktop-first because CLI/MCP would not add much value there.
 
-## Category Screenshot Placeholders
-
-Put one long screenshot for each category in `assets/readme/categories/` and use the names below:
-
-| Category | Suggested filename | Notes |
-| --- | --- | --- |
-| PDF | `assets/readme/categories/category-pdf.png` | Long screenshot for the PDF category. |
-| Image | `assets/readme/categories/category-image.png` | Long screenshot for the image category. |
-| Audio | `assets/readme/categories/category-audio.png` | Long screenshot for the audio category. |
-| Video | `assets/readme/categories/category-video.png` | Long screenshot for the video category. |
-| Text | `assets/readme/categories/category-text.png` | Long screenshot for the text category. |
-| AI | `assets/readme/categories/category-ai.png` | Long screenshot for the AI category. |
-| Calculator | `assets/readme/categories/category-calculator.png` | Long screenshot for the calculator category. |
-| Creative | `assets/readme/categories/category-creative.png` | Long screenshot for the creative category. |
-| Hardware | `assets/readme/categories/category-hardware.png` | Reserved for a hardware category screenshot. |
-| Cleanup | `assets/readme/categories/category-cleanup.png` | Reserved for a cleanup category screenshot. |
-
-See [assets/readme/categories/README.md](assets/readme/categories/README.md) for the full naming guide.
-
 ## Download and Usage
 
 ### Desktop App
@@ -285,6 +351,7 @@ In Settings, you can:
 - Configure DeepSeek/OpenAI-compatible AI providers.
 - Download FFmpeg and Whisper models from official or mirror sources.
 - Upload an image or video as the home/category background and restore the default animated background at any time.
+- View the support section to see public donation totals, recent donations, and QR-code entry points.
 
 ### Run from Source
 

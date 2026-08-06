@@ -26,13 +26,33 @@
   一个 Windows 应用，整合 PDF、图片、音视频、文本、AI 文档、AI 表格与 CLI / IDE Agent 工作流。默认本地处理，文件不上传。
 </p>
 
-<table>
+<table align="center" cellpadding="0" cellspacing="0" bgcolor="#0b0b0d" style="margin: 0 auto; border: 1px solid #2a2a31; border-radius: 18px; overflow: hidden;">
   <tr>
-    <td align="center" width="20%"><a href="README_EN.md"><strong>English README</strong><br /><sub>英文说明</sub></a></td>
-    <td align="center" width="20%"><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>下载桌面端</strong><br /><sub>Windows 安装包</sub></a></td>
-    <td align="center" width="20%"><a href="https://toolknit.com"><strong>访问网页端</strong><br /><sub>toolknit.com</sub></a></td>
-    <td align="center" width="20%"><a href="#cli--ide-agent--mcp"><strong>CLI / Agent</strong><br /><sub>MCP 调用</sub></a></td>
-    <td align="center" width="20%"><a href="toolknit-desktop/docs/agent-guide.zh-CN.md"><strong>中文 Agent 手册</strong><br /><sub>使用示例</sub></a></td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="README_EN.md" style="color: #ffffff; text-decoration: none;">
+        <strong>英文 README</strong><br /><sub style="color: #cbd5e1;">English version</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="https://github.com/ZihangDong/toolknit-desktop/releases" style="color: #ffffff; text-decoration: none;">
+        <strong>下载桌面端</strong><br /><sub style="color: #cbd5e1;">Windows 安装包</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="https://toolknit.com" style="color: #ffffff; text-decoration: none;">
+        <strong>访问网页端</strong><br /><sub style="color: #cbd5e1;">toolknit.com</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px; border-right: 1px solid #23232a;">
+      <a href="#cli--ide-agent--mcp" style="color: #ffffff; text-decoration: none;">
+        <strong>CLI / Agent</strong><br /><sub style="color: #cbd5e1;">MCP 调用</sub>
+      </a>
+    </td>
+    <td align="center" width="20%" bgcolor="#0b0b0d" style="padding: 16px 14px;">
+      <a href="toolknit-desktop/docs/agent-guide.zh-CN.md" style="color: #ffffff; text-decoration: none;">
+        <strong>中文 Agent 手册</strong><br /><sub style="color: #cbd5e1;">使用示例</sub>
+      </a>
+    </td>
   </tr>
 </table>
 
@@ -252,24 +272,70 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 计算器和打字测试器更适合桌面交互，v1.3 不刻意接入 CLI/MCP。
 
-## 分类长截图预留
+## 页面展示
 
-把每个分类的一张长截图放到 `assets/readme/categories/`，建议按下面命名：
+分类页不再强求长图拼接，直接截当前分类页最干净，也更方便以后替换。截图统一放在 `assets/readme/categories/`，命名说明见 [assets/readme/categories/README.md](assets/readme/categories/README.md)。
 
-| 分类 | 建议文件名 | 说明 |
-| --- | --- | --- |
-| PDF 工具 | `assets/readme/categories/category-pdf.png` | PDF 分类长截图。 |
-| 图片工具 | `assets/readme/categories/category-image.png` | 图片分类长截图。 |
-| 音频工具 | `assets/readme/categories/category-audio.png` | 音频分类长截图。 |
-| 视频工具 | `assets/readme/categories/category-video.png` | 视频分类长截图。 |
-| 文本工具 | `assets/readme/categories/category-text.png` | 文本分类长截图。 |
-| AI 工具 | `assets/readme/categories/category-ai.png` | AI 分类长截图。 |
-| 计算器工具 | `assets/readme/categories/category-calculator.png` | 计算器分类长截图。 |
-| 创意工具 | `assets/readme/categories/category-creative.png` | 创意分类长截图。 |
-| 硬件工具 | `assets/readme/categories/category-hardware.png` | 如果后面单独做硬件分类，可用这个。 |
-| 清理工具 | `assets/readme/categories/category-cleanup.png` | 如果后面单独做清理分类，可用这个。 |
+### 设置页
 
-更详细的命名说明见 [assets/readme/categories/README.md](assets/readme/categories/README.md)。
+<p align="center">
+  <img src="assets/readme/categories/shezhi.png" alt="ToolKnit 设置页展示图" width="100%" />
+</p>
+
+### 分类截图展示
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>PDF 工具</strong><br />
+      <img src="assets/readme/categories/category-pdf.png" alt="PDF 工具分类截图" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>图片工具</strong><br />
+      <img src="assets/readme/categories/category-image.png" alt="图片工具分类截图" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>音频工具</strong><br />
+      <img src="assets/readme/categories/category-audio.png" alt="音频工具分类截图" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>视频工具</strong><br />
+      <img src="assets/readme/categories/category-video.png" alt="视频工具分类截图" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>文本工具</strong><br />
+      <img src="assets/readme/categories/category-text.png" alt="文本工具分类截图" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>AI 工具</strong><br />
+      <img src="assets/readme/categories/category-ai.png" alt="AI 工具分类截图" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>计算器工具</strong><br />
+      <img src="assets/readme/categories/category-calculator.png" alt="计算器工具分类截图" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>创意工具</strong><br />
+      <img src="assets/readme/categories/category-creative.png" alt="创意工具分类截图" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>硬件工具</strong><br />
+      <img src="assets/readme/categories/category-hardware.png" alt="硬件工具分类截图" width="100%" />
+    </td>
+    <td width="50%" valign="top">
+      <strong>清理工具</strong><br />
+      <img src="assets/readme/categories/category-cleanup.png" alt="清理工具分类截图" width="100%" />
+    </td>
+  </tr>
+</table>
 
 ## 下载与使用
 
@@ -285,6 +351,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 - 配置 DeepSeek/OpenAI 兼容 AI Provider。
 - 下载 FFmpeg、Whisper 模型，并选择官方源或镜像源。
 - 上传图片或视频作为首页和分类页背景，也可以一键恢复默认动态背景。
+- 查看“支持作者”说明，了解公开捐赠金额、最近支持记录和收款码入口。
 
 ### 从源码运行
 
