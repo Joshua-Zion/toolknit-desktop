@@ -12,7 +12,7 @@
       <br />
       <strong>不以私藏缚代码，愿将利器赠人间。</strong>
       <br />
-      <sub>Star 数由 GitHub 实时徽章展示 · 已获捐赠 80.88 元</sub>
+      <sub>Star 数由 GitHub 实时徽章展示 · 已获捐赠 83.88 元 · 最近一笔：匿名开源支持者（工具编织）3 元</sub>
     </td>
   </tr>
 </table>
@@ -27,11 +27,11 @@
 </p>
 
 <p align="center">
-  <a href="README_EN.md">English</a> ·
-  <a href="https://github.com/ZihangDong/toolknit-desktop/releases">下载桌面端</a> ·
-  <a href="https://toolknit.com">访问网页端</a> ·
-  <a href="#cli--ide-agent--mcp">CLI / Agent</a> ·
-  <a href="toolknit-desktop/docs/agent-guide.zh-CN.md">中文 Agent 手册</a>
+  <a href="README_EN.md"><img src="https://img.shields.io/badge/English-README-111827?style=for-the-badge" alt="English README" /></a>
+  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/下载桌面端-Releases-111827?style=for-the-badge" alt="下载桌面端" /></a>
+  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/访问网页端-toolknit.com-111827?style=for-the-badge" alt="访问网页端" /></a>
+  <a href="#cli--ide-agent--mcp"><img src="https://img.shields.io/badge/CLI%20%2F%20Agent-MCP-111827?style=for-the-badge" alt="CLI / Agent" /></a>
+  <a href="toolknit-desktop/docs/agent-guide.zh-CN.md"><img src="https://img.shields.io/badge/中文-Agent%20手册-111827?style=for-the-badge" alt="中文 Agent 手册" /></a>
 </p>
 
 <p align="center">
@@ -63,7 +63,8 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 如果 ToolKnit 帮到了你，欢迎把一点点支持留给它。独立开发不容易，但我希望桌面端能继续保持开源、纯净、可离线、可被 Agent 调用。你的支持会被放回测试设备、运行依赖镜像、文档维护、版本发布和后续功能开发里。
 
 <p align="center">
-  <strong>当前公开捐赠总额：80.88 元</strong><br />
+  <strong>当前公开捐赠总额：83.88 元</strong><br />
+  <sub>最近一笔：匿名开源支持者（工具编织）· 3 元</sub><br />
   <sub>公开记录见 <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
 </p>
 
@@ -163,16 +164,58 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 ### v1.3 重点更新
 
-| 更新 | 现在可以做什么 |
-| --- | --- |
-| 视频高清单帧图 | 按精确时间点或真实帧率定位，导出 PNG 无损图或高质量 JPG。 |
-| 视频截取 GIF | 选择起始与结束帧、帧率和宽度，导出最长 30 秒的调色板优化 GIF。 |
-| 音视频提取字幕文字 | 下载本地识别模型后离线转写音频或视频，输出 TXT、SRT、JSON；可选 AI 二次润色。 |
-| AI 文档大升级 | 生成多页专业 PDF，同时输出可编辑工程、控件编号图和预览图；支持位置互换、颜色、字号、图层与撤销。 |
-| AI 表格工程化 | 生成 CSV/XLSX/PDF/PNG，按稳定行、列、图表编号检查与修改，再重新渲染。 |
-| PDF 选页体验 | 合并、拆分、旋转等工作流支持预览、逐页选择、全选和安全的返回逻辑。 |
-| 输出与依赖管理 | 所有输出按工具分类到自定义目录；FFmpeg 和离线模型按需下载、校验与提示。 |
-| CLI 与 Agent | 大部分核心文件处理工具拥有确定的命令、进度、错误和输出契约，可由 MCP Agent 自然语言调用。 |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📄 PDF 转图像</strong><br />
+      <sub>按页导出 PNG / JPG，一页一图，适合拆页、取图和后续拼接。</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🧵 长图拼接</strong><br />
+      <sub>支持图片和 PDF 页面导入，提供横向 / 纵向拼接、间距、背景和参考尺寸。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎞 视频高清单帧图</strong><br />
+      <sub>按精确时间点或真实帧率定位，导出 PNG 无损图或高质量 JPG。</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🎬 视频截取 GIF</strong><br />
+      <sub>选择起始与结束帧、帧率和宽度，导出最长 30 秒的调色板优化 GIF。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎙 音视频提取字幕文字</strong><br />
+      <sub>下载本地识别模型后离线转写音频或视频，输出 TXT、SRT、JSON；可选 AI 二次润色。</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🧩 AI 文档大升级</strong><br />
+      <sub>生成多页专业 PDF，同时输出可编辑工程、控件编号图和预览图；支持位置互换、颜色、字号、图层与撤销。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📊 AI 表格工程化</strong><br />
+      <sub>生成 CSV/XLSX/PDF/PNG，按稳定行、列、图表编号检查与修改，再重新渲染。</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🗂 PDF 选页体验</strong><br />
+      <sub>合并、拆分、旋转等工作流支持预览、逐页选择、全选和安全的返回逻辑。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>⚙ 输出与依赖管理</strong><br />
+      <sub>所有输出按工具分类到自定义目录；FFmpeg 和离线模型按需下载、校验与提示。</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🖇 CLI 与 Agent</strong><br />
+      <sub>大部分核心文件处理工具拥有确定的命令、进度、错误和输出契约，可由 MCP Agent 自然语言调用。</sub>
+    </td>
+  </tr>
+</table>
 
 ## 功能总览
 
@@ -180,6 +223,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 | 工具 | 说明 |
 | --- | --- |
+| PDF 转图像 | 按页导出 PNG / JPG，适合拆页、取图和后续拼接。 |
 | PDF 合并 | 选择多个文件和页码后按顺序生成一个 PDF。 |
 | PDF 拆分 | 按页导出，支持单页、全部或指定范围。 |
 | PDF 旋转 | 对指定页面进行 90/180/270 度旋转。 |
@@ -204,7 +248,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 | 计算器 | BMI、时间戳、房贷、利息、密码生成。 |
 | 创意 | 打字测试、图片配色提取。 |
 
-计算器和打字测试器更适合桌面交互，v1.2 不刻意接入 CLI/MCP。
+计算器和打字测试器更适合桌面交互，v1.3 不刻意接入 CLI/MCP。
 
 ## 下载与使用
 

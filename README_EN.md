@@ -12,7 +12,7 @@
       <br />
       <strong>Open tools, shared with care.</strong>
       <br />
-      <sub>Live Star badge from GitHub · Public donations: 80.88 CNY</sub>
+      <sub>Live Star badge from GitHub · Public donations: 83.88 CNY · Latest: Anonymous supporter (Tool Weaving) CNY 3</sub>
     </td>
   </tr>
 </table>
@@ -27,11 +27,11 @@
 </p>
 
 <p align="center">
-  <a href="README.md">简体中文</a> ·
-  <a href="https://github.com/ZihangDong/toolknit-desktop/releases">Download Desktop</a> ·
-  <a href="https://toolknit.com">Web Version</a> ·
-  <a href="#cli--ide-agent--mcp">CLI / Agent</a> ·
-  <a href="toolknit-desktop/docs/agent-guide.en.md">Agent Guide</a>
+  <a href="README.md"><img src="https://img.shields.io/badge/简体中文-README-111827?style=for-the-badge" alt="简体中文 README" /></a>
+  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/Download-Desktop%20Release-111827?style=for-the-badge" alt="Download Desktop" /></a>
+  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/Web-Version-111827?style=for-the-badge" alt="Web Version" /></a>
+  <a href="#cli--ide-agent--mcp"><img src="https://img.shields.io/badge/CLI%20%2F%20Agent-MCP-111827?style=for-the-badge" alt="CLI / Agent" /></a>
+  <a href="toolknit-desktop/docs/agent-guide.en.md"><img src="https://img.shields.io/badge/Agent-Guide-111827?style=for-the-badge" alt="Agent Guide" /></a>
 </p>
 
 <p align="center">
@@ -63,7 +63,8 @@ Only AI-specific workflows send text to the model provider you configure yoursel
 If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, documentation, releases, and future development moving. Independent development takes time; support helps ToolKnit stay open-source, clean, local-first, and useful for Agent workflows.
 
 <p align="center">
-  <strong>Public donations so far: 80.88 CNY</strong><br />
+  <strong>Public donations so far: 83.88 CNY</strong><br />
+  <sub>Latest public donation: Anonymous supporter (Tool Weaving) · CNY 3</sub><br />
   <sub>Public record: <a href="toolknit-desktop/public/contributors.json">contributors.json</a></sub>
 </p>
 
@@ -163,17 +164,58 @@ If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, d
 
 ### v1.3 Highlights
 
-| Update | What it enables |
-| --- | --- |
-| HD video frame export | Export PNG or high-quality JPG frames by exact time or real frame rate. |
-| Video to GIF | Choose start/end frames, FPS, and width, then export palette-optimized GIFs up to 30 seconds. |
-| Long image stitching | Stitch images and PDF pages horizontally or vertically with spacing, background, and reference sizing. |
-| Audio/video transcription | Download a local Whisper model, then export TXT, SRT, and JSON; optional AI review is supported. |
-| AI document upgrade | Generate PDF plus editable project, preview images, and numbered component maps; edit position, size, color, font, alignment, layer order, and undo history. |
-| AI table workflow | Export XLSX, CSV, PDF, PNG, and editable projects; modify rows, columns, formulas, charts, and render again. |
-| PDF page selection | Merge, split, and rotate flows now support preview, page picking, select all, clear all, and safe back navigation. |
-| Dependency management | FFmpeg and transcription models are downloaded on demand from official or mirror sources. |
-| CLI and Agent support | Core file tools have explicit input, output, progress, error-code, and help contracts for natural-language IDE Agent usage. |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📄 PDF to Image</strong><br />
+      <sub>Export selected pages as PNG or JPG, one page per image, for reuse and stitching.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🧵 Long Image Stitching</strong><br />
+      <sub>Import images or PDF pages and stitch them horizontally or vertically with spacing, background, and reference sizing.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎞 HD Video Frame Export</strong><br />
+      <sub>Export PNG or high-quality JPG frames by exact time or real frame rate.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🎬 Video to GIF</strong><br />
+      <sub>Choose start and end frames, FPS, and width, then export palette-optimized GIFs up to 30 seconds.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🎙 Audio/Video Transcription</strong><br />
+      <sub>Download a local Whisper model, then export TXT, SRT, and JSON; optional AI review is supported.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🧩 AI Document Upgrade</strong><br />
+      <sub>Generate PDF plus editable project, preview images, and numbered component maps; edit position, size, color, font, alignment, layer order, and undo history.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>📊 AI Table Workflow</strong><br />
+      <sub>Export XLSX, CSV, PDF, PNG, and editable projects; modify rows, columns, formulas, charts, and render again.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🗂 PDF Page Selection</strong><br />
+      <sub>Merge, split, and rotate flows now support preview, page picking, select all, clear all, and safe back navigation.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>⚙ Dependency Management</strong><br />
+      <sub>FFmpeg and transcription models are downloaded on demand from official or mirror sources.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>🖇 CLI and Agent Support</strong><br />
+      <sub>Core file tools have explicit input, output, progress, error-code, and help contracts for natural-language IDE Agent usage.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Tools
 
@@ -181,6 +223,7 @@ If ToolKnit helps you, leaving a little support behind keeps testing, mirrors, d
 
 | Tool | Description |
 | --- | --- |
+| PDF to Image | Export selected pages as PNG or JPG, one page per image. |
 | PDF Merge | Pick files and pages, then merge in order. |
 | PDF Split | Export selected pages, all pages, or ranges. |
 | PDF Rotate | Rotate selected pages by 90/180/270 degrees. |

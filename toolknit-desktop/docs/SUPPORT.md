@@ -16,6 +16,7 @@ The repository README contains the official WeChat and Alipay QR assets. If a mi
 | 2026-08-04 | Anonymous open-source supporter | CNY 2.00 | Sausage fund received — a tiny warm boost for the next bug fix. |
 | 2026-08-06 | Anonymous open-source supporter (sausage fund) | CNY 5.00 | Sausage fund topped up again. Thank you for walking with ToolKnit. |
 | 2026-08-06 | Anonymous open-source supporter | CNY 50.00 | Thank you for giving open-source maintenance a stronger heartbeat. |
+| 2026-08-06 | Anonymous open-source supporter (Tool Weaving) | CNY 3.00 | Tool weaving fund received. Thank you for helping ToolKnit grow a little more. |
 
 The machine-readable record used by the desktop home page is [public/contributors.json](../public/contributors.json). Personal information is not published without permission.
 
