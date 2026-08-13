@@ -84,6 +84,7 @@ const toolToHelp = new Map([
   ['interest-calc', 'interest-calc'],
   ['password-gen', 'password-gen'],
   ['color-extractor', 'color-extractor'],
+  ['color-space-compare', 'color-space-compare'],
   ['typing-test', 'typing-test'],
   ['large-file-cleanup', 'large-file-cleanup'],
   ['hardware-overview', 'hardware-tools'],

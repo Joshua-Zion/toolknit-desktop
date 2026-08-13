@@ -312,7 +312,7 @@ Category pages no longer need stitched long screenshots. A direct capture of eac
 | --- | --- |
 | AI | AI polish, AI translate, AI document, AI table. |
 | Calculators | BMI, timestamp, mortgage, interest, password generator. |
-| Creative | Typing test, color palette extraction. |
+| Creative | Typing test, color palette extraction, and live color-space comparison across OKLCH, OKLab, Lab, LCh, RGB, HSL, HSV, and CMYK. |
 
 Calculator tools and the typing test remain desktop-first because CLI/MCP would not add much value there.
 

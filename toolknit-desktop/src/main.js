@@ -114,6 +114,7 @@
       import { createDefaultVideoGifSelection, normalizeVideoGifRequest, validateVideoGifInput, videoGifTimeLabel } from './video-gif-core.js';
       import { calculateImageStitchLayout, normalizeImageStitchRequest } from './image-stitch-core.js';
       import { initPdfToImageTool } from './pdf-to-image-ui.js';
+      import { initColorSpaceCompareTool } from './color-space-compare-ui.js';
       import JSZip from 'jszip';
 
       // Disable context menu globally, but allow on tool items for favorites
@@ -122,7 +123,11 @@
         if (e.target.closest('.cleanup-large-files-table tr[data-path], .cleanup-large-files-context-menu')) return;
         e.preventDefault();
       });
-      document.addEventListener('copy', (e) => e.preventDefault());
+      document.addEventListener('copy', (e) => {
+        if (e.target?.closest?.('[data-allow-programmatic-copy]')
+          || document.activeElement?.matches?.('[data-allow-programmatic-copy]')) return;
+        e.preventDefault();
+      });
       document.addEventListener('cut', (e) => e.preventDefault());
 
       const WINDOW_RADIUS_KEY = 'toolknit.window-radius.v1';
@@ -18161,6 +18166,73 @@
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openColorExtractorOverlay(); }
         });
       });
+
+      // ===== Color Space Compare Tool =====
+      const colorSpaceCompareOverlay = document.getElementById('colorSpaceCompareOverlay');
+      const colorSpaceCompareBack = document.getElementById('colorSpaceCompareBack');
+      const colorSpaceCompareBg = document.getElementById('colorSpaceCompareBg');
+      const colorSpaceCompareTool = initColorSpaceCompareTool(colorSpaceCompareOverlay);
+      let colorSpaceComparePlasmaInstance = null;
+      let colorSpaceCompareTrigger = null;
+
+      function openColorSpaceCompareOverlay(trigger = null) {
+        if (!colorSpaceCompareOverlay) return;
+        colorSpaceCompareTrigger = trigger instanceof HTMLElement ? trigger : null;
+        colorSpaceCompareOverlay.removeAttribute('inert');
+        colorSpaceCompareOverlay.classList.add('visible');
+        colorSpaceCompareOverlay.setAttribute('aria-hidden', 'false');
+        colorSpaceCompareTool.open();
+        if (colorSpaceCompareBg && !colorSpaceComparePlasmaInstance) {
+          colorSpaceComparePlasmaInstance = initStandardToolPlasma(colorSpaceCompareBg);
+        }
+        requestAnimationFrame(() => colorSpaceCompareBack?.focus());
+      }
+
+      function closeColorSpaceCompareOverlay() {
+        if (!colorSpaceCompareOverlay) return;
+        const returnFocus = navigatedFromHome ? null : colorSpaceCompareTrigger;
+        colorSpaceCompareTool.close();
+        colorSpaceCompareOverlay.classList.remove('visible');
+        colorSpaceCompareOverlay.setAttribute('aria-hidden', 'true');
+        colorSpaceCompareOverlay.setAttribute('inert', '');
+        colorSpaceComparePlasmaInstance = disposeStandardToolPlasma(colorSpaceComparePlasmaInstance);
+        colorSpaceCompareTrigger = null;
+        if (returnFocus?.isConnected) requestAnimationFrame(() => returnFocus.focus());
+      }
+
+      colorSpaceCompareBack?.addEventListener('click', closeColorSpaceCompareOverlay);
+      colorSpaceCompareOverlay?.addEventListener('keydown', (event) => {
+        if (event.key === 'Tab') {
+          const focusable = Array.from(colorSpaceCompareOverlay.querySelectorAll(
+            'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+          )).filter(element => element.getClientRects().length > 0);
+          if (focusable.length === 0) {
+            event.preventDefault();
+            return;
+          }
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+          return;
+        }
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        const shouldReturnHome = navigatedFromHome;
+        closeColorSpaceCompareOverlay();
+        if (shouldReturnHome) {
+          clearHomeToolNavigation();
+          switchCategory('home');
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="color-space-compare"]').forEach(item => {
+        item.addEventListener('click', () => openColorSpaceCompareOverlay(item));
+      });
+      // ===== End Color Space Compare Tool =====
 
       // ===== Text Stats Tool =====
       const textStatsOverlay = document.getElementById('textStatsOverlay');

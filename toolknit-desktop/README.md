@@ -166,7 +166,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 | --- | --- |
 | AI | AI 润色、AI 翻译、AI 文档、AI 表格。 |
 | 计算器 | BMI、时间戳、房贷、利息、密码生成。 |
-| 创意 | 打字测试、图片配色提取。 |
+| 创意 | 打字测试、图片配色提取、颜色空间对比（OKLCH / OKLab / Lab / LCh / RGB / HSL / HSV / CMYK）。 |
 
 ## 下载与使用
 

@@ -555,6 +555,11 @@ export const HELP_CONTENT_EN = {
     html: `<div class="help-doc"><h2>Color Extractor</h2><p>Extract the main colors from one PNG, JPG, or WebP image and copy the color information you need.</p><h3>How to use it</h3><ol class="help-steps"><li>Upload or drop an image</li><li>Wait for local analysis and review the color circles</li><li>Open a color for details or copy its HEX value; select another image at any time</li></ol><div class="help-note"><p>CLI/IDE Agent can inspect one explicit image path and return its palette without uploading the image or writing an output file.</p></div></div>`
   },
 
+  'color-space-compare': {
+    title: 'Color Space Compare',
+    html: `<div class="help-doc"><h2>Color Space Compare</h2><p>Edit and compare OKLCH, OKLab, CIELAB, CIELCH, RGB, HSL, HSV, and approximate CMYK at the same time. Every channel updates the other spaces live and reports coverage for sRGB, Display P3, Adobe RGB, and Rec.2020.</p><h3>How to use it</h3><ol class="help-steps"><li>Drag any gradient track or enter an exact value in its number field</li><li>Review the preview, HEX value, and gamut status; when a source color is outside sRGB, the clipped display preview is clearly identified</li><li>Click any value card to copy it, or use arrow keys and the step buttons for fine adjustments</li></ol><div class="help-note"><p>All conversion runs locally. CIELAB / CIELCH preserve the source tool's D65 white-point semantics and are not CSS Color 4's default D50 lab() / lch(); CMYK is a generic approximation without an ICC profile and cannot replace a print proof. The display preview uses sRGB channel clipping and is not professional ICC gamut mapping.</p></div></div>`
+  },
+
   'typing-test': {
     title: 'Typing Test',
     html: `<div class="help-doc"><h2>Typing Test</h2><p>Choose Chinese or English, a difficulty level, and a duration, then type against the prompt to measure speed and accuracy.</p><h3>How to use it</h3><ol class="help-steps"><li>Set language, difficulty, and duration</li><li>Select Start Test, then focus the input area to type</li><li>Review WPM and accuracy when it finishes; use Restart to try again</li></ol><div class="help-note"><p>This interactive tool is desktop-only and is not exposed to CLI or IDE Agents.</p></div></div>`

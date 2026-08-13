@@ -18,6 +18,7 @@ const releaseTests = [
   'test:text-stats',
   'test:password',
   'test:color-extractor',
+  'test:color-space-compare',
   'test:image-batch',
   'test:icon-gen',
   'test:audio-convert',

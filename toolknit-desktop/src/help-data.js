@@ -578,6 +578,11 @@ export const HELP_CONTENT = {
     html: `<div class="help-doc"><h2>配色提取器</h2><p>从一张 PNG、JPG 或 WebP 图片中提取主色，并展示可复制的颜色信息。</p><h3>使用方法</h3><ol class="help-steps"><li>上传图片或拖入页面</li><li>等待本地分析完成，查看主色圆点</li><li>点击颜色查看详情或复制 HEX 值；可随时重新选择图片</li></ol><div class="help-note"><p>CLI/IDE Agent 可以分析一个明确的图片路径并返回色板，不会上传源图，也不会写入输出文件。</p></div></div>`
   },
 
+  'color-space-compare': {
+    title: '颜色空间对比',
+    html: `<div class="help-doc"><h2>颜色空间对比</h2><p>同时查看并编辑 OKLCH、OKLab、CIELAB、CIELCH、RGB、HSL、HSV 与近似 CMYK。任一通道变化都会实时联动其他颜色空间，并显示 sRGB、Display P3、Adobe RGB 与 Rec.2020 的色域覆盖情况。</p><h3>使用方法</h3><ol class="help-steps"><li>拖动任意渐变轨道，或在右侧数值框中输入精确值</li><li>查看左侧预览、HEX 与色域状态；超出 sRGB 时，页面会明确提示预览值已经裁切</li><li>点击任一颜色值卡片即可复制；方向键和上下微调按钮可用于小步调整</li></ol><div class="help-note"><p>所有换算均在本机完成。CIELAB / CIELCH 保留来源工具的 D65 白点语义，不等同于 CSS Color 4 默认的 D50 lab() / lch()；CMYK 是无 ICC 配置文件的通用近似，不能替代印刷打样。显示预览采用 sRGB 通道裁切，不等同于专业 ICC 色域映射。</p></div></div>`
+  },
+
   'typing-test': {
     title: '打字测试器',
     html: `<div class="help-doc"><h2>打字测试器</h2><p>选择中文或英文、难度和时长后开始输入，实时显示速度和准确率。</p><h3>使用方法</h3><ol class="help-steps"><li>设置语言、难度与测试时长</li><li>点击“开始测试”，再点击输入区域开始打字</li><li>结束后查看 WPM、准确率等结果；需要重测时点击“重新开始”</li></ol><div class="help-note"><p>这是桌面端的交互工具，不提供 CLI 或 IDE Agent 调用。</p></div></div>`
