@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/readme/hero-v2.jpg" alt="ToolKnit Desktop 2.0 — ToolKnit spider web hero" width="100%" />
+<img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop 2.0 — ToolKnit spider web hero" width="100%" />
 
 <h1>ToolKnit Desktop 2.0</h1>
 
@@ -375,13 +375,13 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 如果 ToolKnit 对你的工作有帮助，欢迎用一次性捐赠支持测试设备、依赖镜像、文档维护和后续功能开发。捐赠不是付费外包承诺，但会帮助项目保持开源、纯净、可维护和持续更新。
 
 <p align="center">
-  <img src="assets/readme/donation-support.jpg" alt="支持 ToolKnit 的支付宝和微信二维码" width="100%" />
+  <img src="assets/readme/donation-support.webp" alt="支持 ToolKnit 的支付宝和微信二维码" width="100%" />
 </p>
 
 ## 感谢支持者
 
 <p align="center">
-  <img src="assets/readme/supporters-thanks.jpg" alt="感谢支持 ToolKnit 的朋友" width="100%" />
+  <img src="assets/readme/supporters-thanks.webp" alt="感谢支持 ToolKnit 的朋友" width="100%" />
 </p>
 
 ## Star History
