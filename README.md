@@ -345,7 +345,7 @@ toolknit --help
 
 ## 贡献者
 
-ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的协作。贡献者区域会展示参与项目建设的用户头像、姓名和 GitHub 链接。
+ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的协作。上方头像墙展示 GitHub 提交贡献，下面的名单特别感谢参与功能讨论、问题反馈、复现验证和需求规划的社区成员。
 
 <p align="center">
   <a href="https://github.com/ZihangDong/toolknit-desktop/graphs/contributors">
@@ -353,16 +353,22 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
   </a>
 </p>
 
-<p align="center"><sub>头像墙来自 GitHub 贡献记录；正式发布前可以在下方模板中补充姓名、角色和个人链接。</sub></p>
+<p align="center"><sub>头像墙来自 GitHub 贡献记录；社区名单根据公开 Issue 记录手工维护。</sub></p>
 
-<!--
-贡献者手工名单模板：头像保持圆形，姓名和角色与 GitHub 主页对应。
-<table cellpadding="10" cellspacing="0">
+<table cellpadding="12" cellspacing="0">
   <tr>
-    <td align="center"><a href="https://github.com/USERNAME"><img src="https://github.com/USERNAME.png?size=160" width="88" height="88" style="border-radius:50%;" alt="姓名" /><br /><sub><strong>姓名</strong></sub></a><br /><sub>代码 / 文档 / 设计</sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/qazk-lab"><img src="https://avatars.githubusercontent.com/u/295293290?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="qazk-lab" /><br /><sub><strong>qazk-lab</strong></sub></a><br /><sub>功能建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/1">#1</a> <a href="https://github.com/ZihangDong/toolknit-desktop/issues/2">#2</a></sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/knightkun486"><img src="https://avatars.githubusercontent.com/u/302576851?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="knightkun486" /><br /><sub><strong>knightkun486</strong></sub></a><br /><sub>功能建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/13">Issue #13</a></sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/lllll081926i"><img src="https://avatars.githubusercontent.com/u/118839342?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="lllll081926i" /><br /><sub><strong>lllll081926i</strong></sub></a><br /><sub>Bug 反馈 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/14">Issue #14</a></sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/xiaobai9009"><img src="https://avatars.githubusercontent.com/u/216056388?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="xiaobai9009" /><br /><sub><strong>xiaobai9009</strong></sub></a><br /><sub>问题复现 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/15">Issue #15</a></sub></td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/nicemonkeyzh"><img src="https://avatars.githubusercontent.com/u/142147027?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="nicemonkeyzh" /><br /><sub><strong>nicemonkeyzh</strong></sub></a><br /><sub>Bug 反馈 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/18">Issue #18</a></sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/komhH12"><img src="https://avatars.githubusercontent.com/u/292717427?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="komhH12" /><br /><sub><strong>komhH12</strong></sub></a><br /><sub>CLI Bug 与根因分析 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/20">Issue #20</a></sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/Moessif"><img src="https://avatars.githubusercontent.com/u/83865951?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="Moessif" /><br /><sub><strong>Moessif</strong></sub></a><br /><sub>Bug 反馈与建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/24">Issue #24</a></sub></td>
+    <td width="25%" align="center" valign="top"><a href="https://github.com/chengwei69"><img src="https://avatars.githubusercontent.com/u/249917740?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="chengwei69" /><br /><sub><strong>chengwei69</strong></sub></a><br /><sub>功能规划建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/19">Issue #19</a></sub></td>
   </tr>
 </table>
--->
 
 ## 捐赠支持
 
