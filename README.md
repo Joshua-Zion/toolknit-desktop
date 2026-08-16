@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/readme/hero.gif" alt="ToolKnit Desktop 2.0" width="100%" />
+<img src="assets/readme/hero-v2.jpg" alt="ToolKnit Desktop 2.0 — ToolKnit spider web hero" width="100%" />
 
 <h1>ToolKnit Desktop 2.0</h1>
 
