@@ -384,7 +384,13 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 
 ## Star History
 
-<p>GitHub 的 Star History 动态图接口目前无法稳定返回数据，因此这里保留稳定可访问的星标入口：</p>
+<p>星标变化图由 <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">Star History</a> 提供，点击图表可打开官方历史页面。</p>
+
+<p align="center">
+  <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">
+    <img src="https://api.star-history.com/chart?repos=ZihangDong/toolknit-desktop&amp;type=date&amp;legend=top-left&amp;sealed_token=EEoF4uyEt78cKNHZvUBEUdT5yBOuWINv90m_TWMMcy6U8sziyyBtrHlNdiHMyYXLcobnnBnywdq7HDcegwIk0Yz4IZQieMCISiRGhbR2JeweVhmBWpGlwQPb1EQB_6ZlH62IB9O1vzTDofo6dhca9fEGaXwNwNbOe5u4ZR4-McXwDHUCSiZ234AMgx3j" alt="ToolKnit GitHub star history from Star History" width="100%" />
+  </a>
+</p>
 
 <p align="center">
   <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers"><img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=GitHub%20Stars&color=f59e0b" alt="GitHub stars" /></a>
