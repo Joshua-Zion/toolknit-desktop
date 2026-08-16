@@ -352,6 +352,14 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 
 <p align="center"><sub>捐赠支持图会在正式发布前替换为最终设计，并在同一张图中放置支付宝与微信二维码。</sub></p>
 
+## 感谢支持者
+
+<p align="center">
+  <img src="assets/readme/supporters-thanks.svg" alt="Thank you artwork for ToolKnit supporters" width="100%" />
+</p>
+
+<p align="center"><sub>感谢图会在正式发布前替换为最终设计，用于致谢所有支持 ToolKnit 的朋友。</sub></p>
+
 ## Star History
 
 <p>GitHub 的 Star History 动态图接口目前无法稳定返回数据，因此这里保留稳定可访问的星标入口：</p>
