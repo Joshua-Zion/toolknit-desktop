@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
@@ -121,6 +121,27 @@ try {
       && error.details.attempts === 1
   );
   assert.equal(unauthorizedCalls, 1);
+
+  const cancelledOutput = path.join(fixtureDirectory, 'cancelled-before-render.pdf');
+  const cancellation = new AbortController();
+  await assert.rejects(
+    generateAiDocument({
+      prompt: '生成一页用于验证取消语义的文档。',
+      output_path: cancelledOutput,
+      page_count: 1,
+      locale: 'zh-CN'
+    }, {
+      env: environment,
+      retryDelayMs: 0,
+      signal: cancellation.signal,
+      reportProgress: value => {
+        if (value === 60) cancellation.abort('Cancelled before local document rendering.');
+      },
+      fetchImpl: async () => providerResponse(layoutWith('取消应阻止本地导出。', '没有任何输出文件。'))
+    }),
+    error => error.code === 'CANCELLED'
+  );
+  await assert.rejects(stat(cancelledOutput), error => error?.code === 'ENOENT');
 
   const unverifiedOutput = path.join(fixtureDirectory, 'unverified.pdf');
   let unverifiedCalls = 0;

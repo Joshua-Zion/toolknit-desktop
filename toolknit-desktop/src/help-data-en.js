@@ -3,12 +3,13 @@ export const HELP_CONTENT_EN = {
     title: 'Overview',
     html: `<div class="help-doc">
       <h2>ToolKnit Overview</h2>
-      <p>ToolKnit is a <strong>local-first</strong> multi-functional toolbox desktop app, covering PDF, Image, Audio, Video, Text, Calculator, Creative, Cleanup, Hardware, and AI tools. File processing stays local whenever possible — no uploads to ToolKnit servers.</p>
+      <p>ToolKnit 2.0 is a <strong>local-first</strong> Windows toolbox with 49 desktop tools across 11 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, cleanup, and hardware work is performed locally by default.</p>
 
       <h3>Tool Categories</h3>
       <div class="help-tool-grid">
-        <div class="help-tool-card"><div class="help-tool-card-name">PDF Tools</div><div class="help-tool-card-desc">Merge, split, rotate, encrypt, decrypt, compress, text enhance</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">Image Tools</div><div class="help-tool-card-desc">Format conversion, compression, long-image stitching, icon generator</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">PDF Tools</div><div class="help-tool-card-desc">Merge, split, export images, rotate, encrypt, decrypt, compress, enhance, edit</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">PPT Tools</div><div class="help-tool-card-desc">PDF/image export, asset and text extraction, compression, AI outlines and monochrome drafts</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Image Tools</div><div class="help-tool-card-desc">Conversion, compression, stitching, icon generation, image and screen color picking</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Audio Tools</div><div class="help-tool-card-desc">Format conversion, BPM detection, clipping, video audio extraction</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Video Tools</div><div class="help-tool-card-desc">Format conversion, full-resolution frame export, GIF clips up to 30 seconds</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Text Tools</div><div class="help-tool-card-desc">Audio/video transcription, text statistics, text formatting</div></div>
@@ -21,16 +22,16 @@ export const HELP_CONTENT_EN = {
 
       <h3>Key Features</h3>
       <ul>
-        <li><strong>100% Local Processing</strong>: All file operations are done on your device — no files uploaded to any server</li>
+        <li><strong>Local-first processing</strong>: Source files stay on the device; only an explicitly invoked AI tool sends the required text or metadata to your selected provider</li>
         <li><strong>Batch Processing</strong>: Support for batch file processing to boost productivity</li>
         <li><strong>Drag & Drop</strong>: Drag files directly onto tool pages for instant processing</li>
         <li><strong>Bilingual Interface</strong>: Supports Chinese and English switching</li>
         <li><strong>Flexible delivery</strong>: Use the desktop UI, CLI, or IDE Agent for the task that fits your workflow</li>
-        <li><strong>On-demand media runtime</strong>: Audio/video tools prompt you to install FFmpeg when it is needed</li>
+        <li><strong>On-demand runtimes</strong>: FFmpeg, Whisper speech models, and LibreOffice are installed only when a related tool needs them</li>
       </ul>
 
       <div class="help-note">
-        <p>Some tools (such as audio conversion, video conversion) require the FFmpeg extension. You'll be prompted to download it on first use, after which it works offline.</p>
+        <p>AI polish, translation, documents, tables, PPT AI, and transcription refinement send required text to your configured provider. AI Cleanup sends candidate metadata only. Runtime downloads, public GitHub project data, and external links also need network access; other local processing can work offline.</p>
       </div>
     </div>`
   },
@@ -44,7 +45,8 @@ export const HELP_CONTENT_EN = {
       <ul>
         <li>OS: Windows 10/11 (64-bit)</li>
         <li>RAM: 4GB or more recommended</li>
-        <li>Disk Space: At least 200MB (≈300MB with FFmpeg extension)</li>
+        <li>Disk Space: Reserve at least 200 MB for the base app; optional runtimes use additional space</li>
+        <li>Web runtime: Microsoft Edge WebView2 (normally present on Windows 10/11)</li>
       </ul>
 
       <h3>Installation Steps</h3>
@@ -56,10 +58,10 @@ export const HELP_CONTENT_EN = {
       </ol>
 
       <h3>First Launch</h3>
-      <p>If you use audio/video tools, the app asks you to install the FFmpeg runtime when it is needed. The current Windows download is about 30 MB and is verified before it is used.</p>
+      <p>No optional component is forced on first launch. Related tools prompt for an on-demand install: FFmpeg is about 29 MB, the recommended Whisper Small model about 465 MB, and the LibreOffice download about 356 MB. After download reaches 100%, verification, extraction, or installation may still be running.</p>
 
       <div class="help-note">
-        <p>In Settings you can choose Auto, Official, or China mirror for the FFmpeg and offline-model downloads.</p>
+        <p>FFmpeg, Whisper, and LibreOffice support Auto, Official, or China mirror sources. LibreOffice is used only by PPT to PDF and PPT to Image. A rare offline Windows installation without WebView2 must go online once to install Microsoft Edge WebView2 Runtime.</p>
       </div>
     </div>`
   },
@@ -68,13 +70,13 @@ export const HELP_CONTENT_EN = {
     title: 'Settings & Preferences',
     html: `<div class="help-doc">
       <h2>Settings & Preferences</h2>
-      <p>Click the <strong>settings icon</strong> at the bottom of the sidebar. These are app-level settings; they do not alter your source files.</p>
+      <p>Use the <strong>Settings button</strong> on the right side of the top navigation bar from any page. These app-level settings do not alter source files.</p>
 
       <h3>Language Switching</h3>
       <p>Supports <strong>Chinese</strong> and <strong>English</strong>. The interface updates instantly upon switching.</p>
 
       <h3>AI Key</h3>
-      <p>AI Document, AI Table, AI Polish, AI Translate, and optional transcription refinement need an AI-provider key here. The key is kept locally. Local PDF, image, audio, and video tools do not need a key.</p>
+      <p>DeepSeek, OpenAI, Qwen, Moonshot, and custom OpenAI-compatible endpoints are supported. AI Document, AI Table, AI Polish, AI Translate, PPT AI, AI Cleanup review, and optional transcription refinement need a key. Keys stay on this device and are sent only to the selected provider.</p>
 
       <h3>Offline Transcription Models</h3>
       <p>Audio & Video to Text needs one local model before first use. <strong>Small</strong> is the default recommendation; Base is smaller and faster, while Medium prioritizes quality. Recognition works offline after download. Only optional AI refinement sends recognized text to your provider; media is never uploaded.</p>
@@ -82,14 +84,17 @@ export const HELP_CONTENT_EN = {
       <h3>FFmpeg Runtime</h3>
       <p>Audio conversion, clipping, audio extraction, video conversion, frame export, GIF export, and transcription preparation require FFmpeg. It is no longer bundled into the installer. Install it from Auto, Official, or China mirror here, or accept the dependency prompt when entering a supported tool.</p>
 
+      <h3>LibreOffice Runtime</h3>
+      <p>LibreOffice is used only by PPT to PDF and PPT to Image. Choose Auto, Official, or China mirror; after download, allow verification and extraction to finish. Conversion then works offline.</p>
+
+      <h3>Window, Sound, and Shortcut</h3>
+      <p>Configure resize behavior and small, large, or custom corner radius. Maximized windows remove rounding and cover the screen; rounding returns after restore. Global sounds have a master switch and three styles. Screen Color Picker defaults to <code>Ctrl+Shift+C</code>, can be customized or reset, minimizes the main window while picking, and returns the selected color to the Color Extractor.</p>
+
       <h3>Default Storage Location</h3>
       <p>The default is <strong>ToolKnit in Downloads</strong>. You can choose any existing folder. Outputs are grouped automatically under tool-specific subfolders such as <code>PDF_Merge</code>, <code>PDF_Split</code>, <code>Images</code>, <code>Videos</code>, <code>Transcripts</code>, <code>AI_Doc</code>, and <code>AI_Table</code>; source files are not overwritten.</p>
 
-      <h3>Custom Background</h3>
-      <p>Upload an image or video for the home and category pages. A contrast layer remains above it so content stays readable. Use Clear to return to the ToolKnit default animated background immediately.</p>
-
       <h3>Help & Feedback</h3>
-      <p>Click "Help Center" to open this help page; click "Feedback" to submit bug reports or suggestions.</p>
+      <p>Help Center includes tool guidance, FAQs, the Program Notice, and Usage Policy. Feedback opens the project's issue channel.</p>
     </div>`
   },
 
@@ -98,13 +103,15 @@ export const HELP_CONTENT_EN = {
     html: `<div class="help-doc">
       <h2>CLI Basics</h2>
       <p>Use the <strong>desktop app</strong> for visual selection and preview, the <strong>CLI</strong> for PowerShell and scripts, and an <strong>IDE Agent</strong> when you prefer natural language. The CLI does not need the desktop app to stay open.</p>
-      <h3>First checks</h3>
-      <ol class="help-steps"><li>After installing ToolKnit CLI, run <code>toolknit doctor</code>.</li><li>Run <code>toolknit --help</code> for every command group.</li><li>Use <code>toolknit help &lt;group&gt; &lt;tool&gt;</code> for parameters and examples, such as <code>toolknit help video gif</code>.</li></ol>
+      <h3>Install and check</h3>
+      <ol class="help-steps"><li>Install Node.js <code>20.12.0+</code>, then run <code>npm install --global @toolknit/cli</code>.</li><li>Run <code>toolknit doctor</code> to check the environment and optional runtimes.</li><li>Run <code>toolknit --help</code> for every command group.</li><li>Use <code>toolknit help &lt;group&gt; &lt;tool&gt;</code> for parameters and examples, such as <code>toolknit help video gif</code>.</li></ol>
       <h3>Command groups</h3>
-      <ul><li><code>pdf</code>: inspect, merge, split, rotate, encrypt, decrypt, compress, and scan enhancement.</li><li><code>audio</code>: format conversion, BPM, clipping, and audio-track extraction.</li><li><code>model</code> and <code>transcribe</code>: local speech-model management plus TXT, SRT, and JSON transcription.</li><li><code>video</code>: conversion, exact frame export, and GIF clips up to 30 seconds.</li><li><code>text stats</code>, <code>image colors</code>, and <code>image stitch</code>: local analysis and long-image stitching.</li><li><code>ai-doc</code> and <code>ai-table</code>: create, inspect, edit, undo, and render editable projects.</li></ul>
+      <ul><li><code>pdf</code>: inspect, merge, selected-page split, export images, rotate, encrypt, decrypt, compress, and scan enhancement.</li><li><code>ppt</code>: convert to PDF or images, extract assets or text, compress, generate an AI outline, and create an editable PPTX draft.</li><li><code>hardware</code>: read-only system, CPU/memory, GPU, board, storage, network/device, and power/sensor views.</li><li><code>audio</code>: format conversion, BPM, clipping, and audio-track extraction.</li><li><code>model</code> and <code>transcribe</code>: local speech-model management plus TXT, SRT, and JSON transcription.</li><li><code>video</code>: conversion, exact frame export, and GIF clips up to 30 seconds.</li><li><code>text stats</code>, <code>image colors</code>, and <code>image stitch</code>: local analysis and long-image stitching.</li><li><code>ai-doc</code> and <code>ai-table</code>: create, inspect, edit, undo, and render editable projects.</li></ul>
       <h3>Safe defaults</h3>
       <p>Every write command needs an explicit destination. Existing files are never replaced unless you pass <code>--overwrite</code>. Passwords are not accepted as command-line arguments. JSON, piped output, and MCP mode do not include the decorative CLI banner.</p>
-      <div class="help-note"><p>Desktop and CLI/Agent use separate AI-provider configuration. The desktop key is never copied into CLI/MCP automatically; only AI document, AI table, and optional AI refinement need a CLI/MCP key.</p></div>
+      <h3>Connect an IDE Agent</h3>
+      <p>Run the MCP server with <code>toolknit mcp serve</code>. Configure that command in an MCP-compatible IDE to expose the current 46 capabilities; the desktop app does not need to remain open.</p>
+      <div class="help-note"><p>Desktop and CLI/Agent use separate AI-provider configuration. The desktop key is never copied into CLI/MCP automatically; AI document, AI table, PPT text organization, AI PPT outline/draft, and optional AI refinement need a CLI/MCP key.</p></div>
     </div>`
   },
 
@@ -297,6 +304,109 @@ export const HELP_CONTENT_EN = {
     </div>`
   },
 
+  'pdf-editor': {
+    title: 'PDF Editor',
+    html: `<div class="help-doc">
+      <h2>PDF Editor</h2>
+      <p>A lightweight PDF editor: replace text, insert text, images or shapes, reorder, rotate, extract and append pages — all processed locally.</p>
+
+      <h3>How to Use</h3>
+      <ol class="help-steps">
+        <li>Upload the PDF file you want to edit</li>
+        <li>Click "Edit Text" and select text to modify; click "Insert Text / Image / Shape" to add content</li>
+        <li>Click "Select Component", then click any text, image or shape to move, resize, rotate or delete it</li>
+        <li>Use the page tools to reorder, rotate, delete and extract pages</li>
+        <li>Click "Export PDF" to save the result</li>
+      </ol>
+
+      <h3>Notes</h3>
+      <ul>
+        <li>Limits: 150 MB input, 500 pages</li>
+        <li>Text replacement requires an embedded text layer; scanned or image-only PDFs are not supported</li>
+        <li>Files are processed locally and never uploaded</li>
+      </ul>
+    </div>`
+  },
+
+  'ppt-tools': {
+    title: 'PPT Tools Overview',
+    html: `<div class="help-doc">
+      <h2>PPT Tools Overview</h2>
+      <p>PPT tools focus on presentation asset extraction and AI-assisted writing. The first stage supports <strong>.pptx</strong>. Files are parsed locally; only when you explicitly enable AI organization will the extracted text be sent to your configured AI provider. The PPTX file itself is never uploaded.</p>
+
+      <h3>PPT to PDF</h3>
+      <ul>
+        <li>Renders PPTX through local LibreOffice / soffice into shareable, printable PDF files.</li>
+        <li>The source file is never modified. The output folder contains the PDF and <code>manifest.json</code>.</li>
+        <li>If LibreOffice is missing, the desktop app shows a clear dependency prompt. CLI/Agent users can set <code>TOOLKNIT_LIBREOFFICE_PATH</code>.</li>
+      </ul>
+
+      <h3>PPT to Images</h3>
+      <ul>
+        <li>Renders PPTX into an intermediate PDF locally, then opens the high-quality page-selection workspace.</li>
+        <li>Exports selected pages as individual PNG / JPG / WebP images; PPT slides are not stitched into long images in this tool.</li>
+        <li>Useful for short videos, image posts, documentation screenshots, or further Agent processing.</li>
+      </ul>
+
+      <h3>PPT Image Extractor</h3>
+      <ul>
+        <li>Extract embedded images, logos, screenshots, and background assets from PPTX files.</li>
+        <li>Filter by slide pages, or export all assets in one run.</li>
+        <li>Preserves original image formats whenever possible and writes a <code>manifest.json</code> with slide, filename, and size clues.</li>
+      </ul>
+
+      <h3>PPT AI Text Extractor</h3>
+      <ul>
+        <li>Extracts slide titles, body text, and speaker notes in true presentation order.</li>
+        <li>Exports <code>Markdown</code>, <code>TXT</code>, <code>JSON</code>, or all formats at once.</li>
+        <li>Supports page ranges such as <code>1,3-5</code> and skips low-value placeholders like footer, date, and slide number fields.</li>
+        <li>Optional AI organization can create outlines, speaker scripts, meeting notes, or study notes; local extraction still works without an API key.</li>
+      </ul>
+
+      <h3>PPT Compress</h3>
+      <ul>
+        <li>Creates an optimized copy locally; the source PPTX is never modified.</li>
+        <li>Supports both lossless cleanup and image compression: <code>low</code> preserves image quality, while <code>medium</code> / <code>high</code> recompress large image assets to reduce size.</li>
+        <li>When an image does not become smaller, ToolKnit keeps the original image automatically. The source PPTX is never modified.</li>
+        <li>Writes <code>manifest.json</code> with original size, compressed size, saved bytes, and cleanup actions.</li>
+      </ul>
+
+      <h3>AI PPT Outline</h3>
+      <ul>
+        <li>Generates a new presentation outline from a topic, source notes, target audience, and purpose.</li>
+        <li>Supports deck presets such as product launch, investor pitch, work report, and training so AI can follow the right narrative shape.</li>
+        <li>Visual direction is fixed to a reliable monochrome minimal system: large white fields with restrained black accents, rather than selectable visual styles.</li>
+        <li>Does not read PPTX and does not generate a PPTX file. It writes <code>outline.md</code>, <code>outline.json</code>, and <code>manifest.json</code>.</li>
+        <li><code>outline.json</code> is a stable structure with fact boundaries, slide roles, layout intent, and quality self-check fields for the later AI PPT draft / PPTX workflow.</li>
+        <li>AI receives only the text you enter. Missing facts are placed in the confirmation fields and fact bank instead of being invented.</li>
+      </ul>
+
+      <h3>AI PPT Draft / PPTX</h3>
+      <ul>
+        <li>Generates a structured outline from source text, then writes an editable PPTX draft locally.</li>
+        <li>Can also convert an existing <code>outline.json</code> directly into PPTX without calling AI again.</li>
+        <li>It also supports the same <code>deck_type</code> presets as the outline tool, so the draft can follow launch, pitch, report, or training narratives.</li>
+        <li>Every draft uses the monochrome minimal template. When real assets are unavailable, neutral light-gray rectangles and simple geometric blocks act as honest placeholders.</li>
+        <li>Outputs <code>.pptx</code>, <code>outline.json</code>, <code>outline.md</code>, and <code>manifest.json</code>, without overwriting existing files.</li>
+        <li>The first stage is a stable minimal draft, not animations, video, or pixel-perfect enterprise master reproduction.</li>
+      </ul>
+
+      <h3>CLI / Agent Examples</h3>
+      <pre><code>toolknit ppt to-pdf --input demo.pptx --output-dir out
+toolknit ppt to-image --input demo.pptx --output-dir out --pages 1,3-5 --format png --clarity print
+toolknit ppt images --input demo.pptx --output-dir out --pages 1,3-5
+toolknit ppt text --input demo.pptx --output-dir out --format all --ai-mode outline
+toolknit ppt compress --input demo.pptx --output-dir out --level medium
+toolknit ppt outline --prompt-file brief.txt --output-dir out --slide-count 8 --deck-type product-launch
+toolknit ppt draft --prompt-file brief.txt --output-dir out --slide-count 8 --deck-type product-launch --theme minimal-mono
+toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-mono</code></pre>
+
+      <div class="help-note">
+        <p>In an IDE Agent workflow, say: “Use ToolKnit to convert this PPT to PDF / export slides 1 and 3-5 as high-resolution PNG.” For new content, ask it to generate an 8-slide PPT outline from your notes. These are separate tools.</p>
+      </div>
+    </div>`
+  },
+
   'img-convert': {
     title: 'Image Format Convert',
     html: `<div class="help-doc">
@@ -418,7 +528,7 @@ export const HELP_CONTENT_EN = {
       </ol>
 
       <div class="help-note">
-        <p>First-time use of audio conversion requires downloading the FFmpeg extension (~80-100MB). After download, it works offline.</p>
+        <p>First-time audio conversion prompts for the FFmpeg runtime (about 29 MB). It works offline after verification and installation.</p>
       </div>
 
       <h3>Format Guide</h3>
@@ -552,7 +662,7 @@ export const HELP_CONTENT_EN = {
 
   'color-extractor': {
     title: 'Color Extractor',
-    html: `<div class="help-doc"><h2>Color Extractor</h2><p>Extract the main colors from one PNG, JPG, or WebP image and copy the color information you need.</p><h3>How to use it</h3><ol class="help-steps"><li>Upload or drop an image</li><li>Wait for local analysis and review the color circles</li><li>Open a color for details or copy its HEX value; select another image at any time</li></ol><div class="help-note"><p>CLI/IDE Agent can inspect one explicit image path and return its palette without uploading the image or writing an output file.</p></div></div>`
+    html: `<div class="help-doc"><h2>Color Extractor</h2><p>Extract dominant colors from a PNG, JPG, or WebP image, or pick a pixel from another desktop application with the global screen picker.</p><h3>Image palette</h3><ol class="help-steps"><li>Upload or drop an image</li><li>Wait for local analysis, then select a swatch</li><li>Review HEX, RGB, and other values, then copy what you need</li></ol><h3>Screen color picker</h3><ol class="help-steps"><li>Select Start Screen Picker or press the default <code>Ctrl+Shift+C</code> shortcut</li><li>The main window minimizes; drag the 21×21-pixel magnifier crosshair onto the target pixel</li><li>Confirm to return to Color Extractor with the captured color in the results</li></ol><div class="help-note"><p>The picker samples only the pixels around the crosshair in memory. It does not save screenshots or upload the screen. CLI/IDE Agent can also analyze one explicit image path locally.</p></div></div>`
   },
 
   'typing-test': {
@@ -564,16 +674,17 @@ export const HELP_CONTENT_EN = {
     title: 'AI Polish',
     html: `<div class="help-doc">
       <h2>AI Text Polish</h2>
-      <p>Intelligently analyze and optimize text expression with multiple polish directions.</p>
+      <p>Paste text, select a document, or drop a supported file, then refine its wording with a chosen direction.</p>
 
       <h3>How to Use</h3>
       <ol class="help-steps">
-        <li>Enter the text you want to polish</li>
+        <li>Enter text or import a supported local document and inspect the parsed preview</li>
         <li>Select a polish direction (formal/concise/academic/conversational, etc.)</li>
         <li>Click "Start Polish"</li>
         <li>Compare the original and polished text</li>
-        <li>Copy the satisfactory result</li>
+        <li>Compare the result inside the app, then copy or export it</li>
       </ol>
+      <div class="help-note"><p>The document is parsed locally and the source file is not uploaded. Only the text shown for submission is sent to your configured AI provider.</p></div>
     </div>`
   },
 
@@ -581,15 +692,16 @@ export const HELP_CONTENT_EN = {
     title: 'AI Translate',
     html: `<div class="help-doc">
       <h2>AI Translate</h2>
-      <p>Sentence-by-sentence translation with highlighted correspondences.</p>
+      <p>Paste text, select a document, or drop a supported file, then preview a sentence-aligned translation inside the app.</p>
 
       <h3>How to Use</h3>
       <ol class="help-steps">
-        <li>Enter the text you want to translate</li>
+        <li>Enter text or import a supported local document and inspect the parsed preview</li>
         <li>Select the source and target languages</li>
         <li>Click "Start Translate"</li>
-        <li>View the sentence-by-sentence translation results</li>
+        <li>Review sentence-aligned results, then copy or export them</li>
       </ol>
+      <div class="help-note"><p>The source document is parsed locally and is not uploaded. Only the text prepared for translation is sent to the selected AI provider.</p></div>
     </div>`
   },
 
@@ -701,14 +813,14 @@ export const HELP_CONTENT_EN = {
       <p>After connecting ToolKnit CLI to an MCP-capable IDE, you can ask an Agent in plain language to process local files from the project. The Agent calls real ToolKnit tools; it does not need the desktop app to stay open and should not claim a result without a tool call.</p>
 
       <h3>Current scope</h3>
-      <div class="help-agent-scope"><p>The MCP server currently exposes <strong>31 capabilities</strong>. In everyday terms:</p><ul><li><strong>PDF (9)</strong>: inspect, merge, selected-page split, rotate, encrypt, decrypt, compress, scan enhancement, and export pages as images or stitched long images.</li><li><strong>Audio (4)</strong>: convert, BPM detection, clip by exact times, and extract a selected video track.</li><li><strong>Audio/video transcription (4)</strong>: list, install, and choose local models, then create TXT, SRT, and JSON. Optional AI refinement sends recognized text only, never media.</li><li><strong>Video (3)</strong>: convert, export a frame at an exact millisecond, and create a GIF from an explicit range up to 30 seconds.</li><li><strong>Text and images (3)</strong>: UTF-8 file statistics, dominant-color extraction, and 2-100 image stitching.</li><li><strong>AI document (4)</strong>: create a PDF, inspect its editable project, edit numbered controls, and render again.</li><li><strong>AI table (4)</strong>: create CSV/XLSX/PDF/PNG, inspect its project, edit stable row/column/chart IDs, and render again.</li></ul></div>
+      <div class="help-agent-scope"><p>The MCP server currently exposes <strong>46 capabilities</strong>. In everyday terms:</p><ul><li><strong>PDF (9)</strong>: inspect, merge, selected-page split, rotate, encrypt, decrypt, compress, scan enhancement, and export pages as images or stitched long images.</li><li><strong>PPT (7)</strong>: convert PPTX to PDF; export PPTX slides as images; extract embedded image assets from PPTX files; extract slide titles, body text, and speaker notes, with optional AI organization into outlines, scripts, meeting notes, or study notes; safely compress PPTX files while preserving image quality; generate a structured presentation outline from a text brief; generate an editable PPTX draft.</li><li><strong>Read-only hardware (8)</strong>: inspect system overview, CPU and memory, live stats, GPU and displays, mainboard and firmware, storage health, network/devices, and power/sensors without writing files.</li><li><strong>Audio (4)</strong>: convert, BPM detection, clip by exact times, and extract a selected video track.</li><li><strong>Audio/video transcription (4)</strong>: list, install, and choose local models, then create TXT, SRT, and JSON. Optional AI refinement sends recognized text only, never media.</li><li><strong>Video (3)</strong>: convert, export a frame at an exact millisecond, and create a GIF from an explicit range up to 30 seconds.</li><li><strong>Text and images (3)</strong>: UTF-8 file statistics, dominant-color extraction, and 2-100 image stitching.</li><li><strong>AI document (4)</strong>: create a PDF, inspect its editable project, edit numbered controls, and render again.</li><li><strong>AI table (4)</strong>: create CSV/XLSX/PDF/PNG, inspect its project, edit stable row/column/chart IDs, and render again.</li></ul></div>
 
       <h3>Desktop-only tools</h3>
       <p>Image format conversion, image compression, icon generation, text formatting, calculators, password generation, typing test, AI Polish, and AI Translate are intentionally desktop-only today. Some are unsafe or impractical to run through a terminal or an Agent conversation.</p>
 
       <h3>Connect once</h3>
       <ol class="help-steps">
-        <li>After installing ToolKnit CLI, run <code>toolknit doctor</code> in PowerShell. Local file tools need no AI key; AI documents, AI tables, and optional AI refinement do.</li>
+        <li>After installing ToolKnit CLI, run <code>toolknit doctor</code> in PowerShell. Local file tools and non-AI PPT tools need no AI key; AI documents, AI tables, PPT text AI organization, AI PPT outline generation, AI PPT draft/PPTX generation, and optional AI refinement do.</li>
         <li>Search for <code>MCP</code> in your IDE settings. Add a server with command <code>toolknit</code> and arguments <code>mcp serve</code>, then reconnect or restart the Agent.</li>
         <li>State the input file, requested operation, destination, and overwrite decision. For “save to the current project”, the Agent should use the workspace <code>toolknit-output</code> folder rather than guessing a path.</li>
       </ol>
@@ -779,8 +891,8 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-agent-prompt">
         <h4>Generate a multi-page AI document</h4>
-        <p class="help-agent-prompt-text">You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled "ToolKnit v1.3 Product Plan" in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.</p>
-        <button class="help-prompt-copy" type="button" data-copy-prompt="You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled ToolKnit v1.3 Product Plan in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.">Copy prompt</button>
+        <p class="help-agent-prompt-text">You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled "ToolKnit v2.0 Product Plan" in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.</p>
+        <button class="help-prompt-copy" type="button" data-copy-prompt="You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat. Generate a 4-page English A4 PDF titled ToolKnit v2.0 Product Plan in the current IDE project's toolknit-output folder. Do not overwrite existing files. After generation, report the absolute paths of the PDF, .toolknit.json project, preview directory, every high-resolution numbered map, and overview map. Then call toolknit_pdf_inspect and confirm the real PDF has exactly 4 pages.">Copy prompt</button>
       </div>
 
       <div class="help-agent-prompt">
@@ -843,7 +955,7 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: Are my files uploaded to a server?</div>
-        <div class="help-faq-a">A: No. All file processing is done locally. Files are never uploaded to any server. AI tools only send text content to the AI API for processing.</div>
+        <div class="help-faq-a">A: Local tools do not upload source files. Only explicitly invoked AI tools send required text or cleanup candidate metadata to your selected provider. Runtime downloads, public GitHub data, and external links also use the network.</div>
       </div>
 
       <div class="help-faq-item">
@@ -853,7 +965,7 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: How do I switch languages?</div>
-        <div class="help-faq-a">A: Click the settings icon at the bottom of the sidebar, then select Chinese or English in the "Language" section.</div>
+        <div class="help-faq-a">A: Use the Settings button on the right side of any page's top navigation bar, then choose Chinese or English under Language.</div>
       </div>
 
       <div class="help-faq-item">
@@ -864,6 +976,16 @@ export const HELP_CONTENT_EN = {
       <div class="help-faq-item">
         <div class="help-faq-q">Q: Is batch processing supported?</div>
         <div class="help-faq-a">A: Yes. Most tools (PDF merge, image conversion, audio conversion, etc.) support batch file processing.</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q: Do I need an account or cloud sync?</div>
+        <div class="help-faq-a">A: No. The desktop app has no account system or cloud favorites sync. Settings, favorites, keys, and downloaded runtimes stay on this device.</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q: What if startup says WebView2 is missing?</div>
+        <div class="help-faq-a">A: Windows 10/11 normally includes WebView2. On a stripped-down or offline installation, connect once and install Microsoft Edge WebView2 Runtime before launching ToolKnit.</div>
       </div>
     </div>`
   },
@@ -880,7 +1002,7 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: How much space does FFmpeg need?</div>
-        <div class="help-faq-a">A: The current Windows runtime download is about 30 MB. It is installed under ToolKnit local app data, not your output folder, and works offline after installation.</div>
+        <div class="help-faq-a">A: The current Windows runtime download is about 29 MB. It is installed under ToolKnit local app data, not your output folder, and works offline after installation.</div>
       </div>
 
       <div class="help-faq-item">
@@ -892,6 +1014,16 @@ export const HELP_CONTENT_EN = {
         <div class="help-faq-q">Q: Can I install FFmpeg manually?</div>
         <div class="help-faq-a">A: For Desktop, use the managed runtime in Settings. CLI may use FFmpeg from PATH or TOOLKNIT_FFMPEG_PATH; that configuration is separate from Desktop.</div>
       </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q: What are Whisper and LibreOffice used for?</div>
+        <div class="help-faq-a">A: Whisper models run local audio/video transcription; the recommended Small model is about 465 MB. LibreOffice is used only by PPT to PDF and PPT to Image; its download is about 356 MB. Both are optional.</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q: Why does installation continue after download reaches 100%?</div>
+        <div class="help-faq-a">A: 100% means network transfer is complete. Hash verification, extraction, or installation may still be running. Wait until the UI explicitly reports completion.</div>
+      </div>
     </div>`
   },
 
@@ -902,12 +1034,12 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: Are my files safe?</div>
-        <div class="help-faq-a">A: Yes. All file processing (PDF, image, audio, video, etc.) is done locally and never uploaded to any server.</div>
+        <div class="help-faq-a">A: Local PDF, PPT, image, media, text, and hardware processing does not upload source files. The UI explains any text or metadata an AI action needs before it is sent.</div>
       </div>
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: Do AI tools save my data?</div>
-        <div class="help-faq-a">A: AI tools (polish, translate, chat, etc.) send text content to the AI API for processing, but do not save your input locally.</div>
+        <div class="help-faq-a">A: AI tools send required text to your selected DeepSeek, OpenAI, Qwen, Moonshot, or custom compatible endpoint. Provider retention follows that provider's policy. Keys are stored locally, and CLI/MCP never inherits the desktop key automatically.</div>
       </div>
 
       <div class="help-faq-item">
@@ -917,7 +1049,17 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: Does the app collect usage data?</div>
-        <div class="help-faq-a">A: ToolKnit does not collect any user privacy data and contains no tracking code or analytics tools.</div>
+        <div class="help-faq-a">A: ToolKnit has no built-in behavior analytics or advertising tracker. Support Author reads public GitHub project data such as stars; website, GitHub, and feedback actions open their corresponding external links.</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q: Does Screen Color Picker save or upload my screen?</div>
+        <div class="help-faq-a">A: No. Only after an explicit click or shortcut does it sample the 21×21 pixels around the crosshair in memory. It saves no screenshot and uploads no screen content.</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q: Does AI Large File Cleanup read file contents?</div>
+        <div class="help-faq-a">A: No. Scanning is local. AI review receives metadata such as name, size, type, time, relative folder hint, and risk reason, never file contents or a full absolute path.</div>
       </div>
     </div>`
   },
@@ -951,6 +1093,33 @@ export const HELP_CONTENT_EN = {
       </ul>
 
       <div class="help-note"><p>The safest habit: scan Downloads and temporary export folders first. Project repositories, chat folders, model folders, and important document folders should always be reviewed manually.</p></div>
+    </div>`
+  },
+
+  'c-drive-cleanup': {
+    title: 'C-Drive Cleanup',
+    html: `<div class="help-doc">
+      <h2>C-Drive Cleanup</h2>
+      <p>Clean system caches and temporary space in three risk tiers. Each tier runs independently, and a mask explains the impact before a 5-second confirmation countdown.</p>
+
+      <h3>Three risk tiers</h3>
+      <ul>
+        <li><strong>Low risk</strong>: user / Windows temp files, browser cache, thumbnails, shader caches, crash reports, and network cache. The system rebuilds these automatically.</li>
+        <li><strong>Medium risk</strong>: Windows Update cache, Delivery Optimization cache, Windows logs, and developer caches. Some update components may need to be re-downloaded.</li>
+        <li><strong>High risk</strong>: hibernation file, system restore points, and Recycle Bin. This turns off hibernation / fast startup, deletes existing restore points, and empties the Recycle Bin.</li>
+      </ul>
+
+      <h3>Administrator rights</h3>
+      <p>System-level caches require administrator rights. If the app is not elevated, opening this page prompts you to restart as administrator, which triggers UAC and relaunches automatically. You can also quit and run the app as administrator manually.</p>
+
+      <h3>Privacy and safety</h3>
+      <ul>
+        <li><strong>Read-only scan</strong>: the scan only estimates space and never writes.</li>
+        <li><strong>Permanent deletion</strong>: cache and system-space items are permanently deleted, not sent to the Recycle Bin. Downloads, Documents, Desktop, Pictures, Music, Videos, and chat history are never cleaned.</li>
+        <li><strong>Whitelist and skip-locked</strong>: only fixed whitelist directories are touched; in-use and protected files are skipped, and symlinks / junctions are never followed.</li>
+      </ul>
+
+      <div class="help-note"><p>The high-risk tier changes system capabilities, so read the mask carefully before running. Hibernation can be re-enabled later, but deleted restore points and Recycle Bin contents cannot be recovered.</p></div>
     </div>`
   },
 
@@ -995,7 +1164,7 @@ export const HELP_CONTENT_EN = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: Will an upgrade remove my settings or models?</div>
-        <div class="help-faq-a">A: A normal in-place upgrade does not intentionally clear local app data. Settings, downloaded FFmpeg, and offline models remain unless you chose to clear app data while uninstalling the old version.</div>
+        <div class="help-faq-a">A: A normal in-place upgrade does not intentionally clear local app data. Settings, FFmpeg, Whisper models, and LibreOffice normally remain unless you choose to clear app data while uninstalling.</div>
       </div>
 
       <div class="help-faq-item">

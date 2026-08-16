@@ -1,44 +1,17 @@
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
-import { COLOR_EXTRACTOR_LIMITS, assertColorExtractorImageBytes, readColorExtractorImageDimensions } from './core/color-extractor-core.js';
+import {
+  COLOR_EXTRACTOR_LIMITS,
+  assertColorExtractorImageBytes,
+  paletteFromRgba,
+  readColorExtractorImageDimensions
+} from './core/color-extractor-core.js';
 import { ToolKnitError } from './errors.mjs';
 
 const EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
 function report(options, value, message) { try { options.reportProgress?.(value, message); } catch {} }
-function rgbToHex(r, g, b) { return `#${[r, g, b].map(value => Math.round(value).toString(16).padStart(2, '0')).join('').toUpperCase()}`; }
-function rgbToHsl(r, g, b) {
-  r /= 255; g /= 255; b /= 255; const max = Math.max(r, g, b); const min = Math.min(r, g, b); const lightness = (max + min) / 2;
-  if (max === min) return [0, 0, Math.round(lightness * 100)];
-  const delta = max - min; const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-  let hue = max === r ? (g - b) / delta + (g < b ? 6 : 0) : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
-  return [Math.round(hue / 6 * 360), Math.round(saturation * 100), Math.round(lightness * 100)];
-}
-
-function paletteFromRgba(data, count) {
-  const pixels = [];
-  for (let offset = 0; offset < data.length; offset += 4) if (data[offset + 3] >= 128) pixels.push([data[offset], data[offset + 1], data[offset + 2]]);
-  if (!pixels.length) throw new ToolKnitError('PROCESSING_FAILED', 'The image does not contain visible pixels.');
-  const colorCount = Math.max(2, Math.min(9, count ?? 9));
-  const centroids = [];
-  const step = Math.max(1, Math.floor(pixels.length / colorCount));
-  for (let index = 0; index < colorCount && index * step < pixels.length; index++) centroids.push([...pixels[index * step]]);
-  let sums = [];
-  for (let iteration = 0; iteration < 12; iteration++) {
-    sums = centroids.map(() => [0, 0, 0, 0]);
-    for (const pixel of pixels) {
-      let best = 0; let distance = Infinity;
-      for (let index = 0; index < centroids.length; index++) { const c = centroids[index]; const d = (pixel[0] - c[0]) ** 2 + (pixel[1] - c[1]) ** 2 + (pixel[2] - c[2]) ** 2; if (d < distance) { distance = d; best = index; } }
-      sums[best][0] += pixel[0]; sums[best][1] += pixel[1]; sums[best][2] += pixel[2]; sums[best][3] += 1;
-    }
-    let changed = false;
-    for (let index = 0; index < centroids.length; index++) if (sums[index][3]) { const next = sums[index].slice(0, 3).map(value => value / sums[index][3]); if (next.some((value, channel) => Math.abs(value - centroids[index][channel]) > 1)) changed = true; centroids[index] = next; }
-    if (!changed) break;
-  }
-  return centroids.map((rgb, index) => { const value = rgb.map(Math.round); const hsl = rgbToHsl(...value); const pixelsInCluster = sums[index]?.[3] ?? 0; return { hex: rgbToHex(...value), rgb: { r: value[0], g: value[1], b: value[2] }, hsl: { h: hsl[0], s: hsl[1], l: hsl[2] }, pixels: pixelsInCluster, percentage: Number((pixelsInCluster / pixels.length * 100).toFixed(2)) }; }).sort((left, right) => right.pixels - left.pixels);
-}
-
 export async function extractColorPalette(args, options = {}) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new ToolKnitError('INVALID_ARGUMENT', 'arguments must be an object.');
   if (Object.keys(args).some(key => !['input_path', 'count'].includes(key))) throw new ToolKnitError('INVALID_ARGUMENT', 'Unknown argument.');
@@ -58,6 +31,7 @@ export async function extractColorPalette(args, options = {}) {
   const canvas = createCanvas(width, height); const context = canvas.getContext('2d'); context.drawImage(image, 0, 0, width, height);
   report(options, 55, 'Clustering dominant colors.');
   const palette = paletteFromRgba(context.getImageData(0, 0, width, height).data, count);
+  if (!palette.length) throw new ToolKnitError('PROCESSING_FAILED', 'The image does not contain visible pixels.');
   report(options, 100, 'Color palette extraction completed.');
   return { tool: 'color.extract', input: { path: await realpath(requested), bytes: bytes.length, width: dimensions.width, height: dimensions.height }, sampled: { width, height, visible_pixels: palette.reduce((sum, color) => sum + color.pixels, 0) }, palette };
 }

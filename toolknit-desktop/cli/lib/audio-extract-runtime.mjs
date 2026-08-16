@@ -3,7 +3,7 @@ import path from 'node:path';
 import { AUDIO_EXTRACT_LIMITS, AudioExtractError, normalizeAudioExtractFormat, normalizeAudioTrackIndex } from './core/audio-extract-core.js';
 import { getAudioConversionProfile } from './core/audio-convert-core.js';
 import { createAudioTemporaryOutput, discardAudioTemporaryOutput, prepareAudioOutputDirectory, publishAudioTemporaryOutput } from './audio-runtime.mjs';
-import { ToolKnitError } from './errors.mjs';
+import { ToolKnitError, throwIfAborted } from './errors.mjs';
 import { compactFfmpegError, parseProgressSeconds, probeFfmpegDuration, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'wmv', 'ts', 'm4v']);
@@ -26,6 +26,7 @@ export async function extractAudio(args, options = {}) {
   if (activeAudioExtract) throw new ToolKnitError('PROCESSING_FAILED', 'Another ToolKnit audio extraction is already running. Wait for it to finish.');
   activeAudioExtract = true;
   try {
+    throwIfAborted(options.signal);
     report(options, 0, 'Validating video input.');
     const input = await inputFile(args.input_path);
     if (typeof args.output_dir !== 'string' || !args.output_dir.trim() || args.output_dir.includes('\0')) throw new ToolKnitError('INVALID_ARGUMENT', 'output_dir must be a non-empty path string.');
@@ -34,14 +35,16 @@ export async function extractAudio(args, options = {}) {
     const profile = getAudioConversionProfile(format, args.quality);
     const outputDirectory = await prepareAudioOutputDirectory(args.output_dir);
     const command = await resolveFfmpeg();
-    if ((await runFfmpeg(command, ['-version'])).code !== 0) throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
-    const duration = await probeFfmpegDuration(command, input.path);
+    if ((await runFfmpeg(command, ['-version'], { signal: options.signal })).code !== 0) throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
+    const duration = await probeFfmpegDuration(command, input.path, { signal: options.signal });
     report(options, 12, 'Probing video audio tracks.');
     let buffer = ''; const temporary = await createAudioTemporaryOutput(outputDirectory, profile.extension);
     try {
-      const result = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-y', '-i', input.path, '-vn', '-map', `0:a:${track ?? 0}`, '-c:a', profile.encoder, ...profile.args, '-progress', 'pipe:1', '-nostats', temporary.path], { onStdout(chunk) { buffer += chunk.toString('utf8'); let end; while ((end = buffer.indexOf('\n')) !== -1) { const seconds = parseProgressSeconds(buffer.slice(0, end).trim()); buffer = buffer.slice(end + 1); if (seconds !== null && duration) report(options, Math.min(92, 20 + seconds / duration * 70), 'Extracting audio track.'); } } });
+      const result = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-y', '-i', input.path, '-vn', '-map', `0:a:${track ?? 0}`, '-c:a', profile.encoder, ...profile.args, '-progress', 'pipe:1', '-nostats', temporary.path], { signal: options.signal, onStdout(chunk) { buffer += chunk.toString('utf8'); let end; while ((end = buffer.indexOf('\n')) !== -1) { const seconds = parseProgressSeconds(buffer.slice(0, end).trim()); buffer = buffer.slice(end + 1); if (seconds !== null && duration) report(options, Math.min(92, 20 + seconds / duration * 70), 'Extracting audio track.'); } } });
+      throwIfAborted(options.signal);
       if (result.code !== 0 || result.signal) throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(result.stderr, 'FFmpeg could not extract this audio track.'));
       const metadata = await stat(temporary.path); if (!metadata.isFile() || metadata.size < 1) throw new ToolKnitError('PROCESSING_FAILED', 'FFmpeg produced an empty audio file.');
+      throwIfAborted(options.signal);
       report(options, 95, 'Publishing extracted audio.');
       const outputPath = await publishAudioTemporaryOutput(temporary, outputDirectory, input.path, profile.extension, `${path.basename(input.path, path.extname(input.path))}_audio`);
       report(options, 100, 'Audio extraction completed.');

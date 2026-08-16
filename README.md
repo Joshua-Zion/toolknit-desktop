@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/2.0-Preview-d97706?style=for-the-badge&labelColor=92400e" alt="ToolKnit 2.0 Preview" />
+  <img src="https://img.shields.io/badge/2.0.0-正式版-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.0.0" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -306,8 +306,6 @@ npm run tauri dev
 要求：Windows 10/11、Node.js `20.12.0` 或更高版本；构建原生桌面端还需要 Rust stable 工具链。
 
 ## CLI / MCP / Agent
-
-<a id="cli--mcp--agent"></a>
 
 ToolKnit 将适合自动化的本地文件能力提供给命令行、脚本和支持 MCP 的 IDE Agent。桌面端负责可视化预览和交互，CLI 负责批处理，Agent 负责自然语言编排。
 

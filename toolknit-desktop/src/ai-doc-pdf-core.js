@@ -156,12 +156,6 @@ function drawPageChrome(page) {
     thickness: 0.55,
     color: rgb(0.84, 0.84, 0.82)
   });
-  page.drawLine({
-    start: { x: margin, y: 38 * PX_TO_PT },
-    end: { x: width - margin, y: 38 * PX_TO_PT },
-    thickness: 0.45,
-    color: rgb(0.86, 0.86, 0.84)
-  });
 }
 
 async function drawRegion({ region, page, pageHeight, document, regular, bold, imagePlaceholder }) {

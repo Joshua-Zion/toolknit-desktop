@@ -123,3 +123,168 @@ export function assertColorExtractorImageBytes(data) {
   assertColorExtractorDimensions(dimensions.width, dimensions.height);
   return dimensions;
 }
+
+export function rgbToHex(r, g, b) {
+  const toHex = (value) => Math.max(0, Math.min(255, Math.round(value)))
+    .toString(16)
+    .padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+export function rgbToHsl(r, g, b) {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const lightness = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l: Math.round(lightness * 100) };
+  const delta = max - min;
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  let hue;
+  if (max === rn) hue = ((gn - bn) / delta + (gn < bn ? 6 : 0)) / 6;
+  else if (max === gn) hue = ((bn - rn) / delta + 2) / 6;
+  else hue = ((rn - gn) / delta + 4) / 6;
+  return {
+    h: Math.round(hue * 360),
+    s: Math.round(saturation * 100),
+    l: Math.round(lightness * 100)
+  };
+}
+
+export function colorFromRgb(r, g, b) {
+  const rgb = { r: Math.round(r), g: Math.round(g), b: Math.round(b) };
+  const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+  return { hex: rgbToHex(rgb.r, rgb.g, rgb.b), rgb, hsl };
+}
+
+function colorDistance(left, right) {
+  const dr = left[0] - right[0];
+  const dg = left[1] - right[1];
+  const db = left[2] - right[2];
+  const rMean = (left[0] + right[0]) / 2;
+  return Math.sqrt(
+    ((2 + rMean / 256) * dr * dr)
+    + (4 * dg * dg)
+    + ((2 + (255 - rMean) / 256) * db * db)
+  );
+}
+
+function clusterPixels(pixels, colorCount) {
+  const centroids = [];
+  const step = Math.max(1, Math.floor(pixels.length / colorCount));
+  for (let index = 0; index < colorCount; index++) {
+    const pixel = pixels[Math.min(index * step, pixels.length - 1)];
+    if (pixel) centroids.push([...pixel]);
+  }
+  while (centroids.length < colorCount) centroids.push([...pixels[0]]);
+
+  for (let iteration = 0; iteration < 12; iteration++) {
+    const sums = centroids.map(() => [0, 0, 0, 0]);
+    for (const pixel of pixels) {
+      let best = 0;
+      let bestDistance = Infinity;
+      for (let index = 0; index < centroids.length; index++) {
+        const centroid = centroids[index];
+        const distance = (pixel[0] - centroid[0]) ** 2
+          + (pixel[1] - centroid[1]) ** 2
+          + (pixel[2] - centroid[2]) ** 2;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      }
+      sums[best][0] += pixel[0];
+      sums[best][1] += pixel[1];
+      sums[best][2] += pixel[2];
+      sums[best][3] += 1;
+    }
+
+    let changed = false;
+    for (let index = 0; index < centroids.length; index++) {
+      if (!sums[index][3]) continue;
+      const next = sums[index].slice(0, 3).map(value => value / sums[index][3]);
+      if (next.some((value, channel) => Math.abs(value - centroids[index][channel]) > 1)) {
+        changed = true;
+      }
+      centroids[index] = next;
+    }
+    if (!changed) break;
+  }
+
+  const counts = centroids.map(() => 0);
+  for (const pixel of pixels) {
+    let best = 0;
+    let bestDistance = Infinity;
+    for (let index = 0; index < centroids.length; index++) {
+      const centroid = centroids[index];
+      const distance = (pixel[0] - centroid[0]) ** 2
+        + (pixel[1] - centroid[1]) ** 2
+        + (pixel[2] - centroid[2]) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = index;
+      }
+    }
+    counts[best] += 1;
+  }
+
+  return { centroids, counts };
+}
+
+export function paletteFromRgba(data, count = 5) {
+  const pixels = [];
+  for (let offset = 0; offset + 3 < data.length; offset += 4) {
+    if (data[offset + 3] >= 128) {
+      pixels.push([data[offset], data[offset + 1], data[offset + 2]]);
+    }
+  }
+  if (!pixels.length) return [];
+
+  const requested = Math.max(2, Math.min(9, Math.round(Number(count) || 5)));
+  const clusterCount = Math.min(12, requested + 2);
+  const { centroids, counts } = clusterPixels(pixels, clusterCount);
+
+  const clusters = centroids.map((centroid, index) => {
+    const rgb = centroid.map(value => Math.max(0, Math.min(255, Math.round(value))));
+    const max = Math.max(rgb[0], rgb[1], rgb[2]);
+    const min = Math.min(rgb[0], rgb[1], rgb[2]);
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    return { rgb, count: counts[index], saturation };
+  });
+
+  const merged = [];
+  for (const cluster of clusters) {
+    const existing = merged.find(item => colorDistance(item.rgb, cluster.rgb) < 24);
+    if (existing) {
+      existing.count += cluster.count;
+      existing.saturation = Math.max(existing.saturation, cluster.saturation);
+      continue;
+    }
+    merged.push({ ...cluster });
+  }
+
+  const total = pixels.length;
+  const dominant = merged.reduce((a, b) => (b.count > a.count ? b : a), merged[0]);
+  const hasVividAlternative = merged.some(item => item !== dominant && item.saturation >= 0.28);
+  const suppressBackground = dominant
+    && (dominant.count / total) >= 0.34
+    && dominant.saturation < 0.18
+    && hasVividAlternative;
+
+  const scored = merged.map(item => {
+    let score = item.count * (0.55 + item.saturation * 0.9);
+    if (suppressBackground && item === dominant) score *= 0.12;
+    return { ...item, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, requested).map(item => {
+    const color = colorFromRgb(item.rgb[0], item.rgb[1], item.rgb[2]);
+    return {
+      ...color,
+      pixels: item.count,
+      percentage: Number((item.count / total * 100).toFixed(2))
+    };
+  });
+}

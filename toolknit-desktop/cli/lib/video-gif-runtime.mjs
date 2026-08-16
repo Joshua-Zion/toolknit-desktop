@@ -2,7 +2,7 @@ import { lstat, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { normalizeVideoGifRequest, VIDEO_GIF_LIMITS } from './core/video-gif-core.js';
 import { createAudioTemporaryOutput, discardAudioTemporaryOutput, prepareAudioOutputDirectory, publishAudioTemporaryOutput } from './audio-runtime.mjs';
-import { ToolKnitError } from './errors.mjs';
+import { ToolKnitError, throwIfAborted } from './errors.mjs';
 import { compactFfmpegError, probeFfmpegDuration, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
 
 const VIDEO_EXTENSIONS = new Set(['mp4', 'avi', 'mkv', 'mov', 'webm', 'flv', 'wmv', 'ts', 'm4v']);
@@ -35,13 +35,14 @@ function gifQualitySettings(quality) {
 }
 
 export async function extractVideoGif(args, options = {}) {
+  throwIfAborted(options.signal);
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new ToolKnitError('INVALID_ARGUMENT', 'arguments must be an object.');
   const allowed = new Set(['input_path', 'output_dir', 'start_ms', 'end_ms', 'frame_rate', 'width', 'quality']);
   Object.keys(args).forEach(key => { if (!allowed.has(key)) throw new ToolKnitError('INVALID_ARGUMENT', `Unknown argument: ${key}`); });
   const input = await inspectInput(args.input_path);
   if (typeof args.output_dir !== 'string' || !args.output_dir.trim() || args.output_dir.includes('\0')) throw new ToolKnitError('INVALID_ARGUMENT', 'output_dir must be a non-empty path string.');
   const command = await resolveFfmpeg();
-  const duration = await probeFfmpegDuration(command, input.path);
+  const duration = await probeFfmpegDuration(command, input.path, { signal: options.signal });
   const settings = normalizeRequest(args, duration);
   const quality = gifQualitySettings(settings.quality);
   const outputDirectory = await prepareAudioOutputDirectory(args.output_dir);
@@ -52,11 +53,13 @@ export async function extractVideoGif(args, options = {}) {
     const result = await runFfmpeg(command, [
       '-hide_banner', '-nostdin', '-y', '-i', input.path, '-ss', (settings.start_ms / 1000).toFixed(3), '-t', (settings.duration_ms / 1000).toFixed(3),
       '-filter_complex', filter, '-map', '[out]', '-loop', '0', temporary.path
-    ]);
+    ], { signal: options.signal });
+    throwIfAborted(options.signal);
     if (result.code !== 0 || result.signal) throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(result.stderr, 'FFmpeg could not create the GIF.'));
     const metadata = await stat(temporary.path);
     if (!metadata.isFile() || metadata.size < 1) throw new ToolKnitError('PROCESSING_FAILED', 'FFmpeg produced an empty GIF file.');
     if (metadata.size > VIDEO_GIF_LIMITS.maxOutputBytes) throw new ToolKnitError('PROCESSING_FAILED', 'The GIF exceeds the 500 MB safety limit. Choose a shorter selection or lower quality.');
+    throwIfAborted(options.signal);
     const outputPath = await publishAudioTemporaryOutput(temporary, outputDirectory, input.path, '.gif', `${path.basename(input.path, path.extname(input.path))}_clip_${settings.start_ms}-${settings.end_ms}ms`);
     options.reportProgress?.(100, 'Published the GIF.');
     return { tool: 'video.gif', input_path: input.path, output_path: outputPath, output_dir: outputDirectory, bytes: metadata.size, ...settings, duration_seconds: duration };

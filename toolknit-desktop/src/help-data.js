@@ -6,12 +6,13 @@ export const HELP_CONTENT = {
     title: '功能概览',
     html: `<div class="help-doc">
       <h2>ToolKnit 功能概览</h2>
-      <p>ToolKnit 是一款<strong>纯本地</strong>多功能工具箱桌面应用，涵盖 PDF、图像、音频、视频、文本、计算器、创意、清理、硬件和 AI 等工具分类，文件处理优先在本地完成，不上传服务器。</p>
+      <p>ToolKnit 2.0 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 11 个分类、49 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、清理和硬件处理默认在本机完成。</p>
 
       <h3>工具分类一览</h3>
       <div class="help-tool-grid">
-        <div class="help-tool-card"><div class="help-tool-card-name">PDF 工具</div><div class="help-tool-card-desc">合并、拆分、旋转、加密、解密、压缩、文字增强</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">图像工具</div><div class="help-tool-card-desc">格式转换、图片压缩、长图拼接、图标生成器</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">PDF 工具</div><div class="help-tool-card-desc">合并、拆分、转图像、旋转、加密、解密、压缩、文字增强、轻量编辑</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">PPT 工具</div><div class="help-tool-card-desc">转 PDF / 图像、素材与文字提取、压缩、AI 大纲和黑白极简草稿</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">图像工具</div><div class="help-tool-card-desc">格式转换、图片压缩、长图拼接、图标生成器、图像与屏幕取色</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">音频工具</div><div class="help-tool-card-desc">格式转换、BPM 测速、剪辑、从视频提取音频</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">视频工具</div><div class="help-tool-card-desc">格式转换、高清单帧图、最长 30 秒 GIF</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">文本工具</div><div class="help-tool-card-desc">音视频转文字、文本统计、文本格式化</div></div>
@@ -24,16 +25,16 @@ export const HELP_CONTENT = {
 
       <h3>核心特性</h3>
       <ul>
-        <li><strong>纯本地处理</strong>：所有文件操作在设备本地完成，文件不上传任何服务器</li>
+        <li><strong>本地优先</strong>：源文件默认不上传 ToolKnit 服务器；只有用户主动调用 AI 时才向所选 AI 服务发送必要文字或元数据</li>
         <li><strong>批量操作</strong>：支持批量文件处理，提高工作效率</li>
         <li><strong>拖拽上传</strong>：支持拖拽文件到工具页面直接处理</li>
         <li><strong>双语界面</strong>：支持中文和英文切换</li>
         <li><strong>多种工作方式</strong>：桌面端负责可视化预览，CLI 适合命令和批处理，IDE Agent 可用自然语言调用已接入能力</li>
-        <li><strong>按需依赖</strong>：用到音视频功能时再下载 FFmpeg；用到音视频转文字时再选择下载离线模型</li>
+        <li><strong>按需依赖</strong>：FFmpeg、Whisper 离线模型和 LibreOffice 只在相关工具需要时安装</li>
       </ul>
 
       <div class="help-note">
-        <p>本地工具不会上传文件。只有你主动使用 AI 润色、翻译、文档、表格或转写二次润色时，对应文字才会发送到你自己配置的 AI 服务。</p>
+        <p>AI 润色、翻译、文档、表格、PPT AI 和转写二次润色会向你配置的 AI 服务发送必要文字；AI 清理只发送候选文件元数据。依赖下载、读取 GitHub 公开项目数据和打开外部链接也需要联网，其他本地文件处理可离线使用。</p>
       </div>
     </div>`
   },
@@ -47,7 +48,8 @@ export const HELP_CONTENT = {
       <ul>
         <li>操作系统：Windows 10/11（64 位）</li>
         <li>内存：建议 4GB 以上</li>
-        <li>磁盘空间：至少 200MB；FFmpeg 和离线模型按需下载，所需空间因所选模型而异</li>
+        <li>磁盘空间：基础应用建议预留至少 200 MB；可选运行时单独占用空间</li>
+        <li>网页运行时：需要 Microsoft Edge WebView2（Windows 10/11 通常已安装）</li>
       </ul>
 
       <h3>安装步骤</h3>
@@ -59,10 +61,10 @@ export const HELP_CONTENT = {
       </ol>
 
       <h3>首次启动</h3>
-      <p>首次启动不强制下载任何附加组件。进入需要 FFmpeg 的音视频工具，或使用“音视频提取文字”时，程序会清楚说明缺少的依赖并提供下载入口。</p>
+      <p>首次启动不强制下载附加组件。进入相关功能时，程序会检查并提示按需安装：FFmpeg 下载约 29 MB，推荐的 Whisper Small 模型约 465 MB，LibreOffice 下载包约 356 MB。下载进度到 100% 后仍可能继续进行校验、解压或安装，请等待完成提示。</p>
 
       <div class="help-note">
-        <p>在设置中可为 FFmpeg 和离线模型选择自动、官方或国内镜像源。下载完成后，本地处理可离线运行。</p>
+        <p>FFmpeg、Whisper 和 LibreOffice 均可在设置中选择自动、官方或国内镜像源。LibreOffice 只用于 PPT 转 PDF 和 PPT 转图像。极少数没有 WebView2 的离线 Windows 设备，需要先联网安装 WebView2 Runtime 才能启动应用。</p>
       </div>
     </div>`
   },
@@ -71,13 +73,13 @@ export const HELP_CONTENT = {
     title: '设置与偏好',
     html: `<div class="help-doc">
       <h2>设置与偏好</h2>
-      <p>点击左侧边栏底部的<strong>设置图标</strong>进入设置页面。这里负责应用级配置，不会改变任何原始文件。</p>
+      <p>点击任意页面顶部导航栏右侧的<strong>设置按钮</strong>进入设置页。设置页负责应用级配置，不会改变原始文件。</p>
 
       <h3>语言切换</h3>
       <p>支持<strong>中文</strong>和<strong>English</strong>两种语言，切换后界面立即生效。</p>
 
       <h3>AI 密钥</h3>
-      <p>AI 文档、AI 表格、AI 润色、AI 翻译和可选的转写润色需要在这里配置 AI 平台密钥。密钥只保存在本机；PDF、图片、音频、视频等本地工具不需要密钥。</p>
+      <p>支持 DeepSeek、OpenAI、通义千问、Moonshot 和自定义 OpenAI 兼容接口。AI 文档、AI 表格、AI 润色、AI 翻译、PPT AI、AI 清理复核和可选的转写润色需要密钥。密钥只保存在本机，并只发送给你选择的服务商。</p>
 
       <h3>离线识别模型</h3>
       <p>“音视频提取文字”首次使用前需要下载一个本地模型。<strong>Small</strong> 是默认推荐项；Base 更小更快，Medium 更偏向质量。下载完成后，语音识别可离线运行；只有你主动开启“AI 二次润色”时，识别出的文字才会发送给所配置的 AI 平台。</p>
@@ -85,14 +87,17 @@ export const HELP_CONTENT = {
       <h3>FFmpeg 运行时</h3>
       <p>音频转换、音频剪辑、音频提取、视频转换、单帧图、GIF 和转写预处理都需要 FFmpeg。安装包不再内置它：可在这里选择自动、官方或国内镜像下载。进入相关工具时若未安装，也会弹出依赖安装窗口。</p>
 
+      <h3>LibreOffice 运行时</h3>
+      <p>只供 PPT 转 PDF 和 PPT 转图像使用。可选择自动、官方或国内镜像；下载完成后还需校验和解压，安装完成后可离线转换。</p>
+
+      <h3>窗口、音效与快捷键</h3>
+      <p>可调整窗口拉伸与小圆角 / 大圆角 / 自定义圆角；窗口最大化时会自动取消圆角并贴合屏幕，恢复窗口后重新应用。全局音效提供总开关和三套风格。屏幕取色默认快捷键为 <code>Ctrl+Shift+C</code>，可自定义或恢复默认；启动取色时主窗口会自动最小化，选中颜色后返回配色提取器。</p>
+
       <h3>默认存储位置</h3>
       <p>默认位置是<strong>下载目录下的 ToolKnit</strong>。你可以改成任意已有文件夹。每个输出会自动进入对应工具的二级目录，例如 <code>PDF_Merge</code>、<code>PDF_Split</code>、<code>Images</code>、<code>Videos</code>、<code>Transcripts</code>、<code>AI_Doc</code> 和 <code>AI_Table</code>；原文件不会被改写。</p>
 
-      <h3>自定义背景</h3>
-      <p>可上传图片或视频，用于首页和所有分类页。程序会在内容上方保留遮罩，保证文字可读；点击“清除”即可立即回到 ToolKnit 默认动态背景。</p>
-
       <h3>帮助与反馈</h3>
-      <p>点击"帮助中心"打开本帮助页面；点击"反馈 BUG"可提交问题反馈。</p>
+      <p>点击“帮助中心”查看功能说明、常见问题、程序声明与使用规范；点击“反馈 BUG”会打开项目反馈入口。</p>
     </div>`
   },
 
@@ -102,16 +107,19 @@ export const HELP_CONTENT = {
       <h2>CLI 命令行入门</h2>
       <p><strong>桌面端</strong>适合点选与预览；<strong>CLI</strong>适合 PowerShell、脚本和批量任务；<strong>IDE Agent</strong>则由你用自然语言下达目标，再通过 CLI/MCP 调用同一套文件处理能力。三者不会互相替代，也不需要一直开着桌面程序。</p>
 
-      <h3>先确认 CLI 可用</h3>
+      <h3>安装并确认 CLI 可用</h3>
       <ol class="help-steps">
-        <li>安装 ToolKnit CLI 后，在 PowerShell 执行 <code>toolknit doctor</code></li>
+        <li>安装 Node.js <code>20.12.0+</code>，然后执行 <code>npm install --global @toolknit/cli</code></li>
+        <li>在 PowerShell 执行 <code>toolknit doctor</code> 检查环境和按需依赖</li>
         <li>看到环境状态后，执行 <code>toolknit --help</code> 查看全部命令</li>
         <li>需要某个命令的参数和示例时，执行 <code>toolknit help &lt;分类&gt; &lt;工具&gt;</code>，例如 <code>toolknit help video gif</code></li>
       </ol>
 
       <h3>命令分类</h3>
       <ul>
-        <li><code>pdf</code>：查看、合并、拆分、旋转、加密、解密、压缩、扫描件增强</li>
+        <li><code>pdf</code>：查看、合并、按页拆分、转图像、旋转、加密、解密、压缩、扫描件增强</li>
+        <li><code>ppt</code>：转 PDF、转图像、提取素材、提取文字、压缩、AI 大纲、AI 草稿 / PPTX</li>
+        <li><code>hardware</code>：只读查看整机、CPU / 内存、显卡、主板、存储、网络设备和电源传感器</li>
         <li><code>audio</code>：格式转换、BPM、剪辑、从视频提取音轨</li>
         <li><code>model</code> 与 <code>transcribe</code>：管理本地识别模型、把音频或视频输出为 TXT、SRT、JSON</li>
         <li><code>video</code>：格式转换、精确导出单帧图、截取最长 30 秒 GIF</li>
@@ -122,7 +130,10 @@ export const HELP_CONTENT = {
       <h3>CLI 的安全默认值</h3>
       <p>所有会写文件的命令都要求明确输出位置。已有文件默认不会覆盖，只有显式传入 <code>--overwrite</code> 才会替换。密码不会作为命令行参数出现；JSON 输出、管道输出和 MCP 模式也不会混入 ASCII 横幅。</p>
 
-      <div class="help-note"><p>CLI 和 IDE Agent 使用的是单独的环境配置。桌面端保存的 AI 密钥不会自动交给 CLI；只有 AI 文档、AI 表格和 AI 二次润色需要在 CLI/MCP 进程中配置密钥。</p></div>
+      <h3>连接 IDE Agent</h3>
+      <p>MCP 服务命令是 <code>toolknit mcp serve</code>。把它配置到支持 MCP 的 IDE 后，Agent 可调用当前 46 项能力；桌面端不需要保持打开。</p>
+
+      <div class="help-note"><p>CLI 和 IDE Agent 使用的是单独的环境配置。桌面端保存的 AI 密钥不会自动交给 CLI；只有 AI 文档、AI 表格、PPT 文本 AI 整理、AI 生成 PPT 大纲、AI 生成 PPT 草稿 / PPTX 和 AI 二次润色需要在 CLI/MCP 进程中配置密钥。</p></div>
     </div>`
   },
 
@@ -320,6 +331,109 @@ export const HELP_CONTENT = {
     </div>`
   },
 
+  'pdf-editor': {
+    title: 'PDF 编辑器',
+    html: `<div class="help-doc">
+      <h2>PDF 编辑器</h2>
+      <p>轻量级 PDF 编辑：替换文字、插入文本/图像/形状、页面排序、旋转、提取与追加合并，文件仅在本机处理。</p>
+
+      <h3>使用方法</h3>
+      <ol class="help-steps">
+        <li>上传需要编辑的 PDF 文件</li>
+        <li>点击「编辑文字」选中文字后修改内容，点击「插入文本 / 图像 / 形状」向页面添加内容</li>
+        <li>点击「选择组件」后可单击选中任意文字、图像或形状，再拖动、缩放、旋转或删除</li>
+        <li>使用底部或侧栏工具调整页面顺序、旋转、删除与提取</li>
+        <li>点击「导出 PDF」保存编辑结果</li>
+      </ol>
+
+      <h3>注意事项</h3>
+      <ul>
+        <li>输入限制为 150 MB、500 页</li>
+        <li>文字替换依赖 PDF 自带的文字层，扫描件或纯图像型 PDF 不支持文字编辑</li>
+        <li>文件全程在本地处理，不上传服务器</li>
+      </ul>
+    </div>`
+  },
+
+  'ppt-tools': {
+    title: 'PPT 工具总览',
+    html: `<div class="help-doc">
+      <h2>PPT 工具总览</h2>
+      <p>PPT 工具面向演示文稿素材整理和 AI 辅助写作。当前优先支持 <strong>.pptx</strong>，处理过程在本地读取文件结构；只有你主动开启 AI 整理或 AI 大纲生成时，才会把文字内容发送给你配置的 AI 服务，PPTX 文件本体不会上传。</p>
+
+      <h3>PPT 转 PDF</h3>
+      <ul>
+        <li>通过本机 LibreOffice / soffice 渲染 PPTX，输出可分享、可打印的 PDF。</li>
+        <li>源文件不会被修改；输出目录会包含 PDF 和 <code>manifest.json</code>。</li>
+        <li>如果机器缺少 LibreOffice，桌面端会提示安装或配置路径；CLI/Agent 可通过 <code>TOOLKNIT_LIBREOFFICE_PATH</code> 指定 soffice。</li>
+      </ul>
+
+      <h3>PPT 转图片</h3>
+      <ul>
+        <li>先把 PPTX 本地渲染为中间 PDF，再进入高清页码选择工作区。</li>
+        <li>支持按页导出 PNG / JPG / WebP；PPT 页面不会在此工具中拼成长图。</li>
+        <li>适合把 PPT 页面交给短视频、图文笔记或 AI Agent 后续处理。</li>
+      </ul>
+
+      <h3>PPT 图片提取</h3>
+      <ul>
+        <li>从 PPTX 中提取内嵌图片、Logo、截图和背景素材。</li>
+        <li>支持按幻灯片页码筛选，也可以一次性导出全部素材。</li>
+        <li>优先保留原始图片格式，并生成 <code>manifest.json</code> 记录来源页、文件名和尺寸线索。</li>
+      </ul>
+
+      <h3>PPT AI 文本提取</h3>
+      <ul>
+        <li>读取每页标题、正文和演讲者备注，按真实幻灯片顺序输出。</li>
+        <li>可导出 <code>Markdown</code>、<code>TXT</code>、<code>JSON</code>，也可以一次性导出全部格式。</li>
+        <li>支持页码范围，例如 <code>1,3-5</code>；会自动跳过页脚、日期和页码等低价值占位符。</li>
+        <li>AI 整理可选输出大纲、演讲稿、会议纪要或学习笔记；未配置密钥时仍可使用本地提取。</li>
+      </ul>
+
+      <h3>PPT 压缩</h3>
+      <ul>
+        <li>本地生成压缩副本，源 PPTX 不会被改写。</li>
+        <li>支持无损清理与图片压缩两类策略：<code>low</code> 不降低图片质量，<code>medium</code> / <code>high</code> 会压缩大图素材来明显降低体积。</li>
+        <li>压缩后如果图片没有变小，会自动保留原始图片；源 PPTX 不会被修改。</li>
+        <li>会生成 <code>manifest.json</code>，记录原始大小、压缩后大小、节省空间和清理项目。</li>
+      </ul>
+
+      <h3>AI 生成 PPT 大纲</h3>
+      <ul>
+        <li>从主题、资料、目标受众和演示目标生成一套新的演示大纲。</li>
+        <li>支持类型预设（如产品发布、投资人路演、工作汇报、培训课件），AI 会按对应叙事结构规划页面。</li>
+        <li>视觉统一为黑白极简风：大面积白底、黑色点缀，不再让用户选择效果不稳定的视觉风格。</li>
+        <li>不会读取 PPTX，也不会生成 PPTX 文件；它输出 <code>outline.md</code>、<code>outline.json</code> 和 <code>manifest.json</code>。</li>
+        <li><code>outline.json</code> 是稳定结构，包含事实边界、页面角色、布局意图和质量自检，后续可以继续接入 AI 生成 PPT 草稿 / PPTX。</li>
+        <li>AI 只接收你输入的文字；如果缺少事实，会放进待确认信息和事实库，而不是编造。</li>
+      </ul>
+
+      <h3>AI 生成 PPT 草稿 / PPTX</h3>
+      <ul>
+        <li>根据文字资料生成结构化大纲，再由 ToolKnit 本地写出可编辑 PPTX 草稿。</li>
+        <li>也支持把已有 <code>outline.json</code> 直接转成 PPTX，不再调用 AI。</li>
+        <li>和大纲工具一样支持 <code>deck_type</code> 类型预设，适合产品发布、路演、汇报、培训等不同叙事场景。</li>
+        <li>固定输出黑白极简模板；没有真实素材时使用浅灰矩形占位和基础几何色块，不伪造图片。</li>
+        <li>输出 <code>.pptx</code>、<code>outline.json</code>、<code>outline.md</code> 和 <code>manifest.json</code>，默认不覆盖已有文件。</li>
+        <li>第一阶段是稳定极简草稿，不承诺复杂动画、视频或企业母版像素级还原。</li>
+      </ul>
+
+      <h3>CLI / Agent 示例</h3>
+      <pre><code>toolknit ppt to-pdf --input demo.pptx --output-dir out
+toolknit ppt to-image --input demo.pptx --output-dir out --pages 1,3-5 --format png --clarity print
+toolknit ppt images --input demo.pptx --output-dir out --pages 1,3-5
+toolknit ppt text --input demo.pptx --output-dir out --format all --ai-mode outline
+toolknit ppt compress --input demo.pptx --output-dir out --level medium
+toolknit ppt outline --prompt-file brief.txt --output-dir out --slide-count 8 --deck-type product-launch
+toolknit ppt draft --prompt-file brief.txt --output-dir out --slide-count 8 --deck-type product-launch --theme minimal-mono
+toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-mono</code></pre>
+
+      <div class="help-note">
+        <p>如果你用 IDE Agent，可以直接说：“用 ToolKnit 把这个 PPT 转成 PDF / 把第 1、3-5 页转成高清 PNG”。如果是写新内容，则说“根据这份产品资料生成 8 页 PPT 大纲”。这些需求对应不同工具。</p>
+      </div>
+    </div>`
+  },
+
   'img-convert': {
     title: '图片格式转换',
     html: `<div class="help-doc">
@@ -441,7 +555,7 @@ export const HELP_CONTENT = {
       </ol>
 
       <div class="help-note">
-        <p>首次使用音频转换需要下载 FFmpeg 扩展包（约 80-100MB），下载后即可离线使用。</p>
+        <p>首次使用音频转换需要按提示下载 FFmpeg 运行时（约 29 MB），完成校验与安装后即可离线使用。</p>
       </div>
 
       <h3>格式说明</h3>
@@ -575,7 +689,7 @@ export const HELP_CONTENT = {
 
   'color-extractor': {
     title: '配色提取器',
-    html: `<div class="help-doc"><h2>配色提取器</h2><p>从一张 PNG、JPG 或 WebP 图片中提取主色，并展示可复制的颜色信息。</p><h3>使用方法</h3><ol class="help-steps"><li>上传图片或拖入页面</li><li>等待本地分析完成，查看主色圆点</li><li>点击颜色查看详情或复制 HEX 值；可随时重新选择图片</li></ol><div class="help-note"><p>CLI/IDE Agent 可以分析一个明确的图片路径并返回色板，不会上传源图，也不会写入输出文件。</p></div></div>`
+    html: `<div class="help-doc"><h2>配色提取器</h2><p>既可从 PNG、JPG、WebP 图片提取主色，也可用全局屏幕取色器读取其他应用中的像素颜色。</p><h3>图像取色</h3><ol class="help-steps"><li>上传图片或拖入页面</li><li>等待本地分析完成，在色板中选择颜色</li><li>查看 HEX、RGB 等详情并一键复制；可随时重新选择图片</li></ol><h3>屏幕取色</h3><ol class="help-steps"><li>点击“启动屏幕取色”或按默认快捷键 <code>Ctrl+Shift+C</code></li><li>主窗口自动最小化；拖动 21×21 像素放大准星定位目标像素</li><li>确认后返回配色提取器，颜色会加入结果并可继续复制</li></ol><div class="help-note"><p>屏幕取色只在内存中采样准星附近像素，不保存截图、不上传画面。CLI/IDE Agent 也可分析一个明确的图片路径并返回色板。</p></div></div>`
   },
 
   'typing-test': {
@@ -587,16 +701,17 @@ export const HELP_CONTENT = {
     title: 'AI 文字润色',
     html: `<div class="help-doc">
       <h2>AI 文字润色</h2>
-      <p>智能分析文本并优化表达，支持多种润色方向。</p>
+      <p>智能分析文本并优化表达，支持粘贴、选择文档或把文档拖入页面，再按需要选择润色方向。</p>
 
       <h3>使用方法</h3>
       <ol class="help-steps">
-        <li>输入需要润色的文本</li>
+        <li>输入文本，或导入支持的本地文档并确认解析预览</li>
         <li>选择润色方向（正式/简洁/学术/口语化等）</li>
         <li>点击"开始润色"</li>
         <li>对比原文和润色结果</li>
-        <li>复制满意的结果</li>
+        <li>在应用内对比原文和结果，再复制或导出</li>
       </ol>
+      <div class="help-note"><p>文档先在本机提取文字，源文件不会上传；只有预览中实际提交的文字会发送给你配置的 AI 服务。</p></div>
     </div>`
   },
 
@@ -604,15 +719,16 @@ export const HELP_CONTENT = {
     title: 'AI 智能翻译',
     html: `<div class="help-doc">
       <h2>AI 智能翻译</h2>
-      <p>逐句对照翻译，高亮显示对应关系。</p>
+      <p>支持粘贴、选择文档或拖入文件，并在应用内逐句对照翻译和预览。</p>
 
       <h3>使用方法</h3>
       <ol class="help-steps">
-        <li>输入需要翻译的文本</li>
+        <li>输入文本，或导入支持的本地文档并确认解析预览</li>
         <li>选择源语言和目标语言</li>
         <li>点击"开始翻译"</li>
-        <li>查看逐句对照翻译结果</li>
+        <li>查看逐句对照结果，再复制或导出</li>
       </ol>
+      <div class="help-note"><p>源文档在本机解析，不会上传；只有准备翻译的文字会发送给你选择的 AI 服务。</p></div>
     </div>`
   },
 
@@ -724,14 +840,14 @@ export const HELP_CONTENT = {
       <p>把 ToolKnit CLI 连接到支持 MCP 的 IDE 后，你可以直接用自然语言让 Agent 处理项目里的本地文件。Agent 调用的是真正的 ToolKnit 工具，不需要打开桌面端，也不应把“我已经处理好了”当成没有调用工具时的替代答案。</p>
 
       <h3>当前可用范围</h3>
-      <div class="help-agent-scope"><p>当前 MCP 一共提供 <strong>31 项</strong>能力。下面按你平时会说的话归类，Agent 会自己转成明确的工具参数：</p><ul><li><strong>PDF（9 项）</strong>：查看页数和大小、合并、按页拆分、旋转、加密、解密、压缩、增强扫描件文字可读性，以及把 PDF 导出为逐页图像或拼成长图。</li><li><strong>音频（4 项）</strong>：转格式、测 BPM、按明确起止时间剪辑、从视频提取指定音轨。</li><li><strong>音视频转文字（4 项）</strong>：查看本地模型、下载模型、切换当前模型、输出 TXT / SRT / JSON；可选把识别文字交给 AI 润色，媒体本身不会上传。</li><li><strong>视频（3 项）</strong>：转格式、按精确毫秒导出单帧 PNG/JPG、按明确起止时间截取最长 30 秒 GIF。</li><li><strong>文本和图像（3 项）</strong>：统计 UTF-8 文本文件、提取主色板、把 2-100 张图片拼成长图。</li><li><strong>AI 文档（4 项）</strong>：生成 PDF、检查可编辑工程、按编号修改控件、重新渲染 PDF 和编号图。</li><li><strong>AI 表格（4 项）</strong>：生成 CSV/XLSX/PDF/PNG、检查工程、按行列图表编号修改、重新渲染。</li></ul></div>
+      <div class="help-agent-scope"><p>当前 MCP 一共提供 <strong>46 项</strong>能力。下面按你平时会说的话归类，Agent 会自己转成明确的工具参数：</p><ul><li><strong>PDF（9 项）</strong>：查看页数和大小、合并、按页拆分、旋转、加密、解密、压缩、增强扫描件文字可读性，以及把 PDF 导出为逐页图像或拼成长图。</li><li><strong>PPT（7 项）</strong>：把 PPTX 转成 PDF；把 PPTX 按页导出为图片；从 PPTX 提取内嵌图片素材；提取每页标题、正文和备注，并可选把提取出的文字交给 AI 整理成大纲、讲稿、纪要或学习笔记；安全压缩 PPTX 并保留图片质量；根据文字资料生成结构化 PPT 大纲；生成可编辑 PPTX 草稿。</li><li><strong>硬件只读（8 项）</strong>：查看整机概况、CPU 与内存、实时状态、显卡与显示器、主板与固件、磁盘与健康、网络与设备、电源与传感器；只读取本机信息，不写入文件。</li><li><strong>音频（4 项）</strong>：转格式、测 BPM、按明确起止时间剪辑、从视频提取指定音轨。</li><li><strong>音视频转文字（4 项）</strong>：查看本地模型、下载模型、切换当前模型、输出 TXT / SRT / JSON；可选把识别文字交给 AI 润色，媒体本身不会上传。</li><li><strong>视频（3 项）</strong>：转格式、按精确毫秒导出单帧 PNG/JPG、按明确起止时间截取最长 30 秒 GIF。</li><li><strong>文本和图像（3 项）</strong>：统计 UTF-8 文本文件、提取主色板、把 2-100 张图片拼成长图。</li><li><strong>AI 文档（4 项）</strong>：生成 PDF、检查可编辑工程、按编号修改控件、重新渲染 PDF 和编号图。</li><li><strong>AI 表格（4 项）</strong>：生成 CSV/XLSX/PDF/PNG、检查工程、按行列图表编号修改、重新渲染。</li></ul></div>
 
       <h3>哪些功能不让 Agent 调用</h3>
       <p>图片格式转换、图片压缩、图标生成、文本格式化、计算器、密码生成器、打字测试、AI 润色和 AI 翻译目前是<strong>桌面端专用</strong>。这不是漏接：其中一部分不适合在终端或 Agent 对话里传递内容、密码或交互状态。</p>
 
       <h3>首次连接</h3>
       <ol class="help-steps">
-        <li>安装 ToolKnit CLI 后，先在 PowerShell 运行 <code>toolknit doctor</code>。本地文件工具不需要 AI 密钥；AI 文档、AI 表格和 AI 二次润色才需要配置密钥。</li>
+        <li>安装 ToolKnit CLI 后，先在 PowerShell 运行 <code>toolknit doctor</code>。本地文件工具和非 AI PPT 不需要 AI 密钥；AI 文档、AI 表格、PPT 文本 AI 整理、AI 生成 PPT 大纲、AI 生成 PPT 草稿 / PPTX 和 AI 二次润色才需要配置密钥。</li>
         <li>在 IDE 设置中搜索 <code>MCP</code>，添加 Server：命令填写 <code>toolknit</code>，参数填写 <code>mcp serve</code>，保存后重启或重新连接 Agent。</li>
         <li>在 Agent 对话中说清输入文件、要执行的操作、保存位置，以及是否允许覆盖已有文件。说“保存到当前项目”时，Agent 应使用当前工作区的 <code>toolknit-output</code> 文件夹，而不是猜测路径。</li>
       </ol>
@@ -802,8 +918,8 @@ export const HELP_CONTENT = {
 
       <div class="help-agent-prompt">
         <h4>生成多页 AI 文档</h4>
-        <p class="help-agent-prompt-text">请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v1.3 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。</p>
-        <button class="help-prompt-copy" type="button" data-copy-prompt="请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v1.3 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。">复制话术</button>
+        <p class="help-agent-prompt-text">请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v2.0 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。</p>
+        <button class="help-prompt-copy" type="button" data-copy-prompt="请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。在当前 IDE 项目的 toolknit-output 中生成一份 4 页中文 A4 PDF《ToolKnit v2.0 产品方案》，不要覆盖已有文件。生成后报告 PDF、.toolknit.json 工程、预览目录、每一页高清编号图和总览图的绝对路径，并调用 toolknit_pdf_inspect 确认真实 PDF 恰好为 4 页。">复制话术</button>
       </div>
 
       <div class="help-agent-prompt">
@@ -866,7 +982,7 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：文件会上传到服务器吗？</div>
-        <div class="help-faq-a">A：不会。所有文件处理均在本地完成，文件不会上传到任何服务器。AI 工具仅将文本内容发送到 AI 接口进行处理。</div>
+        <div class="help-faq-a">A：本地工具不会上传源文件。只有你主动使用 AI 功能时，必要文字或清理候选元数据会发送到你选择的 AI 服务；依赖下载、GitHub 公开数据和外链也会联网。</div>
       </div>
 
       <div class="help-faq-item">
@@ -876,7 +992,7 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：如何切换语言？</div>
-        <div class="help-faq-a">A：点击侧边栏底部的设置图标，在"语言"区域选择中文或 English 即可。</div>
+        <div class="help-faq-a">A：点击任意页面顶部导航栏右侧的设置按钮，在“语言”区域选择中文或 English。</div>
       </div>
 
       <div class="help-faq-item">
@@ -887,6 +1003,16 @@ export const HELP_CONTENT = {
       <div class="help-faq-item">
         <div class="help-faq-q">Q：支持批量处理吗？</div>
         <div class="help-faq-a">A：支持。大部分工具（PDF 合并、图片转换、音频转换等）都支持批量文件处理。</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q：需要注册账户或同步数据吗？</div>
+        <div class="help-faq-a">A：不需要。桌面端没有账户系统或云端收藏同步，设置、收藏、密钥和已下载运行时都保存在本机。</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q：启动时提示缺少 WebView2 怎么办？</div>
+        <div class="help-faq-a">A：Windows 10/11 通常已经包含 WebView2。若精简系统或离线设备缺失，请联网安装 Microsoft Edge WebView2 Runtime 后再启动。</div>
       </div>
     </div>`
   },
@@ -903,7 +1029,7 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：FFmpeg 下载需要多大空间？</div>
-        <div class="help-faq-a">A：当前 Windows 运行时下载包约 30MB。它安装在 ToolKnit 的本机应用数据目录，不占用你的默认输出目录；安装后可离线使用。</div>
+        <div class="help-faq-a">A：当前 Windows 运行时下载包约 29 MB。它安装在 ToolKnit 的本机应用数据目录，不占用默认输出目录；安装后可离线使用。</div>
       </div>
 
       <div class="help-faq-item">
@@ -915,6 +1041,16 @@ export const HELP_CONTENT = {
         <div class="help-faq-q">Q：可以手动安装 FFmpeg 吗？</div>
         <div class="help-faq-a">A：桌面端建议只使用设置页管理的运行时。CLI 可使用 PATH 中的 FFmpeg 或 TOOLKNIT_FFMPEG_PATH；两者的配置互不影响。</div>
       </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q：Whisper 和 LibreOffice 分别做什么？</div>
+        <div class="help-faq-a">A：Whisper 模型用于本地音视频转写，推荐的 Small 约 465 MB；LibreOffice 只用于 PPT 转 PDF 和 PPT 转图像，下载包约 356 MB。两者都按需安装。</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q：下载到 100% 后为什么还没完成？</div>
+        <div class="help-faq-a">A：100% 表示网络下载完成，之后还要做哈希校验、解压或安装。请等到界面明确显示“安装完成”，不要中途退出。</div>
+      </div>
     </div>`
   },
 
@@ -925,12 +1061,12 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：我的文件安全吗？</div>
-        <div class="help-faq-a">A：是的。所有文件处理（PDF、图片、音频、视频等）均在本地完成，不会上传到任何服务器。</div>
+        <div class="help-faq-a">A：PDF、PPT、图像、音视频、文本和硬件等本地处理不会上传源文件。涉及 AI 时会先在界面说明需要发送的文字或元数据。</div>
       </div>
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：AI 工具会保存我的数据吗？</div>
-        <div class="help-faq-a">A：AI 工具（润色、翻译、对话等）会将文本内容发送到 AI 接口进行处理，但不会在本地保存您的输入内容。</div>
+        <div class="help-faq-a">A：AI 功能把必要文字发送给你选择的 DeepSeek、OpenAI、通义千问、Moonshot 或自定义兼容接口；服务商如何保存数据以其政策为准。密钥保存在本机，CLI/MCP 不会自动继承桌面端密钥。</div>
       </div>
 
       <div class="help-faq-item">
@@ -940,7 +1076,17 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：应用会收集使用数据吗？</div>
-        <div class="help-faq-a">A：ToolKnit 不收集任何用户隐私数据，不包含追踪代码或分析工具。</div>
+        <div class="help-faq-a">A：ToolKnit 不内置用户行为分析或广告追踪。支持作者区域会读取 GitHub 的公开 Star 等项目数据；点击网站、GitHub 或反馈入口时会打开对应外部链接。</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q：屏幕取色会截图或上传屏幕吗？</div>
+        <div class="help-faq-a">A：不会。只有主动点击或快捷键触发后，程序才在内存中读取准星附近 21×21 像素；不会保存截图，也不会上传画面。</div>
+      </div>
+
+      <div class="help-faq-item">
+        <div class="help-faq-q">Q：AI 大文件清理会读取文件内容吗？</div>
+        <div class="help-faq-a">A：不会。扫描在本机完成；AI 复核只接收文件名、大小、类型、时间、相对目录线索和风险原因等元数据，不接收文件内容或完整绝对路径。</div>
       </div>
     </div>`
   },
@@ -974,6 +1120,33 @@ export const HELP_CONTENT = {
       </ul>
 
       <div class="help-note"><p>最稳的习惯是：先扫“下载目录”和“临时导出目录”。项目仓库、微信聊天目录、模型目录和重要资料目录，即使显示很大，也建议手动复核后再处理。</p></div>
+    </div>`
+  },
+
+  'c-drive-cleanup': {
+    title: 'C盘清理',
+    html: `<div class="help-doc">
+      <h2>C盘清理</h2>
+      <p>按低、中、高三个风险档清理系统缓存和临时空间。每档独立执行，清理前会弹出遮罩说明影响，并在 5 秒倒计时后确认。</p>
+
+      <h3>三个风险档</h3>
+      <ul>
+        <li><strong>低风险</strong>：用户 / Windows 临时文件、浏览器缓存、缩略图、着色器、崩溃报告和网络缓存。系统会自动重建。</li>
+        <li><strong>中风险</strong>：Windows 更新缓存、传递优化缓存、Windows 日志和开发者缓存。可能需要重新下载部分更新组件。</li>
+        <li><strong>高风险</strong>：休眠文件、系统还原点和回收站清空。会关闭休眠 / 快速启动、删除已有还原点、清空回收站。</li>
+      </ul>
+
+      <h3>管理员权限</h3>
+      <p>系统级缓存需要管理员权限。如果不是管理员启动，进入页面会提示“以管理员身份重启”，点击后触发 UAC 自动重开；也可以手动退出后用管理员身份重新运行。</p>
+
+      <h3>隐私与安全</h3>
+      <ul>
+        <li><strong>只读扫描</strong>：先扫描预估空间，不产生任何写入。</li>
+        <li><strong>永久删除</strong>：缓存和系统空间项为永久删除、不进回收站；下载、文档、桌面、图片、音乐、视频、聊天记录等个人文件绝不清理。</li>
+        <li><strong>白名单与跳过锁定</strong>：只清理固定白名单目录，跳过被占用和受保护的文件，不跟随符号链接或联接点。</li>
+      </ul>
+
+      <div class="help-note"><p>高风险档会改变系统能力，请认真看弹框里的说明后再执行。误关闭休眠可随时重新开启，但删除的系统还原点和回收站内容无法恢复。</p></div>
     </div>`
   },
 
@@ -1018,7 +1191,7 @@ export const HELP_CONTENT = {
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：覆盖安装会丢失设置或模型吗？</div>
-        <div class="help-faq-a">A：正常覆盖安装不会主动清除本机应用数据。设置、已下载的 FFmpeg 和离线模型是否保留，取决于卸载旧版时是否选择清除应用数据。</div>
+        <div class="help-faq-a">A：正常覆盖安装不会主动清除本机应用数据。设置、已下载的 FFmpeg、Whisper 模型和 LibreOffice 通常会保留；卸载时若选择清除应用数据则会删除。</div>
       </div>
 
       <div class="help-faq-item">

@@ -41,6 +41,8 @@ try {
   assert.equal(result.tool, 'audio.bpm');
   assert.ok(result.bpm >= 118 && result.bpm <= 122, `Expected 120 BPM, got ${result.bpm}`);
   assert.ok(result.confidence > 0.1);
+  assert.ok('key' in result);
+  assert.ok('key_candidates' in result);
   assert.equal(result.input.channels, 1);
   assert.ok(progress.some(event => event.value === 0));
   assert.ok(progress.some(event => event.value === 100));

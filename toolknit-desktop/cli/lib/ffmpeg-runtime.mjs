@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { ToolKnitError } from './errors.mjs';
+import { cancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 
 const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT_ROOT = path.resolve(CLI_ROOT, '..');
@@ -76,24 +76,71 @@ function readLimited(stream, maxBytes, onChunk) {
 
 export async function runFfmpeg(command, args, options = {}) {
   return new Promise((resolve, reject) => {
+    const signal = options.signal;
+    try {
+      throwIfAborted(signal);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     let child;
+    let settled = false;
+    let aborted = false;
+    let forceKillTimer = null;
+    const cleanupAbort = () => {
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+        forceKillTimer = null;
+      }
+      signal?.removeEventListener?.('abort', onAbort);
+    };
+    const rejectOnce = error => {
+      if (settled) return;
+      settled = true;
+      cleanupAbort();
+      reject(error);
+    };
+    const onAbort = () => {
+      aborted = true;
+      if (!child || child.killed) return;
+      try { child.kill('SIGTERM'); } catch {}
+      forceKillTimer = setTimeout(() => {
+        try {
+          if (!child.killed) child.kill('SIGKILL');
+        } catch {}
+      }, 2500);
+      forceKillTimer.unref?.();
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
     try {
       child = spawn(command, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch {
-      reject(new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg could not start.'));
+      rejectOnce(signal?.aborted ? cancellationError(signal) : new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg could not start.'));
       return;
     }
+    if (signal?.aborted) onAbort();
     child.once('error', error => {
+      if (aborted || signal?.aborted) {
+        rejectOnce(cancellationError(signal));
+        return;
+      }
       if (error?.code === 'ENOENT' || error?.code === 'EACCES') {
-        reject(new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it in ToolKnit Desktop Settings, add it to PATH, or configure TOOLKNIT_FFMPEG_PATH.'));
+        rejectOnce(new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it in ToolKnit Desktop Settings, add it to PATH, or configure TOOLKNIT_FFMPEG_PATH.'));
       } else {
-        reject(new ToolKnitError('PROCESSING_FAILED', 'FFmpeg could not start.'));
+        rejectOnce(new ToolKnitError('PROCESSING_FAILED', 'FFmpeg could not start.'));
       }
     });
     const stdout = readLimited(child.stdout, options.maxStdoutBytes ?? MAX_PROCESS_OUTPUT_BYTES, options.onStdout);
     const stderr = readLimited(child.stderr, options.maxStderrBytes ?? MAX_PROCESS_OUTPUT_BYTES, options.onStderr);
     child.once('close', async (code, signal) => {
       const [stdoutResult, stderrResult] = await Promise.all([stdout, stderr]);
+      if (settled) return;
+      settled = true;
+      cleanupAbort();
+      if (aborted || options.signal?.aborted) {
+        reject(cancellationError(options.signal));
+        return;
+      }
       resolve({
         code,
         signal,
@@ -132,8 +179,8 @@ export function parseProgressSeconds(line) {
   return null;
 }
 
-export async function probeFfmpegDuration(command, inputPath) {
-  const result = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-i', inputPath]);
+export async function probeFfmpegDuration(command, inputPath, options = {}) {
+  const result = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-i', inputPath], { signal: options.signal });
   return parseFfmpegDuration(`${result.stdout}\n${result.stderr}`);
 }
 

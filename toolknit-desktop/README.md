@@ -19,7 +19,7 @@
 
 <p align="center">
   <strong>多功能工具箱 · 桌面端开源版</strong><br />
-  一个 exe 整合 PDF、图片、音视频、文本与 AI 文档工作流。默认本地处理，文件不上传。
+  一个 exe 整合 PDF、图片、音视频、文本、PPT 与 AI 文档工作流。默认本地处理，文件不上传。
 </p>
 
 <p align="center">
@@ -54,11 +54,11 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 - 需要离线或弱网环境下完成文件处理的学生、办公人员和创作者。
 - 希望通过 CLI、脚本或 IDE Agent 批量处理项目文件的开发者。
 
-只有在你明确调用 AI 润色、翻译、AI 文档、AI 表格或转写二次润色时，相关文字才会发送到你自行配置的 AI 服务；本地文件工具不会上传源文件。
+只有在你明确调用 AI 润色、翻译、AI 文档、AI 表格、PPT 文本 AI 整理、AI 生成 PPT 大纲、AI 生成 PPT 草稿 / PPTX 或转写二次润色时，相关文字才会发送到你自行配置的 AI 服务；本地文件工具和非 AI PPT 工具不会上传源文件。
 
 ---
 
-## v1.0 -> v1.3
+## v1.0 -> v2.0
 
 <table>
   <tr>
@@ -73,18 +73,18 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
     </td>
     <td width="8%" align="center" valign="middle"><h2>-></h2></td>
     <td width="46%" valign="top">
-      <h3>v1.3</h3>
+      <h3>v2.0</h3>
       <ul>
-        <li>40+ 个桌面工具，加入 PDF 转图像、视频单帧图、视频转 GIF、长图拼接、音视频转文字、硬件信息和 AI 大文件清理</li>
+        <li>40+ 个桌面工具，加入 PDF 转图像、PPT 工具、视频单帧图、视频转 GIF、长图拼接、音视频转文字、硬件信息和 AI 大文件清理</li>
         <li>可自定义输出根目录、二级分类目录和应用背景</li>
-        <li>核心文件工具支持 CLI，并为 IDE Agent 提供 31 项 MCP 能力</li>
+        <li>核心文件工具支持 CLI，并为 IDE Agent 提供 46 项 MCP 能力</li>
         <li>AI 文档/AI 表格升级为可检查、可编号、可编辑、可撤销、可重渲染的工程工作流</li>
       </ul>
     </td>
   </tr>
 </table>
 
-### v1.3 重点更新
+### v2.0 重点更新
 
 | 更新 | 现在可以做什么 |
 | --- | --- |
@@ -120,8 +120,8 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
     <th width="50%">微信支付</th>
   </tr>
   <tr>
-    <td align="center"><img src="./docs/assets/donate-wechat.jpg" alt="支付宝支持 ToolKnit" width="220" /></td>
-    <td align="center"><img src="./docs/assets/donate-alipay.png" alt="微信支付支持 ToolKnit" width="220" /></td>
+    <td align="center"><img src="./docs/assets/donate-alipay.jpg" alt="支付宝支持 ToolKnit" width="220" /></td>
+    <td align="center"><img src="./docs/assets/donate-wechat.png" alt="微信支付支持 ToolKnit" width="220" /></td>
   </tr>
 </table>
 
@@ -164,7 +164,7 @@ ToolKnit Desktop 是 ToolKnit 网页端的开源桌面配套版本。它面向�
 
 | 分类 | 工具 |
 | --- | --- |
-| AI | AI 润色、AI 翻译、AI 文档、AI 表格。 |
+| AI | AI 润色、AI 翻译、AI 文档、AI 表格、PPT 文本 AI 整理、AI 生成 PPT 大纲、AI 生成 PPT 草稿。 |
 | 计算器 | BMI、时间戳、房贷、利息、密码生成。 |
 | 创意 | 打字测试、图片配色提取。 |
 
@@ -198,7 +198,7 @@ npx tauri dev
 
 <a id="cli--ai-agent"></a>
 
-v1.3 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
+v2.0 将桌面端核心文件处理能力抽成可验证的 CLI/MCP 契约。桌面端适合预览与可视化编辑；CLI 适合脚本、批处理和 CI；IDE Agent 可以通过 MCP 调用同一套能力，不需要一直打开桌面程序。
 
 ### CLI
 
@@ -220,9 +220,12 @@ npm install --global @toolknit/cli --registry=https://registry.npmjs.org
 
 ```powershell
 npm install
-npm run cli -- doctor
-npm run cli -- help video gif
+npm run --silent cli -- doctor --json
+npm run --silent cli -- help video gif
+npm run test:cli
 ```
+
+`--silent` 只用于去掉 npm 自己的脚本标题；这样 `--json` 输出才可以直接复制给 JSON 工具解析。
 
 CLI 要求明确输入与输出路径，默认不覆盖已有文件；JSON 与 MCP 输出不会混入 ASCII 横幅。PDF 密码使用受保护的 stdin 输入，不会进入命令历史。
 
@@ -241,7 +244,7 @@ CLI 要求明确输入与输出路径，默认不覆盖已有文件；JSON 与 M
 }
 ```
 
-基础文件工具不需要 AI Key。只有使用 AI 文档、AI 表格或转写后的 `refine` 二次校对时，才需要在 IDE 的 MCP 环境变量/密钥设置中为 `toolknit` 添加真实的 `DEEPSEEK_API_KEY`（也支持 `TOOLKNIT_AI_API_KEY`），然后重启 IDE。不要保留说明文字或把密钥写进 Agent 对话；桌面端保存的密钥不会自动共享给 CLI/MCP。
+基础文件工具和非 AI PPT 工具不需要 AI Key。只有使用 AI 文档、AI 表格、PPT 文本 AI 整理、AI 生成 PPT 大纲、AI 生成 PPT 草稿 / PPTX 或转写后的 `refine` 二次校对时，才需要在 IDE 的 MCP 环境变量/密钥设置中为 `toolknit` 添加真实的 `DEEPSEEK_API_KEY`（也支持 `TOOLKNIT_AI_API_KEY`），然后重启 IDE。不要保留说明文字或把密钥写进 Agent 对话；桌面端保存的密钥不会自动共享给 CLI/MCP。
 
 推荐话术：**先检查，再处理指定本地文件；输出到当前项目的 `toolknit-output`；不要覆盖已有文件。**
 

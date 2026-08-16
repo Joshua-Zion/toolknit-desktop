@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { copyFile, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ToolKnitError } from './errors.mjs';
+import { cancellationError, throwIfAborted, ToolKnitError, waitForAbortable } from './errors.mjs';
 
 const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STAGED_CORE_ROOT = path.join(CLI_ROOT, 'lib', 'core');
@@ -1126,7 +1126,8 @@ export async function generateAiTableProject(argsValue, options = {}) {
   const env = options.env || process.env;
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   reportProgress(5, 'Validated the table request.');
-  const project = await generateTableFromPrompt(prompt, { locale, reportProgress, env, fetchImpl });
+  throwIfAborted(options.signal);
+  const project = await generateTableFromPrompt(prompt, { locale, reportProgress, env, fetchImpl, signal: options.signal });
   if (!project.ready) {
     return {
       tool: 'ai.table.generate',
@@ -1135,6 +1136,8 @@ export async function generateAiTableProject(argsValue, options = {}) {
     };
   }
   reportProgress(45, 'Normalized the AI table response.');
+  // Do not begin local rendering after an MCP/Agent caller has already cancelled.
+  throwIfAborted(options.signal);
   const createResult = await createAiTableProjectArtifacts({
     data: project,
     outputPath: paths.exportPath,
@@ -1361,8 +1364,10 @@ Hard requirements:
 - Use only text, number, and date column types. A chart valueColumns entry must point to a number column; pie charts use one value column.
 - Exact valid example: {"ready":true,"title":"Product sales","summary":"Quarterly comparison","columns":[{"key":"product","label":"Product","type":"text"},{"key":"sales","label":"Sales","type":"number"}],"rows":[["A",128.5],["B",96]],"charts":[{"type":"bar","title":"Sales by product","labelColumn":0,"valueColumns":[1]}]}.
 - Keep table text under the configured character limits and do not invent unsupported factual claims.
+- Generate realistic mock/sample data only when the user explicitly asks for mock, sample, demo, hypothetical, 模拟, 示例, 演示, 假设, or 虚构 data; otherwise preserve missing factual fields as unknown.
 - When a requested factual field is missing, write "待确认" in Chinese or "Not provided" in English.
 - If the request is incomplete, ask a single clarifying question. Ask at most two questions total.
+- Charts must be based on number columns only. If no numeric column exists, return an empty charts array.
 - Do not use markdown, comments, fake citations, or explanatory prose outside JSON.
 - Return data that can be normalized into a safe spreadsheet and chart preview.
 ${retry ? '- This is a correction attempt: preserve the requested intent and return the exact schema above, with valid JSON only.' : ''}`;
@@ -1412,7 +1417,7 @@ function tableSchemaCorrectionPrompt() {
   return 'Correct the previous response. Return raw JSON only with ready=true, columns as [{"key":"...","label":"...","type":"text|number|date"}], rows as arrays, and charts as [{"type":"bar|line|pie","title":"...","labelColumn":0,"valueColumns":[1]}]. Do not use string columns or xAxis/yAxis/data.';
 }
 
-async function generateTableFromPrompt(prompt, { locale, reportProgress, env = process.env, fetchImpl } = {}) {
+async function generateTableFromPrompt(prompt, { locale, reportProgress, env = process.env, fetchImpl, signal } = {}) {
   const provider = await providerConfig(env);
   const messages = [
     { role: 'system', content: tableGenerationSystemPrompt({ locale }) },
@@ -1420,6 +1425,7 @@ async function generateTableFromPrompt(prompt, { locale, reportProgress, env = p
   ];
   let content = '';
   for (let attempt = 0; attempt < 5; attempt++) {
+    throwIfAborted(signal);
     reportProgress?.(15 + attempt * 8, `Generating table draft (attempt ${attempt + 1}).`);
     try {
       content = await requestAiCompletion({
@@ -1428,16 +1434,24 @@ async function generateTableFromPrompt(prompt, { locale, reportProgress, env = p
         model: provider.model,
         messages,
         maxTokens: 8192,
-        fetchImpl
+        fetchImpl,
+        signal
       });
     } catch (error) {
       if (error instanceof AiProviderError) {
+        if (error.code === 'aborted') {
+          if (signal?.aborted) throw cancellationError(signal);
+          throw new ToolKnitError('PROVIDER_TIMEOUT', 'AI table generation timed out.', {
+            details: { stage: 'provider_request', retryable: true }
+          });
+        }
         if (!retryableProviderFailure(error) || attempt === 4) throw providerFailure(error);
-        await waitFor(200 * (attempt + 1));
+        await waitForAbortable(200 * (attempt + 1), signal);
         continue;
       }
       throw error;
     }
+    throwIfAborted(signal);
     if (typeof content !== 'string' || !content.trim()) {
       if (attempt === 4) throw invalidProviderTableFailure('empty_response');
       messages.push({ role: 'user', content: tableSchemaCorrectionPrompt() });

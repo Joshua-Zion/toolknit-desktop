@@ -18,12 +18,48 @@ import { extractVideoGif } from './lib/video-gif-runtime.mjs';
 import { analyzeTextFile, analyzeTextStats, readUtf8Stdin } from './lib/text-stats-runtime.mjs';
 import { extractColorPalette } from './lib/color-extract-runtime.mjs';
 import { stitchImages } from './lib/image-stitch-runtime.mjs';
+import { extractPptImages } from './lib/ppt-image-extract-runtime.mjs';
+import { extractPptText } from './lib/ppt-text-extract-runtime.mjs';
+import { compressPpt } from './lib/ppt-compress-runtime.mjs';
+import { convertPptToPdf } from './lib/ppt-to-pdf-runtime.mjs';
+import { convertPptToImages } from './lib/ppt-to-image-runtime.mjs';
+import { generatePptOutline } from './lib/ppt-outline-runtime.mjs';
+import { generatePptDraft } from './lib/ppt-draft-runtime.mjs';
+import {
+  inspectCpuMemoryInfo,
+  inspectCpuMemoryLiveStats,
+  inspectGpuDisplayInfo,
+  inspectHardwareOverview,
+  inspectMainboardFirmwareInfo,
+  inspectNetworkDevicesInfo,
+  inspectPowerSensorsInfo,
+  inspectStorageHealthInfo
+} from './lib/hardware-runtime.mjs';
 import { editAiDocumentProject, inspectAiDocumentProject, renderAiDocumentProject } from './lib/ai-document-project-runtime.mjs';
 import { generateAiDocument } from './lib/ai-document-runtime.mjs';
 import { editAiTableProject, generateAiTableProject, inspectAiTableProjectFile, renderAiTableProject } from './lib/ai-table-project-runtime.mjs';
 import { installTranscriptionModel, listTranscriptionModels, setCurrentTranscriptionModel, transcribeMedia } from './lib/transcription-runtime.mjs';
+import { TaskRunner } from './lib/shared/task-runtime.mjs';
 
-const VERSION = '1.3.0';
+const VERSION = '2.0.0';
+const CLI_ABORT_CONTROLLER = new AbortController();
+let CLI_SIGNAL_COUNT = 0;
+
+function requestCliCancellation(signal) {
+  CLI_SIGNAL_COUNT += 1;
+  if (!CLI_ABORT_CONTROLLER.signal.aborted) {
+    process.stderr.write(`\nToolKnit received ${signal}. Cancelling the current task...\n`);
+    CLI_ABORT_CONTROLLER.abort(`Received ${signal}.`);
+    return;
+  }
+  if (CLI_SIGNAL_COUNT > 1) {
+    process.stderr.write('\nToolKnit received a second termination signal. Exiting now.\n');
+    process.exitCode = 130;
+  }
+}
+
+process.once('SIGINT', () => requestCliCancellation('SIGINT'));
+process.once('SIGTERM', () => requestCliCancellation('SIGTERM'));
 const HELP = `ToolKnit CLI ${VERSION}
 
 用法：
@@ -34,6 +70,8 @@ const HELP = `ToolKnit CLI ${VERSION}
   toolknit video <convert|frame|gif> [参数]
   toolknit text stats [参数]
   toolknit image <colors|stitch> [参数]
+  toolknit ppt <images|text|compress|to-pdf|to-image|outline|draft> [参数]
+  toolknit hardware <overview|cpu-memory|cpu-memory-live-stats|gpu-display|mainboard-firmware|storage-health|network-devices|power-sensors> [参数]
   toolknit ai-doc <create|inspect|edit|undo|render> [参数]
   toolknit ai-table <create|inspect|edit|undo|render> [参数]
   toolknit agent guide [--lang zh|en]
@@ -66,6 +104,25 @@ PDF 工具：
   colors    提取 PNG、JPEG 或 WebP 的主色板，不写出文件
   stitch    将 2–100 张图片纵向或横向拼接为 PNG/JPG
 
+PPT 工具：
+  images    提取 PPTX 内嵌图片素材，支持页码、素材编号和跳过重复项
+  text      提取 PPTX 标题、正文和备注，可选 AI 整理
+  compress  安全压缩 PPTX，保留图片质量并输出 manifest
+  to-pdf    使用 LibreOffice 将 PPTX 渲染为 PDF
+  to-image  使用 LibreOffice + PDF 渲染链路将 PPTX 页面导出为图像
+  outline   根据文字资料生成结构化 PPT 大纲
+  draft     根据文字资料或 outline.json 生成可编辑 PPTX 草稿
+
+硬件工具：
+  overview               查看整机、系统、核心硬件和固件概况
+  cpu-memory             查看 CPU 规格、内存拓扑和内存条信息
+  cpu-memory-live-stats  查看当前 CPU 与内存实时状态
+  gpu-display            查看显卡、驱动和显示器信息
+  mainboard-firmware     查看主板、BIOS/UEFI、安全启动、TPM 和 PCI 设备
+  storage-health         查看磁盘、卷、容量和可读健康状态
+  network-devices        查看网卡、蓝牙、音频、USB 和摄像头
+  power-sensors          查看电源计划、电池、温区和风扇等传感器
+
 查看说明：
   toolknit pdf --help
   toolknit pdf merge --help
@@ -84,6 +141,21 @@ PDF 工具：
   toolknit text stats --help
   toolknit image colors --help
   toolknit image stitch --help
+  toolknit ppt images --help
+  toolknit ppt text --help
+  toolknit ppt compress --help
+  toolknit ppt to-pdf --help
+  toolknit ppt to-image --help
+  toolknit hardware --help
+  toolknit hardware overview --help
+  toolknit hardware cpu-memory --help
+  toolknit hardware cpu-memory-live-stats --help
+  toolknit hardware gpu-display --help
+  toolknit hardware mainboard-firmware --help
+  toolknit hardware storage-health --help
+  toolknit hardware network-devices --help
+  toolknit hardware power-sensors --help
+  toolknit help hardware
   toolknit pdf to-image --help
   toolknit ai-doc --help
   toolknit ai-table --help
@@ -101,6 +173,9 @@ PDF 工具：
   toolknit help text stats
   toolknit help image colors
   toolknit help image stitch
+  toolknit help ppt images
+  toolknit help ppt text
+  toolknit help ppt compress
   toolknit agent guide [--lang zh|en]
 
 安全默认值：所有写入操作都必须显式指定输出位置；已有文件必须附加 --overwrite 才会被替换；CLI 密码只从标准输入读取，绝不接受命令行密码。
@@ -504,10 +579,255 @@ const IMAGE_COMMAND_HELP = { colors: `配色提取（colors）
   toolknit image stitch --input .\\01.png --input .\\02.png --output-dir .\\toolknit-output
   toolknit image stitch --input .\\left.png --input .\\right.png --output-dir .\\toolknit-output --mode horizontal --reference largest --spacing 12 --background "#111111FF" --format jpg --jpeg-quality 92` };
 
+const PPT_OVERVIEW = `ToolKnit PPT 工具
+
+用法：
+  toolknit ppt images --input <file.pptx> --output-dir <directory> [--pages <1,3-5>] [--images <1,3-5>] [--skip-duplicates] [--dry-run] [--json]
+  toolknit ppt text --input <file.pptx> --output-dir <directory> [--pages <1,3-5>] [--format markdown|txt|json|all] [--ai-mode none|outline|speaker-notes|meeting-notes|study-notes] [--dry-run] [--json]
+  toolknit ppt compress --input <file.pptx> --output-dir <directory> [--level low|medium|high] [--dry-run] [--json]
+  toolknit ppt to-pdf --input <file.pptx> --output-dir <directory> [--dry-run] [--json]
+  toolknit ppt to-image --input <file.pptx> --output-dir <directory> [--pages <1,3-5>] [--format png|jpg|webp] [--clarity standard|high|print] [--dry-run] [--json]
+  toolknit ppt outline (--prompt <brief> | --prompt-file <brief.txt>) --output-dir <directory> [--slide-count 8] [--deck-type auto|product-launch|investor-pitch|work-report|training|industry-research|competitive-analysis|short-video-demo|project-review] [--audience <text>] [--purpose <text>] [--locale zh-CN|en] [--dry-run] [--json]
+  toolknit ppt draft (--prompt <brief> | --prompt-file <brief.txt> | --outline-file <outline.json>) --output-dir <directory> [--slide-count 8] [--deck-type auto|product-launch|investor-pitch|work-report|training|industry-research|competitive-analysis|short-video-demo|project-review] [--dry-run] [--json]
+
+说明：
+  images 会解析 PPTX 的 ZIP/XML 结构，提取内嵌图片、Logo、截图、背景素材等原始图片文件。第一阶段只支持 .pptx，不依赖 Office 或 LibreOffice，不会修改源文件。
+  text 会本地提取每页标题、正文和备注，可导出 Markdown、TXT、JSON；启用 --ai-mode 时只把提取出的文本发送给你配置的 AI 服务做整理，PPT 文件不会上传。
+  compress 会本地重打包 PPTX，并按等级处理图片素材。low 为无损清理；medium 会适度压缩大图；high 更偏体积优先。源 PPTX 不会被修改，压缩后如果没有变小会自动保留原图。
+  to-pdf 会先校验 PPTX 包结构，再调用本机 LibreOffice headless 渲染为 PDF；源文件不修改，输出到独立文件夹并生成 manifest。
+  to-image 会先通过同一 LibreOffice 链路渲染临时 PDF，再复用 PDF 转图像引擎导出逐页 PNG/JPG/WebP；源文件和临时 PDF 不会保留。
+  outline 会根据主题、受众、场景和资料生成结构化 PPT 大纲，输出 outline.md、outline.json 和 manifest.json；新版会加入 PPT 类型预设、事实边界、页面角色、布局意图和质量自检，不会生成 PPTX 文件，适合后续继续交给 AI 草稿/PPTX 工具使用。
+  draft 会先生成或读取结构化大纲，再用本地模板写出可编辑 PPTX 草稿，同时保留 outline.json、outline.md 和 manifest.json。第一阶段不做动画和复杂企业母版。
+
+详细参数：
+  toolknit ppt images --help
+  toolknit ppt text --help
+  toolknit ppt compress --help
+  toolknit ppt to-pdf --help
+  toolknit ppt to-image --help
+  toolknit ppt outline --help
+  toolknit ppt draft --help
+  toolknit help ppt images
+  toolknit help ppt text
+  toolknit help ppt compress
+  toolknit help ppt to-pdf
+  toolknit help ppt to-image
+  toolknit help ppt outline
+  toolknit help ppt draft`;
+
+const PPT_COMMAND_HELP = {
+  images: `PPT 图片提取（images）
+
+用法：
+  toolknit ppt images --input <file.pptx> --output-dir <directory> [--pages <1,3-5>] [--images <1,3-5>] [--skip-duplicates] [--dry-run] [--output-name <name>] [--json] [--banner auto|always|never]
+
+输入：
+  当前仅支持 .pptx。工具会先校验 ZIP 包、[Content_Types].xml、ppt/presentation.xml 和幻灯片关系文件，避免把伪装文件当作 PPT 处理。
+
+选择：
+  --pages 按幻灯片页码筛选；--images 按扫描出的图片素材编号筛选。二者同时提供时取交集。--skip-duplicates 会跳过完全相同 SHA-256 的重复素材。
+
+输出：
+  输出到指定目录下的独立子文件夹，保留原始图片格式，并生成 manifest.json 与 manifest.md。已有输出文件夹不会覆盖，会自动追加序号。--dry-run 只返回扫描清单，不写出图片。
+
+示例：
+  toolknit ppt images --input .\\demo.pptx --output-dir .\\toolknit-output --json
+  toolknit ppt images --input .\\demo.pptx --output-dir .\\toolknit-output --pages 1-3 --images 1,3-6 --skip-duplicates --json`
+,
+  text: `PPT AI 文本提取（text）
+
+用法：
+  toolknit ppt text --input <file.pptx> --output-dir <directory> [--pages <1,3-5>] [--format markdown|txt|json|all] [--ai-mode none|outline|speaker-notes|meeting-notes|study-notes] [--dry-run] [--output-name <name>] [--locale zh-CN|en] [--json] [--banner auto|always|never]
+
+输入：
+  当前仅支持 .pptx。工具会先校验 ZIP 包和 PowerPoint 关键结构；基础标题、正文和备注提取完全本地完成，不依赖 Office 或 LibreOffice。
+
+输出：
+  输出到指定目录下的独立子文件夹。--format markdown 会生成 slides.md；txt 生成 slides.txt；json 生成 slides.json；all 同时生成三种格式。manifest.json 始终生成。已有输出文件夹不会覆盖，会自动追加序号。
+
+AI 整理：
+  --ai-mode none 默认不调用 AI。outline 会整理成大纲；speaker-notes 生成讲稿；meeting-notes 生成会议纪要；study-notes 生成学习笔记。AI 只接收提取出的文字和备注，不会上传 PPTX 文件。CLI/Agent 需配置 DEEPSEEK_API_KEY 或 TOOLKNIT_AI_API_KEY。
+
+示例：
+  toolknit ppt text --input .\\demo.pptx --output-dir .\\toolknit-output --format all --json
+  toolknit ppt text --input .\\demo.pptx --output-dir .\\toolknit-output --pages 1-8 --ai-mode outline --format markdown --json`,
+  compress: `PPT 压缩（compress）
+
+用法：
+  toolknit ppt compress --input <file.pptx> --output-dir <directory> [--level low|medium|high] [--dry-run] [--output-name <name>] [--json] [--banner auto|always|never]
+
+输入：
+  当前仅支持 .pptx。工具会校验 ZIP 包和 PowerPoint 关键结构，源文件不会被修改。
+
+压缩等级：
+  low：无损清理，不降低图片质量。
+  medium：推荐压缩，清理结构并适度压缩大图。
+  high：强力压缩，额外清理打印设置元数据，并更偏向体积优先。
+
+输出：
+  输出到指定目录下的独立子文件夹，生成 <name>_compressed.pptx 和 manifest.json。已有输出文件夹不会覆盖，会自动追加序号。若重新打包结果反而更大，会保留原始字节作为输出，并在 manifest 中标记 already_optimized。
+
+示例：
+  toolknit ppt compress --input .\\demo.pptx --output-dir .\\toolknit-output --level medium --json
+  toolknit ppt compress --input .\\demo.pptx --output-dir .\\toolknit-output --level high --dry-run --json`,
+  'to-pdf': `PPT 转 PDF（to-pdf）
+
+用法：
+  toolknit ppt to-pdf --input <file.pptx> --output-dir <directory> [--dry-run] [--output-name <name>] [--json] [--banner auto|always|never]
+
+输入：
+  当前仅支持 .pptx。工具会先校验 ZIP 签名、[Content_Types].xml、ppt/presentation.xml 和幻灯片数量，避免把伪装文件交给 LibreOffice 渲染。
+
+依赖：
+  需要本机可用的 LibreOffice。可安装 LibreOffice，或设置 TOOLKNIT_LIBREOFFICE_PATH 指向 soffice.com / soffice.exe / soffice。缺失时会返回明确的 DEPENDENCY_MISSING，不会生成空结果。
+
+输出：
+  输出到指定目录下的独立子文件夹，生成 <name>.pdf 和 manifest.json。已有输出文件夹不会覆盖，会自动追加序号。源 PPTX 不会被修改。
+
+示例：
+  toolknit ppt to-pdf --input .\\demo.pptx --output-dir .\\toolknit-output --json
+  toolknit ppt to-pdf --input .\\demo.pptx --output-dir .\\toolknit-output --output-name demo-slides --dry-run --json`,
+  'to-image': `PPT 转图片（to-image）
+
+用法：
+  toolknit ppt to-image --input <file.pptx> --output-dir <directory> [--pages <1,3-5>] [--format png|jpg|webp] [--clarity standard|high|print] [--dry-run] [--output-name <name>] [--json] [--banner auto|always|never]
+
+输入：
+  当前仅支持 .pptx。工具先校验 PPTX 包结构，再调用 LibreOffice 渲染临时 PDF，最后复用 ToolKnit PDF 转图像引擎导出逐页图片。
+
+选择：
+  --pages 按幻灯片页码筛选；未指定时导出全部页面。--format 默认 png；--clarity 默认 high，print 更清晰但文件更大。
+
+输出：
+  输出到指定目录下的独立子文件夹，导出一页一张图片并生成 manifest.json。中间 PDF 只用于渲染，成功后不会保留。源 PPTX 不会被修改。
+
+示例：
+  toolknit ppt to-image --input .\\demo.pptx --output-dir .\\toolknit-output --pages 1-3 --format png --clarity high --json
+  toolknit ppt to-image --input .\\demo.pptx --output-dir .\\toolknit-output --format webp --clarity print --output-name demo-pages --json`,
+  outline: `AI 生成 PPT 大纲（outline）
+
+用法：
+  toolknit ppt outline --prompt <主题或资料> --output-dir <directory> [--slide-count 8] [--deck-type auto|product-launch|investor-pitch|work-report|training|industry-research|competitive-analysis|short-video-demo|project-review] [--audience <text>] [--purpose <text>] [--tone <text>] [--style <text>] [--locale zh-CN|en] [--dry-run] [--output-name <name>] [--json] [--banner auto|always|never]
+  toolknit ppt outline --prompt-file <brief.txt> --output-dir <directory> [--slide-count 8] [--deck-type auto|product-launch|investor-pitch|work-report|training|industry-research|competitive-analysis|short-video-demo|project-review] [--json]
+
+输入：
+  根据文字需求生成一套新 PPT 的结构化大纲，不读取 PPTX，也不会生成 PPTX 文件。推荐使用 --prompt-file 承载较长资料，避免终端转义问题。
+
+类型预设：
+  --deck-type 默认 auto，会自动判断。也可以指定 product-launch、investor-pitch、work-report、training、industry-research、competitive-analysis、short-video-demo、project-review，让 AI 按对应场景规划叙事。
+
+输出：
+  输出到指定目录下的独立子文件夹，生成 outline.md、outline.json 和 manifest.json。outline.json 是稳定结构，会包含事实边界、页面角色、布局意图和质量自检，后续可继续用于 AI 生成 PPT 草稿 / PPTX。已有输出文件夹不会覆盖，会自动追加序号。
+
+AI：
+  需要配置 DEEPSEEK_API_KEY 或 TOOLKNIT_AI_API_KEY。dry-run 只校验参数和返回生成计划，不调用 AI，也不写文件。
+
+示例：
+  toolknit ppt outline --prompt-file .\\brief.txt --output-dir .\\toolknit-output --slide-count 8 --deck-type product-launch --audience \"开源项目用户\" --purpose \"介绍 ToolKnit 2.0 路线\" --json
+  toolknit ppt outline --prompt \"给一场 10 分钟产品发布演示生成大纲\" --output-dir .\\toolknit-output --slide-count 6 --dry-run --json`,
+  draft: `AI 生成 PPT 草稿 / PPTX（draft）
+
+用法：
+  toolknit ppt draft --prompt <主题或资料> --output-dir <directory> [--slide-count 8] [--deck-type auto|product-launch|investor-pitch|work-report|training|industry-research|competitive-analysis|short-video-demo|project-review] [--audience <text>] [--purpose <text>] [--tone <text>] [--locale zh-CN|en] [--dry-run] [--output-name <name>] [--json] [--banner auto|always|never]
+  toolknit ppt draft --prompt-file <brief.txt> --output-dir <directory> [--slide-count 8] [--deck-type auto|product-launch|investor-pitch|work-report|training|industry-research|competitive-analysis|short-video-demo|project-review] [--json]
+  toolknit ppt draft --outline-file <outline.json> --output-dir <directory> [--json]
+
+输入：
+  prompt/prompt-file 会调用 AI 先生成结构化大纲，再本地写出可编辑 PPTX；outline-file 会直接把已有 ToolKnit 大纲 JSON 转成 PPTX，不再调用 AI。
+
+输出：
+  输出到指定目录下的独立子文件夹，生成 <name>.pptx、outline.json、outline.md 和 manifest.json。已有输出文件夹不会覆盖，会自动追加序号。
+
+视觉：
+  统一使用黑白极简模板：白色大面积、黑色点缀，配灰色几何色块与图片占位。不接受其它主题或配色偏向，保证每次生成都能稳定可用。
+
+边界：
+  第一阶段生成的是稳定可编辑的极简草稿，不包含复杂动画、视频、企业母版继承或像素级排版还原。适合继续在 PowerPoint 中二次美化。
+
+AI：
+  prompt 模式需要配置 DEEPSEEK_API_KEY 或 TOOLKNIT_AI_API_KEY。dry-run 只校验参数和返回生成计划，不调用 AI，也不写文件。
+
+示例：
+  toolknit ppt draft --prompt-file .\\brief.txt --output-dir .\\toolknit-output --slide-count 8 --json
+  toolknit ppt draft --outline-file .\\outline.json --output-dir .\\toolknit-output --json
+  toolknit ppt draft --prompt \"给 ToolKnit 2.0 做 6 页发布演示\" --output-dir .\\toolknit-output --slide-count 6 --dry-run --json`,
+  'extract-text': null
+};
+PPT_COMMAND_HELP['extract-text'] = PPT_COMMAND_HELP.text;
+
+const HARDWARE_OVERVIEW = `ToolKnit 硬件工具
+
+用法：
+  toolknit hardware <overview|cpu-memory|cpu-memory-live-stats|gpu-display|mainboard-firmware|storage-health|network-devices|power-sensors> [参数]
+
+说明：
+  硬件工具只读查看本机信息，不写入、不上传。CLI 默认输出结构化 JSON；加 --json 时返回标准 ToolKnit JSON 包装。
+
+详细参数：
+  toolknit hardware overview --help
+  toolknit hardware cpu-memory --help
+  toolknit hardware cpu-memory-live-stats --help
+  toolknit hardware gpu-display --help
+  toolknit hardware mainboard-firmware --help
+  toolknit hardware storage-health --help
+  toolknit hardware network-devices --help
+  toolknit hardware power-sensors --help`;
+
+const HARDWARE_COMMAND_HELP = {
+  overview: `硬件总览（overview）
+
+用法：
+  toolknit hardware overview [--json]
+
+返回系统、机型、CPU、内存、显卡、磁盘、固件和电池的只读总览。`,
+  'cpu-memory': `CPU 与内存（cpu-memory）
+
+用法：
+  toolknit hardware cpu-memory [--json]
+
+返回处理器规格、内存拓扑、内存条信息与当前使用情况。`,
+  'cpu-memory-live-stats': `CPU 与内存实时状态（cpu-memory-live-stats）
+
+用法：
+  toolknit hardware cpu-memory-live-stats [--json]
+
+返回当前 CPU 使用率、可用内存和提交内存等实时数据。`,
+  'gpu-display': `显卡与显示器（gpu-display）
+
+用法：
+  toolknit hardware gpu-display [--json]
+
+返回显卡、驱动、显存和连接显示器信息。`,
+  'mainboard-firmware': `主板与固件（mainboard-firmware）
+
+用法：
+  toolknit hardware mainboard-firmware [--json]
+
+返回主板、BIOS/UEFI、安全启动、TPM 和 PCI 设备信息。`,
+  'storage-health': `磁盘与健康（storage-health）
+
+用法：
+  toolknit hardware storage-health [--json]
+
+返回物理磁盘、分区卷、容量、接口和可读可靠性状态。`,
+  'network-devices': `网络与设备（network-devices）
+
+用法：
+  toolknit hardware network-devices [--json]
+
+返回网卡、蓝牙、音频、USB 和摄像头等设备清单。`,
+  'power-sensors': `电源与传感器（power-sensors）
+
+用法：
+  toolknit hardware power-sensors [--json]
+
+返回电源计划、电池状态、温区和风扇等可读传感器信息。`
+};
+
 const AI_DOC_OVERVIEW = `ToolKnit AI 文档工程
 
 用法：
-  toolknit ai-doc create --prompt-file <brief.txt> --output <document.pdf> [--page-count 3] [--locale zh-CN|en] [--json]
+  toolknit ai-doc create (--prompt <brief> | --prompt-file <brief.txt>) --output <document.pdf> [--page-count 3] [--locale zh-CN|en] [--json]
   toolknit ai-doc inspect --project <document.toolknit.json> [--json]
   toolknit ai-doc edit --project <document.toolknit.json> --operations-file <operations.json> [--dry-run] [--json]
   toolknit ai-doc undo --project <document.toolknit.json> [--steps 1] [--json]
@@ -581,7 +901,7 @@ const AI_DOC_COMMAND_HELP = {
 const AI_TABLE_OVERVIEW = `ToolKnit AI 表格工程
 
 用法：
-  toolknit ai-table create --prompt-file <brief.txt> --output <table.xlsx> [--format csv|xlsx|pdf|png] [--locale zh-CN|en] [--json]
+  toolknit ai-table create (--prompt <brief> | --prompt-file <brief.txt>) --output <table.xlsx> [--format csv|xlsx|pdf|png] [--locale zh-CN|en] [--json]
   toolknit ai-table inspect --project <table.toolknit-table.json> [--json]
   toolknit ai-table edit --project <table.toolknit-table.json> --operations-file <operations.json> [--dry-run] [--json]
   toolknit ai-table undo --project <table.toolknit-table.json> [--steps 1] [--json]
@@ -713,8 +1033,8 @@ function parsePageRanges(value) {
 
 function parseOptions(tokens) {
   const values = { input: [] };
-  const flags = new Set(['json', 'overwrite', 'password-stdin', 'stdin', 'help', 'dry-run', 'refine']);
-  const options = new Set(['input', 'output', 'output-dir', 'pages', 'rotation', 'level', 'strength', 'quality', 'banner', 'page-selections', 'page-rotations', 'project', 'operations', 'operations-file', 'steps', 'prompt', 'prompt-file', 'page-count', 'locale', 'format', 'start', 'end', 'start-ms', 'end-ms', 'frame-rate', 'width', 'track-index', 'timestamp-ms', 'count', 'language', 'source', 'mode', 'reference', 'spacing', 'scale', 'background', 'jpeg-quality']);
+  const flags = new Set(['json', 'overwrite', 'password-stdin', 'stdin', 'help', 'dry-run', 'refine', 'skip-duplicates']);
+  const options = new Set(['input', 'output', 'output-dir', 'output-name', 'pages', 'images', 'ai-mode', 'rotation', 'level', 'strength', 'quality', 'clarity', 'banner', 'page-selections', 'page-rotations', 'project', 'operations', 'operations-file', 'steps', 'prompt', 'prompt-file', 'outline-file', 'page-count', 'slide-count', 'audience', 'purpose', 'tone', 'style', 'deck-type', 'theme', 'locale', 'format', 'start', 'end', 'start-ms', 'end-ms', 'frame-rate', 'width', 'track-index', 'timestamp-ms', 'count', 'language', 'source', 'mode', 'reference', 'spacing', 'scale', 'background', 'jpeg-quality']);
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index];
     if (!token.startsWith('--')) throw new ToolKnitError('USAGE', `Unexpected argument: ${token}`);
@@ -804,12 +1124,34 @@ function createCliProgressReporter(options) {
   };
 }
 
+async function runCliTask(tool, options, work) {
+  const progress = createCliProgressReporter(options);
+  const runner = new TaskRunner({
+    tool,
+    onEvent(event) {
+      if (event.state === 'queued' || event.state === 'running' || event.state === 'cancelling') {
+        progress.report(event.progress, event.message);
+      }
+    }
+  });
+  try {
+    return await runner.run(async context => work({
+      reportProgress: context.report,
+      signal: context.signal,
+      taskId: context.id,
+      throwIfCancelled: context.throwIfCancelled
+    }), { signal: CLI_ABORT_CONTROLLER.signal });
+  } finally {
+    progress.finish();
+  }
+}
+
 function renderFailure(error, json) {
   const payload = errorPayload(error);
   return json ? JSON.stringify(payload) : `Error [${payload.error.code}]: ${payload.error.message}`;
 }
 
-async function runPdfCommand(action, options) {
+async function runPdfCommand(action, options, runtimeOptions = {}) {
   const overwrite = options.overwrite === true;
   if (action === 'inspect') {
     if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'pdf inspect requires exactly one --input.');
@@ -841,11 +1183,11 @@ async function runPdfCommand(action, options) {
   }
   if (action === 'decrypt') {
     if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'pdf decrypt requires exactly one --input.');
-    return decryptPdfFile({ input_path: options.input[0], output_path: requireOption(options, 'output'), password: options['password-stdin'] ? await passwordFromStdin() : '', overwrite });
+    return decryptPdfFile({ input_path: options.input[0], output_path: requireOption(options, 'output'), password: options['password-stdin'] ? await passwordFromStdin() : '', overwrite }, runtimeOptions);
   }
   if (action === 'compress') {
     if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'pdf compress requires exactly one --input.');
-    return compressPdfFile({ input_path: options.input[0], output_path: requireOption(options, 'output'), level: options.level, overwrite });
+    return compressPdfFile({ input_path: options.input[0], output_path: requireOption(options, 'output'), level: options.level, overwrite }, runtimeOptions);
   }
   if (action === 'enhance') {
     if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'pdf enhance requires exactly one --input.');
@@ -1013,6 +1355,182 @@ async function runImageCommand(action, options, runtimeOptions = {}) {
     }, runtimeOptions);
   }
   throw new ToolKnitError('USAGE', `Unknown image action: ${action}`);
+}
+
+async function runPptCommand(action, options, runtimeOptions = {}) {
+  if (action === 'images') {
+    assertOnlyCommandOptions(options, new Set(['input', 'output-dir', 'pages', 'images', 'skip-duplicates', 'dry-run', 'output-name', 'json', 'banner']));
+    if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'ppt images requires exactly one --input.');
+    const pages = options.pages === undefined ? undefined : parsePageRanges(options.pages);
+    const images = options.images === undefined ? undefined : parsePageRanges(options.images);
+    return extractPptImages({
+      input_path: options.input[0],
+      output_dir: requireOption(options, 'output-dir'),
+      pages,
+      images,
+      skip_duplicates: options['skip-duplicates'] === true,
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  if (action === 'text' || action === 'extract-text') {
+    assertOnlyCommandOptions(options, new Set(['input', 'output-dir', 'pages', 'format', 'ai-mode', 'locale', 'dry-run', 'output-name', 'json', 'banner']));
+    if (options.input.length !== 1) throw new ToolKnitError('USAGE', `ppt ${action} requires exactly one --input.`);
+    const pages = options.pages === undefined ? undefined : parsePageRanges(options.pages);
+    const format = options.format === undefined ? 'markdown' : options.format.trim().toLowerCase();
+    const aiMode = options['ai-mode'] === undefined ? 'none' : options['ai-mode'].trim().toLowerCase();
+    const locale = options.locale || 'zh-CN';
+    if (!['markdown', 'md', 'txt', 'text', 'json', 'all'].includes(format)) throw new ToolKnitError('USAGE', '--format must be markdown, txt, json, or all.');
+    if (!['none', 'off', 'false', 'no', 'outline', 'speaker-notes', 'notes', 'script', 'meeting-notes', 'meeting', 'study-notes', 'study'].includes(aiMode)) throw new ToolKnitError('USAGE', '--ai-mode must be none, outline, speaker-notes, meeting-notes, or study-notes.');
+    if (!['zh-CN', 'en'].includes(locale)) throw new ToolKnitError('USAGE', '--locale must be zh-CN or en.');
+    return extractPptText({
+      input_path: options.input[0],
+      output_dir: requireOption(options, 'output-dir'),
+      pages,
+      format,
+      ai_mode: aiMode,
+      locale,
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  if (action === 'compress') {
+    assertOnlyCommandOptions(options, new Set(['input', 'output-dir', 'level', 'dry-run', 'output-name', 'json', 'banner']));
+    if (options.input.length !== 1) throw new ToolKnitError('USAGE', 'ppt compress requires exactly one --input.');
+    const level = options.level === undefined ? 'medium' : options.level.trim().toLowerCase();
+    if (!['low', 'safe', 'light', 'medium', 'balanced', 'standard', 'normal', 'high', 'strong', 'aggressive'].includes(level)) {
+      throw new ToolKnitError('USAGE', '--level must be low, medium, or high.');
+    }
+    return compressPpt({
+      input_path: options.input[0],
+      output_dir: requireOption(options, 'output-dir'),
+      level,
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  if (action === 'to-pdf' || action === 'pdf') {
+    assertOnlyCommandOptions(options, new Set(['input', 'output-dir', 'dry-run', 'output-name', 'json', 'banner']));
+    if (options.input.length !== 1) throw new ToolKnitError('USAGE', `ppt ${action} requires exactly one --input.`);
+    return convertPptToPdf({
+      input_path: options.input[0],
+      output_dir: requireOption(options, 'output-dir'),
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  if (action === 'to-image' || action === 'images-export') {
+    assertOnlyCommandOptions(options, new Set(['input', 'output-dir', 'pages', 'format', 'clarity', 'dry-run', 'output-name', 'json', 'banner']));
+    if (options.input.length !== 1) throw new ToolKnitError('USAGE', `ppt ${action} requires exactly one --input.`);
+    const pages = options.pages === undefined ? undefined : parsePageRanges(options.pages);
+    const format = options.format === undefined ? 'png' : options.format.trim().toLowerCase();
+    const clarity = options.clarity === undefined ? 'high' : options.clarity.trim().toLowerCase();
+    if (!['png', 'jpg', 'jpeg', 'webp'].includes(format)) throw new ToolKnitError('USAGE', '--format must be png, jpg, or webp.');
+    if (!['standard', 'high', 'print'].includes(clarity)) throw new ToolKnitError('USAGE', '--clarity must be standard, high, or print.');
+    return convertPptToImages({
+      input_path: options.input[0],
+      output_dir: requireOption(options, 'output-dir'),
+      pages,
+      format,
+      clarity,
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  if (action === 'outline') {
+    assertOnlyCommandOptions(options, new Set(['prompt', 'prompt-file', 'output-dir', 'slide-count', 'deck-type', 'audience', 'purpose', 'tone', 'style', 'locale', 'dry-run', 'output-name', 'json', 'banner']));
+    if (options.prompt && options['prompt-file']) {
+      throw new ToolKnitError('USAGE', 'Use either --prompt or --prompt-file, not both.');
+    }
+    const prompt = options['prompt-file']
+      ? await readPromptFile(options['prompt-file'])
+      : requireOption(options, 'prompt');
+    const slideCount = options['slide-count'] === undefined ? 8 : Number(options['slide-count']);
+    if (!Number.isSafeInteger(slideCount) || slideCount < 3 || slideCount > 30) {
+      throw new ToolKnitError('USAGE', '--slide-count must be an integer from 3 to 30.');
+    }
+    const deckType = options['deck-type'] === undefined ? 'auto' : String(options['deck-type']).trim();
+    if (!['auto', 'product-launch', 'investor-pitch', 'work-report', 'training', 'industry-research', 'competitive-analysis', 'short-video-demo', 'project-review'].includes(deckType)) {
+      throw new ToolKnitError('USAGE', '--deck-type must be auto, product-launch, investor-pitch, work-report, training, industry-research, competitive-analysis, short-video-demo, or project-review.');
+    }
+    const locale = options.locale || 'zh-CN';
+    if (!['zh-CN', 'en'].includes(locale)) throw new ToolKnitError('USAGE', '--locale must be zh-CN or en.');
+    return generatePptOutline({
+      prompt,
+      output_dir: requireOption(options, 'output-dir'),
+      slide_count: slideCount,
+      deck_type: deckType,
+      audience: options.audience,
+      purpose: options.purpose,
+      tone: options.tone,
+      style: options.style,
+      locale,
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  if (action === 'draft') {
+    assertOnlyCommandOptions(options, new Set(['prompt', 'prompt-file', 'outline-file', 'output-dir', 'slide-count', 'deck-type', 'audience', 'purpose', 'tone', 'style', 'theme', 'locale', 'dry-run', 'output-name', 'json', 'banner']));
+    const promptInputs = [options.prompt ? 'prompt' : '', options['prompt-file'] ? 'prompt-file' : '', options['outline-file'] ? 'outline-file' : ''].filter(Boolean);
+    if (promptInputs.length !== 1) {
+      throw new ToolKnitError('USAGE', 'Use exactly one of --prompt, --prompt-file, or --outline-file.');
+    }
+    const prompt = options['prompt-file']
+      ? await readPromptFile(options['prompt-file'])
+      : options.prompt;
+    const slideCount = options['slide-count'] === undefined ? undefined : Number(options['slide-count']);
+    if (slideCount !== undefined && (!Number.isSafeInteger(slideCount) || slideCount < 3 || slideCount > 30)) {
+      throw new ToolKnitError('USAGE', '--slide-count must be an integer from 3 to 30.');
+    }
+    const deckType = options['deck-type'] === undefined ? 'auto' : String(options['deck-type']).trim();
+    if (!['auto', 'product-launch', 'investor-pitch', 'work-report', 'training', 'industry-research', 'competitive-analysis', 'short-video-demo', 'project-review'].includes(deckType)) {
+      throw new ToolKnitError('USAGE', '--deck-type must be auto, product-launch, investor-pitch, work-report, training, industry-research, competitive-analysis, short-video-demo, or project-review.');
+    }
+    const locale = options.locale || 'zh-CN';
+    if (!['zh-CN', 'en'].includes(locale)) throw new ToolKnitError('USAGE', '--locale must be zh-CN or en.');
+    // Single-template product decision: legacy --theme hints are accepted for
+    // backward compatibility but always normalized to the black/white minimal
+    // template so the CLI and desktop output stay identical.
+    const theme = 'minimal-mono';
+    return generatePptDraft({
+      prompt,
+      outline_path: options['outline-file'],
+      output_dir: requireOption(options, 'output-dir'),
+      slide_count: slideCount,
+      deck_type: deckType,
+      audience: options.audience,
+      purpose: options.purpose,
+      tone: options.tone,
+      style: options.style,
+      theme,
+      locale,
+      dry_run: options['dry-run'] === true,
+      output_name: options['output-name']
+    }, runtimeOptions);
+  }
+  throw new ToolKnitError('USAGE', `Unknown PPT action: ${action}`);
+}
+
+async function runHardwareCommand(action, options, runtimeOptions = {}) {
+  assertOnlyCommandOptions(options, new Set(['json']));
+  const handlers = {
+    overview: inspectHardwareOverview,
+    'cpu-memory': inspectCpuMemoryInfo,
+    'cpu-memory-live-stats': inspectCpuMemoryLiveStats,
+    'gpu-display': inspectGpuDisplayInfo,
+    'mainboard-firmware': inspectMainboardFirmwareInfo,
+    'storage-health': inspectStorageHealthInfo,
+    'network-devices': inspectNetworkDevicesInfo,
+    'power-sensors': inspectPowerSensorsInfo
+  };
+  const handler = handlers[action];
+  if (!handler) throw new ToolKnitError('USAGE', `Unknown hardware action: ${action}`);
+  return handler(runtimeOptions);
+}
+
+function renderHardwareSuccess(result, json, bannerMode) {
+  if (json) return renderSuccess(result, true, bannerMode);
+  return JSON.stringify(result, null, 2);
 }
 
 async function readOperationsFile(filePathValue) {
@@ -1234,6 +1752,10 @@ async function main(argv = process.argv.slice(2)) {
     }
     if (argv[1] === 'image' && argv.length === 2) { process.stdout.write(`${IMAGE_OVERVIEW}\n`); return null; }
     if (argv[1] === 'image' && argv.length === 3 && IMAGE_COMMAND_HELP[argv[2]]) { process.stdout.write(`${IMAGE_COMMAND_HELP[argv[2]]}\n`); return null; }
+    if (argv[1] === 'ppt' && argv.length === 2) { process.stdout.write(`${PPT_OVERVIEW}\n`); return null; }
+    if (argv[1] === 'ppt' && argv.length === 3 && PPT_COMMAND_HELP[argv[2]]) { process.stdout.write(`${PPT_COMMAND_HELP[argv[2]]}\n`); return null; }
+    if (argv[1] === 'hardware' && argv.length === 2) { process.stdout.write(`${HARDWARE_OVERVIEW}\n`); return null; }
+    if (argv[1] === 'hardware' && argv.length === 3 && HARDWARE_COMMAND_HELP[argv[2]]) { process.stdout.write(`${HARDWARE_COMMAND_HELP[argv[2]]}\n`); return null; }
     if (argv[1] === 'ai-doc' && argv.length === 2) {
       process.stdout.write(`${AI_DOC_OVERVIEW}\n`);
       return null;
@@ -1256,7 +1778,7 @@ async function main(argv = process.argv.slice(2)) {
       else await writeAgentGuide(language);
       return null;
     }
-    throw new ToolKnitError('USAGE', 'Help is available as: toolknit help, toolknit help pdf, toolknit help audio, toolknit help transcribe, toolknit help model, toolknit help mcp, toolknit help video, toolknit help text, toolknit help ai-doc, toolknit help ai-table, or toolknit help agent.');
+    throw new ToolKnitError('USAGE', 'Help is available as: toolknit help, toolknit help pdf, toolknit help audio, toolknit help transcribe, toolknit help model, toolknit help mcp, toolknit help video, toolknit help text, toolknit help image, toolknit help ppt, toolknit help hardware, toolknit help ai-doc, toolknit help ai-table, or toolknit help agent.');
   }
   if (argv[0] === '--version' || argv[0] === 'version') {
     process.stdout.write(`${VERSION}\n`);
@@ -1303,13 +1825,7 @@ async function main(argv = process.argv.slice(2)) {
       process.stdout.write(`${AUDIO_COMMAND_HELP[action]}\n`);
       return null;
     }
-    const progress = createCliProgressReporter(options);
-    let result;
-    try {
-      result = await runAudioCommand(action, options, { reportProgress: progress.report });
-    } finally {
-      progress.finish();
-    }
+    const result = await runCliTask(`audio.${action}`, options, runtime => runAudioCommand(action, options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
     return EXIT_CODES.OK;
   }
@@ -1317,9 +1833,7 @@ async function main(argv = process.argv.slice(2)) {
     if (argv.length === 1 || argv[1] === '--help') { process.stdout.write(`${TRANSCRIBE_HELP}\n`); return null; }
     const options = parseOptions(argv.slice(1));
     if (options.help) { process.stdout.write(`${TRANSCRIBE_HELP}\n`); return null; }
-    const progress = createCliProgressReporter(options);
-    let result;
-    try { result = await runTranscribeCommand(options, { reportProgress: progress.report }); } finally { progress.finish(); }
+    const result = await runCliTask('transcribe', options, runtime => runTranscribeCommand(options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
     return EXIT_CODES.OK;
   }
@@ -1334,8 +1848,7 @@ async function main(argv = process.argv.slice(2)) {
       if (!modelId || modelId.startsWith('--')) throw new ToolKnitError('USAGE', 'model install requires one of: base, small, medium.');
       options = parseOptions(argv.slice(3));
       assertOnlyCommandOptions(options, new Set(['source', 'json', 'banner']));
-      const progress = createCliProgressReporter(options);
-      try { result = await installTranscriptionModel({ model_id: modelId, source: options.source || 'auto' }, { reportProgress: progress.report }); } finally { progress.finish(); }
+      result = await runCliTask('model.install', options, runtime => installTranscriptionModel({ model_id: modelId, source: options.source || 'auto' }, runtime));
     } else {
       ({ options, result } = await runModelCommand(action, argv.slice(2)));
     }
@@ -1354,13 +1867,7 @@ async function main(argv = process.argv.slice(2)) {
       process.stdout.write(`${VIDEO_COMMAND_HELP[action]}\n`);
       return null;
     }
-    const progress = createCliProgressReporter(options);
-    let result;
-    try {
-      result = await runVideoCommand(action, options, { reportProgress: progress.report });
-    } finally {
-      progress.finish();
-    }
+    const result = await runCliTask(`video.${action}`, options, runtime => runVideoCommand(action, options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
     return EXIT_CODES.OK;
   }
@@ -1376,13 +1883,7 @@ async function main(argv = process.argv.slice(2)) {
       process.stdout.write(`${TEXT_COMMAND_HELP[action]}\n`);
       return null;
     }
-    const progress = createCliProgressReporter(options);
-    let result;
-    try {
-      result = await runTextCommand(action, options, { reportProgress: progress.report });
-    } finally {
-      progress.finish();
-    }
+    const result = await runCliTask(`text.${action}`, options, runtime => runTextCommand(action, options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
     return EXIT_CODES.OK;
   }
@@ -1390,9 +1891,34 @@ async function main(argv = process.argv.slice(2)) {
     if (argv.length === 1 || argv[1] === '--help') { process.stdout.write(`${IMAGE_OVERVIEW}\n`); return null; }
     const action = argv[1]; const options = parseOptions(argv.slice(2));
     if (options.help) { if (!IMAGE_COMMAND_HELP[action]) throw new ToolKnitError('USAGE', `Unknown image action: ${action}`); process.stdout.write(`${IMAGE_COMMAND_HELP[action]}\n`); return null; }
-    const progress = createCliProgressReporter(options); let result;
-    try { result = await runImageCommand(action, options, { reportProgress: progress.report }); } finally { progress.finish(); }
+    const result = await runCliTask(`image.${action}`, options, runtime => runImageCommand(action, options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`); return EXIT_CODES.OK;
+  }
+  if (argv[0] === 'ppt') {
+    if (argv.length === 1 || argv[1] === '--help') { process.stdout.write(`${PPT_OVERVIEW}\n`); return null; }
+    const action = argv[1];
+    const options = parseOptions(argv.slice(2));
+    if (options.help) {
+      if (!PPT_COMMAND_HELP[action]) throw new ToolKnitError('USAGE', `Unknown PPT action: ${action}`);
+      process.stdout.write(`${PPT_COMMAND_HELP[action]}\n`);
+      return null;
+    }
+    const result = await runCliTask(`ppt.${action}`, options, runtime => runPptCommand(action, options, runtime));
+    process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
+    return EXIT_CODES.OK;
+  }
+  if (argv[0] === 'hardware') {
+    if (argv.length === 1 || argv[1] === '--help') { process.stdout.write(`${HARDWARE_OVERVIEW}\n`); return null; }
+    const action = argv[1];
+    const options = parseOptions(argv.slice(2));
+    if (options.help) {
+      if (!HARDWARE_COMMAND_HELP[action]) throw new ToolKnitError('USAGE', `Unknown hardware action: ${action}`);
+      process.stdout.write(`${HARDWARE_COMMAND_HELP[action]}\n`);
+      return null;
+    }
+    const result = await runCliTask(`hardware.${action}`, options, runtime => runHardwareCommand(action, options, runtime));
+    process.stdout.write(`${renderHardwareSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
+    return EXIT_CODES.OK;
   }
   if (argv[0] === 'ai-doc') {
     if (argv.length === 1 || argv[1] === '--help') {
@@ -1406,13 +1932,7 @@ async function main(argv = process.argv.slice(2)) {
       process.stdout.write(`${AI_DOC_COMMAND_HELP[action]}\n`);
       return null;
     }
-    const progress = createCliProgressReporter(options);
-    let result;
-    try {
-      result = await runAiDocCommand(action, options, { reportProgress: progress.report });
-    } finally {
-      progress.finish();
-    }
+    const result = await runCliTask(`ai-doc.${action}`, options, runtime => runAiDocCommand(action, options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
     return EXIT_CODES.OK;
   }
@@ -1428,13 +1948,7 @@ async function main(argv = process.argv.slice(2)) {
       process.stdout.write(`${AI_TABLE_COMMAND_HELP[action]}\n`);
       return null;
     }
-    const progress = createCliProgressReporter(options);
-    let result;
-    try {
-      result = await runAiTableCommand(action, options, { reportProgress: progress.report });
-    } finally {
-      progress.finish();
-    }
+    const result = await runCliTask(`ai-table.${action}`, options, runtime => runAiTableCommand(action, options, runtime));
     process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
     return EXIT_CODES.OK;
   }
@@ -1450,7 +1964,7 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${PDF_COMMAND_HELP[action]}\n`);
     return null;
   }
-  const result = await runPdfCommand(action, options);
+  const result = await runCliTask(`pdf.${action}`, options, runtime => runPdfCommand(action, options, runtime));
   process.stdout.write(`${renderSuccess(result, options.json, parseBannerMode(options.banner))}\n`);
   return EXIT_CODES.OK;
 }

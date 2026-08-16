@@ -17,8 +17,8 @@ const [pageMarkup, stylesheet] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
 ]);
-const imageStitchMarkup = pageMarkup.match(/<div class="audio-convert-overlay image-stitch-overlay"[\s\S]*?<div class="audio-convert-success-overlay" id="imageStitchSuccessOverlay">/)?.[0] || '';
-assert.match(imageStitchMarkup, /id="imageStitchBack"[\s\S]*?<svg\b[\s\S]*?<span[^>]*>返回<\/span>/, 'image stitch back button must keep its visible arrow icon');
+const imageStitchMarkup = pageMarkup.match(/<div[^>]*id="imageStitchOverlay"[\s\S]*?<div[^>]*id="imageStitchSuccessOverlay">/)?.[0] || '';
+assert.match(imageStitchMarkup, /id="imageStitchBack"[\s\S]*?data-lucide="arrow-left"[\s\S]*?<span[^>]*>返回首页<\/span>/, 'image stitch back button must keep its visible arrow icon');
 assert.doesNotMatch(imageStitchMarkup, /audio-convert-hero-label/, 'image stitch must not render the IMAGE STITCH eyebrow');
 for (const className of ['image-stitch-queue-empty', 'image-stitch-queue', 'image-stitch-preview-empty', 'image-stitch-preview-composition']) {
   assert.match(stylesheet, new RegExp(`\\.${className}\\[hidden\\][^{]*\\{[^}]*display:\\s*none\\s*!important`), `${className} must stay hidden when the UI switches state`);

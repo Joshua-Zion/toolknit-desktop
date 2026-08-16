@@ -1,6 +1,6 @@
 # ToolKnit AI Agent 快速手册
 
-本手册帮助普通用户在 Trae、Cursor 或其他支持 MCP 的 IDE 中，让 AI Agent 安全调用 ToolKnit 处理本地 PDF（包括转图像和拼长图）、转换音频和视频，并生成专业的多页 AI 文档与可编辑 AI 表格。
+本手册帮助普通用户在 Trae、Cursor 或其他支持 MCP 的 IDE 中，让 AI Agent 安全调用 ToolKnit 处理本地 PDF（包括转图像和拼长图）、提取 PPTX 图片素材和文本、转换音频和视频，并生成专业的多页 AI 文档与可编辑 AI 表格。
 
 ## 先完成连接
 
@@ -23,9 +23,9 @@
 C:\Users\<你的用户名>\AppData\Roaming\npm\node_modules\@toolknit\cli\toolknit.mjs
 ```
 
-基础 PDF、图片、音视频和文本工具不需要 AI Key。使用 AI 文档、AI 表格或转写后的 `refine` 二次校对时，请在 IDE 的 MCP 环境变量/密钥设置中为 `toolknit` 添加真实的 `DEEPSEEK_API_KEY`（也支持 `TOOLKNIT_AI_API_KEY`），再重启 IDE。不要把密钥写进 Agent 对话、文档需求、输出路径或文件名；桌面端保存的密钥不会被 CLI/MCP 读取。
+基础 PDF、图片、音视频、文本和非 AI PPT 工具不需要 AI Key。使用 AI 文档、AI 表格、PPT 文本 AI 整理、AI 生成 PPT 大纲、AI 生成 PPT 草稿 / PPTX 或转写后的 `refine` 二次校对时，请在 IDE 的 MCP 环境变量/密钥设置中为 `toolknit` 添加真实的 `DEEPSEEK_API_KEY`（也支持 `TOOLKNIT_AI_API_KEY`），再重启 IDE。不要把密钥写进 Agent 对话、文档需求、输出路径或文件名；桌面端保存的密钥不会被 CLI/MCP 读取。
 
-连接成功后，Agent 会显示 31 项 ToolKnit 工具：9 项 PDF 工具、4 项音频工具、4 项离线模型与转写工具、3 项视频工具、1 项文本工具、2 项图像工具、4 项 AI 文档工程工具，以及 4 项 AI 表格工程工具：
+连接成功后，Agent 会显示 46 项 ToolKnit 工具：9 项 PDF 工具、7 项 PPT 工具、8 项硬件只读工具、4 项音频工具、4 项离线模型与转写工具、3 项视频工具、1 项文本工具、2 项图像工具、4 项 AI 文档工程工具，以及 4 项 AI 表格工程工具：
 
 - `toolknit_pdf_inspect`：查看页数、大小和每页概况。
 - `toolknit_pdf_merge`：把多个本地 PDF 按顺序合并成一个文件。
@@ -58,6 +58,21 @@ C:\Users\<你的用户名>\AppData\Roaming\npm\node_modules\@toolknit\cli\toolkn
 - `toolknit_text_stats`：统计一个本地 UTF-8 文本文件的字符、词、行、段落、句子与阅读时间；不回传正文、不写文件。
 - `toolknit_color_extract`：从一张本地 PNG、JPEG 或 WebP 中提取主色板；不上传、不写文件。
 - `toolknit_image_stitch`：按明确顺序把 2–100 张本地图片纵向或横向拼接；默认无缝 PNG，源文件不变，结果使用唯一文件名。
+- `toolknit_ppt_images`：从一个本地 PPTX 中提取内嵌图片素材，保留原始格式并生成清单；支持按页码、素材编号和跳过完全重复项。
+- `toolknit_ppt_text`：从一个本地 PPTX 中提取每页标题、正文和备注；可导出 Markdown / TXT / JSON，也可选 AI 整理成大纲、讲稿、纪要或学习笔记。启用 AI 时只发送提取出的文字，不上传 PPTX。
+- `toolknit_ppt_compress`：安全压缩一个本地 PPTX，生成压缩副本和 manifest；第一阶段不降低图片质量，不修改源文件。
+- `toolknit_ppt_to_pdf`：使用 LibreOffice headless 把一个本地 PPTX 渲染成 PDF；源文件不修改，结果和 manifest 写入唯一输出文件夹。
+- `toolknit_ppt_to_image`：使用 LibreOffice 先渲染临时 PDF，再导出逐页 PNG / JPG / WebP 图片；支持页码筛选，临时 PDF 成功后不保留。
+- `toolknit_ppt_outline`：根据一段文字需求生成新的 PPT 结构化大纲，导出 outline.md、outline.json 和 manifest；它不读取 PPTX，也不生成 PPTX。
+- `toolknit_ppt_draft`：根据文字需求生成可编辑 PPTX 草稿；也可把已有 outline.json 直接转成 PPTX。prompt 模式只发送文字资料，outline 模式不调用 AI。
+- `toolknit_hardware_overview`：只读查看整机概况，包括系统、机型、CPU、内存、显卡、磁盘、固件和电池状态。
+- `toolknit_hardware_cpu_memory`：只读查看 CPU 规格、内存拓扑、内存条信息和当前使用情况。
+- `toolknit_hardware_cpu_memory_live_stats`：只读获取当前 CPU 使用率、可用内存和提交内存等实时状态。
+- `toolknit_hardware_gpu_display`：只读查看显卡、驱动、显存和连接显示器信息。
+- `toolknit_hardware_mainboard_firmware`：只读查看主板、BIOS/UEFI、安全启动、TPM、机箱和 PCI 设备信息。
+- `toolknit_hardware_storage_health`：只读查看物理磁盘、卷、容量、接口和可用的健康/可靠性计数。
+- `toolknit_hardware_network_devices`：只读查看网卡、蓝牙、音频、USB 和摄像头等设备清单。
+- `toolknit_hardware_power_sensors`：只读查看电源计划、电池状态、温区和风扇等可用传感器信息。
 
 ## 配色提取器
 
@@ -89,6 +104,82 @@ Agent 必须把 IDE 文件树中的图片解析为绝对路径，并严格保持
 
 ```text
 请调用 ToolKnit MCP 的 toolknit_pdf_to_image，把当前项目 assets/demo.pdf 的第 1 到第 5 页导出为拼接长图，保存到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，不要猜测页面；完成后报告长图路径、页码范围和文件大小。
+```
+
+## PPT 图片素材提取
+
+用户在 IDE 里拖入 PPTX 后，如果说“帮我把 PPT 里的图片素材提取出来”，Agent 应先解析 PPTX 的绝对路径，并把输出目录设为当前项目的 `toolknit-output`。不要修改源 PPTX，不要把整页 PPT 当作图片导出；这个工具提取的是 PPT 内部嵌入的原始图片素材。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_images，把当前项目 decks/demo.pptx 里的内嵌图片素材提取出来，保存到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，不要修改源 PPTX，不要覆盖已有输出。完成后报告输出文件夹、manifest.json、图片数量、重复素材数量和每个导出文件的页码/格式/大小。
+```
+
+```text
+请调用 toolknit_ppt_images，只提取 decks/demo.pptx 第 2 到第 5 页中的图片素材，并跳过完全重复图片。输出到当前项目 toolknit-output，完成后告诉我导出了多少张、跳过了哪些重复素材。
+```
+
+## PPT AI 文本提取
+
+用户在 IDE 里拖入 PPTX 后，如果说“把这个 PPT 的文字提取出来”“帮我整理成大纲/讲稿/会议纪要”，Agent 应先解析 PPTX 的绝对路径，并把输出目录设为当前项目的 `toolknit-output`。基础提取完全本地完成；只有用户明确要求 AI 整理时，才把提取出的文字和备注发送给已配置的 AI 服务，PPTX 文件本体不会上传。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_text，把当前项目 decks/demo.pptx 每页标题、正文和备注提取出来，导出 Markdown、TXT 和 JSON 到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，不要修改源 PPTX，不要覆盖已有输出。完成后报告输出文件夹、页数、备注页数和 manifest.json 路径。
+```
+
+```text
+请调用 toolknit_ppt_text，提取 decks/demo.pptx 第 1 到第 8 页文字，并用 ai_mode=outline 整理成结构化大纲。只允许发送提取出的文字，不要上传 PPTX 文件。输出到当前项目 toolknit-output。
+```
+
+## PPT 压缩
+
+用户在 IDE 里拖入 PPTX 后，如果说“帮我压缩这个 PPT”“把这个演示文稿瘦身”，Agent 应先解析 PPTX 的绝对路径，并把输出目录设为当前项目的 `toolknit-output`。压缩不会修改源文件；`low` 是无损清理，`medium` / `high` 会压缩大图素材来换取更小体积，并且压缩后没有变小的图片会自动保留原图。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_compress，把当前项目 decks/demo.pptx 安全压缩到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，level 使用 medium，不要修改源 PPTX，不要覆盖已有输出。完成后报告输出文件夹、压缩前大小、压缩后大小、节省空间和 manifest.json 路径。
+```
+
+```text
+请调用 toolknit_ppt_compress，对 decks/demo.pptx 做一次 dry_run 压缩分析，level 使用 high。只返回预计节省空间、清理项数量和是否已经接近最优，不写出文件。
+```
+
+## PPT 转 PDF
+
+用户在 IDE 里拖入 PPTX 后，如果说“把这个 PPT 转 PDF”，Agent 应先解析 PPTX 的绝对路径，并把输出目录设为当前项目的 `toolknit-output`。此工具依赖 LibreOffice / soffice；缺失时应提示用户安装或配置 `TOOLKNIT_LIBREOFFICE_PATH`，不能假装转换成功。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_to_pdf，把当前项目 decks/demo.pptx 转成 PDF，输出到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，不要修改源 PPTX，不要覆盖已有输出。完成后报告输出 PDF、manifest.json、页数和文件大小。
+```
+
+## PPT 转图片
+
+用户在 IDE 里拖入 PPTX 后，如果说“把这个 PPT 转成图片”“导出第 1-3 页图片”，Agent 应调用 `toolknit_ppt_to_image`。默认 `format=png`、`clarity=high`、导出全部页；用户给了页码时必须按明确页码传入，不要猜。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_to_image，把当前项目 decks/demo.pptx 的第 1 到第 3 页导出为 PNG 图片，clarity 使用 high，输出到当前项目 toolknit-output。请先从 IDE 文件树解析绝对路径，不要修改源 PPTX，也不要覆盖已有输出。完成后报告输出文件夹、每张图片路径、页码、格式和文件大小。
+```
+
+## AI 生成 PPT 大纲
+
+当用户说“帮我根据这些资料做 PPT 大纲”“为这场演讲规划 8 页结构”时，Agent 应调用 `toolknit_ppt_outline`。这个工具不读取 PPTX，不生成 PPTX；它根据用户提供的文字生成 `outline.md`、`outline.json` 和 `manifest.json`。如果资料来自项目文件，请 Agent 先读取/整理文本，再把精简后的文字作为 `prompt`，不要把 API Key 写进 prompt。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_outline，根据我当前提供的产品资料生成 8 页中文 PPT 大纲，目标受众是开源用户，演示目标是让用户理解 ToolKnit 2.0 的本地优先和 AI Agent 能力，并愿意下载试用。输出到当前项目 toolknit-output。请先把输出目录解析为绝对路径，不要覆盖已有输出。完成后报告 outline.md、outline.json、manifest.json 路径和待确认信息。
+```
+
+```text
+请先 dry_run 调用 toolknit_ppt_outline，主题是“给投资人解释一个本地优先文件处理平台”，slide_count=6，audience=投资人，purpose=获得继续沟通机会。只返回生成计划，不调用 AI、不写文件。
+```
+
+## AI 生成 PPT 草稿 / PPTX
+
+当用户说“直接帮我生成一个 PPTX 草稿”“把这些资料做成可编辑 PPT”时，Agent 应调用 `toolknit_ppt_draft`。如果用户已经有 `outline.json`，优先使用 `outline_path`，这样不再调用 AI；如果只有文字资料，则使用 `prompt` 生成结构化大纲后再本地写出 PPTX。第一阶段生成的是可编辑极简草稿，不承诺复杂动画、视频或企业母版像素级还原。
+
+```text
+请调用 ToolKnit MCP 的 toolknit_ppt_draft，根据我提供的产品资料生成 8 页中文 PPTX 草稿，目标受众是开源用户，theme 使用 minimal-mono（默认黑白极简主题），输出到当前项目 toolknit-output。请先把输出目录解析为绝对路径，不要覆盖已有输出。完成后报告 PPTX、outline.json、outline.md 和 manifest.json 路径。
+```
+
+```text
+请调用 toolknit_ppt_draft，把当前项目 toolknit-output/outline.json 转成可编辑 PPTX，theme 使用 minimal-mono（黑白极简），不要再次调用 AI，不要覆盖已有输出。
 ```
 
 ## 每次任务都说清楚
@@ -318,13 +409,13 @@ Agent 转换出的操作应只有一项：
 ```text
 请务必调用 ToolKnit MCP 的 toolknit_ai_document，不要只在对话中编写内容。
 
-生成一份 4 页中文 A4 PDF《ToolKnit v1.3 开源版本产品方案》，输出到 D:\ToolKnit-Output\ToolKnit-v1.3-产品方案.pdf，不允许覆盖已有文件。
+生成一份 4 页中文 A4 PDF《ToolKnit v2.0 开源版本产品方案》，输出到 D:\ToolKnit-Output\ToolKnit-v2.0-产品方案.pdf，不允许覆盖已有文件。
 
 文档要求：
 1. 第 1 页为执行摘要，包含项目背景、版本目标、目标用户和 5 项核心价值，并用信息表格展示版本号、发布形态、技术栈和开源定位。
 2. 第 2 页介绍桌面版能力，按 PDF、图片、音视频、文本和 AI 工具分组，说明本地优先、隐私和性能策略；不要虚构未经提供的用户量或市场数据。
 3. 第 3 页介绍 CLI 与 IDE Agent/MCP 架构，说明桌面端与 CLI 共用能力契约、显式输出路径、禁止静默覆盖、结构化进度和错误码，并用表格列出典型调用场景。
-4. 第 4 页给出 v1.3 发布计划、风险、验收标准和后续路线，待办事项必须包含责任角色、优先级和验收结果。
+4. 第 4 页给出 v2.0 发布计划、风险、验收标准和后续路线，待办事项必须包含责任角色、优先级和验收结果。
 5. 使用现代黑白商务版式，包含清晰章节、元信息表格、重点摘要、待办表格和克制的注释区域；不要使用彩色装饰、emoji、占位文字或虚假引用。
 6. page_count 必须传 4，locale 传 zh-CN，overwrite 传 false。
 
