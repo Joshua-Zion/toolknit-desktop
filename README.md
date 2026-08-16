@@ -56,14 +56,16 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 
 同一份本地文件可以被桌面端预览、被 CLI 批处理、被 MCP Agent 调用，并且拥有明确的输入、输出、进度、错误和安全边界。
 
-<p>
-  <img src="https://img.shields.io/badge/49-桌面工具-0f766e?style=for-the-badge" alt="49 desktop tools" />
-  <img src="https://img.shields.io/badge/11-功能分类-2563eb?style=for-the-badge" alt="11 categories" />
-  <img src="https://img.shields.io/badge/46-MCP%20能力-7c3aed?style=for-the-badge" alt="46 MCP capabilities" />
-  <img src="https://img.shields.io/badge/3-工作方式-d97706?style=for-the-badge" alt="3 ways to work" />
-  <img src="https://img.shields.io/badge/Windows-首发平台-475569?style=for-the-badge&logo=windows&logoColor=white" alt="Windows first platform" />
-  <img src="https://img.shields.io/badge/Local--first-隐私策略-0f766e?style=for-the-badge" alt="Local first privacy policy" />
-</p>
+<table width="100%" cellpadding="14" cellspacing="0">
+  <tr>
+    <td align="center"><h3>49</h3><strong>桌面工具</strong></td>
+    <td align="center"><h3>11</h3><strong>功能分类</strong></td>
+    <td align="center"><h3>46</h3><strong>MCP 能力</strong></td>
+    <td align="center"><h3>3</h3><strong>工作方式</strong></td>
+    <td align="center"><h3>Windows</h3><strong>首发平台</strong></td>
+    <td align="center"><h3>Local-first</h3><strong>隐私策略</strong></td>
+  </tr>
+</table>
 
 ## 三种工作方式
 
@@ -230,18 +232,8 @@ ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、�
 
 <p align="center"><sub>2.0 工作台首页预览 · 最终发布截图会随正式版本同步更新</sub></p>
 
-<table cellpadding="10" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top">
-      <p align="center"><strong>ToolKnit.com 网页端</strong></p>
-      <a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" height="250" style="object-fit:cover; border-radius:8px;" /></a>
-    </td>
-    <td width="50%" valign="top">
-      <p align="center"><strong>AI 文档工程工作流</strong></p>
-      <img src="assets/readme/categories/category-ai.png" alt="AI workbench preview" width="100%" height="250" style="object-fit:cover; border-radius:8px;" />
-    </td>
-  </tr>
-</table>
+<p align="center"><strong>ToolKnit.com 网页端 · 开箱即用</strong></p>
+<a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>
 
 <details>
   <summary><strong>查看工具分类截图</strong></summary>
@@ -350,44 +342,24 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 </table>
 -->
 
-## 捐赠支持者
+## 捐赠支持
 
-目前公开记录的项目支持全部来自现金捐赠。每一笔支持都会用于测试设备、依赖镜像、文档维护、版本发布和后续功能开发。
+如果 ToolKnit 对你的工作有帮助，欢迎用一次性捐赠支持测试设备、依赖镜像、文档维护和后续功能开发。捐赠不是付费外包承诺，但会帮助项目保持开源、纯净、可维护和持续更新。
 
-<table cellpadding="12" cellspacing="0">
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <p><img src="https://img.shields.io/badge/Alipay-1677ff?style=for-the-badge&logo=alipay&logoColor=white" alt="Alipay" /> <strong>支付宝</strong></p>
-      <img src="assets/wechat-qr.jpg" alt="支付宝捐赠二维码" width="240" height="240" />
-    </td>
-    <td width="50%" align="center" valign="top">
-      <p><img src="https://img.shields.io/badge/WeChat-07c160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat Pay" /> <strong>微信支付</strong></p>
-      <img src="assets/alipay-qr.png" alt="微信支付捐赠二维码" width="240" height="240" />
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="assets/readme/donation-support.svg" alt="ToolKnit donation support artwork with Alipay and WeChat QR placeholders" width="100%" />
+</p>
 
-<p align="center"><img src="https://img.shields.io/badge/公开捐赠总额-83.88%20元-d97706?style=for-the-badge" alt="公开捐赠总额 83.88 元" /></p>
-
-| 支持者 | 金额 | 日期 |
-| --- | ---: | --- |
-| 匿名开源支持者 | 23.88 元 | 2026-08-03 |
-| 匿名开源支持者 | 2 元 | 2026-08-04 |
-| 匿名开源支持者（烤肠基金） | 5 元 | 2026-08-06 |
-| 匿名开源支持者 | 50 元 | 2026-08-06 |
-| 匿名开源支持者（工具编织） | 3 元 | 2026-08-06 |
-
-<p><sub>捐赠不是付费外包承诺，但会帮助 ToolKnit 保持开源、纯净、可维护和持续更新。公开记录见 <a href="toolknit-desktop/public/contributors.json">contributors.json</a>。</sub></p>
+<p align="center"><sub>捐赠支持图会在正式发布前替换为最终设计，并在同一张图中放置支付宝与微信二维码。</sub></p>
 
 ## Star History
 
-<p align="center">
-  <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">
-    <img src="https://api.star-history.com/svg?repos=ZihangDong/toolknit-desktop&type=Date" alt="ToolKnit GitHub star history" width="100%" />
-  </a>
-</p>
+<p>GitHub 的 Star History 动态图接口目前无法稳定返回数据，因此这里保留稳定可访问的星标入口：</p>
 
-<p align="center"><img src="assets/readme/star-growth.svg" alt="ToolKnit star growth" width="78%" /></p>
+<p align="center">
+  <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers"><img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=GitHub%20Stars&color=f59e0b" alt="GitHub stars" /></a>
+  <a href="https://github.com/ZihangDong/toolknit-desktop"><img src="https://img.shields.io/github/last-commit/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Last%20Commit&color=475569" alt="Last commit" /></a>
+</p>
 
 ## 参与项目
 
