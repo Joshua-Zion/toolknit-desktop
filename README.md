@@ -36,13 +36,13 @@
 <table cellpadding="18" cellspacing="0">
   <tr>
     <td width="50%" valign="top">
-      <p><img src="https://cdn.simpleicons.org/googlechrome/0f766e" width="24" height="24" alt="" /> <strong>先用网页版</strong></p>
+      <p><img src="https://img.shields.io/badge/WEB-ToolKnit.com-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web ToolKnit.com" /> <strong>先用网页版</strong></p>
       <p>无需安装，打开浏览器即可使用同名官方网页端。</p>
       <p><a href="https://toolknit.com"><strong>打开 ToolKnit.com</strong></a></p>
       <sub>适合快速体验、跨平台使用和不方便安装桌面应用的场景。</sub>
     </td>
     <td width="50%" valign="top">
-      <p><img src="https://cdn.simpleicons.org/windows/2563eb" width="24" height="24" alt="" /> <strong>再用桌面端</strong></p>
+      <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
       <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
       <sub>2.0 正式安装包发布后，会同步更新 Release 入口。</sub>
@@ -70,21 +70,18 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 <table cellpadding="16" cellspacing="0">
   <tr>
     <td width="33%" valign="top">
-      <p><img src="https://cdn.simpleicons.org/googlechrome/0f766e" width="28" height="28" alt="" /></p>
       <p><img src="https://img.shields.io/badge/WEB-TOOLKNIT.COM-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web ToolKnit.com" /></p>
       <h3>网页端</h3>
       <p>开箱即用，无需安装。适合快速处理和跨平台访问。</p>
       <a href="https://toolknit.com">进入 ToolKnit.com</a>
     </td>
     <td width="33%" valign="top">
-      <p><img src="https://cdn.simpleicons.org/windows/2563eb" width="28" height="28" alt="" /></p>
       <p><img src="https://img.shields.io/badge/DESKTOP-WINDOWS-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Desktop Windows" /></p>
       <h3>桌面端</h3>
       <p>文件留在本机，提供预览、拖拽、批量处理、可视化编辑和依赖管理。</p>
       <a href="https://github.com/ZihangDong/toolknit-desktop/releases">查看 Releases</a>
     </td>
     <td width="33%" valign="top">
-      <p><img src="https://api.iconify.design/lucide:workflow.svg?color=%237c3aed" width="28" height="28" alt="" /></p>
       <p><img src="https://img.shields.io/badge/CLI%20%2B%20MCP-AGENT-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="CLI MCP Agent" /></p>
       <h3>CLI 与 Agent</h3>
       <p>适合脚本、批处理、CI 和 IDE Agent，用自然语言调用可验证的本地能力。</p>
@@ -97,67 +94,67 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 
 下面按桌面端的 11 个分类列出全部 49 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
 
-### <img src="https://cdn.simpleicons.org/adobeacrobatreader/ed1c24" width="24" height="24" alt="PDF" /> PDF 文档工具 · 9 项
+### <img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /> PDF 文档工具 · 9 项
 
 `PDF 合并` · `PDF 拆分` · `PDF 转图像` · `PDF 编辑器` · `PDF 页面旋转` · `PDF 文件加密` · `PDF 文件解密` · `PDF 文件压缩` · `PDF 文字增强`
 
 支持拖拽排序、逐页预览、选页导出、页面旋转、文字替换、文本与图像插入、追加合并、密码保护、扫描件增强和多等级压缩。PDF、密码和导出结果默认只在本机处理。
 
-### <img src="https://cdn.simpleicons.org/microsoftpowerpoint/d24726" width="24" height="24" alt="PPT" /> PPT 演示文稿工具 · 7 项
+### <img src="https://img.shields.io/badge/PPT-Presentation%20Studio-d24726?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white" alt="PPT Presentation Studio" /> PPT 演示文稿工具 · 7 项
 
 `PPT 转 PDF` · `PPT 转图片` · `PPT 图片提取` · `PPT 文本提取` · `PPT 压缩` · `AI 生成 PPT 大纲` · `AI 生成 PPT 草稿 / PPTX`
 
 支持逐页渲染、页码选择、PNG/JPG/WebP 输出、素材去重、标题正文备注提取、Markdown/TXT/JSON 导出、媒体清理，以及从主题和资料生成结构化大纲与可编辑 PPTX 草稿。PPT 渲染运行时按需下载。
 
-### <img src="https://cdn.simpleicons.org/imagemagick/31a8ff" width="24" height="24" alt="Image" /> 图像工具 · 5 项
+### <img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /> 图像工具 · 5 项
 
 `图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器` · `配色提取器`
 
 支持 JPG、PNG、WebP、BMP、GIF、SVG 互转，批量压缩，横向 / 纵向 / 无缝拼接图片或 PDF 页面，生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP，以及输出 HEX、RGB、HSL 主色和色卡比例。
 
-### <img src="https://cdn.simpleicons.org/ffmpeg/007808" width="24" height="24" alt="Audio and video" /> 音频工具 · 4 项
+### <img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /> 音频工具 · 4 项
 
 `音频格式转换` · `BPM 节拍测速` · `音频剪辑` · `音频提取`
 
 支持 MP3、AAC、WAV、FLAC、ALAC、OGG、WMA 等格式互转，离线 BPM 分析，波形可视化剪辑和从视频中提取音轨。FFmpeg 按需安装，源文件不会被覆盖。
 
-### <img src="https://api.iconify.design/lucide:film.svg?color=%23dc2626" width="24" height="24" alt="Video" /> 视频工具 · 3 项
+### <img src="https://img.shields.io/badge/VIDEO-Frame%20Studio-dc2626?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Frame Studio" /> 视频工具 · 3 项
 
 `视频格式转换` · `视频高清单帧图` · `视频截取 GIF`
 
 支持 MP4、AVI、MKV、MOV、WebM、FLV、WMV、TS、M4V 等格式转换，按精确时间点导出 PNG/JPG 单帧，以及从 30 秒以内片段生成调色板优化 GIF。
 
-### <img src="https://cdn.simpleicons.org/markdown/000000" width="24" height="24" alt="Text" /> 文本与转写 · 3 项
+### <img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /> 文本与转写 · 3 项
 
 `音视频提取文字` · `文本统计器` · `文本格式化`
 
 Whisper 模型下载到本机后，可离线识别中英文音频和视频并输出 TXT、SRT、JSON；文本统计提供字符、词、行、段落、句子、标点和阅读时间数据；格式化工具用于整理纯文本内容。
 
-### <img src="https://api.iconify.design/lucide:calculator.svg?color=%232563eb" width="24" height="24" alt="Calculator" /> 计算器工具 · 5 项
+### <img src="https://img.shields.io/badge/UTILITY-Calculator-2563eb?style=for-the-badge" alt="Calculator utility" /> 计算器工具 · 5 项
 
 `体脂率计算器` · `时间戳计算器` · `房贷计算器` · `利息计算器` · `密码生成器`
 
 覆盖健康估算、Unix 时间戳转换、房贷月供、单利 / 复利计算和安全随机密码生成，适合在桌面端随手完成小型计算。
 
-### <img src="https://api.iconify.design/lucide:palette.svg?color=%23db2777" width="24" height="24" alt="Creative" /> 创意工具 · 1 项
+### <img src="https://img.shields.io/badge/CREATIVE-Typing%20Studio-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Typing Studio" /> 创意工具 · 1 项
 
 `打字测试器`
 
 提供中英文打字练习、计时、速度、正确率和结果统计。配色提取属于图像工具，避免同一能力在目录中重复计算。
 
-### <img src="https://api.iconify.design/lucide:broom.svg?color=%23ea580c" width="24" height="24" alt="Cleanup" /> 清理工具 · 1 项
+### <img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /> 清理工具 · 1 项
 
 `AI 大文件清理`
 
 先在本机扫描大文件，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索；删除前逐项确认，最终移入回收站，不读取或上传文件内容。
 
-### <img src="https://cdn.simpleicons.org/openai/10a37f" width="24" height="24" alt="AI" /> AI 工作台 · 4 项
+### <img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /> AI 工作台 · 4 项
 
 `AI 文字润色` · `AI 智能翻译` · `AI 文档生成` · `AI 表格生成`
 
 AI 文档支持多页 PDF、可编辑工程文件、编号图、预览、检查、编辑、撤销和重新渲染；AI 表格支持 CSV、XLSX、PDF、PNG、可编辑项目、行列与图表编号、公式修改和重新渲染。只有明确调用 AI 时，相关文字才会发送到你配置的模型服务。
 
-### <img src="https://cdn.simpleicons.org/windows11/0078d4" width="24" height="24" alt="Hardware" /> 硬件工具 · 7 项
+### <img src="https://img.shields.io/badge/HARDWARE-System%20Inspector-0078d4?style=for-the-badge&logo=windows11&logoColor=white" alt="System Inspector" /> 硬件工具 · 7 项
 
 `整机概览` · `CPU 与内存` · `GPU 与显示器` · `主板与固件` · `存储健康` · `网络设备` · `电源传感器`
 
@@ -165,13 +162,65 @@ AI 文档支持多页 PDF、可编辑工程文件、编号图、预览、检查�
 
 ## 本地优先与隐私边界
 
-<img src="https://api.iconify.design/lucide:shield-check.svg?color=%230f766e" width="24" height="24" alt="" /> **默认本地**：桌面端的 PDF、PPT、图像、音频、视频、文本、计算器、硬件和清理工具在设备本地运行，源文件不会上传到 ToolKnit 服务器。
+<img src="https://img.shields.io/badge/LOCAL-默认本地-0f766e?style=for-the-badge" alt="Local first" /> **默认本地**：桌面端的 PDF、PPT、图像、音频、视频、文本、计算器、硬件和清理工具在设备本地运行，源文件不会上传到 ToolKnit 服务器。
 
-<img src="https://api.iconify.design/lucide:key-round.svg?color=%23d97706" width="24" height="24" alt="" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿或转写后的 `refine` 时，相关文字才会发送到你配置的模型服务。
+<img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿或转写后的 `refine` 时，相关文字才会发送到你配置的模型服务。
 
-<img src="https://api.iconify.design/lucide:download-cloud.svg?color=%232563eb" width="24" height="24" alt="" /> **按需依赖**：FFmpeg、Whisper 模型和 PPT 渲染运行时按需下载，支持依赖检测、校验和镜像源选择。
+<img src="https://img.shields.io/badge/RUNTIME-按需依赖-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **按需依赖**：FFmpeg、Whisper 模型和 PPT 渲染运行时按需下载，支持依赖检测、校验和镜像源选择。
 
 CLI 和 MCP 默认要求明确输入与输出路径，不覆盖已有文件；密码等敏感输入不会写入日志、输出 JSON、文件名或 Agent 回复。
+
+## 技术栈
+
+ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、桌面端、CLI 和 MCP 共用清晰的输入输出边界。
+
+<table cellpadding="10" cellspacing="0">
+  <tr>
+    <td width="22%"><strong>桌面容器</strong></td>
+    <td>
+      <img src="https://img.shields.io/badge/Tauri-2.x-ffc131?style=for-the-badge&logo=tauri&logoColor=111827" alt="Tauri 2" />
+      <img src="https://img.shields.io/badge/Rust-Desktop%20Runtime-dea584?style=for-the-badge&logo=rust&logoColor=111827" alt="Rust" />
+      <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>界面与构建</strong></td>
+    <td>
+      <img src="https://img.shields.io/badge/Vite-Frontend-646cff?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+      <img src="https://img.shields.io/badge/JavaScript-UI%20Logic-f7df1e?style=for-the-badge&logo=javascript&logoColor=111827" alt="JavaScript" />
+      <img src="https://img.shields.io/badge/HTML5%20%2B%20CSS3-Interface-e34f26?style=for-the-badge&logo=html5&logoColor=white" alt="HTML5 and CSS3" />
+      <img src="https://img.shields.io/badge/Canvas%20%2B%20WebGL-Visual%20Effects-111827?style=for-the-badge" alt="Canvas and WebGL" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>文档与数据</strong></td>
+    <td>
+      <img src="https://img.shields.io/badge/PDF.js-PDF%20Rendering-f04b23?style=for-the-badge" alt="PDF.js" />
+      <img src="https://img.shields.io/badge/pdf--lib-PDF%20Editing-334155?style=for-the-badge" alt="pdf-lib" />
+      <img src="https://img.shields.io/badge/ExcelJS-XLSX%20Projects-217346?style=for-the-badge" alt="ExcelJS" />
+      <img src="https://img.shields.io/badge/Chart.js-Data%20Charts-ff6384?style=for-the-badge" alt="Chart.js" />
+      <img src="https://img.shields.io/badge/JSZip-Archive%20Output-475569?style=for-the-badge" alt="JSZip" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>媒体与运行时</strong></td>
+    <td>
+      <img src="https://img.shields.io/badge/FFmpeg-Audio%20%2F%20Video-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
+      <img src="https://img.shields.io/badge/Whisper-Offline%20Transcription-111827?style=for-the-badge" alt="Whisper" />
+      <img src="https://img.shields.io/badge/LibreOffice-PPT%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
+      <img src="https://img.shields.io/badge/Three.js-3D%20Effects-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>自动化接口</strong></td>
+    <td>
+      <img src="https://img.shields.io/badge/Node.js-CLI%20Runtime-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+      <img src="https://img.shields.io/badge/CLI-批处理-7c3aed?style=for-the-badge" alt="CLI" />
+      <img src="https://img.shields.io/badge/MCP-Agent%20Tools-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="MCP Agent tools" />
+      <img src="https://img.shields.io/badge/JSON-Inspectable%20Contracts-475569?style=for-the-badge" alt="JSON contracts" />
+    </td>
+  </tr>
+</table>
 
 ## 产品预览
 
@@ -308,11 +357,11 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 <table cellpadding="12" cellspacing="0">
   <tr>
     <td width="50%" align="center" valign="top">
-      <p><img src="https://api.iconify.design/lucide:scan-line.svg?color=%231677ff" width="24" height="24" alt="" /> <strong>支付宝</strong></p>
+      <p><img src="https://img.shields.io/badge/Alipay-1677ff?style=for-the-badge&logo=alipay&logoColor=white" alt="Alipay" /> <strong>支付宝</strong></p>
       <img src="assets/wechat-qr.jpg" alt="支付宝捐赠二维码" width="240" height="240" />
     </td>
     <td width="50%" align="center" valign="top">
-      <p><img src="https://api.iconify.design/lucide:scan-line.svg?color=%2307c160" width="24" height="24" alt="" /> <strong>微信支付</strong></p>
+      <p><img src="https://img.shields.io/badge/WeChat-07c160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat Pay" /> <strong>微信支付</strong></p>
       <img src="assets/alipay-qr.png" alt="微信支付捐赠二维码" width="240" height="240" />
     </td>
   </tr>
