@@ -2,7 +2,7 @@ export const PDF_ENHANCE_LIMITS = Object.freeze({
   maxInputBytes: 50 * 1024 * 1024,
   maxPages: 100,
   maxRenderPixelsPerPage: 8_000_000,
-  maxTotalRenderPixels: 60_000_000,
+  maxTotalRenderPixels: 240_000_000,
   maxRenderDimension: 8_192,
   maxOutputBytes: 100 * 1024 * 1024
 });
@@ -47,6 +47,7 @@ export function assertPdfEnhancePagePlan(pages, limits = PDF_ENHANCE_LIMITS) {
   }
 
   let totalPixels = 0;
+  let softBudgetExceeded = false;
   for (const page of pages) {
     const outputWidth = Number(page?.outputWidth);
     const outputHeight = Number(page?.outputHeight);
@@ -66,11 +67,11 @@ export function assertPdfEnhancePagePlan(pages, limits = PDF_ENHANCE_LIMITS) {
     }
     totalPixels += pixels;
     if (!Number.isSafeInteger(totalPixels) || totalPixels > limits.maxTotalRenderPixels) {
-      throw enhanceError('document-too-large');
+      softBudgetExceeded = true;
     }
   }
 
-  return { totalPixels };
+  return { totalPixels, softBudgetExceeded };
 }
 
 export function getPdfEnhanceErrorCode(error) {

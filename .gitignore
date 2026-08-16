@@ -43,9 +43,14 @@ manifest.json
 toolknit-desktop-changelog.md
 强制更新功能文档.md
 新电脑初始化指南.md
+2.0发布前审计报告.md
+2.0路线规划.md
+排查记录.md
+.codex-backups/
 
 # 第三方参考项目
 开发文件/
+_research/
 
 # 安装器项目(不开源)
 toolknit-installer/
@@ -58,6 +63,7 @@ toolknit-desktop/dist/
 toolknit-desktop/output/
 toolknit-desktop/tmp/
 toolknit-desktop/src-tauri/target/
+toolknit-output/
 
 # FFmpeg 体积大，桌面端设置页按需下载，GitHub Release/npm 均不内置
 toolknit-desktop/src-tauri/resources/ffmpeg/
@@ -67,9 +73,6 @@ toolknit-desktop/cli/vendor/
 toolknit-desktop/cli/lib/core/
 toolknit-desktop/cli/resources/fonts/
 toolknit-desktop/cli/*.tgz
-
-# README 资源误命名副本
-toolknit-desktop/docs/assets/readme-hero.gif.gif
 
 # GitHub 只识别根目录 .github；子应用目录里的副本不提交
 toolknit-desktop/.github/

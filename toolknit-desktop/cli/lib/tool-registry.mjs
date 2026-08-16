@@ -11,6 +11,23 @@ import { extractVideoGif } from './video-gif-runtime.mjs';
 import { analyzeTextFile } from './text-stats-runtime.mjs';
 import { extractColorPalette } from './color-extract-runtime.mjs';
 import { stitchImages } from './image-stitch-runtime.mjs';
+import { extractPptImages } from './ppt-image-extract-runtime.mjs';
+import { extractPptText } from './ppt-text-extract-runtime.mjs';
+import { compressPpt } from './ppt-compress-runtime.mjs';
+import { convertPptToPdf } from './ppt-to-pdf-runtime.mjs';
+import { convertPptToImages } from './ppt-to-image-runtime.mjs';
+import { generatePptOutline } from './ppt-outline-runtime.mjs';
+import { generatePptDraft } from './ppt-draft-runtime.mjs';
+import {
+  inspectCpuMemoryInfo,
+  inspectCpuMemoryLiveStats,
+  inspectGpuDisplayInfo,
+  inspectHardwareOverview,
+  inspectMainboardFirmwareInfo,
+  inspectNetworkDevicesInfo,
+  inspectPowerSensorsInfo,
+  inspectStorageHealthInfo
+} from './hardware-runtime.mjs';
 import { generateAiDocument } from './ai-document-runtime.mjs';
 import {
   editAiDocumentProject,
@@ -28,6 +45,7 @@ import { ToolKnitError } from './errors.mjs';
 const PDF_PATH = { type: 'string', minLength: 1, description: 'Absolute or current-directory-relative path to a PDF file.' };
 const OUTPUT_PATH = { type: 'string', minLength: 1, description: 'Explicit destination path for a new PDF. In an IDE, resolve the active workspace root and pass an absolute path inside that workspace; do not rely on the MCP process working directory. Existing files are refused unless overwrite is true.' };
 const PDF_TO_IMAGE_OUTPUT_DIR = { type: 'string', minLength: 1, description: 'Explicit directory for exported PDF images. In an IDE, resolve the active workspace root and use an absolute path inside <workspace>/toolknit-output. Existing files are never replaced; ToolKnit allocates unique names.' };
+const PPT_RENDER_OUTPUT_DIR = { type: 'string', minLength: 1, description: 'Explicit directory for rendered PPT outputs. In an IDE, resolve the active workspace root and use an absolute path inside <workspace>/toolknit-output. ToolKnit creates a unique child folder and never modifies the source PPTX.' };
 const TABLE_OUTPUT_PATH = { type: 'string', minLength: 1, description: 'Explicit destination path for a new CSV, XLSX, PDF, or PNG export. In an IDE, resolve the active workspace root and pass an absolute path inside that workspace; do not rely on the MCP process working directory. Existing files are refused unless overwrite is true.' };
 const OVERWRITE = { type: 'boolean', default: false, description: 'Replace an existing output file only when explicitly true.' };
 const PROJECT_PATH = { type: 'string', minLength: 1, description: 'Path to a ToolKnit editable document project.' };
@@ -38,6 +56,8 @@ const VIDEO_INPUT_PATH = { type: 'string', minLength: 1, description: 'Absolute 
 const VIDEO_OUTPUT_DIR = { type: 'string', minLength: 1, description: 'Explicit directory for converted video. In an IDE, resolve the workspace root and use an absolute path inside <workspace>/toolknit-output. Existing files are never replaced; ToolKnit allocates a unique name.' };
 const UTF8_TEXT_PATH = { type: 'string', minLength: 1, description: 'Absolute or current-directory-relative path to one regular UTF-8 text file. Resolve it from the IDE file tree; content is analyzed locally and never returned.' };
 const COLOR_IMAGE_PATH = { type: 'string', minLength: 1, description: 'Absolute or current-directory-relative path to one regular PNG, JPEG, or WebP image. Resolve it from the IDE file tree.' };
+const PPTX_PATH = { type: 'string', minLength: 1, description: 'Absolute or current-directory-relative path to one local .pptx file. Resolve it from the IDE file tree; first-stage PPT tools do not support legacy .ppt files.' };
+const EMPTY_INPUT_SCHEMA = { type: 'object', additionalProperties: false, properties: {} };
 const CONTROL_REFERENCE = { type: 'string', minLength: 1, description: 'Stable control number such as P1-01, or its internal stable id.' };
 const CONTROL_STYLE = {
   type: 'object',
@@ -286,6 +306,184 @@ export const TOOL_DEFINITIONS = Object.freeze([
     }
   },
   {
+    name: 'toolknit_ppt_images',
+    description: 'Extract embedded image assets from one local PPTX without modifying the presentation. It preserves original image bytes, assigns stable item numbers, can filter by slide pages or image item numbers, can skip exact duplicates, and writes a manifest.json plus manifest.md into a unique output folder. Resolve paths from the IDE file tree; do not infer them from chat context.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['input_path', 'output_dir'],
+      properties: {
+        input_path: PPTX_PATH,
+        output_dir: { type: 'string', minLength: 1, description: 'Explicit output directory. ToolKnit creates a unique child folder for extracted assets and never modifies the PPTX.' },
+        pages: { type: 'array', minItems: 1, items: { type: 'integer', minimum: 1 }, description: 'Optional slide page numbers to include. Omit to scan/export images from all slides plus unreferenced media assets.' },
+        images: { type: 'array', minItems: 1, items: { type: 'integer', minimum: 1 }, description: 'Optional scanned image item numbers to export. Omit to export all matched assets.' },
+        skip_duplicates: { type: 'boolean', default: false, description: 'When true, skip exact duplicate images detected by SHA-256.' },
+        dry_run: { type: 'boolean', default: false, description: 'When true, return the scan manifest and selected items without writing image files.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder name stem. ToolKnit still adds a suffix rather than overwriting an existing folder.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_ppt_text',
+    description: 'Extract titles, body text, and speaker notes from one local PPTX without modifying it. Writes Markdown, TXT, JSON, or all formats into a unique output folder. Optional ai_mode sends only extracted text, never the PPTX file, to the configured AI provider for outline, speaker-notes, meeting-notes, or study-notes organization.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['input_path', 'output_dir'],
+      properties: {
+        input_path: PPTX_PATH,
+        output_dir: { type: 'string', minLength: 1, description: 'Explicit output directory. ToolKnit creates a unique child folder and never modifies the PPTX.' },
+        pages: { type: 'array', minItems: 1, items: { type: 'integer', minimum: 1 }, description: 'Optional slide page numbers to include. Omit to extract all slides.' },
+        format: { enum: ['markdown', 'txt', 'json', 'all'], default: 'markdown', description: 'Output format. all creates Markdown, TXT, and JSON.' },
+        ai_mode: { enum: ['none', 'outline', 'speaker-notes', 'meeting-notes', 'study-notes'], default: 'none', description: 'Optional AI organization mode. none is fully local. Other modes require an AI provider key in the MCP/CLI environment.' },
+        locale: { enum: ['zh-CN', 'en'], default: 'zh-CN' },
+        dry_run: { type: 'boolean', default: false, description: 'When true, return the scan manifest and selected slides without writing files or calling AI.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder name stem. ToolKnit still adds a suffix rather than overwriting an existing folder.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_ppt_compress',
+    description: 'Create an optimized copy of one local PPTX without modifying the source. It repacks the PPTX, removes safe redundant package data, removes unused media, deduplicates exact duplicate media, and can recompress large images for medium/high levels. It writes a manifest.json into a unique output folder and keeps original images when recompression does not reduce size.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['input_path', 'output_dir'],
+      properties: {
+        input_path: PPTX_PATH,
+        output_dir: { type: 'string', minLength: 1, description: 'Explicit output directory. ToolKnit creates a unique child folder and never modifies the source PPTX.' },
+        level: { enum: ['low', 'medium', 'high'], default: 'medium', description: 'low is lossless cleanup and preserves image quality; medium is recommended cleanup plus moderate large-image recompression; high is stronger compression and prioritizes smaller file size.' },
+        dry_run: { type: 'boolean', default: false, description: 'When true, return the compression plan and estimated result without writing files.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder and file name stem. ToolKnit still adds a suffix rather than overwriting an existing folder.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_ppt_to_pdf',
+    description: 'Render one local PPTX to PDF with LibreOffice headless. ToolKnit pre-validates the PPTX package, writes a PDF plus manifest.json into a unique output folder, never modifies the source PPTX, and reports dependency_missing when LibreOffice/soffice is unavailable.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['input_path', 'output_dir'],
+      properties: {
+        input_path: PPTX_PATH,
+        output_dir: PPT_RENDER_OUTPUT_DIR,
+        dry_run: { type: 'boolean', default: false, description: 'When true, validate the PPTX and dependency status without writing files.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder and PDF file name stem. ToolKnit still adds a suffix rather than overwriting an existing folder.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_ppt_to_image',
+    description: 'Render selected PPTX slides to per-page images. It uses LibreOffice headless to create a temporary PDF, then ToolKnit renders selected pages to PNG/JPG/WebP; the temporary PDF is removed and the source PPTX is never modified.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['input_path', 'output_dir'],
+      properties: {
+        input_path: PPTX_PATH,
+        output_dir: PPT_RENDER_OUTPUT_DIR,
+        pages: { type: 'array', minItems: 1, items: { type: 'integer', minimum: 1 }, description: 'Optional slide page numbers already expanded by the caller. Omit to export all slides.' },
+        format: { enum: ['png', 'jpg', 'webp'], default: 'png' },
+        clarity: { enum: ['standard', 'high', 'print'], default: 'high' },
+        dry_run: { type: 'boolean', default: false, description: 'When true, validate the PPTX, page selection, and dependency status without writing files.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder and image file name stem. ToolKnit still adds numeric suffixes rather than overwriting existing files.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_ppt_outline',
+    description: 'Generate a structured presentation outline from a text brief. It writes outline.md, outline.json, and manifest.json into a unique output folder. This tool does not read or upload a PPTX and does not generate a PPTX file; it sends only the supplied brief text to the configured AI provider. The outline includes deck type presets, fact boundaries, slide roles, layout intent, and a self-check score for the later PPTX draft workflow.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['prompt', 'output_dir'],
+      properties: {
+        prompt: { type: 'string', minLength: 1, maxLength: 20000, description: 'Complete deck brief, notes, facts, or source text. Never include API keys or secrets.' },
+        output_dir: { type: 'string', minLength: 1, description: 'Explicit output directory. ToolKnit creates a unique child folder and never overwrites existing outputs.' },
+        slide_count: { type: 'integer', minimum: 3, maximum: 30, default: 8, description: 'Exact number of outline slides to generate.' },
+        deck_type: { enum: ['auto', 'product-launch', 'investor-pitch', 'work-report', 'training', 'industry-research', 'competitive-analysis', 'short-video-demo', 'project-review'], default: 'auto', description: 'Optional deck preset that changes the narrative shape and slide planning strategy.' },
+        audience: { type: 'string', maxLength: 500, description: 'Optional target audience, such as investors, students, users, or internal reviewers.' },
+        purpose: { type: 'string', maxLength: 500, description: 'Optional presentation goal, such as persuade, teach, report, sell, or align a team.' },
+        tone: { type: 'string', maxLength: 500, description: 'Optional voice and pacing guidance.' },
+        style: { type: 'string', maxLength: 800, description: 'Optional visual or structural preferences.' },
+        locale: { enum: ['zh-CN', 'en'], default: 'zh-CN' },
+        dry_run: { type: 'boolean', default: false, description: 'When true, validate the request and return the generation plan without calling AI or writing files.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder name stem. ToolKnit still adds a suffix rather than overwriting an existing folder.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_ppt_draft',
+    description: 'Generate an editable PPTX draft from a text brief or an existing ToolKnit outline JSON. Prompt mode sends only the supplied brief to the configured AI provider, then ToolKnit writes the PPTX locally. Outline mode does not call AI. It outputs a PPTX, outline.json, outline.md, and manifest.json into a unique folder. Deck type presets from the outline flow are accepted here too.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['output_dir'],
+      oneOf: [
+        { required: ['prompt'] },
+        { required: ['outline'] },
+        { required: ['outline_path'] }
+      ],
+      properties: {
+        prompt: { type: 'string', minLength: 1, maxLength: 20000, description: 'Complete deck brief, notes, facts, or source text. Never include API keys or secrets. Mutually exclusive with outline and outline_path.' },
+        outline: { type: 'object', description: 'Existing ToolKnit outline JSON object returned by toolknit_ppt_outline. Mutually exclusive with prompt.' },
+        outline_path: { type: 'string', minLength: 1, description: 'Absolute or current-directory-relative path to an outline.json file returned by ToolKnit. Mutually exclusive with prompt.' },
+        output_dir: { type: 'string', minLength: 1, description: 'Explicit output directory. ToolKnit creates a unique child folder and never overwrites existing outputs.' },
+        slide_count: { type: 'integer', minimum: 3, maximum: 30, default: 8, description: 'Exact number of slides to generate in prompt mode. In outline mode this defaults to the outline slide count.' },
+        deck_type: { enum: ['auto', 'product-launch', 'investor-pitch', 'work-report', 'training', 'industry-research', 'competitive-analysis', 'short-video-demo', 'project-review'], default: 'auto', description: 'Optional deck preset passed through to the outline stage.' },
+        audience: { type: 'string', maxLength: 500, description: 'Optional target audience, such as investors, students, users, or internal reviewers.' },
+        purpose: { type: 'string', maxLength: 500, description: 'Optional presentation goal, such as persuade, teach, report, sell, or align a team.' },
+        tone: { type: 'string', maxLength: 500, description: 'Optional voice and pacing guidance.' },
+        style: { type: 'string', maxLength: 800, description: 'Optional visual or structural preferences.' },
+        theme: { enum: ['minimal-dark', 'minimal-light', 'minimal-mono', 'tech-blue'], default: 'minimal-mono', description: 'Local PPTX visual theme. Only minimal-mono (black-and-white) is currently rendered; legacy theme values are accepted for compatibility and normalized to minimal-mono.' },
+        locale: { enum: ['zh-CN', 'en'], default: 'zh-CN' },
+        dry_run: { type: 'boolean', default: false, description: 'When true, validate the request and return the generation plan without calling AI or writing files.' },
+        output_name: { type: 'string', minLength: 1, maxLength: 96, pattern: '^[^\\\\/:*?"<>|\\u0000-\\u001F]+$', description: 'Optional child folder and PPTX file name stem. ToolKnit still adds a suffix rather than overwriting an existing folder.' }
+      }
+    }
+  },
+  {
+    name: 'toolknit_hardware_overview',
+    description: 'Inspect local system and core hardware information on Windows without writing files. Returns a read-only overview of the device, OS, CPU, memory, GPU, storage, firmware, and battery state.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_cpu_memory',
+    description: 'Inspect local CPU and memory information on Windows without writing files. Returns processor specs, memory topology, per-module details, and current usage.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_cpu_memory_live_stats',
+    description: 'Inspect the current CPU and memory live statistics on Windows without writing files. Returns usage and available memory counters only.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_gpu_display',
+    description: 'Inspect local GPU and display information on Windows without writing files. Returns graphics adapters, drivers, VRAM, and connected displays.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_mainboard_firmware',
+    description: 'Inspect local mainboard and firmware information on Windows without writing files. Returns motherboard, BIOS/UEFI, security, chassis, and PCI device information.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_storage_health',
+    description: 'Inspect local storage and health information on Windows without writing files. Returns physical disks, volumes, capacity, and reliability counters when available.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_network_devices',
+    description: 'Inspect local network and connected device information on Windows without writing files. Returns adapters, Bluetooth, audio, USB, and camera devices.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
+    name: 'toolknit_hardware_power_sensors',
+    description: 'Inspect local power and sensor information on Windows without writing files. Returns the active power plan, battery state, thermal zones, and fans when exposed.',
+    inputSchema: EMPTY_INPUT_SCHEMA
+  },
+  {
     name: 'toolknit_ai_document',
     description: 'Generate a polished A4 document project from a natural-language brief. Returns the PDF, editable .toolknit.json project, clean previews, a high-resolution numbered map for every page, an overview, and revision history. For IDE requests such as "save in this project", resolve the workspace root and pass an absolute output_path inside it.',
     inputSchema: {
@@ -405,6 +603,21 @@ const TOOL_HANDLERS = Object.freeze({
   toolknit_text_stats: analyzeTextFile,
   toolknit_color_extract: extractColorPalette,
   toolknit_image_stitch: stitchImages,
+  toolknit_ppt_images: extractPptImages,
+  toolknit_ppt_text: extractPptText,
+  toolknit_ppt_compress: compressPpt,
+  toolknit_ppt_to_pdf: convertPptToPdf,
+  toolknit_ppt_to_image: convertPptToImages,
+  toolknit_ppt_outline: generatePptOutline,
+  toolknit_ppt_draft: generatePptDraft,
+  toolknit_hardware_overview: inspectHardwareOverview,
+  toolknit_hardware_cpu_memory: inspectCpuMemoryInfo,
+  toolknit_hardware_cpu_memory_live_stats: inspectCpuMemoryLiveStats,
+  toolknit_hardware_gpu_display: inspectGpuDisplayInfo,
+  toolknit_hardware_mainboard_firmware: inspectMainboardFirmwareInfo,
+  toolknit_hardware_storage_health: inspectStorageHealthInfo,
+  toolknit_hardware_network_devices: inspectNetworkDevicesInfo,
+  toolknit_hardware_power_sensors: inspectPowerSensorsInfo,
   toolknit_ai_document: generateAiDocument,
   toolknit_ai_document_inspect: inspectAiDocumentProject,
   toolknit_ai_document_edit: editAiDocumentProject,

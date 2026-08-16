@@ -108,6 +108,7 @@ export function initPdfToImageTool({
   const selectAllBtn = document.getElementById('pdfToImageSelectAllBtn');
   const exportImagesBtn = document.getElementById('pdfToImageExportImagesBtn');
   const exportLongBtn = document.getElementById('pdfToImageExportLongBtn');
+  const longImageLimitNote = workspace?.querySelector('.pdf-to-image-limit-note');
   const formatOptions = document.getElementById('pdfToImageFormatOptions');
   const clarityOptions = document.getElementById('pdfToImageClarityOptions');
   const processMask = document.getElementById('pdfToImageProcessMask');
@@ -142,6 +143,7 @@ export function initPdfToImageTool({
   let lastOutputFolder = '';
   let lastSuccess = null;
   let nativeDragUnlisten = null;
+  let longExportAllowed = true;
   let disposed = false;
   let overlayReturnFocus = null;
   let successReturnFocus = null;
@@ -586,6 +588,7 @@ export function initPdfToImageTool({
     }
     workspace.classList.remove('visible');
     overlay.classList.remove('is-selection-flow');
+    setLongExportAllowed(true);
     void releaseDocument();
     updateControls();
     syncInteractiveLayers();
@@ -600,6 +603,7 @@ export function initPdfToImageTool({
     closeSuccess(false);
     workspace.classList.remove('visible');
     overlay.classList.remove('visible', 'drag-over', 'is-selection-flow');
+    setLongExportAllowed(true);
     dropZone?.classList.remove('visible');
     plasmaInstance = disposeStandardToolPlasma(plasmaInstance);
     if (fileInput) fileInput.value = '';
@@ -691,14 +695,24 @@ export function initPdfToImageTool({
     });
   }
 
+  function setLongExportAllowed(allowed = true) {
+    longExportAllowed = allowed !== false;
+    if (exportLongBtn) {
+      exportLongBtn.hidden = !longExportAllowed;
+      exportLongBtn.setAttribute('aria-hidden', String(!longExportAllowed));
+    }
+    if (longImageLimitNote) longImageLimitNote.hidden = !longExportAllowed;
+    updateControls();
+  }
+
   function updateControls() {
     const total = pageStates.length;
     const selected = pageStates.filter(pageState => pageState.selected).length;
     const allSelected = total > 0 && selected === total;
-    const longImages = selected > 0
+    const longImages = longExportAllowed && selected > 0
       ? Math.ceil(selected / PDF_TO_IMAGE_LIMITS.maxPagesPerLongImage)
       : 0;
-    const exceedsLongLimit = selected > PDF_TO_IMAGE_LIMITS.maxLongPages;
+    const exceedsLongLimit = longExportAllowed && selected > PDF_TO_IMAGE_LIMITS.maxLongPages;
     const busy = Boolean(activeOperation);
 
     if (workspaceStatus) workspaceStatus.textContent = t('home.pdfToImageTool.readyStatus');
@@ -711,17 +725,17 @@ export function initPdfToImageTool({
       selectedCount.textContent = t('home.pdfToImageTool.selectedCount', { count: selected });
     }
     if (selectionMeta) {
-      selectionMeta.textContent = t(
-        exceedsLongLimit
+      const statusKey = !longExportAllowed
+        ? 'home.pdfToImageTool.selectionStatusIndividual'
+        : exceedsLongLimit
           ? 'home.pdfToImageTool.selectionStatusLongLimit'
-          : 'home.pdfToImageTool.selectionStatus',
-        {
-          selected,
-          total,
-          longImages,
-          limit: PDF_TO_IMAGE_LIMITS.maxLongPages
-        }
-      );
+          : 'home.pdfToImageTool.selectionStatus';
+      selectionMeta.textContent = t(statusKey, {
+        selected,
+        total,
+        longImages,
+        limit: PDF_TO_IMAGE_LIMITS.maxLongPages
+      });
     }
     if (selectAllBtn) {
       selectAllBtn.textContent = t(
@@ -731,7 +745,7 @@ export function initPdfToImageTool({
     }
     if (exportImagesBtn) exportImagesBtn.disabled = busy || selected === 0;
     if (exportLongBtn) {
-      exportLongBtn.disabled = busy || selected === 0 || exceedsLongLimit;
+      exportLongBtn.disabled = !longExportAllowed || busy || selected === 0 || exceedsLongLimit;
       exportLongBtn.title = exceedsLongLimit
         ? t('home.pdfToImageTool.longImageSelectionLimit')
         : '';
@@ -997,7 +1011,7 @@ export function initPdfToImageTool({
         setLocalizedProgress(78 + Math.round(nativePercent * 0.22), progressKey, progressParams);
       });
       assertOperation(operation);
-      const outputDir = await getOutputDir('PDF_To_Image');
+      const outputDir = await getOutputDir(currentFile?.outputCategory || 'PDF_To_Image');
       assertOperation(operation);
       operation.nativeExportStarted = true;
       const result = await invoke('export_pdf_to_images', {
@@ -1181,6 +1195,10 @@ export function initPdfToImageTool({
       showToast(t('home.pdfToImageTool.noSelection'));
       return;
     }
+    if (mode === 'long' && !longExportAllowed) {
+      showToast(t('home.pdfToImageTool.longImageNotAvailable'));
+      return;
+    }
     if (mode === 'long' && selectedPages.length > PDF_TO_IMAGE_LIMITS.maxLongPages) {
       showToast(t('home.pdfToImageTool.longImageSelectionLimit'), 8500);
       return;
@@ -1254,6 +1272,7 @@ export function initPdfToImageTool({
       showToast(t('home.pdfToImageTool.busy'));
       return;
     }
+    setLongExportAllowed(true);
     if (isTauri) {
       try {
         const { open } = await import('@tauri-apps/plugin-dialog');
@@ -1301,6 +1320,7 @@ export function initPdfToImageTool({
     if (isTauri) return;
     event.preventDefault();
     hideDropZone();
+    setLongExportAllowed(true);
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length !== 1) {
       showToast(t('home.pdfToImageTool.singlePdfOnly'));
@@ -1325,6 +1345,7 @@ export function initPdfToImageTool({
             hideDropZone();
           } else if (payload.type === 'drop') {
             hideDropZone();
+            setLongExportAllowed(true);
             const paths = Array.from(payload.paths || []);
             if (paths.length !== 1) {
               showToast(t('home.pdfToImageTool.singlePdfOnly'));
@@ -1350,10 +1371,14 @@ export function initPdfToImageTool({
   }
 
   document.querySelectorAll('.audio-list-item[data-tool="pdf-to-image"]').forEach(item => {
-    item.addEventListener('click', openOverlay, listenerOptions);
+    item.addEventListener('click', () => {
+      setLongExportAllowed(true);
+      openOverlay();
+    }, listenerOptions);
     item.addEventListener('keydown', event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
+      setLongExportAllowed(true);
       openOverlay();
     }, listenerOptions);
   });
@@ -1401,6 +1426,12 @@ export function initPdfToImageTool({
   syncInteractiveLayers();
 
   return {
+    async openWithFile(file, { allowLongExport = true } = {}) {
+      if (disposed) return;
+      setLongExportAllowed(allowLongExport);
+      openOverlay();
+      await acceptFile(file);
+    },
     dispose() {
       if (disposed) return;
       const operation = activeOperation;

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ToolKnitError } from './errors.mjs';
+import { cancellationError, throwIfAborted, ToolKnitError, waitForAbortable } from './errors.mjs';
 import { assertAiDocumentOutputAvailable, createAiDocumentProjectArtifacts } from './ai-document-project-runtime.mjs';
 
 const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -107,7 +107,8 @@ Hard requirements:
 - Use only facts explicitly supplied by the user. When a requested factual field is missing, write "待确认" in Chinese or "Not provided" in English and do not infer a value.
 - Do not claim that a test passed, a product is production-ready, or a risk is resolved unless the user explicitly supplied that result.
 - Do not use generic filler, emoji, decorative symbols, fake citations, or invented factual sources. "待确认" and "Not provided" are allowed only for missing factual fields.
-- Use modern monochrome business-document styling with clear hierarchy and restrained whitespace.
+- Use modern monochrome business-document styling with clear hierarchy, varied information blocks, and restrained whitespace.
+- Make the document feel designed, not like a plain essay: when appropriate, mix narrative paragraphs with compact tables, one emphasis block, and one note block.
 - Page 1 should establish the title, executive context, and key facts. Middle pages should develop the subject. The final page should close with conclusions, actions, risks, or next steps as appropriate.
 
 A4 layout:
@@ -125,11 +126,15 @@ Allowed region types:
 - table-row: fontSize 12-14; text uses " | " between 2-4 cells; adjacent rows use the same cell count. Use bold=true for table headers.
 - emphasis: fontSize 13-15, bold=true; use for one key conclusion, not ordinary paragraphs.
 - note: fontSize 11.5-13; use for a restrained supplementary note.
-- signature/date/divider/image are allowed only when the user's document genuinely needs them.
+- divider: use sparingly to separate major page sections when it improves scanability.
+- signature/date/image are allowed only when the user's document genuinely needs them.
 
 Content rules:
 - Consolidate metadata into table-row regions instead of one block per field.
 - Use table-row for schedules, comparisons, responsibilities, milestones, budgets, and action lists.
+- Prefer at least one compact table-row group in business, planning, comparison, tutorial, or analysis documents.
+- Use emphasis for the single most important takeaway on a page; do not use more than one emphasis block per page.
+- Use note for caveats, assumptions, or usage tips. If no caveat exists, omit it.
 - Keep body regions to focused 1-3 line paragraphs. Prefer editing and synthesis over padding.
 - Honor the user's requested facts and tone. Clearly label assumptions instead of presenting them as verified facts.
 ${retry ? '- This is a correction attempt: the previous response failed safety or layout validation. Remove every unsupported factual claim, preserve exact page count, return valid JSON, and keep content within the page bounds.' : ''}`;
@@ -287,6 +292,11 @@ function normalizeProviderError(error, stage = 'provider_request') {
     });
   }
   if (error instanceof AiProviderError) {
+    if (error.code === 'aborted') {
+      return new ToolKnitError('PROVIDER_TIMEOUT', 'AI document generation timed out.', {
+        details: { stage: 'provider_request', retryable: true }
+      });
+    }
     if (error.code === 'invalid_config') {
       return new ToolKnitError('ENGINE_UNAVAILABLE', 'The AI provider configuration is invalid.', {
         details: { stage: 'provider_config', retryable: false }
@@ -322,10 +332,13 @@ function normalizeProviderError(error, stage = 'provider_request') {
   });
 }
 
-async function requestLayout({ args, config, fetchImpl, retry, repairUngrounded }) {
+async function requestLayout({ args, config, fetchImpl, retry, repairUngrounded, signal }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener?.('abort', abort, { once: true });
   try {
+    throwIfAborted(signal);
     const content = await requestAiCompletion({
       url: config.url,
       apiKey: config.apiKey,
@@ -374,12 +387,17 @@ async function requestLayout({ args, config, fetchImpl, retry, repairUngrounded 
       );
     }
     return { layout, contentDiagnostics: [] };
+  } catch (error) {
+    if (signal?.aborted) throw cancellationError(signal);
+    throw error;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener?.('abort', abort);
   }
 }
 
 export async function generateAiDocument(argsValue, options = {}) {
+  throwIfAborted(options.signal);
   const args = normalizeArguments(argsValue);
   const env = options.env || process.env;
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
@@ -402,9 +420,12 @@ export async function generateAiDocument(argsValue, options = {}) {
         config,
         fetchImpl,
         retry: attempt > 0,
-        repairUngrounded: attempt >= 2
+        repairUngrounded: attempt >= 2,
+        signal: options.signal
       });
       reportProgress(60, 'Validated the generated document structure.');
+      // Do not begin local rendering after an MCP/Agent caller has already cancelled.
+      throwIfAborted(options.signal);
       let artifacts;
       try {
         artifacts = await createAiDocumentProjectArtifacts({
@@ -427,12 +448,13 @@ export async function generateAiDocument(argsValue, options = {}) {
         outputs: artifacts.outputs
       };
     } catch (error) {
+      throwIfAborted(options.signal);
       lastError = normalizeProviderError(error, 'provider_request');
       const canRetry = lastError.details?.retryable === true && attempt + 1 < MAX_GENERATION_ATTEMPTS;
       if (!canRetry) {
         throw withErrorContext(lastError, { attempts: attempt + 1 });
       }
-      if (retryDelayMs > 0) await new Promise(resolve => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+      if (retryDelayMs > 0) await waitForAbortable(retryDelayMs * (attempt + 1), options.signal);
     }
   }
   throw lastError || new ToolKnitError('PROCESSING_FAILED', 'ToolKnit could not generate the AI document.');

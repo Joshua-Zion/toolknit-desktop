@@ -1,7 +1,459 @@
 use std::sync::OnceLock;
-use tauri::{Emitter, Manager};
+use tauri::{
+    Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
+    WebviewWindowBuilder,
+};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+mod system_cleanup;
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
+
+/// The selected logical corner radius for the primary native window.
+///
+/// CSS can round the webview contents, but it cannot remove the rectangular
+/// Win32 window that hosts those contents. Keep the value in Rust as well so
+/// the native clipping region can be rebuilt after resizing or moving between
+/// displays with a different DPI scale.
+#[derive(Default)]
+struct WindowCornerRadiusState {
+    radius: std::sync::Mutex<u32>,
+}
+
+const MAX_WINDOW_CORNER_RADIUS: u32 = 32;
+
+#[derive(Clone, serde::Serialize)]
+struct ScreenPickerBounds {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct ScreenColorSample {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+    hex: String,
+    rgb: String,
+}
+
+const DEFAULT_SCREEN_PICKER_SHORTCUT: &str = "Ctrl+Shift+C";
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct ScreenPickerShortcutConfig {
+    shortcut: Option<String>,
+}
+
+impl Default for ScreenPickerShortcutConfig {
+    fn default() -> Self {
+        Self {
+            shortcut: Some(DEFAULT_SCREEN_PICKER_SHORTCUT.to_string()),
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct ScreenPickerShortcutInfo {
+    value: String,
+    default: String,
+    enabled: bool,
+}
+
+fn screen_picker_shortcut_path() -> Result<std::path::PathBuf, String> {
+    Ok(toolknit_app_data_dir()?.join("screen-picker-shortcut.json"))
+}
+
+fn load_screen_picker_shortcut_config() -> ScreenPickerShortcutConfig {
+    let path = match screen_picker_shortcut_path() {
+        Ok(path) => path,
+        Err(_) => return ScreenPickerShortcutConfig::default(),
+    };
+    match std::fs::read_to_string(path) {
+        Ok(content) => {
+            serde_json::from_str::<ScreenPickerShortcutConfig>(&content).unwrap_or_default()
+        }
+        Err(_) => ScreenPickerShortcutConfig::default(),
+    }
+}
+
+fn save_screen_picker_shortcut_config(config: &ScreenPickerShortcutConfig) -> Result<(), String> {
+    let path = screen_picker_shortcut_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let bytes = serde_json::to_vec_pretty(config).map_err(|error| error.to_string())?;
+    std::fs::write(path, bytes).map_err(|error| error.to_string())
+}
+
+fn register_screen_picker_shortcut(
+    app: &tauri::AppHandle,
+    shortcut_str: &str,
+) -> Result<(), String> {
+    match shortcut_str.parse::<Shortcut>() {
+        Ok(_) => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|error| error.to_string())?;
+    app.global_shortcut()
+        .on_shortcut(shortcut_str, |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = open_screen_color_picker(app).await;
+                });
+            }
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn append_picker_debug(line: &str) {
+    use std::io::Write;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join("toolknit-screen-picker-debug.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(file, "[{}] {}", stamp, line);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn screen_picker_bounds_impl() -> Result<ScreenPickerBounds, String> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+
+    let x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+    let y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+    let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+    append_picker_debug(&format!("bounds x={x} y={y} w={width} h={height}"));
+    if width <= 0 || height <= 0 {
+        return Err("无法读取 Windows 虚拟桌面尺寸".to_string());
+    }
+    Ok(ScreenPickerBounds {
+        x,
+        y,
+        width: width as u32,
+        height: height as u32,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn screen_picker_bounds_impl() -> Result<ScreenPickerBounds, String> {
+    Err("屏幕取色目前仅支持 Windows".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn screen_color_sample_impl(x: i32, y: i32) -> Result<ScreenColorSample, String> {
+    use windows::Win32::{
+        Foundation::HWND,
+        Graphics::Gdi::{
+            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+            GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
+            SRCCOPY,
+        },
+    };
+
+    const GRID_SIZE: i32 = 21;
+    const HALF_GRID: i32 = GRID_SIZE / 2;
+
+    let screen_dc = unsafe { GetDC(HWND::default()) };
+    if screen_dc.0 == 0 {
+        return Err("无法读取桌面屏幕像素".to_string());
+    }
+
+    let mem_dc = unsafe { CreateCompatibleDC(screen_dc) };
+    if mem_dc.0 == 0 {
+        unsafe { ReleaseDC(HWND::default(), screen_dc) };
+        return Err("无法创建内存设备上下文".to_string());
+    }
+
+    let bitmap = unsafe { CreateCompatibleBitmap(screen_dc, GRID_SIZE, GRID_SIZE) };
+    if bitmap.0 == 0 {
+        unsafe {
+            DeleteDC(mem_dc);
+            ReleaseDC(HWND::default(), screen_dc);
+        }
+        return Err("无法创建取色位图".to_string());
+    }
+
+    let previous = unsafe { SelectObject(mem_dc, bitmap) };
+
+    let blit_result = unsafe {
+        BitBlt(
+            mem_dc,
+            0,
+            0,
+            GRID_SIZE,
+            GRID_SIZE,
+            screen_dc,
+            x - HALF_GRID,
+            y - HALF_GRID,
+            SRCCOPY,
+        )
+    };
+
+    if blit_result.is_err() {
+        unsafe {
+            SelectObject(mem_dc, previous);
+            DeleteObject(bitmap);
+            DeleteDC(mem_dc);
+            ReleaseDC(HWND::default(), screen_dc);
+        }
+        return Err("屏幕区域复制失败".to_string());
+    }
+
+    // Read back as 32-bpp BGRA, top-down, so the byte order is predictable.
+    let mut bmi = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: GRID_SIZE,
+            biHeight: -GRID_SIZE,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: 0,
+            ..Default::default()
+        },
+        bmiColors: [Default::default(); 1],
+    };
+    let mut bgra = vec![0_u8; (GRID_SIZE * GRID_SIZE * 4) as usize];
+    let copied_lines = unsafe {
+        GetDIBits(
+            mem_dc,
+            bitmap,
+            0,
+            GRID_SIZE as u32,
+            Some(bgra.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        )
+    };
+
+    unsafe {
+        SelectObject(mem_dc, previous);
+        DeleteObject(bitmap);
+        DeleteDC(mem_dc);
+        ReleaseDC(HWND::default(), screen_dc);
+    }
+
+    if copied_lines == 0 {
+        return Err("无法读取取色像素数据".to_string());
+    }
+
+    let mut pixels = Vec::with_capacity((GRID_SIZE * GRID_SIZE * 3) as usize);
+    let center_index = (HALF_GRID * GRID_SIZE + HALF_GRID) as usize;
+    let mut center = [0_u8; 3];
+    for index in 0..(GRID_SIZE * GRID_SIZE) as usize {
+        let b = bgra[index * 4];
+        let g = bgra[index * 4 + 1];
+        let r = bgra[index * 4 + 2];
+        if index == center_index {
+            center = [r, g, b];
+        }
+        pixels.extend_from_slice(&[r, g, b]);
+    }
+
+    Ok(ScreenColorSample {
+        x,
+        y,
+        width: GRID_SIZE as u32,
+        height: GRID_SIZE as u32,
+        pixels,
+        hex: format!("#{:02X}{:02X}{:02X}", center[0], center[1], center[2]),
+        rgb: format!("rgb({}, {}, {})", center[0], center[1], center[2]),
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn screen_color_sample_impl(_x: i32, _y: i32) -> Result<ScreenColorSample, String> {
+    Err("屏幕取色目前仅支持 Windows".to_string())
+}
+
+#[tauri::command]
+fn screen_picker_bounds() -> Result<ScreenPickerBounds, String> {
+    screen_picker_bounds_impl()
+}
+
+#[tauri::command]
+fn screen_color_sample(x: i32, y: i32) -> Result<ScreenColorSample, String> {
+    screen_color_sample_impl(x, y)
+}
+
+#[tauri::command]
+async fn open_screen_color_picker(app: tauri::AppHandle) -> Result<ScreenPickerBounds, String> {
+    minimize_main_window(&app);
+    match launch_screen_color_picker(&app).await {
+        Ok(bounds) => Ok(bounds),
+        Err(error) => {
+            // Creating a second WebView can fail because of an unavailable
+            // display, a damaged WebView2 runtime, or a transient GPU error.
+            // Never leave the only application window minimized in that case.
+            show_main_window(&app);
+            Err(error)
+        }
+    }
+}
+
+async fn launch_screen_color_picker(app: &tauri::AppHandle) -> Result<ScreenPickerBounds, String> {
+    let bounds = screen_picker_bounds_impl()?;
+    append_picker_debug(&format!(
+        "open_screen_color_picker enter, bounds={},{},{}x{}",
+        bounds.x, bounds.y, bounds.width, bounds.height
+    ));
+    if let Some(window) = app.get_webview_window("color-picker-overlay") {
+        append_picker_debug("overlay window already exists, reusing");
+        window
+            .set_position(Position::Physical(PhysicalPosition::new(
+                bounds.x, bounds.y,
+            )))
+            .map_err(|error| error.to_string())?;
+        window
+            .set_size(Size::Physical(PhysicalSize::new(
+                bounds.width,
+                bounds.height,
+            )))
+            .map_err(|error| error.to_string())?;
+        window.show().map_err(|error| error.to_string())?;
+        append_picker_debug("overlay window show() ok");
+        window.set_focus().map_err(|error| error.to_string())?;
+        // The overlay window is intentionally reused between picks. Notify its
+        // renderer so a previous sampling loop is restarted after the window
+        // has been hidden and shown again.
+        let _ = window.emit("screen-picker-opened", &bounds);
+        return Ok(bounds);
+    }
+
+    append_picker_debug("overlay window does not exist, building new window");
+    let mut builder = WebviewWindowBuilder::new(
+        app,
+        "color-picker-overlay",
+        WebviewUrl::App("index.html?screen-picker=1".into()),
+    )
+    .title("ToolKnit Screen Picker")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .visible_on_all_workspaces(true)
+    .skip_taskbar(true)
+    .shadow(false)
+    .resizable(false)
+    .focused(true)
+    .on_page_load(|_window, payload| {
+        append_picker_debug(&format!("overlay webview page loaded: {}", payload.url()));
+    });
+
+    // WebView2 on Windows cannot reliably share one user-data directory between
+    // the main webview and a second window created at runtime; attempting to do
+    // so fails with HRESULT 0x8007139F (ERROR_GROUP_OR_RESOURCE_NOT_IN_CORRECT_STATE)
+    // and the overlay webview never initializes. Give the picker its own data
+    // directory so the two WebView2 environments stay isolated.
+    #[cfg(target_os = "windows")]
+    {
+        let picker_data_dir = app
+            .path()
+            .app_config_dir()
+            .map(|dir| dir.join("screen-picker-webview"))
+            .unwrap_or_else(|_| std::env::temp_dir().join("toolknit-screen-picker-webview"));
+        append_picker_debug(&format!(
+            "overlay webview data_directory={}",
+            picker_data_dir.display()
+        ));
+        builder = builder.data_directory(picker_data_dir);
+    }
+
+    let window = builder.build().map_err(|error| error.to_string())?;
+
+    append_picker_debug("overlay window built ok");
+    window
+        .set_position(Position::Physical(PhysicalPosition::new(bounds.x, bounds.y)))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(Size::Physical(PhysicalSize::new(bounds.width, bounds.height)))
+        .map_err(|error| error.to_string())?;
+    window.show().map_err(|error| error.to_string())?;
+    append_picker_debug("overlay window show() ok");
+    window.set_focus().map_err(|error| error.to_string())?;
+    append_picker_debug("overlay window focus() ok");
+    let visible = window.is_visible().unwrap_or(false);
+    let size = window.outer_size().map(|s| format!("{}x{}", s.width, s.height)).unwrap_or_else(|e| e.to_string());
+    let pos = window.outer_position().map(|p| format!("{},{}", p.x, p.y)).unwrap_or_else(|e| e.to_string());
+    append_picker_debug(&format!("overlay window after show: visible={visible} size={size} pos={pos}"));
+    let window_for_later = window.clone();
+    tauri::async_runtime::spawn(async move {
+        for delay_ms in [500_u64, 1500, 3000] {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            let visible = window_for_later.is_visible().unwrap_or(false);
+            let size = window_for_later.outer_size().map(|s| format!("{}x{}", s.width, s.height)).unwrap_or_else(|e| e.to_string());
+            let pos = window_for_later.outer_position().map(|p| format!("{},{}", p.x, p.y)).unwrap_or_else(|e| e.to_string());
+            append_picker_debug(&format!("overlay delayed check @{delay_ms}ms: visible={visible} size={size} pos={pos}"));
+        }
+    });
+    Ok(bounds)
+}
+
+#[tauri::command]
+fn close_screen_color_picker(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("color-picker-overlay") {
+        window.hide().map_err(|error| error.to_string())?;
+    }
+    show_main_window(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_screen_picker_shortcut() -> Result<ScreenPickerShortcutInfo, String> {
+    let config = load_screen_picker_shortcut_config();
+    let default = ScreenPickerShortcutConfig::default()
+        .shortcut
+        .unwrap_or_default();
+    Ok(ScreenPickerShortcutInfo {
+        value: config.shortcut.clone().unwrap_or_default(),
+        default,
+        enabled: config.shortcut.is_some(),
+    })
+}
+
+#[tauri::command]
+fn set_screen_picker_shortcut(
+    app: tauri::AppHandle,
+    shortcut: Option<String>,
+) -> Result<ScreenPickerShortcutInfo, String> {
+    let mut config = load_screen_picker_shortcut_config();
+    let value = shortcut.unwrap_or_default().trim().to_string();
+    if value.is_empty() {
+        config.shortcut = None;
+        app.global_shortcut()
+            .unregister_all()
+            .map_err(|error| error.to_string())?;
+    } else {
+        register_screen_picker_shortcut(&app, &value)?;
+        config.shortcut = Some(value);
+    }
+    save_screen_picker_shortcut_config(&config)?;
+    let default = ScreenPickerShortcutConfig::default()
+        .shortcut
+        .unwrap_or_default();
+    let enabled = config.shortcut.is_some();
+    Ok(ScreenPickerShortcutInfo {
+        value: config.shortcut.unwrap_or_default(),
+        default,
+        enabled,
+    })
+}
 
 #[cfg(test)]
 static TEST_CONVERSION_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
@@ -68,13 +520,162 @@ fn set_tray_lang(app: tauri::AppHandle, lang: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Applies a true native corner radius to the Win32 window instead of only
+/// rounding the DOM inside it. `SetWindowRgn` transfers ownership of a
+/// successful region to Windows, so failed calls clean the GDI object up here.
+#[cfg(target_os = "windows")]
+fn apply_native_window_corner_radius(
+    window: &tauri::WebviewWindow,
+    logical_radius: u32,
+) -> Result<(), String> {
+    use windows::Win32::{
+        Foundation::{BOOL, HWND},
+        Graphics::Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn, HRGN},
+        UI::WindowsAndMessaging::IsZoomed,
+    };
+
+    // A maximized or fullscreen window must fill the monitor work area. Keep
+    // the preference stored, but temporarily remove the region until it is
+    // restored to a normal window again.
+    let tauri_hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    // Tauri 2.11 currently exposes HWND from its own `windows` dependency.
+    // Rebuild the transparent handle for this crate's pinned windows 0.54 API.
+    let hwnd = HWND(tauri_hwnd.0 as isize);
+    // `WebviewWindow::is_maximized()` can lag behind the actual Win32 state
+    // while Windows is still animating a maximize transition. `IsZoomed`
+    // reflects the live window placement, which reliably clears the clipping
+    // region so the maximized window always covers the full work area.
+    let should_clear_region = logical_radius == 0
+        || unsafe { IsZoomed(hwnd).as_bool() }
+        || window.is_fullscreen().unwrap_or(false);
+
+    if should_clear_region {
+        let result = unsafe { SetWindowRgn(hwnd, HRGN::default(), BOOL(1)) };
+        if result == 0 {
+            return Err(format!(
+                "Unable to clear the native window clipping region: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        return Ok(());
+    }
+
+    let size = window.outer_size().map_err(|error| error.to_string())?;
+    let width = i32::try_from(size.width)
+        .map_err(|_| "Native window width is outside the supported range".to_string())?;
+    let height = i32::try_from(size.height)
+        .map_err(|_| "Native window height is outside the supported range".to_string())?;
+    if width <= 1 || height <= 1 {
+        return Err("Native window size is not ready for corner clipping".to_string());
+    }
+
+    let scale_factor = window.scale_factor().map_err(|error| error.to_string())?;
+    let max_radius = (width.min(height) / 2).max(1) as f64;
+    let radius = ((logical_radius as f64 * scale_factor).round()).clamp(1.0, max_radius) as i32;
+    let diameter = radius.saturating_mul(2).max(2);
+    // The right and bottom values are exclusive. Adding one prevents the last
+    // edge pixel from being trimmed by GDI at certain DPI scales.
+    let region = unsafe {
+        CreateRoundRectRgn(
+            0,
+            0,
+            width.saturating_add(1),
+            height.saturating_add(1),
+            diameter,
+            diameter,
+        )
+    };
+    if region.0 == 0 {
+        return Err(format!(
+            "Unable to create the native rounded window region: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    let result = unsafe { SetWindowRgn(hwnd, region, BOOL(1)) };
+    if result == 0 {
+        // SetWindowRgn only owns `region` after a successful call.
+        unsafe {
+            let _ = DeleteObject(region);
+        }
+        return Err(format!(
+            "Unable to apply the native rounded window region: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_native_window_corner_radius(
+    _window: &tauri::WebviewWindow,
+    _logical_radius: u32,
+) -> Result<(), String> {
+    // Keep the command available on other desktop platforms. Their native
+    // window systems either supply their own rounded corners or use CSS only.
+    Ok(())
+}
+
+#[tauri::command]
+fn set_window_corner_radius(
+    window: tauri::WebviewWindow,
+    radius: u32,
+    state: tauri::State<'_, WindowCornerRadiusState>,
+) -> Result<(), String> {
+    // The configured radius belongs to the primary application window. In
+    // particular, the full-screen screen picker must stay rectangular so it
+    // can cover the whole virtual desktop and receive pointer input at every
+    // edge.
+    if window.label() != "main" {
+        return Ok(());
+    }
+    let radius = radius.min(MAX_WINDOW_CORNER_RADIUS);
+    let mut stored_radius = state
+        .radius
+        .lock()
+        .map_err(|_| "Window corner radius state is unavailable".to_string())?;
+
+    // Hold the state lock while applying so a resize cannot briefly rebuild a
+    // stale region after the user has chosen a new radius.
+    apply_native_window_corner_radius(&window, radius)?;
+    *stored_radius = radius;
+    Ok(())
+}
+
+fn reapply_native_window_corner_radius(window: &tauri::WebviewWindow) {
+    let state = window.state::<WindowCornerRadiusState>();
+    let radius = match state.radius.lock() {
+        Ok(radius) => *radius,
+        Err(_) => return,
+    };
+    if radius > 0 {
+        // Window resize notifications cannot be surfaced to the user. The next
+        // setting change will still report an error if the native API fails.
+        let _ = apply_native_window_corner_radius(window, radius);
+    }
+}
+
+fn schedule_native_window_corner_radius_reapply(window: tauri::WebviewWindow) {
+    reapply_native_window_corner_radius(&window);
+
+    // Windows may report resize before the maximized/fullscreen state is
+    // fully stable. Reapplying in a few later ticks keeps the normal-window
+    // radius preference, but reliably clears the native region after maximize.
+    for delay_ms in [80_u64, 180, 360, 720] {
+        let window = window.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            reapply_native_window_corner_radius(&window);
+        });
+    }
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     let parsed = url::Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
     match parsed.scheme() {
         "http" | "https" => {
-            let _ = opener::open(&url);
-            Ok(())
+            opener::open(&url).map_err(|error| format!("Failed to open URL: {}", error))
         }
         _ => Err(format!("Unsupported URL scheme: {}", parsed.scheme())),
     }
@@ -673,9 +1274,14 @@ static VIDEO_CONVERT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 static AUDIO_CONVERT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 static IS_MODEL_DOWNLOADING: AtomicBool = AtomicBool::new(false);
 static IS_FFMPEG_DOWNLOADING: AtomicBool = AtomicBool::new(false);
+static IS_LIBREOFFICE_DOWNLOADING: AtomicBool = AtomicBool::new(false);
 static CANCEL_MODEL_DOWNLOAD: AtomicBool = AtomicBool::new(false);
 static CANCEL_FFMPEG_DOWNLOAD: AtomicBool = AtomicBool::new(false);
+static CANCEL_LIBREOFFICE_DOWNLOAD: AtomicBool = AtomicBool::new(false);
 static TRANSCRIPTION_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+static PPT_RENDER_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+const PPT_RENDER_TIMEOUT_SECS: u64 = 180;
+const PPT_RENDER_PROBE_TIMEOUT_MS: u128 = 10_000;
 static ACTIVE_VIDEO_CHILDREN: std::sync::OnceLock<
     std::sync::Mutex<std::collections::BTreeSet<u32>>,
 > = std::sync::OnceLock::new();
@@ -1110,10 +1716,503 @@ fn delete_ffmpeg_runtime() -> Result<(), String> {
     Ok(())
 }
 
+// ===== Managed LibreOffice runtime for PPT rendering =====
+//
+// LibreOffice remains an optional component. The desktop installer stays small;
+// users download and extract it to ToolKnit's private AppData location only when
+// PPT to PDF/image rendering is needed.
+const LIBREOFFICE_RUNTIME_DIRECTORY: &str = "libreoffice";
+const LIBREOFFICE_RUNTIME_VERSION: &str = "26.2.5";
+const LIBREOFFICE_ARCHIVE_BYTES: u64 = 372_948_992;
+const LIBREOFFICE_ARCHIVE_SHA256: &str =
+    "f15ba07bfcb0186986cf3171063506f5d207c11f8cc051ba0d135209e9e915f9";
+const LIBREOFFICE_OFFICIAL_URL: &str =
+    "https://download.documentfoundation.org/libreoffice/stable/26.2.5/win/x86_64/LibreOffice_26.2.5_Win_x86-64.msi";
+const LIBREOFFICE_CHINA_URL: &str =
+    "https://mirrors.tuna.tsinghua.edu.cn/libreoffice/libreoffice/stable/26.2.5/win/x86_64/LibreOffice_26.2.5_Win_x86-64.msi";
+
+fn libreoffice_runtime_dir() -> Result<std::path::PathBuf, String> {
+    Ok(toolknit_app_data_dir()?
+        .join(LIBREOFFICE_RUNTIME_DIRECTORY)
+        .join(LIBREOFFICE_RUNTIME_VERSION))
+}
+
+fn libreoffice_runtime_path() -> Result<std::path::PathBuf, String> {
+    Ok(libreoffice_runtime_dir()?
+        .join("program")
+        .join(if cfg!(target_os = "windows") {
+            "soffice.com"
+        } else {
+            "soffice"
+        }))
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LibreOfficeRuntimeStatus {
+    installed: bool,
+    path: Option<String>,
+    bytes: u64,
+    source: Option<String>,
+    version: Option<String>,
+}
+
+#[derive(Default)]
+struct LibreOfficeRuntimeCache {
+    /// The last runtime path that was resolved successfully. Keeping this in
+    /// memory avoids launching soffice --version for every PPT conversion.
+    runtime: Option<LibreOfficeRuntimeInfo>,
+    /// Directory size is only presentation metadata. It is populated by a
+    /// background scan so opening a PPT tool never waits on thousands of files.
+    bytes: Option<u64>,
+    size_scan_in_progress: bool,
+    size_scan_generation: u64,
+}
+
+static LIBREOFFICE_RUNTIME_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<LibreOfficeRuntimeCache>,
+> = std::sync::OnceLock::new();
+static LIBREOFFICE_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn libreoffice_runtime_cache() -> &'static std::sync::Mutex<LibreOfficeRuntimeCache> {
+    LIBREOFFICE_RUNTIME_CACHE.get_or_init(|| std::sync::Mutex::new(LibreOfficeRuntimeCache::default()))
+}
+
+fn invalidate_libreoffice_runtime_cache() {
+    LIBREOFFICE_CACHE_GENERATION.fetch_add(1, Ordering::SeqCst);
+    if let Ok(mut cache) = libreoffice_runtime_cache().lock() {
+        *cache = LibreOfficeRuntimeCache::default();
+    }
+}
+
+fn cache_libreoffice_runtime(runtime: LibreOfficeRuntimeInfo) {
+    if let Ok(mut cache) = libreoffice_runtime_cache().lock() {
+        cache.runtime = Some(runtime);
+    }
+}
+
+fn cached_libreoffice_runtime() -> Option<LibreOfficeRuntimeInfo> {
+    libreoffice_runtime_cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.runtime.clone())
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LibreOfficeDownloadProgress {
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    phase: String,
+}
+
+struct LibreOfficeDownloadGuard;
+
+impl Drop for LibreOfficeDownloadGuard {
+    fn drop(&mut self) {
+        IS_LIBREOFFICE_DOWNLOADING.store(false, Ordering::SeqCst);
+    }
+}
+
+fn begin_libreoffice_download() -> Result<LibreOfficeDownloadGuard, String> {
+    IS_LIBREOFFICE_DOWNLOADING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_| "A PPT runtime download is already in progress".to_string())?;
+    CANCEL_LIBREOFFICE_DOWNLOAD.store(false, Ordering::SeqCst);
+    Ok(LibreOfficeDownloadGuard)
+}
+
+fn directory_size_bytes(path: &std::path::Path) -> u64 {
+    let mut total = 0_u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(directory) = stack.pop() {
+        let entries = match std::fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            match entry.metadata() {
+                Ok(metadata) if metadata.is_file() => total = total.saturating_add(metadata.len()),
+                Ok(metadata) if metadata.is_dir() => stack.push(path),
+                _ => {}
+            }
+        }
+    }
+    total
+}
+
+fn cached_or_schedule_libreoffice_size(root: &std::path::Path) -> u64 {
+    let (cached, should_scan, generation) = match libreoffice_runtime_cache().lock() {
+        Ok(mut cache) => {
+            if let Some(bytes) = cache.bytes {
+                (bytes, false, 0)
+            } else if cache.size_scan_in_progress {
+                (0, false, 0)
+            } else {
+                cache.size_scan_in_progress = true;
+                let generation = LIBREOFFICE_CACHE_GENERATION.load(Ordering::SeqCst);
+                cache.size_scan_generation = generation;
+                (0, true, generation)
+            }
+        }
+        Err(_) => (0, false, 0),
+    };
+    if !should_scan {
+        return cached;
+    }
+
+    let root = root.to_path_buf();
+    std::thread::spawn(move || {
+        let bytes = directory_size_bytes(&root);
+        // A delete/reinstall may have happened while the scan was running;
+        // never publish an old size into the new runtime status.
+        if generation != LIBREOFFICE_CACHE_GENERATION.load(Ordering::SeqCst) {
+            return;
+        }
+        if let Ok(mut cache) = libreoffice_runtime_cache().lock() {
+            if cache.size_scan_generation == generation {
+                cache.bytes = Some(bytes);
+                cache.size_scan_in_progress = false;
+            }
+        }
+    });
+    0
+}
+
+/// Resolve an installed executable without starting LibreOffice. This is the
+/// hot-path check used while opening the two PPT tools. A successful metadata
+/// check is sufficient because conversion performs the real process launch
+/// and reports a renderer error if a custom path is invalid.
+fn resolve_libreoffice_runtime_quick() -> Option<LibreOfficeRuntimeInfo> {
+    for (candidate, source) in libreoffice_candidates() {
+        let metadata = match std::fs::metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        return Some(LibreOfficeRuntimeInfo {
+            available: true,
+            command: Some(candidate.to_string_lossy().into_owned()),
+            source: Some(source.to_string()),
+            version: cached_libreoffice_runtime().and_then(|runtime| runtime.version),
+            message: None,
+        });
+    }
+    None
+}
+
+#[tauri::command]
+fn is_libreoffice_runtime_available() -> bool {
+    if let Some(runtime) = cached_libreoffice_runtime() {
+        if runtime
+            .command
+            .as_deref()
+            .map(std::path::Path::new)
+            .is_some_and(|path| std::fs::metadata(path).map(|meta| meta.is_file()).unwrap_or(false))
+        {
+            return true;
+        }
+    }
+    if let Some(runtime) = resolve_libreoffice_runtime_quick() {
+        cache_libreoffice_runtime(runtime);
+        return true;
+    }
+    false
+}
+
+#[tauri::command]
+fn get_libreoffice_runtime_status() -> Result<LibreOfficeRuntimeStatus, String> {
+    // Status is also called from the settings page. Keep it responsive even
+    // when the managed runtime contains tens of thousands of extracted files.
+    // Detailed size metadata is filled asynchronously and appears on the next
+    // refresh/open of the manager.
+    let runtime = resolve_libreoffice_runtime_quick()
+        .or_else(cached_libreoffice_runtime)
+        .unwrap_or(LibreOfficeRuntimeInfo {
+            available: false,
+            command: None,
+            source: None,
+            version: None,
+            message: None,
+        });
+    if runtime.available {
+        cache_libreoffice_runtime(runtime.clone());
+    }
+    let bytes = if runtime.source.as_deref() == Some("managed") {
+        cached_or_schedule_libreoffice_size(&libreoffice_runtime_dir()?)
+    } else {
+        0
+    };
+    Ok(LibreOfficeRuntimeStatus {
+        installed: runtime.available,
+        path: runtime.command,
+        bytes,
+        source: runtime.source,
+        version: runtime.version,
+    })
+}
+
+fn libreoffice_download_candidates(
+    source: &str,
+) -> Result<Vec<(&'static str, &'static str)>, String> {
+    let china = [("china", LIBREOFFICE_CHINA_URL)];
+    let official = [("official", LIBREOFFICE_OFFICIAL_URL)];
+    Ok(match source {
+        "auto" | "auto-china" => china.into_iter().chain(official).collect(),
+        "auto-official" => official.into_iter().chain(china).collect(),
+        "china" => china.into_iter().collect(),
+        "official" => official.into_iter().collect(),
+        _ => return Err("Unknown PPT runtime download source".to_string()),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn extract_libreoffice_msi(
+    archive: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), String> {
+    let staged = destination.with_extension("installing");
+    if staged.exists() {
+        let _ = std::fs::remove_dir_all(&staged);
+    }
+    std::fs::create_dir_all(&staged)
+        .map_err(|error| format!("Cannot prepare PPT runtime directory: {}", error))?;
+    let mut command = std::process::Command::new("msiexec.exe");
+    command
+        .arg("/a")
+        .arg(archive)
+        .arg("/qn")
+        .arg("TARGETDIR=".to_string() + &staged.to_string_lossy());
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(0x08000000);
+    let output = command
+        .output()
+        .map_err(|error| format!("Cannot start LibreOffice extraction: {}", error))?;
+    if !output.status.success() {
+        let _ = std::fs::remove_dir_all(&staged);
+        return Err(format!(
+            "LibreOffice extraction failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let extracted = staged.join("program").join("soffice.com");
+    if !extracted.is_file() {
+        let _ = std::fs::remove_dir_all(&staged);
+        return Err("LibreOffice extraction did not produce soffice.com".to_string());
+    }
+    if destination.exists() {
+        std::fs::remove_dir_all(destination)
+            .map_err(|error| format!("Cannot replace old PPT runtime: {}", error))?;
+    }
+    std::fs::rename(&staged, destination)
+        .map_err(|error| format!("Cannot finalize PPT runtime: {}", error))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn extract_libreoffice_msi(_: &std::path::Path, _: &std::path::Path) -> Result<(), String> {
+    Err("Managed LibreOffice download is currently available on Windows only".to_string())
+}
+
+#[tauri::command]
+async fn download_libreoffice_runtime(
+    app_handle: tauri::AppHandle,
+    source: Option<String>,
+) -> Result<LibreOfficeRuntimeStatus, String> {
+    use std::io::Write;
+    let _guard = begin_libreoffice_download()?;
+    invalidate_libreoffice_runtime_cache();
+    let destination = libreoffice_runtime_dir()?;
+    let parent = destination
+        .parent()
+        .ok_or("Invalid PPT runtime directory")?
+        .to_path_buf();
+    std::fs::create_dir_all(&parent)
+        .map_err(|error| format!("Cannot create PPT runtime directory: {}", error))?;
+    let archive = parent.join(format!(
+        "LibreOffice_{}_Win_x86-64.msi.part",
+        LIBREOFFICE_RUNTIME_VERSION
+    ));
+    let requested = source
+        .as_deref()
+        .unwrap_or("auto")
+        .trim()
+        .to_ascii_lowercase();
+    let candidates = libreoffice_download_candidates(&requested)?;
+    let client = reqwest::Client::builder()
+        .user_agent("ToolKnit/2.0 libreoffice-runtime-manager")
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|error| format!("Cannot initialize PPT runtime download: {}", error))?;
+    let mut last_error = None;
+    for (candidate, url) in candidates {
+        if CANCEL_LIBREOFFICE_DOWNLOAD.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".to_string());
+        }
+        let mut resume_from = std::fs::metadata(&archive)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        if resume_from > LIBREOFFICE_ARCHIVE_BYTES {
+            let _ = std::fs::remove_file(&archive);
+            resume_from = 0;
+        }
+        let mut request = client.get(url);
+        if resume_from > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
+        }
+        let mut response = match request.send().await {
+            Ok(response) if response.status().is_success() => response,
+            Ok(response) => {
+                last_error = Some(format!("{}: HTTP {}", candidate, response.status()));
+                continue;
+            }
+            Err(error) => {
+                last_error = Some(format!("{}: {}", candidate, error));
+                continue;
+            }
+        };
+        let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        if !append && resume_from > 0 {
+            resume_from = 0;
+        }
+        let mut downloaded = if append { resume_from } else { 0 };
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(&archive)
+            .map_err(|error| format!("Cannot create PPT runtime download: {}", error))?;
+        let _ = app_handle.emit(
+            "libreoffice-runtime-download-progress",
+            LibreOfficeDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                phase: "downloading".to_string(),
+            },
+        );
+        let mut failed = None;
+        loop {
+            if CANCEL_LIBREOFFICE_DOWNLOAD.load(Ordering::SeqCst) {
+                let _ = file.sync_all();
+                return Err("dependency-download:cancelled".to_string());
+            }
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    downloaded = downloaded.saturating_add(chunk.len() as u64);
+                    if downloaded > LIBREOFFICE_ARCHIVE_BYTES {
+                        failed = Some("PPT runtime package is larger than expected".to_string());
+                        break;
+                    }
+                    if let Err(error) = file.write_all(&chunk) {
+                        failed = Some(format!("Cannot write PPT runtime download: {}", error));
+                        break;
+                    }
+                    let _ = app_handle.emit(
+                        "libreoffice-runtime-download-progress",
+                        LibreOfficeDownloadProgress {
+                            downloaded_bytes: downloaded,
+                            total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                            phase: "downloading".to_string(),
+                        },
+                    );
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    failed = Some(format!("PPT runtime download interrupted: {}", error));
+                    break;
+                }
+            }
+        }
+        let _ = file.sync_all();
+        drop(file);
+        if let Some(error) = failed {
+            last_error = Some(error);
+            continue;
+        }
+        if downloaded != LIBREOFFICE_ARCHIVE_BYTES {
+            last_error = Some(format!(
+                "Downloaded PPT runtime is incomplete ({}/{})",
+                downloaded, LIBREOFFICE_ARCHIVE_BYTES
+            ));
+            continue;
+        }
+        let archive_for_hash = archive.clone();
+        let actual_hash = tokio::task::spawn_blocking(move || sha256_file(&archive_for_hash))
+            .await
+            .map_err(|error| format!("Cannot verify PPT runtime: {}", error))??;
+        if actual_hash != LIBREOFFICE_ARCHIVE_SHA256 {
+            let _ = std::fs::remove_file(&archive);
+            last_error = Some("PPT runtime integrity check failed".to_string());
+            continue;
+        }
+        let _ = app_handle.emit(
+            "libreoffice-runtime-download-progress",
+            LibreOfficeDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                phase: "installing".to_string(),
+            },
+        );
+        let archive_for_extract = archive.clone();
+        let destination_for_extract = destination.clone();
+        let extraction = tokio::task::spawn_blocking(move || {
+            extract_libreoffice_msi(&archive_for_extract, &destination_for_extract)
+        })
+        .await
+        .map_err(|error| format!("Cannot install PPT runtime: {}", error))?;
+        if let Err(error) = extraction {
+            last_error = Some(error);
+            continue;
+        }
+        let _ = std::fs::remove_file(&archive);
+        let executable = libreoffice_runtime_path()?;
+        let valid = tokio::task::spawn_blocking(move || {
+            probe_libreoffice(&executable, "managed").is_some()
+        })
+        .await
+        .map_err(|error| format!("Cannot validate PPT runtime: {}", error))?;
+        if !valid {
+            let _ = std::fs::remove_dir_all(libreoffice_runtime_dir()?);
+            return Err(
+                "PPT runtime validation failed; the downloaded runtime was removed".to_string(),
+            );
+        }
+        let _ = app_handle.emit(
+            "libreoffice-runtime-download-progress",
+            LibreOfficeDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                phase: "complete".to_string(),
+            },
+        );
+        // Do not perform a recursive directory-size scan on the download
+        // completion path. The manager can refresh the cached size later while
+        // the newly installed runtime is immediately usable.
+        return get_libreoffice_runtime_status();
+    }
+    Err(format!(
+        "Cannot download PPT runtime: {}",
+        last_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
+}
+
+#[tauri::command]
+fn delete_libreoffice_runtime() -> Result<(), String> {
+    let directory = libreoffice_runtime_dir()?;
+    if directory.exists() {
+        std::fs::remove_dir_all(&directory)
+            .map_err(|error| format!("Cannot delete PPT runtime: {}", error))?;
+    }
+    invalidate_libreoffice_runtime_cache();
+    Ok(())
+}
+
 #[tauri::command]
 fn cancel_dependency_downloads() {
     CANCEL_FFMPEG_DOWNLOAD.store(true, Ordering::SeqCst);
     CANCEL_MODEL_DOWNLOAD.store(true, Ordering::SeqCst);
+    CANCEL_LIBREOFFICE_DOWNLOAD.store(true, Ordering::SeqCst);
 }
 
 // ===== Offline transcription model management =====
@@ -3506,6 +4605,7 @@ struct ImageStitchInputPreview {
     width: u32,
     height: u32,
     thumbnail_data_url: String,
+    preview_data_url: String,
 }
 
 #[derive(Clone)]
@@ -4179,13 +5279,23 @@ async fn inspect_image_stitch_inputs(
             .map(|input_path| {
                 let path = std::path::PathBuf::from(input_path);
                 let decoded = read_oriented_image(&path)?;
-                let thumbnail = decoded.thumbnail(160, 160).to_rgba8();
-                let mut bytes = Vec::new();
-                image::codecs::png::PngEncoder::new(&mut bytes)
+                let thumbnail = decoded.thumbnail(180, 180).to_rgba8();
+                let preview = decoded.thumbnail(960, 960).to_rgba8();
+                let mut thumbnail_bytes = Vec::new();
+                image::codecs::png::PngEncoder::new(&mut thumbnail_bytes)
                     .write_image(
                         thumbnail.as_raw(),
                         thumbnail.width(),
                         thumbnail.height(),
+                        image::ExtendedColorType::Rgba8,
+                    )
+                    .map_err(|_| "image-stitch:thumbnail-failed".to_string())?;
+                let mut preview_bytes = Vec::new();
+                image::codecs::png::PngEncoder::new(&mut preview_bytes)
+                    .write_image(
+                        preview.as_raw(),
+                        preview.width(),
+                        preview.height(),
                         image::ExtendedColorType::Rgba8,
                     )
                     .map_err(|_| "image-stitch:thumbnail-failed".to_string())?;
@@ -4200,7 +5310,11 @@ async fn inspect_image_stitch_inputs(
                     height: decoded.height(),
                     thumbnail_data_url: format!(
                         "data:image/png;base64,{}",
-                        base64::engine::general_purpose::STANDARD.encode(bytes)
+                        base64::engine::general_purpose::STANDARD.encode(thumbnail_bytes)
+                    ),
+                    preview_data_url: format!(
+                        "data:image/png;base64,{}",
+                        base64::engine::general_purpose::STANDARD.encode(preview_bytes)
                     ),
                 })
             })
@@ -9161,32 +10275,214 @@ fn get_file_size(path: String) -> Result<u64, String> {
 }
 
 #[cfg(target_os = "windows")]
+const HARDWARE_PROVIDER_PREAMBLE: &str = r#"
+$script:__tkProviderMap = @{}
+$script:__tkDcomSession = $null
+$script:__tkDcomAttempted = $false
+
+function Get-ToolKnitRegistryInstance {
+  param([string]$ClassName)
+  switch ($ClassName) {
+    'Win32_ComputerSystem' {
+      $biosKey = 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS'
+      $p = Get-ItemProperty -Path $biosKey -ErrorAction SilentlyContinue
+      if (-not $p) { return $null }
+      $mfg = [string]$p.SystemManufacturer
+      $model = [string]$p.SystemProductName
+      if (-not $mfg -and -not $model) { return $null }
+      return [PSCustomObject]@{ Manufacturer = $mfg; Model = $model; PCSystemType = $null; TotalPhysicalMemory = $null }
+    }
+    'Win32_OperatingSystem' {
+      $key = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+      $p = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+      if (-not $p) { return $null }
+      $caption = [string]$p.ProductName
+      if (-not $caption) { $caption = 'Windows' }
+      $version = if ($p.DisplayVersion) { [string]$p.DisplayVersion } else { [string]$p.ReleaseId }
+      return [PSCustomObject]@{
+        Caption = $caption
+        Version = $version
+        BuildNumber = [string]$p.CurrentBuildNumber
+        OSArchitecture = if ([Environment]::Is64BitOperatingSystem) { '64-bit' } else { '32-bit' }
+        InstallDate = $null
+        LastBootUpTime = $null
+        FreePhysicalMemory = $null
+        TotalVisibleMemorySize = $null
+      }
+    }
+    'Win32_Processor' {
+      $base = 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor'
+      $subkeys = @(Get-ChildItem $base -ErrorAction SilentlyContinue)
+      $p = Get-ItemProperty -Path "$base\0" -ErrorAction SilentlyContinue
+      if (-not $p) { return $null }
+      return [PSCustomObject]@{
+        Name = [string]$p.ProcessorNameString
+        Manufacturer = [string]$p.VendorIdentifier
+        NumberOfCores = $null
+        NumberOfLogicalProcessors = [int]$subkeys.Count
+        VirtualizationFirmwareEnabled = $null
+        SocketDesignation = 'CPU'
+        AddressWidth = if ([Environment]::Is64BitOperatingSystem) { 64 } else { 32 }
+        MaxClockSpeed = [int]$p.'~MHz'
+        CurrentClockSpeed = [int]$p.'~MHz'
+        L2CacheSize = $null
+        L3CacheSize = $null
+        VMMonitorModeExtensions = $null
+        SecondLevelAddressTranslationExtensions = $null
+        LoadPercentage = $null
+      }
+    }
+    'Win32_BaseBoard' {
+      $biosKey = 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS'
+      $p = Get-ItemProperty -Path $biosKey -ErrorAction SilentlyContinue
+      if (-not $p -or (-not $p.BaseBoardProduct -and -not $p.BaseBoardManufacturer)) { return $null }
+      return [PSCustomObject]@{ Manufacturer = [string]$p.BaseBoardManufacturer; Product = [string]$p.BaseBoardProduct; Version = [string]$p.BaseBoardVersion; Status = '' }
+    }
+    'Win32_BIOS' {
+      $biosKey = 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS'
+      $p = Get-ItemProperty -Path $biosKey -ErrorAction SilentlyContinue
+      if (-not $p) { return $null }
+      $relDate = $null
+      if ($p.BIOSReleaseDate) {
+        try { $relDate = [DateTime]::ParseExact([string]$p.BIOSReleaseDate, 'MM/dd/yyyy', $null) } catch {}
+      }
+      return [PSCustomObject]@{ Manufacturer = [string]$p.BIOSVendor; SMBIOSBIOSVersion = [string]$p.BIOSVersion; ReleaseDate = $relDate; SMBIOSMajorVersion = $null; SMBIOSMinorVersion = $null }
+    }
+    default { return $null }
+  }
+}
+
+function Get-ToolKnitInstance {
+  param(
+    [Parameter(Position=0)][string]$ClassName,
+    [string]$Namespace = 'root\cimv2',
+    [string]$Filter = $null
+  )
+  $key = "$($Namespace):$($ClassName)"
+  $cimArgs = @{ ClassName = $ClassName; Namespace = $Namespace; ErrorAction = 'Stop' }
+  if ($Filter) { $cimArgs.Filter = $Filter }
+
+  if ($null -eq $script:__tkDcomSession -and -not $script:__tkDcomAttempted) {
+    $script:__tkDcomAttempted = $true
+    try {
+      $opt = New-CimSessionOption -Protocol Dcom -ErrorAction Stop
+      $script:__tkDcomSession = New-CimSession -ComputerName localhost -SessionOption $opt -ErrorAction Stop
+    } catch {}
+  }
+
+  if ($null -ne $script:__tkDcomSession) {
+    try {
+      $items = @(Get-CimInstance -CimSession $script:__tkDcomSession @cimArgs)
+      if ($items.Count -gt 0) { $script:__tkProviderMap[$key] = 'cim-dcom'; if ($items.Count -eq 1) { return $items[0] }; return $items }
+    } catch {}
+  }
+
+  try {
+    $items = @(Get-CimInstance @cimArgs)
+    if ($items.Count -gt 0) { $script:__tkProviderMap[$key] = 'cim-wsman'; if ($items.Count -eq 1) { return $items[0] }; return $items }
+  } catch {}
+
+  try {
+    if (Get-Command Get-WmiObject -ErrorAction SilentlyContinue) {
+      $wmiArgs = @{ Class = $ClassName; Namespace = $Namespace; ErrorAction = 'Stop' }
+      if ($Filter) { $wmiArgs.Filter = $Filter }
+      $items = @(Get-WmiObject @wmiArgs)
+      if ($items.Count -gt 0) { $script:__tkProviderMap[$key] = 'wmi'; if ($items.Count -eq 1) { return $items[0] }; return $items }
+    }
+  } catch {}
+
+  try {
+    $item = Get-ToolKnitRegistryInstance -ClassName $ClassName
+    if ($null -ne $item) { $script:__tkProviderMap[$key] = 'registry'; return $item }
+  } catch {}
+
+  $script:__tkProviderMap[$key] = 'unavailable'
+  return
+}
+"#;
+
+#[cfg(target_os = "windows")]
+const PROVIDER_ATTACH: &str = r#"
+if ($script:__tkProviderMap -and $script:__tkProviderMap.Count -gt 0) {
+  try {
+    $__tk_obj = $__toolknit_payload | ConvertFrom-Json
+    if ($__tk_obj -is [pscustomobject]) {
+      $__tk_prov = [ordered]@{}
+      foreach ($__tk_kv in $script:__tkProviderMap.GetEnumerator() | Sort-Object Key) { $__tk_prov[$__tk_kv.Key] = $__tk_kv.Value }
+      $__tk_obj | Add-Member -NotePropertyName providers -NotePropertyValue $__tk_prov -Force
+      $__toolknit_payload = $__tk_obj | ConvertTo-Json -Depth 8 -Compress
+    }
+  } catch {}
+}
+"#;
+
+#[cfg(target_os = "windows")]
+fn append_hardware_debug(line: &str) {
+    use std::io::Write;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join("toolknit-hardware-debug.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(file, "[{}] {}", stamp, line);
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn run_windows_powershell_json(script: &str, context: &str) -> Result<serde_json::Value, String> {
     use std::os::windows::process::CommandExt;
 
-    // Windows PowerShell 5.1 can still write redirected stdout using the active
-    // ANSI/OEM code page on some machines even after OutputEncoding is set.
-    // Capture the script's JSON inside PowerShell, then write explicit UTF-8
-    // bytes to stdout so localized device names never become mojibake.
+    let provider_script = script.replace("Get-CimInstance", "Get-ToolKnitInstance");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let out_path = std::env::temp_dir().join(format!(
+        "toolknit-hw-out-{}-{}.txt",
+        std::process::id(),
+        stamp
+    ));
+    let err_path = std::env::temp_dir().join(format!(
+        "toolknit-hw-err-{}-{}.txt",
+        std::process::id(),
+        stamp
+    ));
+    let cleanup_paths = || {
+        let _ = std::fs::remove_file(&out_path);
+        let _ = std::fs::remove_file(&err_path);
+    };
+
+    // Write the JSON payload to a temporary file instead of stdout. This avoids
+    // fragile console/stdout encoding issues on some Windows builds, and lets us
+    // capture a real exception message when the probe fails.
     let wrapped_script = format!(
         r#"
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Stop'
 try {{
-  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-  $OutputEncoding = [Console]::OutputEncoding
-}} catch {{}}
+{0}
 $__toolknit_payload = & {{
-{script}
+{1}
 }}
 if ($null -eq $__toolknit_payload) {{ $__toolknit_payload = '' }}
+{2}
 $__toolknit_text = ($__toolknit_payload | Out-String).Trim()
-$__toolknit_bytes = [System.Text.UTF8Encoding]::new($false).GetBytes([string]$__toolknit_text)
-$__toolknit_stdout = [Console]::OpenStandardOutput()
-$__toolknit_stdout.Write($__toolknit_bytes, 0, $__toolknit_bytes.Length)
-"#
+Set-Content -LiteralPath $env:TOOLKNIT_HW_OUT -Value ([string]$__toolknit_text) -Encoding UTF8
+}} catch {{
+Set-Content -LiteralPath $env:TOOLKNIT_HW_ERR -Value $_.Exception.ToString() -Encoding UTF8
+exit 1
+}}
+"#,
+        HARDWARE_PROVIDER_PREAMBLE,
+        provider_script,
+        PROVIDER_ATTACH,
     );
 
-    let output = std::process::Command::new("powershell.exe")
+    let output = match std::process::Command::new("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -9195,32 +10491,69 @@ $__toolknit_stdout.Write($__toolknit_bytes, 0, $__toolknit_bytes.Length)
             "-Command",
             &wrapped_script,
         ])
+        .env("TOOLKNIT_HW_OUT", &out_path)
+        .env("TOOLKNIT_HW_ERR", &err_path)
         .creation_flags(0x08000000)
         .output()
-        .map_err(|error| format!("Cannot start {}: {}", context, error))?;
-    if !output.status.success() {
-        let details = String::from_utf8_lossy(&output.stderr)
+    {
+        Ok(output) => output,
+        Err(error) => {
+            cleanup_paths();
+            return Err(format!("Cannot start {}: {}", context, error));
+        }
+    };
+
+    if !output.status.success() || !out_path.exists() {
+        let err_text = std::fs::read_to_string(&err_path)
+            .unwrap_or_default()
+            .trim_start_matches('\u{FEFF}')
             .trim()
-            .replace(['\r', '\n'], " ");
-        return Err(if details.is_empty() {
-            format!("{} failed", context)
-        } else {
+            .to_string();
+        let err_flat = err_text.replace(['\r', '\n'], " ");
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let exit = output.status.code().unwrap_or(-1);
+        let detail = if !err_flat.is_empty() {
             format!(
-                "{} failed: {}",
-                context,
-                details.chars().take(240).collect::<String>()
+                "exit={}; error={}",
+                exit,
+                err_flat.chars().take(700).collect::<String>()
             )
-        });
+        } else if !stderr.is_empty() {
+            format!("exit={}; stderr={}", exit, stderr.chars().take(480).collect::<String>())
+        } else {
+            format!("exit={}", exit)
+        };
+        append_hardware_debug(&format!(
+            "{} | exit={} | error={} | stderr={}",
+            context, exit, err_text, stderr
+        ));
+        cleanup_paths();
+        return Err(format!("{} failed: {}", context, detail));
     }
-    let payload = String::from_utf8(output.stdout)
-        .unwrap_or_else(|error| String::from_utf8_lossy(&error.into_bytes()).into_owned())
-        .trim()
-        .to_string();
+
+    let payload = match std::fs::read_to_string(&out_path) {
+        Ok(payload) => payload
+            .trim_start_matches('\u{FEFF}')
+            .trim()
+            .to_string(),
+        Err(error) => {
+            cleanup_paths();
+            return Err(format!("{} failed to read output: {}", context, error));
+        }
+    };
+    cleanup_paths();
+
     if payload.is_empty() {
+        append_hardware_debug(&format!("{} | returned no data", context));
         return Err(format!("{} returned no data", context));
     }
-    serde_json::from_str(&payload)
-        .map_err(|error| format!("{} returned invalid data: {}", context, error))
+    serde_json::from_str(&payload).map_err(|error| {
+        append_hardware_debug(&format!(
+            "{} | invalid json: {} | payload={}",
+            context, error, payload
+        ));
+        format!("{} returned invalid data: {}", context, error)
+    })
 }
 
 #[tauri::command]
@@ -9239,11 +10572,9 @@ fn collect_hardware_overview() -> Result<serde_json::Value, String> {
 $ErrorActionPreference = 'SilentlyContinue'
 # Windows PowerShell 5.1 otherwise writes non-ASCII JSON using the active
 # console code page. The Rust process correctly expects UTF-8 JSON.
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 function Epoch($value) {
   if ($null -eq $value) { return $null }
-  try { return ([DateTimeOffset]$value).ToUnixTimeMilliseconds() } catch { return $null }
+  try { return [long](($value).ToUniversalTime().Subtract([DateTime]'1970-01-01').TotalMilliseconds) } catch { return $null }
 }
 function DeviceType($value) {
   switch ([int]$value) {
@@ -9271,7 +10602,8 @@ $volumes = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType = 3' | ForEach
 $secureBoot = 'unavailable'
 try { if (Confirm-SecureBootUEFI) { $secureBoot = 'enabled' } else { $secureBoot = 'disabled' } } catch {}
 $bootMode = if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State') { 'uefi' } else { 'legacy_or_unavailable' }
-$tpm = Get-Tpm
+$tpm = $null
+try { $tpm = Get-Tpm } catch {}
 $batteries = @(Get-CimInstance Win32_Battery)
 [ordered]@{
   device = [ordered]@{
@@ -9341,8 +10673,6 @@ fn collect_cpu_memory_info() -> Result<serde_json::Value, String> {
     // are intentionally not read or included in this local-only payload.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $system = Get-CimInstance Win32_OperatingSystem
 $memoryArray = Get-CimInstance Win32_PhysicalMemoryArray | Select-Object -First 1
@@ -9401,8 +10731,6 @@ $availableBytes = if ($null -ne $perfMemory -and $null -ne $perfMemory.Available
 fn collect_cpu_memory_live_stats() -> Result<serde_json::Value, String> {
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $system = Get-CimInstance Win32_OperatingSystem
 $perfCpu = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
@@ -9462,8 +10790,6 @@ fn collect_gpu_display_info() -> Result<serde_json::Value, String> {
     // dedicated memory on modern GPUs and per-display refresh rates.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 function DecodeWmiText($values) {
   if ($null -eq $values) { return '' }
   return (($values | Where-Object { $_ -ne 0 } | ForEach-Object { [char]$_ }) -join '').Trim()
@@ -9640,11 +10966,9 @@ fn collect_mainboard_firmware_info() -> Result<serde_json::Value, String> {
     // exposes PCI device names and status without needing those identifiers.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 function Epoch($value) {
   if ($null -eq $value) { return $null }
-  try { return ([DateTimeOffset]$value).ToUnixTimeMilliseconds() } catch { return $null }
+  try { return [long](($value).ToUniversalTime().Subtract([DateTime]'1970-01-01').TotalMilliseconds) } catch { return $null }
 }
 $board = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
 $bios = Get-CimInstance Win32_BIOS | Select-Object -First 1
@@ -9654,7 +10978,8 @@ $enclosure = Get-CimInstance Win32_SystemEnclosure | Select-Object -First 1
 $secureBoot = 'unavailable'
 try { if (Confirm-SecureBootUEFI) { $secureBoot = 'enabled' } else { $secureBoot = 'disabled' } } catch {}
 $bootMode = if (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State') { 'uefi' } else { 'legacy_or_unavailable' }
-$tpm = Get-Tpm
+$tpm = $null
+try { $tpm = Get-Tpm } catch {}
 $rawPci = @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -like 'PCI\*' } | Sort-Object PNPClass, Name)
 $pciDevices = @($rawPci | Group-Object { "$($_.PNPClass)`u001f$($_.Name)`u001f$($_.Manufacturer)`u001f$($_.Status)`u001f$($_.ConfigManagerErrorCode)" } | ForEach-Object {
   $sample = $_.Group | Select-Object -First 1
@@ -9719,24 +11044,24 @@ fn collect_storage_health_info() -> Result<serde_json::Value, String> {
     // needs only non-identifying capacity, health, and reliability data.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 function MaybeInt($value) {
   if ($null -eq $value) { return $null }
   return [Int64]$value
 }
-$physicalDisks = @(Get-PhysicalDisk)
+$physicalDisks = @()
+try { $physicalDisks = @(Get-PhysicalDisk) } catch {}
 $physicalById = @{}
 foreach ($physical in $physicalDisks) { $physicalById[[string]$physical.DeviceId] = $physical }
 $reliabilityById = @{}
 if ($physicalDisks.Count -gt 0) {
   foreach ($physical in $physicalDisks) {
-    @(Get-StorageReliabilityCounter -PhysicalDisk $physical) | ForEach-Object {
+    try { @(Get-StorageReliabilityCounter -PhysicalDisk $physical) | ForEach-Object {
       $reliabilityById[[string]$_.DeviceId] = $_
-    }
+    } } catch {}
   }
 }
-$disks = @(Get-Disk | ForEach-Object {
+$disks = @()
+try { $disks = @(Get-Disk | ForEach-Object {
   $disk = $_
   $physical = $physicalById[[string]$disk.Number]
   if ($null -eq $physical) {
@@ -9764,8 +11089,9 @@ $disks = @(Get-Disk | ForEach-Object {
       write_errors_total = if ($reliability -and $null -ne $reliability.WriteErrorsTotal) { MaybeInt $reliability.WriteErrorsTotal } else { $null }
     }
   }
-})
-$volumes = @(Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' } | Sort-Object DriveLetter | ForEach-Object {
+}) } catch {}
+$volumes = @()
+try { $volumes = @(Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' } | Sort-Object DriveLetter | ForEach-Object {
   [ordered]@{
     drive_letter = [string]$_.DriveLetter
     file_system = [string]$_.FileSystem
@@ -9773,7 +11099,7 @@ $volumes = @(Get-Volume | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'F
     free_bytes = [Int64]$_.SizeRemaining
     health_status = [string]$_.HealthStatus
   }
-})
+}) } catch {}
 [ordered]@{ disks = $disks; volumes = $volumes } | ConvertTo-Json -Depth 6 -Compress
 "#;
 
@@ -9798,8 +11124,6 @@ fn collect_network_devices_info() -> Result<serde_json::Value, String> {
     // address, device instance path, and serial values do not help this page.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 function GroupDevices($items) {
   return @($items | Group-Object { "$($_.name)`u001f$($_.manufacturer)`u001f$($_.status)" } | ForEach-Object {
     $sample = $_.Group | Select-Object -First 1
@@ -9811,7 +11135,8 @@ function GroupDevices($items) {
     }
   } | Select-Object -First 40)
 }
-$networkAdapters = @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -ne 'Not Present' } | ForEach-Object {
+$networkAdapters = @()
+try { $networkAdapters = @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -ne 'Not Present' } | ForEach-Object {
   [ordered]@{
     name = [string]$_.Name
     description = [string]$_.InterfaceDescription
@@ -9819,7 +11144,7 @@ $networkAdapters = @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Status -n
     link_speed = [string]$_.LinkSpeed
     physical = [bool]$_.HardwareInterface
   }
-})
+}) } catch {}
 $bluetoothRaw = @(Get-CimInstance Win32_PnPEntity | Where-Object {
   $_.PNPClass -eq 'Bluetooth' -and $_.Present -and $_.Name -notmatch '(?i)(service|profile|enumerator|rfcomm|服务|配置文件|枚举器)'
 } | ForEach-Object { [ordered]@{ name = [string]$_.Name; manufacturer = [string]$_.Manufacturer; status = [string]$_.Status } })
@@ -9862,8 +11187,6 @@ fn collect_power_sensors_info() -> Result<serde_json::Value, String> {
     // deliberately omitted. This page only needs human-readable read-only data.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 function MaybeInt($value) {
   if ($null -eq $value) { return $null }
   return [Int64]$value
@@ -9874,7 +11197,7 @@ function MaybeFloat($value) {
 }
 function CelsiusFromAcpi($value) {
   if ($null -eq $value -or [double]$value -le 0) { return $null }
-  return [math]::Round(([double]$value / 10.0) - 273.15, 1)
+  return [double]("{0:F1}" -f (([double]$value / 10.0) - 273.15))
 }
 function BatteryStatusName($value) {
   switch ([int]$value) {
@@ -9903,7 +11226,7 @@ for ($i = 0; $i -lt $batteries.Count; $i++) {
   $full = if ($i -lt $batteryFull.Count) { $batteryFull[$i] } else { $null }
   $designCapacity = if ($static -and $null -ne $static.DesignedCapacity) { MaybeInt $static.DesignedCapacity } else { $null }
   $fullCapacity = if ($full -and $null -ne $full.FullChargedCapacity) { MaybeInt $full.FullChargedCapacity } else { $null }
-  $health = if ($designCapacity -and $designCapacity -gt 0 -and $fullCapacity -and $fullCapacity -gt 0) { [math]::Round(($fullCapacity / $designCapacity) * 100, 0) } else { $null }
+  $health = if ($designCapacity -and $designCapacity -gt 0 -and $fullCapacity -and $fullCapacity -gt 0) { [int](($fullCapacity / $designCapacity) * 100 + 0.5) } else { $null }
   $batteryItems += [ordered]@{
     name = [string]$battery.Name
     status = BatteryStatusName $battery.BatteryStatus
@@ -10094,7 +11417,6 @@ fn cleanup_drive_space_from_path(root_path: &str) -> Result<Option<CleanupDriveS
     let script = format!(
         r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='{}:'" | Select-Object -First 1
 if ($null -ne $disk) {{
   [ordered]@{{ drive = '{}:\'; free_bytes = [Int64]$disk.FreeSpace; total_bytes = [Int64]$disk.Size }} | ConvertTo-Json -Compress
@@ -10562,8 +11884,6 @@ fn move_files_to_recycle_bin_blocking_powershell_fallback(
     let payload = serde_json::to_string(&entries).map_err(|error| error.to_string())?;
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$OutputEncoding = [Console]::OutputEncoding
 $items = ConvertFrom-Json ([Console]::In.ReadToEnd())
 Add-Type -AssemblyName Microsoft.VisualBasic
 $ui = [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs
@@ -10818,10 +12138,811 @@ mod cleanup_large_file_tests {
     }
 }
 
+const PPT_RENDER_MAX_INPUT_BYTES: u64 = 200 * 1024 * 1024;
+const PPT_RENDER_MAX_SLIDES: usize = 500;
+
+#[derive(Clone, Debug)]
+struct PptRenderInput {
+    path: std::path::PathBuf,
+    name: String,
+    bytes: u64,
+    slide_count: usize,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibreOfficeRuntimeInfo {
+    available: bool,
+    command: Option<String>,
+    source: Option<String>,
+    version: Option<String>,
+    message: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PptToPdfResult {
+    tool: String,
+    source_name: String,
+    input_path: String,
+    input_bytes: u64,
+    renderer: LibreOfficeRuntimeInfo,
+    slide_count: usize,
+    page_count: usize,
+    page_count_matches_slides: bool,
+    output_dir: String,
+    output_path: String,
+    output_file: String,
+    output_bytes: u64,
+    manifest_path: String,
+    warnings: Vec<String>,
+}
+
+fn normalize_zip_entry_name(value: &str) -> String {
+    value
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn pptx_central_directory_entries(bytes: &[u8]) -> Vec<String> {
+    let mut entries = Vec::new();
+    let mut index = 0usize;
+    while index + 46 <= bytes.len() {
+        if &bytes[index..index + 4] != b"PK\x01\x02" {
+            index += 1;
+            continue;
+        }
+        let file_name_len = u16::from_le_bytes([bytes[index + 28], bytes[index + 29]]) as usize;
+        let extra_len = u16::from_le_bytes([bytes[index + 30], bytes[index + 31]]) as usize;
+        let comment_len = u16::from_le_bytes([bytes[index + 32], bytes[index + 33]]) as usize;
+        let name_start = index + 46;
+        let name_end = name_start.saturating_add(file_name_len);
+        let next = name_end
+            .saturating_add(extra_len)
+            .saturating_add(comment_len);
+        if name_end <= bytes.len() && next <= bytes.len() {
+            let name = String::from_utf8_lossy(&bytes[name_start..name_end]);
+            let normalized = normalize_zip_entry_name(&name);
+            if !normalized.is_empty() && !normalized.split('/').any(|part| part == "..") {
+                entries.push(normalized);
+            }
+            index = next;
+        } else {
+            index += 4;
+        }
+    }
+    entries
+}
+
+fn pptx_entry_eq(entry: &str, expected: &str) -> bool {
+    entry.eq_ignore_ascii_case(expected)
+}
+
+fn is_pptx_slide_entry(entry: &str) -> bool {
+    let lower = entry.to_ascii_lowercase();
+    let Some(number) = lower
+        .strip_prefix("ppt/slides/slide")
+        .and_then(|value| value.strip_suffix(".xml"))
+    else {
+        return false;
+    };
+    !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn sanitize_ppt_render_base_name(value: &str) -> String {
+    let file_name = std::path::Path::new(value)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("presentation.pptx");
+    let stem = std::path::Path::new(file_name)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("presentation");
+    let mut result = String::new();
+    let mut previous_was_underscore = false;
+    for character in stem.chars() {
+        let invalid = matches!(
+            character,
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0'..='\u{1f}'
+        );
+        let next = if invalid || character.is_whitespace() {
+            '_'
+        } else {
+            character
+        };
+        if next == '_' {
+            if previous_was_underscore {
+                continue;
+            }
+            previous_was_underscore = true;
+        } else {
+            previous_was_underscore = false;
+        }
+        result.push(next);
+        if result.chars().count() >= 80 {
+            break;
+        }
+    }
+    let trimmed = result.trim_matches(|character| character == '.' || character == '_');
+    let reserved = matches!(
+        trimmed.to_ascii_lowercase().as_str(),
+        "con"
+            | "prn"
+            | "aux"
+            | "nul"
+            | "com1"
+            | "com2"
+            | "com3"
+            | "com4"
+            | "com5"
+            | "com6"
+            | "com7"
+            | "com8"
+            | "com9"
+            | "lpt1"
+            | "lpt2"
+            | "lpt3"
+            | "lpt4"
+            | "lpt5"
+            | "lpt6"
+            | "lpt7"
+            | "lpt8"
+            | "lpt9"
+    );
+    if trimmed.is_empty() || reserved {
+        "presentation".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn inspect_ppt_render_input(input_path: &str) -> Result<PptRenderInput, String> {
+    if input_path.trim().is_empty() || input_path.contains('\0') {
+        return Err("ppt-render:invalid-input".to_string());
+    }
+    let requested = std::path::PathBuf::from(input_path);
+    let extension = requested
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension != "pptx" {
+        return Err("ppt-render:invalid-extension".to_string());
+    }
+    let metadata = std::fs::symlink_metadata(&requested)
+        .map_err(|_| "ppt-render:input-not-found".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() == 0 {
+        return Err("ppt-render:invalid-input".to_string());
+    }
+    if metadata.len() > PPT_RENDER_MAX_INPUT_BYTES {
+        return Err("ppt-render:input-too-large".to_string());
+    }
+    let path = requested
+        .canonicalize()
+        .map_err(|_| "ppt-render:invalid-input".to_string())?;
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("presentation.pptx")
+        .to_string();
+    let bytes = std::fs::read(&path).map_err(|_| "ppt-render:read-failed".to_string())?;
+    if bytes.len() < 4 || bytes[0] != 0x50 || bytes[1] != 0x4b {
+        return Err("ppt-render:invalid-pptx".to_string());
+    }
+    let entries = pptx_central_directory_entries(&bytes);
+    if !entries
+        .iter()
+        .any(|entry| pptx_entry_eq(entry, "[Content_Types].xml"))
+        || !entries
+            .iter()
+            .any(|entry| pptx_entry_eq(entry, "ppt/presentation.xml"))
+    {
+        return Err("ppt-render:invalid-pptx".to_string());
+    }
+    let slide_count = entries
+        .iter()
+        .filter(|entry| is_pptx_slide_entry(entry))
+        .count();
+    if slide_count == 0 {
+        return Err("ppt-render:empty-ppt".to_string());
+    }
+    if slide_count > PPT_RENDER_MAX_SLIDES {
+        return Err("ppt-render:too-many-slides".to_string());
+    }
+    Ok(PptRenderInput {
+        path,
+        name,
+        bytes: metadata.len(),
+        slide_count,
+    })
+}
+
+fn ppt_render_output_parent(output_dir: &str) -> Result<std::path::PathBuf, String> {
+    validate_image_output_dir(output_dir).map_err(|_| "ppt-render:output-path".to_string())
+}
+
+fn unique_ppt_render_output_dir(
+    parent: &std::path::Path,
+    base_name: &str,
+    suffix_name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let base = sanitize_ppt_render_base_name(base_name);
+    for counter in 0..10_000_u32 {
+        let suffix = if counter == 0 {
+            String::new()
+        } else {
+            format!("_{}", counter)
+        };
+        let candidate = parent.join(format!("{}_{}{}", base, suffix_name, suffix));
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(candidate),
+            Err(_) => return Err("ppt-render:output-path".to_string()),
+        }
+    }
+    Err("ppt-render:output-path".to_string())
+}
+
+fn create_ppt_render_temp_dir(parent: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    for _ in 0..10_000 {
+        let counter = PPT_RENDER_TEMP_ID.fetch_add(1, Ordering::SeqCst);
+        let candidate = parent.join(format!(
+            ".toolknit-ppt-render-{}-{}",
+            std::process::id(),
+            counter
+        ));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("ppt-render:output-path".to_string()),
+        }
+    }
+    Err("ppt-render:output-path".to_string())
+}
+
+fn shell_path_candidates_from_path_env(file_names: &[&str]) -> Vec<std::path::PathBuf> {
+    std::env::var_os("PATH")
+        .map(|value| {
+            std::env::split_paths(&value)
+                .flat_map(|directory| file_names.iter().map(move |name| directory.join(name)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn libreoffice_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
+    let exe_name = if cfg!(target_os = "windows") {
+        "soffice.com"
+    } else {
+        "soffice"
+    };
+    let mut candidates = Vec::new();
+    if let Ok(value) = std::env::var("TOOLKNIT_LIBREOFFICE_PATH") {
+        if !value.trim().is_empty() && !value.contains('\0') {
+            candidates.push((
+                std::path::PathBuf::from(value),
+                "env:TOOLKNIT_LIBREOFFICE_PATH",
+            ));
+        }
+    }
+    if let Ok(managed) = libreoffice_runtime_path() {
+        candidates.push((managed, "managed"));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(root) = std::env::var(key) {
+                let directory = std::path::PathBuf::from(root)
+                    .join("LibreOffice")
+                    .join("program");
+                candidates.push((directory.join("soffice.com"), "windows-install"));
+                candidates.push((directory.join("soffice.exe"), "windows-install"));
+            }
+        }
+    }
+    if let Ok(current_dir) = std::env::current_dir() {
+        for ancestor in current_dir.ancestors().take(6) {
+            candidates.push((
+                ancestor
+                    .join("_research")
+                    .join("runtime-cache")
+                    .join("libreoffice-26.2.5")
+                    .join("program")
+                    .join(exe_name),
+                "dev-runtime-cache",
+            ));
+            if let Some(parent) = ancestor.parent() {
+                candidates.push((
+                    parent
+                        .join("_research")
+                        .join("runtime-cache")
+                        .join("libreoffice-26.2.5")
+                        .join("program")
+                        .join(exe_name),
+                    "dev-runtime-cache",
+                ));
+            }
+        }
+    }
+    if let Ok(current_exe) = std::env::current_exe() {
+        for ancestor in current_exe.ancestors().take(8) {
+            candidates.push((
+                ancestor
+                    .join("_research")
+                    .join("runtime-cache")
+                    .join("libreoffice-26.2.5")
+                    .join("program")
+                    .join(exe_name),
+                "dev-runtime-cache",
+            ));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        candidates.extend(
+            shell_path_candidates_from_path_env(&["soffice.com", "soffice.exe"])
+                .into_iter()
+                .map(|path| (path, "PATH")),
+        );
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        candidates.extend(
+            shell_path_candidates_from_path_env(&["soffice", "libreoffice"])
+                .into_iter()
+                .map(|path| (path, "PATH")),
+        );
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    candidates
+        .into_iter()
+        .filter(|(path, _)| {
+            let key = path.to_string_lossy().to_ascii_lowercase();
+            if seen.contains(&key) {
+                return false;
+            }
+            seen.insert(key)
+        })
+        .collect()
+}
+
+fn probe_libreoffice(
+    path: &std::path::Path,
+    source: &'static str,
+) -> Option<LibreOfficeRuntimeInfo> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    // Isolate the probe into a throwaway profile. LibreOffice can block on the
+    // default profile lock, and the desktop app plus the CLI can probe
+    // concurrently from separate processes; a shared profile makes `--version`
+    // hang (LibreOffice then relaunches itself in safe mode) and leaves
+    // orphaned soffice workers behind.
+    let profile_dir = std::env::temp_dir().join(format!(
+        "toolknit-lo-probe-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&profile_dir);
+    let mut command = std::process::Command::new(path);
+    command
+        .arg(format!(
+            "-env:UserInstallation={}",
+            file_url_for_libreoffice(&profile_dir)
+        ))
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let mut child = command.spawn().ok()?;
+    let child_id = child.id();
+    let started_at = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if started_at.elapsed().as_millis() >= PPT_RENDER_PROBE_TIMEOUT_MS {
+                    terminate_conversion_process(child_id);
+                    let _ = child.wait();
+                    let _ = std::fs::remove_dir_all(&profile_dir);
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(40));
+            }
+            Err(_) => {
+                terminate_conversion_process(child_id);
+                let _ = child.wait();
+                let _ = std::fs::remove_dir_all(&profile_dir);
+                return None;
+            }
+        }
+    }
+    let output = child.wait_with_output();
+    let _ = std::fs::remove_dir_all(&profile_dir);
+    match output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let version = stdout
+                .lines()
+                .chain(stderr.lines())
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .unwrap_or("LibreOffice")
+                .to_string();
+            Some(LibreOfficeRuntimeInfo {
+                available: true,
+                command: Some(path.to_string_lossy().into_owned()),
+                source: Some(source.to_string()),
+                version: Some(version),
+                message: None,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn resolve_libreoffice_runtime() -> LibreOfficeRuntimeInfo {
+    // Reuse a validated path for conversions. The command itself is still
+    // launched by the conversion worker; this only avoids repeated probes.
+    if let Some(runtime) = cached_libreoffice_runtime() {
+        let valid = runtime
+            .command
+            .as_deref()
+            .map(std::path::Path::new)
+            .is_some_and(|path| std::fs::metadata(path).map(|meta| meta.is_file()).unwrap_or(false));
+        if valid {
+            return runtime;
+        }
+        invalidate_libreoffice_runtime_cache();
+    }
+    if let Some(runtime) = resolve_libreoffice_runtime_quick() {
+        cache_libreoffice_runtime(runtime.clone());
+        return runtime;
+    }
+    for (candidate, source) in libreoffice_candidates() {
+        if let Some(runtime) = probe_libreoffice(&candidate, source) {
+            cache_libreoffice_runtime(runtime.clone());
+            return runtime;
+        }
+    }
+    LibreOfficeRuntimeInfo {
+        available: false,
+        command: None,
+        source: None,
+        version: None,
+        message: Some(
+            "LibreOffice runtime was not found. Install LibreOffice or set TOOLKNIT_LIBREOFFICE_PATH to soffice.com/soffice.exe.".to_string(),
+        ),
+    }
+}
+
+fn file_url_for_libreoffice(path: &std::path::Path) -> String {
+    let mut text = cleanup_display_path(path).replace('\\', "/");
+    text = text
+        .replace('%', "%25")
+        .replace(' ', "%20")
+        .replace('#', "%23")
+        .replace('?', "%3F");
+    #[cfg(target_os = "windows")]
+    {
+        if !text.starts_with('/') {
+            return format!("file:///{}", text);
+        }
+    }
+    format!("file://{}", text)
+}
+
+/// Seed the LibreOffice user profile so headless conversions never ask the
+/// Windows print spooler for the document's embedded printer. Impress loads
+/// printer settings by default (`LoadPrinterSettings` defaults to `true`),
+/// which makes an offline/slow WSD printer stall a conversion for up to the
+/// spooler timeout. Writing `false` into `registrymodifications.xcu` keeps the
+/// conversion fully file based.
+fn seed_libreoffice_printer_profile(profile_dir: &std::path::Path) {
+    let user_dir = profile_dir.join("user");
+    if std::fs::create_dir_all(&user_dir).is_err() {
+        return;
+    }
+    let xcu_path = user_dir.join("registrymodifications.xcu");
+    let existing = std::fs::read_to_string(&xcu_path).unwrap_or_default();
+    let header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<oor:items xmlns:oor=\"http://openoffice.org/2001/registry\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">";
+    let footer = "</oor:items>";
+    let printer_item = "<item oor:path=\"/org.openoffice.Office.Common/LoadSave/General\"><prop oor:name=\"LoadPrinterSettings\" oor:op=\"fuse\"><value>false</value></prop></item>";
+
+    let mut updated = if existing.trim().is_empty() {
+        format!("{}\n{}\n{}\n", header, printer_item, footer)
+    } else if existing.contains("LoadPrinterSettings") {
+        existing
+            .lines()
+            .map(|line| {
+                if line.contains("LoadPrinterSettings") {
+                    printer_item.to_string()
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else if let Some(footer_pos) = existing.rfind("</oor:items>") {
+        let mut seeded = existing.clone();
+        seeded.insert_str(footer_pos, &format!("{}\n", printer_item));
+        seeded
+    } else {
+        existing
+    };
+    if !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    let _ = std::fs::write(&xcu_path, updated);
+}
+
+fn find_rendered_pdf(
+    directory: &std::path::Path,
+    input_name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let expected = format!("{}.pdf", sanitize_ppt_render_base_name(input_name));
+    let mut fallback = None;
+    for entry in std::fs::read_dir(directory).map_err(|_| "ppt-render:render-failed".to_string())? {
+        let entry = entry.map_err(|_| "ppt-render:render-failed".to_string())?;
+        let path = entry.path();
+        if path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.eq_ignore_ascii_case("pdf"))
+            != Some(true)
+        {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if name.eq_ignore_ascii_case(&expected) {
+            return Ok(path);
+        }
+        fallback.get_or_insert(path);
+    }
+    fallback.ok_or_else(|| "ppt-render:render-failed".to_string())
+}
+
+fn count_pdf_pages_rough(bytes: &[u8]) -> usize {
+    let mut count = 0usize;
+    let needle = b"/Type";
+    let mut index = 0usize;
+    while index + needle.len() <= bytes.len() {
+        if &bytes[index..index + needle.len()] != needle {
+            index += 1;
+            continue;
+        }
+        let mut cursor = index + needle.len();
+        while cursor < bytes.len() && matches!(bytes[cursor], b' ' | b'\t' | b'\r' | b'\n') {
+            cursor += 1;
+        }
+        if cursor + 5 <= bytes.len()
+            && &bytes[cursor..cursor + 5] == b"/Page"
+            && bytes.get(cursor + 5).copied() != Some(b's')
+        {
+            count += 1;
+        }
+        index = cursor.saturating_add(5);
+    }
+    count
+}
+
+fn validate_ppt_rendered_pdf(
+    path: &std::path::Path,
+    expected_slides: usize,
+) -> Result<(usize, u64, Vec<String>), String> {
+    let metadata = std::fs::metadata(path).map_err(|_| "ppt-render:render-failed".to_string())?;
+    if !metadata.is_file() || metadata.len() < 16 {
+        return Err("ppt-render:render-failed".to_string());
+    }
+    let bytes = std::fs::read(path).map_err(|_| "ppt-render:render-failed".to_string())?;
+    if !bytes.starts_with(b"%PDF-") {
+        return Err("ppt-render:render-failed".to_string());
+    }
+    let mut warnings = Vec::new();
+    let page_count = count_pdf_pages_rough(&bytes);
+    let page_count = if page_count == 0 {
+        warnings.push(
+            "PDF page count could not be verified exactly; using PPT slide count.".to_string(),
+        );
+        expected_slides
+    } else {
+        page_count
+    };
+    if page_count != expected_slides {
+        warnings.push(format!(
+            "Rendered PDF page count ({}) differs from PPT slide count ({}).",
+            page_count, expected_slides
+        ));
+    }
+    Ok((page_count, metadata.len(), warnings))
+}
+
+async fn run_libreoffice_ppt_to_pdf(
+    runtime: &LibreOfficeRuntimeInfo,
+    input: &PptRenderInput,
+    work_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let command = runtime
+        .command
+        .as_ref()
+        .ok_or_else(|| "ppt-render:runtime-missing".to_string())?;
+    let out_dir = work_dir.join("out");
+    let profile_dir = toolknit_app_data_dir()?
+        .join("libreoffice-profile")
+        .join(LIBREOFFICE_RUNTIME_VERSION);
+    std::fs::create_dir_all(&out_dir).map_err(|_| "ppt-render:output-path".to_string())?;
+    std::fs::create_dir_all(&profile_dir).map_err(|_| "ppt-render:output-path".to_string())?;
+    seed_libreoffice_printer_profile(&profile_dir);
+    let user_installation = file_url_for_libreoffice(&profile_dir);
+    let mut command_builder = tokio::process::Command::new(command);
+    command_builder
+        .arg("--headless")
+        .arg("--invisible")
+        .arg("--nologo")
+        .arg("--nofirststartwizard")
+        .arg("--nodefault")
+        .arg("--nolockcheck")
+        .arg("--norestore")
+        .arg(format!("-env:UserInstallation={}", user_installation))
+        .arg("--convert-to")
+        .arg("pdf:impress_pdf_Export")
+        .arg("--outdir")
+        .arg(&out_dir)
+        .arg(&input.path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // Force LibreOffice's non-GUI VCL backend and disable printer-list
+    // enumeration. `SAL_DISABLE_PRINTERLIST` is the only supported LibreOffice
+    // variable here; Impress can otherwise wait for an offline WSD printer.
+    command_builder.env("SAL_USE_VCLPLUGIN", "svp");
+    command_builder.env("SAL_DISABLE_PRINTERLIST", "1");
+    #[cfg(target_os = "windows")]
+    {
+        command_builder.creation_flags(0x08000000);
+    }
+    let child = command_builder
+        .spawn()
+        .map_err(|_| "ppt-render:runtime-missing".to_string())?;
+    let child_id = child.id().unwrap_or(0);
+    CURRENT_CHILD_ID.store(child_id, Ordering::SeqCst);
+    let output = match tokio::time::timeout(
+        std::time::Duration::from_secs(PPT_RENDER_TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await
+    {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(_)) => Err("ppt-render:render-failed".to_string()),
+        Err(_) => {
+            terminate_conversion_process(child_id);
+            CURRENT_CHILD_ID.store(0, Ordering::SeqCst);
+            if CANCEL_FLAG.load(Ordering::SeqCst) {
+                return Err("ppt-render:cancelled".to_string());
+            }
+            return Err("ppt-render:timeout".to_string());
+        }
+    };
+    CURRENT_CHILD_ID.store(0, Ordering::SeqCst);
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
+        return Err("ppt-render:cancelled".to_string());
+    }
+    let output = output?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr
+            .lines()
+            .chain(stdout.lines())
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("LibreOffice conversion failed.");
+        return Err(format!("ppt-render:render-failed:{}", detail));
+    }
+    find_rendered_pdf(&out_dir, &input.name)
+}
+
+#[tauri::command]
+async fn convert_ppt_to_pdf(
+    input_path: String,
+    output_dir: String,
+    output_name: Option<String>,
+) -> Result<PptToPdfResult, String> {
+    let _conversion_guard = begin_conversion().map_err(|_| "ppt-render:busy".to_string())?;
+    let input = inspect_ppt_render_input(&input_path)?;
+    let runtime = resolve_libreoffice_runtime();
+    if !runtime.available {
+        return Err("ppt-render:runtime-missing".to_string());
+    }
+    let output_parent = ppt_render_output_parent(&output_dir)?;
+    let base_name = sanitize_ppt_render_base_name(output_name.as_deref().unwrap_or(&input.name));
+    let output_file = format!("{}.pdf", base_name);
+    let final_dir = unique_ppt_render_output_dir(&output_parent, &base_name, "ppt_to_pdf")?;
+    let temp_dir = create_ppt_render_temp_dir(&output_parent)?;
+    let work_dir = temp_dir.join(".work");
+    std::fs::create_dir_all(&work_dir).map_err(|_| "ppt-render:output-path".to_string())?;
+    let result = async {
+        let rendered = run_libreoffice_ppt_to_pdf(&runtime, &input, &work_dir).await?;
+        let output_path = temp_dir.join(&output_file);
+        std::fs::copy(&rendered, &output_path)
+            .map_err(|_| "ppt-render:write-failed".to_string())?;
+        let (page_count, output_bytes, mut warnings) =
+            validate_ppt_rendered_pdf(&output_path, input.slide_count)?;
+        let _ = std::fs::remove_dir_all(&work_dir);
+        if runtime.source.as_deref() == Some("dev-runtime-cache") {
+            warnings.push("Using local development LibreOffice runtime cache.".to_string());
+        }
+        let manifest_path = temp_dir.join("manifest.json");
+        let manifest = serde_json::json!({
+            "tool": "ppt.to-pdf",
+            "sourceName": input.name.clone(),
+            "inputPath": cleanup_display_path(&input.path),
+            "inputBytes": input.bytes,
+            "renderer": runtime.clone(),
+            "slideCount": input.slide_count,
+            "pageCount": page_count,
+            "pageCountMatchesSlides": page_count == input.slide_count,
+            "outputDir": cleanup_display_path(&final_dir),
+            "outputPath": cleanup_display_path(&final_dir.join(&output_file)),
+            "outputFile": output_file.clone(),
+            "outputBytes": output_bytes,
+            "warnings": warnings.clone()
+        });
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest)
+                .map_err(|_| "ppt-render:write-failed".to_string())?,
+        )
+        .map_err(|_| "ppt-render:write-failed".to_string())?;
+        std::fs::rename(&temp_dir, &final_dir)
+            .map_err(|_| "ppt-render:publish-failed".to_string())?;
+        let final_output_path = final_dir.join(&output_file);
+        let final_manifest_path = final_dir.join("manifest.json");
+        Ok(PptToPdfResult {
+            tool: "ppt.to-pdf".to_string(),
+            source_name: input.name,
+            input_path: cleanup_display_path(&input.path),
+            input_bytes: input.bytes,
+            renderer: runtime,
+            slide_count: input.slide_count,
+            page_count,
+            page_count_matches_slides: page_count == input.slide_count,
+            output_dir: cleanup_display_path(&final_dir),
+            output_path: cleanup_display_path(&final_output_path),
+            output_file,
+            output_bytes,
+            manifest_path: cleanup_display_path(&final_manifest_path),
+            warnings,
+        })
+    }
+    .await;
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+    result
+}
+
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
     // Legacy frontend builds used this command name for output actions. Keep
-    // the command available for compatibility, but enforce the v1.3 rule that
+    // the command available for compatibility, but enforce the current rule that
     // an "open folder" action opens a directory only and never selects or opens
     // the output file itself.
     open_path(path)
@@ -10888,8 +13009,10 @@ fn open_recycle_bin() -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(WindowCornerRadiusState::default())
         .invoke_handler(tauri::generate_handler![
             open_url,
+            set_window_corner_radius,
             get_documents_dir,
             get_download_dir,
             get_install_lang,
@@ -10949,6 +13072,10 @@ pub fn run() {
             get_ffmpeg_runtime_status,
             download_ffmpeg_runtime,
             delete_ffmpeg_runtime,
+            get_libreoffice_runtime_status,
+            is_libreoffice_runtime_available,
+            download_libreoffice_runtime,
+            delete_libreoffice_runtime,
             cancel_dependency_downloads,
             convert_image_batch,
             compress_image_batch,
@@ -10964,17 +13091,59 @@ pub fn run() {
             discard_pdf_to_image_session,
             cancel_pdf_to_image,
             export_pdf_to_images,
+            convert_ppt_to_pdf,
             convert_video_batch,
             set_tray_lang,
+            screen_picker_bounds,
+            screen_color_sample,
+            open_screen_color_picker,
+            close_screen_color_picker,
+            get_screen_picker_shortcut,
+            set_screen_picker_shortcut,
+            system_cleanup::system_cleanup_is_admin,
+            system_cleanup::system_cleanup_relaunch_as_admin,
+            system_cleanup::system_cleanup_scan,
+            system_cleanup::system_cleanup_run,
         ])
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main_window(app);
         }))
         .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+                )
+            {
+                if let Some(webview_window) = window.app_handle().get_webview_window(window.label())
+                {
+                    schedule_native_window_corner_radius_reapply(webview_window);
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                match window.label() {
+                    // The main window intentionally follows the conventional
+                    // close-to-tray behavior used by ToolKnit.
+                    "main" => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                    // The picker minimizes the main window while it is active.
+                    // A system close request (Alt+F4, taskbar command, etc.)
+                    // must restore the application instead of leaving both
+                    // windows hidden.
+                    "color-picker-overlay" => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        show_main_window(window.app_handle());
+                    }
+                    // Do not globally suppress close behavior for future
+                    // auxiliary windows. They should retain their own normal
+                    // lifecycle unless they opt into one explicitly.
+                    _ => {}
+                }
             }
         })
         .setup(|app| {
@@ -11024,6 +13193,14 @@ pub fn run() {
                 let _ = window.set_always_on_top(false);
             }
 
+            // 注册屏幕取色全局快捷键（如果用户已配置）。
+            let shortcut_config = load_screen_picker_shortcut_config();
+            if let Some(shortcut) = shortcut_config.shortcut.as_deref() {
+                if !shortcut.trim().is_empty() {
+                    let _ = register_screen_picker_shortcut(app.handle(), shortcut);
+                }
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -11035,5 +13212,11 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+    }
+}
+
+fn minimize_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.minimize();
     }
 }

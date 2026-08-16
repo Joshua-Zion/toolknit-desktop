@@ -1,6 +1,6 @@
 # ToolKnit AI Agent Quick Guide
 
-This guide helps users connect ToolKnit to Trae, Cursor, or another MCP-capable IDE so an AI Agent can safely process local PDFs, convert them into images or stitched long images, convert audio and video, and generate polished multi-page AI documents and editable AI tables.
+This guide helps users connect ToolKnit to Trae, Cursor, or another MCP-capable IDE so an AI Agent can safely process local PDFs, convert them into images or stitched long images, extract embedded PPTX image assets and text, convert audio and video, and generate polished multi-page AI documents and editable AI tables.
 
 ## Connect once
 
@@ -23,9 +23,9 @@ If the IDE cannot find `toolknit`, configure the absolute Node.js path and CLI e
 C:\Users\<your-user-name>\AppData\Roaming\npm\node_modules\@toolknit\cli\toolknit.mjs
 ```
 
-Local PDF, image, audio/video, and text tools do not need an AI key. AI documents, AI tables, and transcription with `refine` require a real `DEEPSEEK_API_KEY` (or `TOOLKNIT_AI_API_KEY`) in the IDE's MCP environment/secret settings; restart the IDE after setting it. Never place the key in an Agent message, document brief, output path, or filename. CLI/MCP does not read the credential stored by ToolKnit Desktop.
+Local PDF, image, audio/video, text, and non-AI PPT tools do not need an AI key. AI documents, AI tables, PPT text AI organization, AI PPT outline generation, AI PPT draft/PPTX generation, and transcription with `refine` require a real `DEEPSEEK_API_KEY` (or `TOOLKNIT_AI_API_KEY`) in the IDE's MCP environment/secret settings; restart the IDE after setting it. Never place the key in an Agent message, document brief, output path, or filename. CLI/MCP does not read the credential stored by ToolKnit Desktop.
 
-After a successful connection, the Agent exposes 31 ToolKnit tools: nine PDF tools, four audio tools, four offline model and transcription tools, three video tools, one text tool, two image tools, four AI document project tools, and four AI table project tools:
+After a successful connection, the Agent exposes 46 ToolKnit tools: nine PDF tools, seven PPT tools, eight read-only hardware tools, four audio tools, four offline model and transcription tools, three video tools, one text tool, two image tools, four AI document project tools, and four AI table project tools:
 
 - `toolknit_pdf_inspect` inspects page counts, sizes, and page-by-page details.
 - `toolknit_pdf_merge` merges multiple local PDFs in order into one file.
@@ -58,6 +58,21 @@ After a successful connection, the Agent exposes 31 ToolKnit tools: nine PDF too
 - `toolknit_text_stats` calculates character, word, line, paragraph, sentence, and reading-time counts for one local UTF-8 text file without returning its content or writing files.
 - `toolknit_color_extract` extracts a dominant palette from one local PNG, JPEG, or WebP without uploading or writing files.
 - `toolknit_image_stitch` stitches 2–100 local images vertically or horizontally in an explicit order. It defaults to seamless PNG, preserves sources, and publishes a unique output name.
+- `toolknit_ppt_images` extracts embedded image assets from one local PPTX, preserves original formats, and writes a manifest. It supports slide-page filters, image item numbers, and skipping exact duplicates.
+- `toolknit_ppt_text` extracts each slide's title, body text, and speaker notes from one local PPTX. It can export Markdown / TXT / JSON and can optionally ask AI to organize the extracted text into an outline, script, meeting notes, or study notes. AI mode sends extracted text only, never the PPTX file.
+- `toolknit_ppt_compress` safely compresses one local PPTX, writes an optimized copy plus a manifest, preserves image quality in the first stage, and never modifies the source file.
+- `toolknit_ppt_to_pdf` renders one local PPTX to PDF with LibreOffice headless. It never modifies the source and writes the PDF plus manifest into a unique output folder.
+- `toolknit_ppt_to_image` renders a temporary PDF with LibreOffice, then exports selected slides as per-page PNG / JPG / WebP images. It supports slide-page filters and removes the temporary PDF after success.
+- `toolknit_ppt_outline` generates a new structured PPT outline from a text brief and writes outline.md, outline.json, and a manifest. It does not read PPTX and does not generate PPTX.
+- `toolknit_ppt_draft` generates an editable PPTX draft from a text brief, or converts an existing outline.json directly into PPTX. Prompt mode sends text only; outline mode does not call AI.
+- `toolknit_hardware_overview` inspects the system, device model, CPU, memory, GPU, storage, firmware, and battery state without writing files.
+- `toolknit_hardware_cpu_memory` inspects CPU specs, memory topology, memory modules, and current usage without writing files.
+- `toolknit_hardware_cpu_memory_live_stats` reads current CPU usage, available memory, and committed memory counters without writing files.
+- `toolknit_hardware_gpu_display` inspects graphics adapters, drivers, VRAM, and connected displays without writing files.
+- `toolknit_hardware_mainboard_firmware` inspects motherboard, BIOS/UEFI, Secure Boot, TPM, chassis, and PCI device details without writing files.
+- `toolknit_hardware_storage_health` inspects physical disks, volumes, capacity, bus type, and available health/reliability counters without writing files.
+- `toolknit_hardware_network_devices` inspects network adapters, Bluetooth, audio, USB, and camera device lists without writing files.
+- `toolknit_hardware_power_sensors` inspects the active power plan, battery state, thermal zones, and available fan/sensor data without writing files.
 
 ## Color extraction
 
@@ -89,6 +104,82 @@ Call ToolKnit MCP's toolknit_pdf_to_image to export this project's assets/demo.p
 
 ```text
 Call ToolKnit MCP's toolknit_pdf_to_image to export pages 1 through 5 of this project's assets/demo.pdf as a stitched long image into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first and do not guess the page range. Report the long-image path, page range, and byte size when finished.
+```
+
+## PPT image asset extraction
+
+When the user drops a PPTX into the IDE and asks to “extract the images from this deck,” the Agent must resolve the PPTX to an absolute path and save into this workspace's `toolknit-output` folder. Do not modify the source PPTX and do not treat whole slides as rendered images; this tool extracts the original embedded image assets inside the PPTX package.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_images to extract the embedded image assets from this project's decks/demo.pptx into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first. Do not modify the PPTX and do not overwrite existing outputs. Report the output folder, manifest.json, image count, duplicate count, and each exported file's slide number, format, and byte size.
+```
+
+```text
+Call toolknit_ppt_images to extract only images from slides 2 through 5 of decks/demo.pptx, skipping exact duplicate images. Save into this workspace's toolknit-output folder and report how many images were exported and which duplicates were skipped.
+```
+
+## PPT AI text extraction
+
+When the user drops a PPTX into the IDE and asks to “extract this deck's text” or “turn this into an outline/script/meeting notes,” the Agent must resolve the PPTX to an absolute path and save into this workspace's `toolknit-output` folder. Basic extraction is fully local. Only when the user explicitly asks for AI organization should extracted text and notes be sent to the configured AI provider; the PPTX file itself is never uploaded.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_text to extract every slide title, body text, and speaker note from this project's decks/demo.pptx. Export Markdown, TXT, and JSON into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first. Do not modify the PPTX and do not overwrite existing outputs. Report the output folder, slide count, note-slide count, and manifest.json path.
+```
+
+```text
+Call toolknit_ppt_text to extract text from slides 1 through 8 of decks/demo.pptx and use ai_mode=outline to organize it into a structured outline. Send extracted text only; do not upload the PPTX file. Save outputs into this workspace's toolknit-output folder.
+```
+
+## PPT compression
+
+When the user drops a PPTX into the IDE and asks to “compress this deck” or “make this presentation smaller,” the Agent must resolve the PPTX to an absolute path and save into this workspace's `toolknit-output` folder. Compression never modifies the source file. `low` is lossless cleanup; `medium` / `high` recompress large image assets for smaller files, and images are kept unchanged when recompression does not reduce size.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_compress to safely compress this project's decks/demo.pptx into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first, use level=medium, do not modify the source PPTX, and do not overwrite existing outputs. Report the output folder, original size, compressed size, saved space, and manifest.json path.
+```
+
+```text
+Call toolknit_ppt_compress to run a dry_run compression analysis on decks/demo.pptx with level=high. Return only the estimated saved space, cleanup counts, and whether the deck is already close to optimized; do not write files.
+```
+
+## PPT to PDF
+
+When the user drops a PPTX into the IDE and asks to “convert this PPT to PDF,” the Agent must resolve the PPTX to an absolute path and save into this workspace's `toolknit-output` folder. This tool requires LibreOffice / soffice. If the dependency is missing, tell the user to install LibreOffice or configure `TOOLKNIT_LIBREOFFICE_PATH`; do not claim conversion succeeded.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_to_pdf to convert this project's decks/demo.pptx into a PDF in this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first. Do not modify the PPTX and do not overwrite existing outputs. Report the output PDF, manifest.json, page count, and byte size.
+```
+
+## PPT to images
+
+When the user drops a PPTX into the IDE and asks to “convert this PPT to images” or “export slides 1-3 as images,” call `toolknit_ppt_to_image`. Default to `format=png`, `clarity=high`, and all slides. If the user gives pages, pass explicit page numbers and do not guess.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_to_image to export slides 1 through 3 of this project's decks/demo.pptx as PNG images with clarity=high into this project's toolknit-output folder. Resolve the absolute path from the IDE file tree first. Do not modify the PPTX and do not overwrite existing outputs. Report the output folder, each image path, slide number, format, and byte size.
+```
+
+## AI PPT outline generation
+
+When the user asks “make a PPT outline from these notes” or “plan an 8-slide talk,” the Agent should call `toolknit_ppt_outline`. This tool does not read PPTX and does not generate PPTX. It generates `outline.md`, `outline.json`, and `manifest.json` from the supplied text. If the source notes come from project files, read and summarize the text first, then pass the concise brief as `prompt`. Never put API keys in the prompt.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_outline to generate an 8-slide Chinese PPT outline from the product notes I provided. The audience is open-source users, and the purpose is to help them understand ToolKnit 2.0's local-first and AI Agent capabilities and want to try it. Save into this workspace's toolknit-output folder. Resolve the output directory to an absolute path first and do not overwrite existing outputs. Report the outline.md, outline.json, manifest.json paths and missing-info list.
+```
+
+```text
+Dry-run toolknit_ppt_outline first. Topic: “Explain a local-first file processing platform to investors.” slide_count=6, audience=investors, purpose=get a follow-up meeting. Return only the generation plan; do not call AI and do not write files.
+```
+
+## AI PPT draft / PPTX generation
+
+When the user asks “generate a PPTX draft” or “turn these notes into an editable presentation,” call `toolknit_ppt_draft`. If the user already has `outline.json`, prefer `outline_path` so the tool does not call AI again. If the user only provided text notes, pass a concise `prompt`; the tool creates a structured outline first, then writes the PPTX locally. The first stage is an editable minimal draft, not animations, video, or pixel-perfect enterprise master reproduction.
+
+```text
+Call ToolKnit MCP's toolknit_ppt_draft to generate an 8-slide Chinese PPTX draft from the product notes I provided. The audience is open-source users, theme=minimal-mono (the default black-and-white minimal theme), and the output directory is this workspace's toolknit-output. Resolve the output directory to an absolute path first and do not overwrite existing outputs. Report the PPTX, outline.json, outline.md, and manifest.json paths.
+```
+
+```text
+Call toolknit_ppt_draft to convert this workspace's toolknit-output/outline.json into an editable PPTX. Use theme=minimal-mono for a monochrome minimal style, do not call AI again, and do not overwrite existing outputs.
 ```
 
 ## State four things in every request
@@ -318,7 +409,7 @@ Use ToolKnit MCP to inspect <scanned PDF path>, then enhance it with medium stre
 ```text
 You must call the ToolKnit MCP tool toolknit_ai_document. Do not merely draft the content in chat.
 
-Generate a four-page English A4 PDF titled "ToolKnit v1.3 Open Source Product Plan" at <absolute output PDF path>. Do not overwrite an existing file.
+Generate a four-page English A4 PDF titled "ToolKnit v2.0 Open Source Product Plan" at <absolute output PDF path>. Do not overwrite an existing file.
 
 Page 1 must contain an executive summary, project context, release goals, target users, and five core values, plus a compact metadata table. Page 2 must organize desktop capabilities into PDF, image, audio/video, text, and AI groups and explain the local-first privacy and performance strategy without inventing usage metrics. Page 3 must explain the CLI and IDE Agent/MCP architecture, shared capability contracts, explicit output paths, overwrite protection, progress, and structured errors, with a table of representative calls. Page 4 must present the release plan, risks, acceptance criteria, and roadmap, including an action table with owner roles, priorities, and expected evidence.
 

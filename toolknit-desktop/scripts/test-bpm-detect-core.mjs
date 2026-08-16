@@ -2,13 +2,17 @@ import assert from 'node:assert/strict';
 import {
   BpmDetectError,
   BPM_DETECT_LIMITS,
+  analyzeAudioKeyPcm,
   analyzeBpmPcm,
+  analyzeMusicTempoPcm,
   assertBpmAudioBuffer,
   assertBpmInputSize,
+  fuseBpmAnalyses,
   getBpmAnalysisSpec,
   isBpmSupportedAudioName,
   normalizeBpmCandidates
 } from '../src/bpm-detect-core.js';
+import MusicTempo from 'music-tempo';
 
 assert.equal(assertBpmInputSize(1024), 1024);
 assert.throws(() => assertBpmInputSize(0), (error) => error instanceof BpmDetectError && error.code === 'invalid_input');
@@ -61,5 +65,48 @@ assert.ok(detected.bpm >= 118 && detected.bpm <= 122, `Expected 120 BPM, got ${d
 assert.ok(detected.confidence > 0.1);
 assert.ok(detected.candidates.length >= 1);
 assert.equal(analyzeBpmPcm(new Float32Array(clickRate), clickRate).bpm, null);
+
+const fused = fuseBpmAnalyses({
+  realtimeTempos: [{ tempo: 119.8, count: 10 }, { tempo: 60, count: 3 }],
+  pcmAnalysis: detected
+});
+assert.ok(fused.bpm >= 118 && fused.bpm <= 122, `Expected fused 120 BPM, got ${fused.bpm}`);
+assert.ok(fused.confidence >= detected.confidence);
+
+function synthClickTrack(bpm, seconds = 24) {
+  const samples = new Float32Array(clickRate * seconds);
+  const interval = 60 / bpm;
+  for (let beat = 0; beat < seconds / interval; beat++) {
+    const start = Math.round(beat * interval * clickRate);
+    for (let offset = 0; offset < Math.min(110, samples.length - start); offset++) {
+      samples[start + offset] += (1 - offset / 110) * 0.9;
+    }
+  }
+  return samples;
+}
+
+for (const expectedBpm of [154, 164]) {
+  const samples = synthClickTrack(expectedBpm);
+  const local = analyzeBpmPcm(samples, clickRate);
+  const beatroot = analyzeMusicTempoPcm(samples, clickRate, MusicTempo);
+  const result = fuseBpmAnalyses({
+    realtimeTempos: [{ tempo: Math.round(expectedBpm / 1.5), count: 6 }],
+    pcmAnalysis: local,
+    beatrootAnalysis: beatroot
+  });
+  assert.ok(Math.abs(result.bpm - expectedBpm) <= 2, `Expected ${expectedBpm} BPM, got ${result.bpm}`);
+  assert.ok(result.candidates.some(candidate => Math.abs(candidate.bpm - expectedBpm) <= 2));
+}
+
+const keyRate = BPM_DETECT_LIMITS.analysisSampleRate;
+const keySamples = new Float32Array(keyRate * 8);
+const cMajorFrequencies = [261.63, 329.63, 392.0];
+for (let index = 0; index < keySamples.length; index++) {
+  const time = index / keyRate;
+  keySamples[index] = cMajorFrequencies.reduce((sum, frequency) => sum + Math.sin(2 * Math.PI * frequency * time) * 0.18, 0);
+}
+const keyDetected = analyzeAudioKeyPcm(keySamples, keyRate);
+assert.ok(keyDetected.candidates.length >= 1);
+assert.match(keyDetected.key || keyDetected.candidates[0].key, /^C Major|A Minor/);
 
 console.log('BPM detection core regression checks passed');
