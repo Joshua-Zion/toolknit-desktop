@@ -260,19 +260,19 @@ ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、�
 <details>
   <summary><strong>查看工具分类截图</strong></summary>
 
-<p align="center"><sub>分类截图统一使用 1210 x 780 画布，避免同一组预览出现不同高度。</sub></p>
+<p align="center"><sub>分类截图统一使用 1400 x 900 画布，避免同一组预览出现不同高度。</sub></p>
 
 <table cellpadding="8" cellspacing="0">
   <tr>
     <td width="50%" valign="top"><strong>PDF</strong><br /><img src="assets/readme/categories/category-pdf.png" alt="PDF tools" width="100%" /></td>
+    <td width="50%" valign="top"><strong>PPT</strong><br /><img src="assets/readme/categories/category-ppt.png" alt="PPT tools" width="100%" /></td>
+  </tr>
+  <tr>
     <td width="50%" valign="top"><strong>AI 与内容工作流</strong><br /><img src="assets/readme/categories/category-ai.png" alt="AI and content tools" width="100%" /></td>
-  </tr>
-  <tr>
     <td width="50%" valign="top"><strong>图像</strong><br /><img src="assets/readme/categories/category-image.png" alt="Image tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>音频</strong><br /><img src="assets/readme/categories/category-audio.png" alt="Audio tools" width="100%" /></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><strong>视频</strong><br /><img src="assets/readme/categories/category-video.png" alt="Video tools" width="100%" /></td>
+    <td width="50%" valign="top"><strong>音视频</strong><br /><img src="assets/readme/categories/category-audio-video.png" alt="Audio and video tools" width="100%" /></td>
     <td width="50%" valign="top"><strong>文本</strong><br /><img src="assets/readme/categories/category-text.png" alt="Text tools" width="100%" /></td>
   </tr>
   <tr>

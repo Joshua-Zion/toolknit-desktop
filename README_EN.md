@@ -261,19 +261,19 @@ ToolKnit 2.0 combines a lightweight desktop container with local file engines. T
 <details>
   <summary><strong>View category screenshots</strong></summary>
 
-<p align="center"><sub>Category screenshots use a consistent 1210 x 780 canvas so the preview set stays aligned.</sub></p>
+<p align="center"><sub>Category screenshots use a consistent 1400 x 900 canvas so the preview set stays aligned.</sub></p>
 
 <table cellpadding="8" cellspacing="0">
   <tr>
     <td width="50%" valign="top"><strong>PDF</strong><br /><img src="assets/readme/categories/category-pdf.png" alt="PDF tools" width="100%" /></td>
+    <td width="50%" valign="top"><strong>PPT</strong><br /><img src="assets/readme/categories/category-ppt.png" alt="PPT tools" width="100%" /></td>
+  </tr>
+  <tr>
     <td width="50%" valign="top"><strong>AI and content workflows</strong><br /><img src="assets/readme/categories/category-ai.png" alt="AI and content tools" width="100%" /></td>
-  </tr>
-  <tr>
     <td width="50%" valign="top"><strong>Image</strong><br /><img src="assets/readme/categories/category-image.png" alt="Image tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>Audio</strong><br /><img src="assets/readme/categories/category-audio.png" alt="Audio tools" width="100%" /></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><strong>Video</strong><br /><img src="assets/readme/categories/category-video.png" alt="Video tools" width="100%" /></td>
+    <td width="50%" valign="top"><strong>Audio &amp; Video</strong><br /><img src="assets/readme/categories/category-audio-video.png" alt="Audio and video tools" width="100%" /></td>
     <td width="50%" valign="top"><strong>Text</strong><br /><img src="assets/readme/categories/category-text.png" alt="Text tools" width="100%" /></td>
   </tr>
   <tr>
