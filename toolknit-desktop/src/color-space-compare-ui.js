@@ -3,7 +3,6 @@ import {
   fmtColorNumber,
   getSpaceValues,
   normalizeSliderValue,
-  normalizeSpaceValues,
   oklabInAdobeRgb,
   oklabInDisplayP3,
   oklabInRec2020,
@@ -14,6 +13,12 @@ import {
   xyzToAllSpaces,
   xyzToDisplayRgb,
 } from './color-space-compare-core.js';
+import {
+  bindColorNumberInput,
+  getColorSliderPresentation,
+  preserveColorSpaceValues,
+  replaceColorSpaceChannel,
+} from './color-space-compare-controls.js';
 import { onLangChange, t } from './i18n.js';
 
 const INITIAL_RGB = Object.freeze({ r: 128, g: 128, b: 128 });
@@ -181,8 +186,8 @@ export function initColorSpaceCompareTool(root) {
 
   function getEditableSpaceValues(space) {
     if (canonicalState.space === space) return { ...canonicalState.values };
-    if (!lastPresentedAll) return normalizeSpaceValues(space, { ...INITIAL_RGB });
-    return normalizeSpaceValues(space, getSpaceValues(space, lastPresentedAll, displayRgb));
+    if (!lastPresentedAll) return preserveColorSpaceValues(space, INITIAL_RGB);
+    return preserveColorSpaceValues(space, getSpaceValues(space, lastPresentedAll, displayRgb));
   }
 
   function buildSliders() {
@@ -299,11 +304,15 @@ export function initColorSpaceCompareTool(root) {
       return config.min + ratio * (config.max - config.min);
     }
 
-    function applyValue(rawValue, baseValues = null) {
-      const value = normalizeSliderValue(rawValue, config);
-      if (value === null) return;
-      const values = baseValues ? { ...baseValues } : getEditableSpaceValues(meta.id);
-      values[config.key] = value;
+    function applyValue(rawValue, baseValues = null, normalize = true) {
+      const values = replaceColorSpaceChannel(
+        meta.id,
+        baseValues ?? getEditableSpaceValues(meta.id),
+        config.key,
+        rawValue,
+        { normalize }
+      );
+      if (!values) return;
       updateAll(meta.id, values);
     }
 
@@ -319,19 +328,6 @@ export function initColorSpaceCompareTool(root) {
       decrease.disabled = value === null || value <= config.min;
     }
     elements.updateButtonState = updateButtonState;
-
-    function commitInput(rawValue, fallBackToCurrent = false) {
-      let value = normalizeSliderValue(Number(rawValue), config);
-      if (String(rawValue).trim() === '' || value === null) {
-        if (!fallBackToCurrent) return false;
-        value = normalizeSliderValue(currentValue(), config);
-      }
-      if (value === null) return false;
-      applyValue(value);
-      input.value = fmtColorNumber(value, config.decimals);
-      updateButtonState(value);
-      return true;
-    }
 
     function stepValue(direction, multiplier = 1) {
       const base = normalizeSliderValue(currentValue(), config);
@@ -382,23 +378,19 @@ export function initColorSpaceCompareTool(root) {
       }
     });
 
-    input.addEventListener('input', () => {
-      if (input.value.trim() !== '') commitInput(input.value);
+    elements.inputController = bindColorNumberInput(input, {
+      config,
+      getCurrentValue: currentValue,
+      applyTransientValue: value => {
+        applyValue(value, null, false);
+        updateButtonState(value);
+      },
+      applyCommittedValue: value => {
+        applyValue(value);
+        updateButtonState(value);
+      },
+      stepValue,
     });
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-        event.preventDefault();
-        stepValue(event.key === 'ArrowUp' ? 1 : -1);
-      } else if (event.key === 'Enter') {
-        commitInput(input.value, true);
-        input.blur();
-      } else if (event.key === 'Escape') {
-        event.stopPropagation();
-        input.value = fmtColorNumber(getEditableSpaceValues(meta.id)[config.key], config.decimals);
-        input.blur();
-      }
-    });
-    input.addEventListener('blur', () => commitInput(input.value, true));
     increase.addEventListener('click', () => stepValue(1));
     decrease.addEventListener('click', () => stepValue(-1));
   }
@@ -407,13 +399,13 @@ export function initColorSpaceCompareTool(root) {
     if (isUpdating) return;
     isUpdating = true;
     try {
-      const normalizedSource = normalizeSpaceValues(sourceSpace, sourceValues);
-      canonicalState = { space: sourceSpace, values: { ...normalizedSource } };
+      const presentedSource = preserveColorSpaceValues(sourceSpace, sourceValues);
+      canonicalState = { space: sourceSpace, values: { ...presentedSource } };
 
-      const xyz = spaceToXyz(sourceSpace, normalizedSource);
+      const xyz = spaceToXyz(sourceSpace, presentedSource);
       displayRgb = xyzToDisplayRgb(xyz.x, xyz.y, xyz.z);
       const all = xyzToAllSpaces(xyz, displayRgb);
-      if (sourceSpace !== 'rgb') all[sourceSpace] = { ...normalizedSource };
+      if (sourceSpace !== 'rgb') all[sourceSpace] = { ...presentedSource };
       lastPresentedAll = all;
 
       const hex = rgbToHex(displayRgb.r, displayRgb.g, displayRgb.b);
@@ -428,15 +420,15 @@ export function initColorSpaceCompareTool(root) {
         for (const config of COLOR_SPACE_SLIDER_CONFIG[meta.id].channels) {
           const elements = sliderElements[meta.id]?.[config.key];
           if (!elements) continue;
-          const value = normalizeSliderValue(Number(values[config.key]), config) ?? config.min;
-          if (elements.input !== document.activeElement) {
-            elements.input.value = fmtColorNumber(value, config.decimals);
+          const presentation = getColorSliderPresentation(values[config.key], config);
+          if (!elements.inputController?.isEditing()) {
+            elements.input.value = fmtColorNumber(presentation.value, config.decimals);
           }
-          elements.updateButtonState?.(value);
-          const ratio = Math.max(0, Math.min(1, (value - config.min) / (config.max - config.min)));
-          elements.handle.style.left = `${ratio * 100}%`;
-          elements.hit.setAttribute('aria-valuenow', String(value));
-          elements.hit.setAttribute('aria-valuetext', `${fmtColorNumber(value, config.decimals)}${config.unit || ''}`);
+          elements.updateButtonState?.(presentation.value);
+          elements.handle.style.left = `${presentation.ratio * 100}%`;
+          elements.row.classList.toggle('is-value-outside-range', presentation.isOutsideRange);
+          elements.hit.setAttribute('aria-valuenow', String(presentation.sliderValue));
+          elements.hit.setAttribute('aria-valuetext', `${fmtColorNumber(presentation.value, config.decimals)}${config.unit || ''}`);
         }
       }
 
