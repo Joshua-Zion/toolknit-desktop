@@ -105,6 +105,27 @@ try {
   await collisionWorkbook.xlsx.load(await readFile(collisionPath));
   assert.ok(collisionWorkbook.getWorksheet('Charts'), 'XLSX export is missing the table sheet.');
   assert.ok(collisionWorkbook.getWorksheet('Charts 2'), 'XLSX export did not avoid a duplicate chart sheet name.');
+
+  const cancelledPath = path.join(outputRoot, 'cancelled-before-render.xlsx');
+  const cancellation = new AbortController();
+  await assert.rejects(
+    generateAiTableProject({
+      prompt: '生成一张用于验证取消语义的表格。',
+      output_path: cancelledPath,
+      format: 'xlsx',
+      locale: 'zh-CN',
+      overwrite: false
+    }, {
+      env,
+      fetchImpl,
+      signal: cancellation.signal,
+      reportProgress: value => {
+        if (value === 45) cancellation.abort('Cancelled before local table rendering.');
+      }
+    }),
+    error => error.code === 'CANCELLED'
+  );
+  await assert.rejects(stat(cancelledPath), error => error?.code === 'ENOENT');
 } finally {
   await rm(outputRoot, { recursive: true, force: true });
 }

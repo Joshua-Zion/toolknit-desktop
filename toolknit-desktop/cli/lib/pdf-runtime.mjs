@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PDFDocument } from 'pdf-lib';
-import { ToolKnitError } from './errors.mjs';
+import { cancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 import {
   fileExists,
   fileSize,
@@ -260,8 +260,14 @@ async function resolveQpdf() {
   return process.platform === 'win32' ? 'qpdf.exe' : 'qpdf';
 }
 
-async function runProcess(command, args, input) {
+async function runProcess(command, args, input, options = {}) {
   return new Promise((resolve, reject) => {
+    try {
+      throwIfAborted(options.signal);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     const child = spawn(command, args, {
       shell: false,
       windowsHide: true,
@@ -271,11 +277,36 @@ async function runProcess(command, args, input) {
     const stderr = [];
     let capturedBytes = 0;
     let settled = false;
+    let aborted = false;
+    let forceKillTimer = null;
+    const cleanupAbort = () => {
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+        forceKillTimer = null;
+      }
+      options.signal?.removeEventListener?.('abort', onAbort);
+    };
     const fail = error => {
       if (settled) return;
       settled = true;
+      cleanupAbort();
       reject(error);
     };
+    const onAbort = () => {
+      aborted = true;
+      try { child.stdin.destroy(); } catch {}
+      if (!child.killed) {
+        try { child.kill('SIGTERM'); } catch {}
+        forceKillTimer = setTimeout(() => {
+          try {
+            if (!child.killed) child.kill('SIGKILL');
+          } catch {}
+        }, 2500);
+        forceKillTimer.unref?.();
+      }
+    };
+    options.signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
     const collect = destination => chunk => {
       if (settled) return;
       capturedBytes += chunk.length;
@@ -289,6 +320,10 @@ async function runProcess(command, args, input) {
     child.stdout.on('data', collect(stdout));
     child.stderr.on('data', collect(stderr));
     child.once('error', error => {
+      if (aborted || options.signal?.aborted) {
+        fail(cancellationError(options.signal));
+        return;
+      }
       if (error?.code === 'ENOENT') {
         fail(new ToolKnitError('ENGINE_UNAVAILABLE', 'qpdf is unavailable. Reinstall ToolKnit CLI or configure TOOLKNIT_QPDF_PATH.'));
         return;
@@ -298,6 +333,11 @@ async function runProcess(command, args, input) {
     child.once('close', code => {
       if (settled) return;
       settled = true;
+      cleanupAbort();
+      if (aborted || options.signal?.aborted) {
+        reject(cancellationError(options.signal));
+        return;
+      }
       resolve({ code, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) });
     });
     if (input === undefined) {
@@ -475,7 +515,8 @@ export async function encryptPdfFile(args) {
   return { tool: 'pdf.encrypt', inputs: [{ path: input.path, bytes: input.size }], outputs: [{ path: outputPath, bytes: bytes.length }] };
 }
 
-export async function decryptPdfFile(args) {
+export async function decryptPdfFile(args, options = {}) {
+  throwIfAborted(options.signal);
   assertObject(args, 'arguments');
   assertOnlyKeys(args, new Set(['input_path', 'output_path', 'password', 'overwrite']));
   const inputPath = assertString(args.input_path, 'input_path');
@@ -496,22 +537,28 @@ export async function decryptPdfFile(args) {
   const qpdfArgs = ['--warning-exit-0'];
   if (password.length > 0) qpdfArgs.push('--password-file=-');
   qpdfArgs.push('--decrypt', '--', input.path, prepared.temporaryPath);
-  const output = await runProcess(qpdf, qpdfArgs, password.length > 0 ? `${password}\n` : undefined);
-  if (output.code !== 0) {
+  try {
+    const output = await runProcess(qpdf, qpdfArgs, password.length > 0 ? `${password}\n` : undefined, { signal: options.signal });
+    if (output.code !== 0) {
+      await discardTemporaryOutput(prepared.temporaryPath);
+      throw qpdfError(output, 'PDF decryption');
+    }
+    const pages = await runProcess(qpdf, ['--show-npages', '--', prepared.temporaryPath], undefined, { signal: options.signal });
+    const pageCount = Number.parseInt(pages.stdout.toString('utf8').trim(), 10);
+    if (pages.code !== 0 || !Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > PDF_DECRYPT_LIMITS.maxPages) {
+      await discardTemporaryOutput(prepared.temporaryPath);
+      throw new ToolKnitError('PROCESSING_FAILED', 'PDF decryption produced an invalid output.');
+    }
+    const outputPath = await publishTemporaryOutput(prepared);
+    return { tool: 'pdf.decrypt', inputs: [{ path: input.path, bytes: input.size }], outputs: [{ path: outputPath, pages: pageCount, bytes: await fileSize(outputPath) }] };
+  } catch (error) {
     await discardTemporaryOutput(prepared.temporaryPath);
-    throw qpdfError(output, 'PDF decryption');
+    throw error;
   }
-  const pages = await runProcess(qpdf, ['--show-npages', '--', prepared.temporaryPath]);
-  const pageCount = Number.parseInt(pages.stdout.toString('utf8').trim(), 10);
-  if (pages.code !== 0 || !Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > PDF_DECRYPT_LIMITS.maxPages) {
-    await discardTemporaryOutput(prepared.temporaryPath);
-    throw new ToolKnitError('PROCESSING_FAILED', 'PDF decryption produced an invalid output.');
-  }
-  const outputPath = await publishTemporaryOutput(prepared);
-  return { tool: 'pdf.decrypt', inputs: [{ path: input.path, bytes: input.size }], outputs: [{ path: outputPath, pages: pageCount, bytes: await fileSize(outputPath) }] };
 }
 
-export async function compressPdfFile(args) {
+export async function compressPdfFile(args, options = {}) {
+  throwIfAborted(options.signal);
   assertObject(args, 'arguments');
   assertOnlyKeys(args, new Set(['input_path', 'output_path', 'level', 'overwrite']));
   const input = await inspectPdfInput(assertString(args.input_path, 'input_path'), {
@@ -530,39 +577,44 @@ export async function compressPdfFile(args) {
     overwrite: assertBoolean(args.overwrite, 'overwrite')
   });
   const qpdf = await resolveQpdf();
-  const pages = await runProcess(qpdf, ['--show-npages', '--', input.path]);
-  const pageCount = Number.parseInt(pages.stdout.toString('utf8').trim(), 10);
-  if (pages.code !== 0) throw qpdfError(pages, 'PDF inspection');
-  if (!Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > PDF_COMPRESS_LIMITS.maxPages) {
-    throw new ToolKnitError('INPUT_INVALID', 'PDF page count exceeds the compression limit.');
-  }
-  const qpdfArgs = ['--warning-exit-0', '--object-streams=generate', '--compress-streams=y'];
-  if (level !== 'low') {
-    qpdfArgs.push('--recompress-flate', level === 'high' ? '--compression-level=9' : '--compression-level=6');
-  }
-  qpdfArgs.push('--', input.path, prepared.temporaryPath);
-  const output = await runProcess(qpdf, qpdfArgs);
-  if (output.code !== 0) {
+  try {
+    const pages = await runProcess(qpdf, ['--show-npages', '--', input.path], undefined, { signal: options.signal });
+    const pageCount = Number.parseInt(pages.stdout.toString('utf8').trim(), 10);
+    if (pages.code !== 0) throw qpdfError(pages, 'PDF inspection');
+    if (!Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > PDF_COMPRESS_LIMITS.maxPages) {
+      throw new ToolKnitError('INPUT_INVALID', 'PDF page count exceeds the compression limit.');
+    }
+    const qpdfArgs = ['--warning-exit-0', '--object-streams=generate', '--compress-streams=y'];
+    if (level !== 'low') {
+      qpdfArgs.push('--recompress-flate', level === 'high' ? '--compression-level=9' : '--compression-level=6');
+    }
+    qpdfArgs.push('--', input.path, prepared.temporaryPath);
+    const output = await runProcess(qpdf, qpdfArgs, undefined, { signal: options.signal });
+    if (output.code !== 0) {
+      await discardTemporaryOutput(prepared.temporaryPath);
+      throw qpdfError(output, 'PDF compression');
+    }
+    const check = await runProcess(qpdf, ['--check', prepared.temporaryPath], undefined, { signal: options.signal });
+    if (check.code !== 0) {
+      await discardTemporaryOutput(prepared.temporaryPath);
+      throw new ToolKnitError('PROCESSING_FAILED', 'PDF compression produced an invalid output.');
+    }
+    const compressedBytes = await fileSize(prepared.temporaryPath);
+    if (compressedBytes >= input.size) {
+      await discardTemporaryOutput(prepared.temporaryPath);
+      return {
+        tool: 'pdf.compress',
+        inputs: [{ path: input.path, bytes: input.size }],
+        outputs: [],
+        warnings: ['The optimized PDF was not smaller, so no output file was created.']
+      };
+    }
+    const outputPath = await publishTemporaryOutput(prepared);
+    return { tool: 'pdf.compress', inputs: [{ path: input.path, bytes: input.size }], outputs: [{ path: outputPath, pages: pageCount, bytes: compressedBytes }] };
+  } catch (error) {
     await discardTemporaryOutput(prepared.temporaryPath);
-    throw qpdfError(output, 'PDF compression');
+    throw error;
   }
-  const check = await runProcess(qpdf, ['--check', prepared.temporaryPath]);
-  if (check.code !== 0) {
-    await discardTemporaryOutput(prepared.temporaryPath);
-    throw new ToolKnitError('PROCESSING_FAILED', 'PDF compression produced an invalid output.');
-  }
-  const compressedBytes = await fileSize(prepared.temporaryPath);
-  if (compressedBytes >= input.size) {
-    await discardTemporaryOutput(prepared.temporaryPath);
-    return {
-      tool: 'pdf.compress',
-      inputs: [{ path: input.path, bytes: input.size }],
-      outputs: [],
-      warnings: ['The optimized PDF was not smaller, so no output file was created.']
-    };
-  }
-  const outputPath = await publishTemporaryOutput(prepared);
-  return { tool: 'pdf.compress', inputs: [{ path: input.path, bytes: input.size }], outputs: [{ path: outputPath, pages: pageCount, bytes: compressedBytes }] };
 }
 
 export async function enhancePdfFile(args) {

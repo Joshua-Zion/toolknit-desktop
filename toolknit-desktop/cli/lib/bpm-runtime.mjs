@@ -1,12 +1,16 @@
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import MusicTempo from 'music-tempo';
 import {
+  analyzeAudioKeyPcm,
   analyzeBpmPcm,
+  analyzeMusicTempoPcm,
   BPM_DETECT_LIMITS,
   BpmDetectError,
+  fuseBpmAnalyses,
   isBpmSupportedAudioName
 } from './core/bpm-detect-core.js';
-import { ToolKnitError } from './errors.mjs';
+import { ToolKnitError, throwIfAborted } from './errors.mjs';
 import { compactFfmpegError, parseFfmpegDuration, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
 
 let activeBpmAnalysis = false;
@@ -79,14 +83,15 @@ export async function detectAudioBpm(args, options = {}) {
   }
   activeBpmAnalysis = true;
   try {
+    throwIfAborted(options.signal);
     report(options, 0, 'Validating BPM audio input.');
     const input = await inspectInput(args.input_path);
     const command = await resolveFfmpeg();
-    const engine = await runFfmpeg(command, ['-version']);
+    const engine = await runFfmpeg(command, ['-version'], { signal: options.signal });
     if (engine.code !== 0) throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
 
     report(options, 12, 'Reading audio stream metadata.');
-    const probe = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-i', input.path]);
+    const probe = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-i', input.path], { signal: options.signal });
     const probeOutput = `${probe.stdout}\n${probe.stderr}`;
     const duration = parseFfmpegDuration(probeOutput);
     if (!duration) throw new ToolKnitError('INPUT_INVALID', 'The selected file has no readable audio duration.');
@@ -108,6 +113,7 @@ export async function detectAudioBpm(args, options = {}) {
       '-hide_banner', '-nostdin', '-v', 'error', '-t', String(analysisSeconds), '-i', input.path,
       '-map', '0:a:0', '-ac', '1', '-ar', String(BPM_DETECT_LIMITS.analysisSampleRate), '-f', 'f32le', '-'
     ], {
+      signal: options.signal,
       maxStdoutBytes: expectedBytes + Float32Array.BYTES_PER_ELEMENT,
       onStdout(chunk) {
         emittedBytes += chunk.length;
@@ -118,6 +124,7 @@ export async function detectAudioBpm(args, options = {}) {
         }
       }
     });
+    throwIfAborted(options.signal);
     if (decoded.code !== 0 || decoded.signal || decoded.stdoutTruncated) {
       throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(decoded.stderr, 'FFmpeg could not decode this audio file for BPM analysis.'));
     }
@@ -126,11 +133,21 @@ export async function detectAudioBpm(args, options = {}) {
     }
     const alignedBytes = decoded.stdoutBuffer.length - decoded.stdoutBuffer.length % Float32Array.BYTES_PER_ELEMENT;
     const pcm = new Float32Array(decoded.stdoutBuffer.buffer, decoded.stdoutBuffer.byteOffset, alignedBytes / Float32Array.BYTES_PER_ELEMENT);
+    throwIfAborted(options.signal);
     report(options, 84, 'Estimating beat intervals.');
     let analysis;
-    try { analysis = analyzeBpmPcm(pcm, BPM_DETECT_LIMITS.analysisSampleRate); } catch (error) {
+    let beatrootAnalysis;
+    let keyAnalysis;
+    try {
+      const localAnalysis = analyzeBpmPcm(pcm, BPM_DETECT_LIMITS.analysisSampleRate);
+      beatrootAnalysis = analyzeMusicTempoPcm(pcm, BPM_DETECT_LIMITS.analysisSampleRate, MusicTempo);
+      analysis = fuseBpmAnalyses({ pcmAnalysis: localAnalysis, beatrootAnalysis });
+    } catch (error) {
       if (error instanceof BpmDetectError) throw new ToolKnitError('INPUT_INVALID', error.message);
       throw error;
+    }
+    try { keyAnalysis = analyzeAudioKeyPcm(pcm, BPM_DETECT_LIMITS.analysisSampleRate); } catch {
+      keyAnalysis = { key: null, confidence: 0, candidates: [] };
     }
     report(options, 100, analysis.bpm === null ? 'No reliable BPM was detected.' : `Detected ${analysis.bpm} BPM.`);
     return {
@@ -139,11 +156,15 @@ export async function detectAudioBpm(args, options = {}) {
       analysis: {
         sample_rate: BPM_DETECT_LIMITS.analysisSampleRate,
         analyzed_seconds: Math.round(analysis.analyzedSeconds * 1000) / 1000,
-        max_analysis_seconds: BPM_DETECT_LIMITS.maxAnalysisSeconds
+        max_analysis_seconds: BPM_DETECT_LIMITS.maxAnalysisSeconds,
+        engines: ['local-onset', 'beatroot']
       },
       bpm: analysis.bpm,
       confidence: analysis.confidence,
       candidates: analysis.candidates,
+      key: keyAnalysis.key,
+      key_confidence: keyAnalysis.confidence,
+      key_candidates: keyAnalysis.candidates,
       ...(analysis.bpm === null ? { warnings: ['No reliable beat pattern was found. Try a clearer music or metronome track.'] } : {})
     };
   } finally {

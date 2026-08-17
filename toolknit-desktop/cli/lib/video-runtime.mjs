@@ -2,7 +2,7 @@ import { lstat, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { VIDEO_CONVERT_LIMITS, VideoConvertError, normalizeVideoTargetFormat } from './core/video-convert-core.js';
 import { createAudioTemporaryOutput, discardAudioTemporaryOutput, prepareAudioOutputDirectory, publishAudioTemporaryOutput } from './audio-runtime.mjs';
-import { ToolKnitError } from './errors.mjs';
+import { isCancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 import { compactFfmpegError, parseProgressSeconds, probeFfmpegDuration, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
 
 const SOURCE_EXTENSIONS = new Set(['mp4', 'avi', 'mkv', 'mov', 'webm', 'flv', 'wmv', 'ts', 'm4v']);
@@ -65,7 +65,8 @@ function profileFor(targetFormat) {
 async function convertOne({ command, input, outputDirectory, profile, index, total, options }) {
   const temporary = await createAudioTemporaryOutput(outputDirectory, profile.extension);
   try {
-    const duration = await probeFfmpegDuration(command, input.path);
+    throwIfAborted(options.signal);
+    const duration = await probeFfmpegDuration(command, input.path, { signal: options.signal });
     let progressBuffer = '';
     const result = await runFfmpeg(command, [
       '-hide_banner', '-nostdin', '-y', '-i', input.path,
@@ -74,6 +75,7 @@ async function convertOne({ command, input, outputDirectory, profile, index, tot
       ...profile.videoArgs,
       '-progress', 'pipe:1', '-nostats', temporary.path
     ], {
+      signal: options.signal,
       onStdout(chunk) {
         progressBuffer += chunk.toString('utf8');
         let lineEnd;
@@ -86,6 +88,7 @@ async function convertOne({ command, input, outputDirectory, profile, index, tot
         }
       }
     });
+    throwIfAborted(options.signal);
     if (result.code !== 0 || result.signal) throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(result.stderr, 'FFmpeg could not convert this video.'));
     const metadata = await stat(temporary.path);
     if (!metadata.isFile() || metadata.size < 1) throw new ToolKnitError('PROCESSING_FAILED', 'FFmpeg produced an empty video file.');
@@ -103,22 +106,25 @@ export async function convertVideoBatch(args, options = {}) {
   if (activeVideoBatch) throw new ToolKnitError('PROCESSING_FAILED', 'Another ToolKnit video conversion is already running. Wait for it to finish.');
   activeVideoBatch = true;
   try {
+    throwIfAborted(options.signal);
     report(options, 0, 'Validating video inputs.');
     const inputs = await inspectInputs(args.input_paths);
     if (typeof args.output_dir !== 'string' || !args.output_dir.trim() || args.output_dir.includes('\0')) throw new ToolKnitError('INVALID_ARGUMENT', 'output_dir must be a non-empty path string.');
     const outputDirectory = await prepareAudioOutputDirectory(args.output_dir);
     const profile = profileFor(args.target_format);
     const command = await resolveFfmpeg();
-    if ((await runFfmpeg(command, ['-version'])).code !== 0) throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
+    if ((await runFfmpeg(command, ['-version'], { signal: options.signal })).code !== 0) throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
 
     const outputs = [];
     const errors = [];
     for (const [offset, input] of inputs.entries()) {
+      throwIfAborted(options.signal);
       const index = offset + 1;
       report(options, ((index - 1) / inputs.length) * 96, `Preparing ${index}/${inputs.length}: ${input.name}`);
       try {
         outputs.push(await convertOne({ command, input, outputDirectory, profile, index, total: inputs.length, options }));
       } catch (error) {
+        if (isCancellationError(error) || options.signal?.aborted) throw error;
         const normalized = error instanceof ToolKnitError ? error : new ToolKnitError('PROCESSING_FAILED', 'FFmpeg could not convert this video.');
         errors.push({ input_path: input.path, name: input.name, code: normalized.code, message: normalized.message });
         report(options, (index / inputs.length) * 96, `Failed ${index}/${inputs.length}: ${input.name}`);

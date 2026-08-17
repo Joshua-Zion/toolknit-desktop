@@ -13,7 +13,7 @@ import {
   publishAudioTemporaryOutput,
   sanitizedAudioOutputStem
 } from './audio-runtime.mjs';
-import { ToolKnitError } from './errors.mjs';
+import { isCancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 import { compactFfmpegError, probeFfmpegDuration, parseProgressSeconds, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
 
 let activeAudioClip = false;
@@ -80,7 +80,8 @@ async function inspectInput(inputPath) {
   }
 }
 
-async function trimWithFfmpeg({ command, input, temporaryPath, start, duration, copy, reportProgress }) {
+async function trimWithFfmpeg({ command, input, temporaryPath, start, duration, copy, options, reportProgress }) {
+  throwIfAborted(options.signal);
   let progressBuffer = '';
   const args = [
     '-hide_banner', '-nostdin', '-y', '-i', input.path, '-ss', String(start), '-t', String(duration),
@@ -88,6 +89,7 @@ async function trimWithFfmpeg({ command, input, temporaryPath, start, duration, 
     '-progress', 'pipe:1', '-nostats', temporaryPath
   ];
   const result = await runFfmpeg(command, args, {
+    signal: options.signal,
     onStdout(chunk) {
       progressBuffer += chunk.toString('utf8');
       let lineEnd;
@@ -98,6 +100,7 @@ async function trimWithFfmpeg({ command, input, temporaryPath, start, duration, 
       }
     }
   });
+  throwIfAborted(options.signal);
   if (result.code !== 0 || result.signal) throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(result.stderr, 'FFmpeg could not trim this audio file.'));
   let metadata;
   try { metadata = await stat(temporaryPath); } catch { throw new ToolKnitError('PROCESSING_FAILED', 'FFmpeg completed without producing an audio clip.'); }
@@ -110,16 +113,17 @@ export async function clipAudio(args, options = {}) {
   if (activeAudioClip) throw new ToolKnitError('PROCESSING_FAILED', 'Another ToolKnit audio clip is already running. Wait for it to finish.');
   activeAudioClip = true;
   try {
+    throwIfAborted(options.signal);
     report(options, 0, 'Validating audio clip input.');
     const input = await inspectInput(args.input_path);
     const outputDirectory = await prepareAudioOutputDirectory(args.output_dir);
     const command = await resolveFfmpeg();
-    const engine = await runFfmpeg(command, ['-version']);
+    const engine = await runFfmpeg(command, ['-version'], { signal: options.signal });
     if (engine.code !== 0) throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
 
     report(options, 12, 'Reading audio stream metadata.');
-    const probe = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-i', input.path]);
-    const sourceDuration = await probeFfmpegDuration(command, input.path);
+    const probe = await runFfmpeg(command, ['-hide_banner', '-nostdin', '-i', input.path], { signal: options.signal });
+    const sourceDuration = await probeFfmpegDuration(command, input.path, { signal: options.signal });
     if (!sourceDuration) throw new ToolKnitError('INPUT_INVALID', 'The selected file has no readable audio duration.');
     if (sourceDuration > AUDIO_CLIP_LIMITS.maxDurationSeconds) throw new ToolKnitError('INPUT_INVALID', `Audio clipping supports audio up to ${AUDIO_CLIP_LIMITS.maxDurationSeconds / 60} minutes.`);
     const channels = parseChannelCount(`${probe.stdout}\n${probe.stderr}`);
@@ -139,19 +143,23 @@ export async function clipAudio(args, options = {}) {
       report(options, 28, streamCopy ? 'Trimming audio without re-encoding.' : 'Encoding MP3 audio clip.');
       outputMetadata = await trimWithFfmpeg({
         command, input, temporaryPath: temporary.path, start: selection.start, duration, copy: streamCopy,
+        options,
         reportProgress: value => report(options, value, streamCopy ? 'Trimming audio without re-encoding.' : 'Encoding MP3 audio clip.')
       });
     } catch (error) {
       await discardAudioTemporaryOutput(temporary);
+      if (isCancellationError(error) || options.signal?.aborted) throw error;
       if (forceMp3 || !(error instanceof ToolKnitError && error.code === 'PROCESSING_FAILED')) throw error;
       streamCopy = false;
       temporary = await createAudioTemporaryOutput(outputDirectory, '.mp3');
       report(options, 45, 'Source container cannot be stream-copied; encoding an MP3 clip.');
       outputMetadata = await trimWithFfmpeg({
         command, input, temporaryPath: temporary.path, start: selection.start, duration, copy: false,
+        options,
         reportProgress: value => report(options, value, 'Encoding MP3 audio clip.')
       });
     }
+    throwIfAborted(options.signal);
     report(options, 92, 'Publishing audio clip.');
     const outputPath = await publishAudioTemporaryOutput(temporary, outputDirectory, input.path, streamCopy ? input.extension : '.mp3', outputStem);
     report(options, 100, 'Audio clip completed.');

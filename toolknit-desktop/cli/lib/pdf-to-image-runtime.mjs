@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createCanvas } from '@napi-rs/canvas';
-import { ToolKnitError } from './errors.mjs';
+import { ToolKnitError, throwIfAborted } from './errors.mjs';
 import { inspectPdfInput, readPdfInput } from './fs-safety.mjs';
 
 const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -176,7 +176,8 @@ function encodeCanvas(canvas, formatConfig) {
   }
 }
 
-async function renderPageCanvas(sourcePdf, pagePlan) {
+async function renderPageCanvas(sourcePdf, pagePlan, options = {}) {
+  throwIfAborted(options.signal);
   const page = await sourcePdf.getPage(pagePlan.pageNumber);
   let canvas;
   try {
@@ -192,6 +193,7 @@ async function renderPageCanvas(sourcePdf, pagePlan) {
       transform: [pagePlan.width / viewport.width, 0, 0, pagePlan.height / viewport.height, 0, 0],
       background: '#fff'
     }).promise;
+    throwIfAborted(options.signal);
     return canvas;
   } catch {
     throw new ToolKnitError('PROCESSING_FAILED', `PDF page ${pagePlan.pageNumber} could not be rendered.`);
@@ -200,10 +202,11 @@ async function renderPageCanvas(sourcePdf, pagePlan) {
   }
 }
 
-async function renderOutputCanvas(sourcePdf, output) {
+async function renderOutputCanvas(sourcePdf, output, options = {}) {
   if (output.kind === 'page') {
-    return renderPageCanvas(sourcePdf, output.items[0]);
+    return renderPageCanvas(sourcePdf, output.items[0], options);
   }
+  throwIfAborted(options.signal);
   const canvas = createCanvas(output.width, output.height);
   const context = canvas.getContext('2d');
   if (!context) {
@@ -212,7 +215,8 @@ async function renderOutputCanvas(sourcePdf, output) {
   context.fillStyle = '#fff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   for (const item of output.items) {
-    const pageCanvas = await renderPageCanvas(sourcePdf, item);
+    throwIfAborted(options.signal);
+    const pageCanvas = await renderPageCanvas(sourcePdf, item, options);
     context.drawImage(pageCanvas, item.x, item.y, item.width, item.height);
   }
   return canvas;
@@ -241,6 +245,7 @@ async function publishPreparedOutputs(prepared, outputDirectory) {
 }
 
 export async function convertPdfToImages(args, options = {}) {
+  throwIfAborted(options.signal);
   assertObject(args);
   assertOnlyKeys(args, new Set(['input_path', 'output_dir', 'pages', 'mode', 'format', 'clarity', 'output_name']));
   report(options, 0, 'Validating PDF to image request.');
@@ -274,6 +279,7 @@ export async function convertPdfToImages(args, options = {}) {
       verbosity: 0
     });
     const sourcePdf = await loadingTask.promise;
+    throwIfAborted(options.signal);
     const pageCount = sourcePdf.numPages;
     assertPdfToImagePageCount(pageCount);
     const selectedPages = normalizePages(args.pages, pageCount, mode);
@@ -281,6 +287,7 @@ export async function convertPdfToImages(args, options = {}) {
 
     const metrics = [];
     for (const pageNumber of selectedPages) {
+      throwIfAborted(options.signal);
       const page = await sourcePdf.getPage(pageNumber);
       try {
         const viewport = page.getViewport({ scale: 1 });
@@ -302,8 +309,10 @@ export async function convertPdfToImages(args, options = {}) {
     temporaryDirectory = await mkdtemp(path.join(outputDirectory, '.toolknit-pdf-to-image-'));
     const prepared = [];
     for (const [index, output] of plan.outputs.entries()) {
+      throwIfAborted(options.signal);
       report(options, 15 + (index / plan.outputs.length) * 70, `Rendering PDF image ${index + 1}/${plan.outputs.length}.`);
-      const canvas = await renderOutputCanvas(sourcePdf, output);
+      const canvas = await renderOutputCanvas(sourcePdf, output, options);
+      throwIfAborted(options.signal);
       const bytes = encodeCanvas(canvas, plan.formatConfig);
       if (!Buffer.isBuffer(bytes) || bytes.length < 1) {
         throw new ToolKnitError('PROCESSING_FAILED', 'The image encoder produced an empty output.');
@@ -316,6 +325,7 @@ export async function convertPdfToImages(args, options = {}) {
       }
       prepared.push({ ...output, temporaryPath, bytes: metadata.size });
     }
+    throwIfAborted(options.signal);
     report(options, 88, 'Publishing PDF image outputs.');
     const published = await publishPreparedOutputs(prepared, outputDirectory);
     report(options, 100, 'Published PDF image outputs.');

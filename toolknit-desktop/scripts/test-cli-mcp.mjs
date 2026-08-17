@@ -4,6 +4,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
 import { resolveFfmpeg, runFfmpeg } from '../cli/lib/ffmpeg-runtime.mjs';
 
@@ -43,6 +44,41 @@ async function createPdf(filePath, pages) {
     page.drawText(`ToolKnit CLI test page ${index + 1}`, { x: 24, y: 90, size: 14 });
   }
   await writeFile(filePath, await pdf.save());
+}
+
+const pptPng1x1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+  'base64'
+);
+const pptSvg20x10 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="#333"/></svg>');
+
+async function createPptx(filePath) {
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="svg" ContentType="image/svg+xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+  <Override PartName="/ppt/slides/slide2.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+</Types>`);
+  zip.file('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:sldIdLst><p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst>
+</p:presentation>`);
+  zip.file('ppt/_rels/presentation.xml.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/>
+</Relationships>`);
+  zip.file('ppt/slides/slide1.xml', `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>ToolKnit PPT 文本提取</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Content 1"/><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>本地提取标题、正文和备注。</a:t></a:r></a:p></p:txBody></p:sp><p:pic><a:blip r:embed="rId1"/></p:pic></p:spTree></p:cSld></p:sld>`);
+  zip.file('ppt/slides/_rels/slide1.xml.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/></Relationships>`);
+  zip.file('ppt/slides/slide2.xml', `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Title 1"/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>第二页素材</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Content 1"/><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>用于验证 MCP PPT 文本工具。</a:t></a:r></a:p></p:txBody></p:sp><p:pic><a:blip r:embed="rId1"/></p:pic><p:pic><a:blip r:embed="rId2"/></p:pic></p:spTree></p:cSld></p:sld>`);
+  zip.file('ppt/slides/_rels/slide2.xml.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image2.svg"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/></Relationships>`);
+  zip.file('ppt/media/image1.png', pptPng1x1);
+  zip.file('ppt/media/image2.svg', pptSvg20x10);
+  await writeFile(filePath, await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }));
 }
 
 async function pdfPageCount(filePath) {
@@ -129,9 +165,10 @@ function createMcpClient(environment = {}) {
   });
 
   return {
-    async request(method, params) {
+    request(method, params) {
       const id = nextId++;
       const response = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+      response.requestId = id;
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
       return response;
     },
@@ -153,8 +190,10 @@ let providerServer;
 try {
   const firstPdf = path.join(fixtureDirectory, 'first.pdf');
   const secondPdf = path.join(fixtureDirectory, 'second.pdf');
+  const deckPptx = path.join(fixtureDirectory, 'deck.pptx');
   await createPdf(firstPdf, 2);
   await createPdf(secondPdf, 1);
+  await createPptx(deckPptx);
 
   const pdfHelp = await runCli(['pdf', '--help']);
   assert.equal(pdfHelp.code, 0, pdfHelp.stderr);
@@ -179,11 +218,132 @@ try {
   assert.equal(aliasPdfToImageHelp.code, 0, aliasPdfToImageHelp.stderr);
   assert.equal(aliasPdfToImageHelp.stdout, pdfToImageHelp.stdout);
 
+  const pptHelp = await runCli(['ppt', '--help']);
+  assert.equal(pptHelp.code, 0, pptHelp.stderr);
+  assert.match(pptHelp.stdout, /ToolKnit PPT/);
+  assert.match(pptHelp.stdout, /toolknit ppt images/);
+  assert.match(pptHelp.stdout, /toolknit ppt text/);
+  assert.match(pptHelp.stdout, /toolknit ppt compress/);
+  assert.match(pptHelp.stdout, /toolknit ppt to-pdf/);
+  assert.match(pptHelp.stdout, /toolknit ppt to-image/);
+  assert.match(pptHelp.stdout, /toolknit ppt outline/);
+  assert.match(pptHelp.stdout, /toolknit ppt draft/);
+
+  const pptImagesHelp = await runCli(['ppt', 'images', '--help']);
+  assert.equal(pptImagesHelp.code, 0, pptImagesHelp.stderr);
+  assert.match(pptImagesHelp.stdout, /PPT 图片提取/);
+  assert.match(pptImagesHelp.stdout, /skip-duplicates/);
+
+  const aliasPptImagesHelp = await runCli(['help', 'ppt', 'images']);
+  assert.equal(aliasPptImagesHelp.code, 0, aliasPptImagesHelp.stderr);
+  assert.equal(aliasPptImagesHelp.stdout, pptImagesHelp.stdout);
+
+  const pptTextHelp = await runCli(['ppt', 'text', '--help']);
+  assert.equal(pptTextHelp.code, 0, pptTextHelp.stderr);
+  assert.match(pptTextHelp.stdout, /PPT AI 文本提取/);
+  assert.match(pptTextHelp.stdout, /ai-mode/);
+
+  const pptCompressHelp = await runCli(['ppt', 'compress', '--help']);
+  assert.equal(pptCompressHelp.code, 0, pptCompressHelp.stderr);
+  assert.match(pptCompressHelp.stdout, /PPT 压缩/);
+  assert.match(pptCompressHelp.stdout, /level/);
+
+  const pptToPdfHelp = await runCli(['ppt', 'to-pdf', '--help']);
+  assert.equal(pptToPdfHelp.code, 0, pptToPdfHelp.stderr);
+  assert.match(pptToPdfHelp.stdout, /PPT 转 PDF/);
+  assert.match(pptToPdfHelp.stdout, /LibreOffice/);
+
+  const pptToImageHelp = await runCli(['ppt', 'to-image', '--help']);
+  assert.equal(pptToImageHelp.code, 0, pptToImageHelp.stderr);
+  assert.match(pptToImageHelp.stdout, /PPT 转图片/);
+  assert.match(pptToImageHelp.stdout, /clarity/);
+
+  const pptOutlineHelp = await runCli(['ppt', 'outline', '--help']);
+  assert.equal(pptOutlineHelp.code, 0, pptOutlineHelp.stderr);
+  assert.match(pptOutlineHelp.stdout, /AI 生成 PPT 大纲/);
+  assert.match(pptOutlineHelp.stdout, /slide-count/);
+  assert.match(pptOutlineHelp.stdout, /deck-type/);
+
+  const pptDraftHelp = await runCli(['ppt', 'draft', '--help']);
+  assert.equal(pptDraftHelp.code, 0, pptDraftHelp.stderr);
+  assert.match(pptDraftHelp.stdout, /AI 生成 PPT 草稿/);
+  assert.match(pptDraftHelp.stdout, /outline-file/);
+  assert.match(pptDraftHelp.stdout, /deck-type/);
+
+  const aliasPptTextHelp = await runCli(['help', 'ppt', 'extract-text']);
+  assert.equal(aliasPptTextHelp.code, 0, aliasPptTextHelp.stderr);
+  assert.equal(aliasPptTextHelp.stdout, pptTextHelp.stdout);
+
+  const aliasPptCompressHelp = await runCli(['help', 'ppt', 'compress']);
+  assert.equal(aliasPptCompressHelp.code, 0, aliasPptCompressHelp.stderr);
+  assert.equal(aliasPptCompressHelp.stdout, pptCompressHelp.stdout);
+
+  const aliasPptToPdfHelp = await runCli(['help', 'ppt', 'to-pdf']);
+  assert.equal(aliasPptToPdfHelp.code, 0, aliasPptToPdfHelp.stderr);
+  assert.equal(aliasPptToPdfHelp.stdout, pptToPdfHelp.stdout);
+
+  const aliasPptToImageHelp = await runCli(['help', 'ppt', 'to-image']);
+  assert.equal(aliasPptToImageHelp.code, 0, aliasPptToImageHelp.stderr);
+  assert.equal(aliasPptToImageHelp.stdout, pptToImageHelp.stdout);
+
+  const aliasPptOutlineHelp = await runCli(['help', 'ppt', 'outline']);
+  assert.equal(aliasPptOutlineHelp.code, 0, aliasPptOutlineHelp.stderr);
+  assert.equal(aliasPptOutlineHelp.stdout, pptOutlineHelp.stdout);
+
+  const aliasPptDraftHelp = await runCli(['help', 'ppt', 'draft']);
+  assert.equal(aliasPptDraftHelp.code, 0, aliasPptDraftHelp.stderr);
+  assert.equal(aliasPptDraftHelp.stdout, pptDraftHelp.stdout);
+
+  const hardwareHelp = await runCli(['hardware', '--help']);
+  assert.equal(hardwareHelp.code, 0, hardwareHelp.stderr);
+  assert.match(hardwareHelp.stdout, /ToolKnit 硬件工具/);
+  assert.match(hardwareHelp.stdout, /cpu-memory-live-stats/);
+
+  const hardwareOverviewHelp = await runCli(['hardware', 'overview', '--help']);
+  assert.equal(hardwareOverviewHelp.code, 0, hardwareOverviewHelp.stderr);
+  assert.match(hardwareOverviewHelp.stdout, /硬件总览/);
+
+  const aliasHardwareHelp = await runCli(['help', 'hardware']);
+  assert.equal(aliasHardwareHelp.code, 0, aliasHardwareHelp.stderr);
+  assert.equal(aliasHardwareHelp.stdout, hardwareHelp.stdout);
+
+  if (process.platform === 'win32') {
+    const hardwareOverview = await runCli(['hardware', 'overview', '--json']);
+    assert.equal(hardwareOverview.code, 0, hardwareOverview.stderr);
+    const hardwareOverviewPayload = JSON.parse(hardwareOverview.stdout);
+    assert.equal(hardwareOverviewPayload.ok, true);
+    assert.equal(hardwareOverviewPayload.result.tool, 'hardware.overview');
+    const hardwareStrings = [];
+    const collectHardwareStrings = value => {
+      if (Array.isArray(value)) return value.forEach(collectHardwareStrings);
+      if (value && typeof value === 'object') return Object.values(value).forEach(collectHardwareStrings);
+      if (typeof value === 'string') hardwareStrings.push(value);
+    };
+    collectHardwareStrings(hardwareOverviewPayload.result);
+    assert.ok(hardwareStrings.every(value => value === value.trim()), 'hardware strings must not contain leading or trailing whitespace');
+    assert.ok(hardwareStrings.every(value => !value.includes('\uFFFD')), 'hardware strings must not contain replacement characters');
+    const liveHardware = await runCli(['hardware', 'cpu-memory-live-stats', '--json']);
+    assert.equal(liveHardware.code, 0, liveHardware.stderr);
+    const liveHardwarePayload = JSON.parse(liveHardware.stdout);
+    assert.equal(liveHardwarePayload.ok, true);
+    assert.equal(liveHardwarePayload.result.tool, 'hardware.cpu-memory-live-stats');
+    assert.equal(typeof liveHardwarePayload.result.cpu_usage_percent, 'number');
+  }
+
   const agentGuide = await runCli(['agent', 'guide']);
   assert.equal(agentGuide.code, 0, agentGuide.stderr);
   assert.match(agentGuide.stdout, /ToolKnit AI Agent/);
-  assert.match(agentGuide.stdout, /31 项 ToolKnit 工具/);
+  assert.match(agentGuide.stdout, /46 项 ToolKnit 工具/);
   assert.match(agentGuide.stdout, /toolknit_pdf_to_image/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_images/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_text/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_compress/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_to_pdf/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_to_image/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_outline/);
+  assert.match(agentGuide.stdout, /toolknit_ppt_draft/);
+  assert.match(agentGuide.stdout, /toolknit_hardware_overview/);
+  assert.match(agentGuide.stdout, /toolknit_hardware_cpu_memory_live_stats/);
   assert.match(agentGuide.stdout, /toolknit_ai_document/);
   assert.match(agentGuide.stdout, /toolknit_ai_document_edit/);
   assert.match(agentGuide.stdout, /toolknit_ai_table/);
@@ -202,8 +362,17 @@ try {
   const englishAgentGuide = await runCli(['agent', 'guide', '--lang', 'en']);
   assert.equal(englishAgentGuide.code, 0, englishAgentGuide.stderr);
   assert.match(englishAgentGuide.stdout, /ToolKnit AI Agent Quick Guide/);
-  assert.match(englishAgentGuide.stdout, /31 ToolKnit tools/);
+  assert.match(englishAgentGuide.stdout, /46 ToolKnit tools/);
   assert.match(englishAgentGuide.stdout, /toolknit_pdf_to_image/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_images/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_text/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_compress/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_to_pdf/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_to_image/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_outline/);
+  assert.match(englishAgentGuide.stdout, /toolknit_ppt_draft/);
+  assert.match(englishAgentGuide.stdout, /toolknit_hardware_overview/);
+  assert.match(englishAgentGuide.stdout, /toolknit_hardware_cpu_memory_live_stats/);
   assert.match(englishAgentGuide.stdout, /toolknit_ai_document/);
   assert.match(englishAgentGuide.stdout, /toolknit_ai_document_edit/);
   assert.match(englishAgentGuide.stdout, /toolknit_ai_table/);
@@ -240,7 +409,7 @@ try {
   const aiTableHelp = await runCli(['ai-table', '--help']);
   assert.equal(aiTableHelp.code, 0, aiTableHelp.stderr);
   assert.match(aiTableHelp.stdout, /ToolKnit AI 表格工程/);
-  assert.match(aiTableHelp.stdout, /toolknit ai-table create --prompt-file/);
+  assert.match(aiTableHelp.stdout, /toolknit ai-table create \(--prompt <brief> \| --prompt-file <brief\.txt>\)/);
   assert.match(aiTableHelp.stdout, /preview\\preview\.png/);
 
   const aliasAiTableHelp = await runCli(['help', 'ai-table']);
@@ -254,6 +423,152 @@ try {
   const inspect = await runCli(['pdf', 'inspect', '--input', firstPdf, '--json']);
   assert.equal(inspect.code, 0);
   assert.equal(parseCliJson(inspect).result.input.pages, 2);
+
+  const pdfToImageDirectory = path.join(fixtureDirectory, 'pdf-to-image-cli');
+  const pdfToImageCli = await runCli([
+    'pdf', 'to-image',
+    '--input', firstPdf,
+    '--output-dir', pdfToImageDirectory,
+    '--pages', '2,1',
+    '--mode', 'images',
+    '--format', 'png',
+    '--clarity', 'high',
+    '--output-name', 'cli-pages',
+    '--json'
+  ]);
+  assert.equal(pdfToImageCli.code, 0, pdfToImageCli.stderr);
+  const pdfToImageCliResult = parseCliJson(pdfToImageCli).result;
+  assert.equal(pdfToImageCliResult.tool, 'pdf.to-image');
+  assert.equal(pdfToImageCliResult.mode, 'images');
+  assert.equal(pdfToImageCliResult.output_count, 2);
+  assert.deepEqual(pdfToImageCliResult.selected_pages, [1, 2]);
+  assert.equal(path.basename(pdfToImageCliResult.outputs[0].path), 'cli-pages_page_01.png');
+  assert.ok(await stat(pdfToImageCliResult.outputs[0].path).then(file => file.size > 0));
+
+  const pdfToLongImageDirectory = path.join(fixtureDirectory, 'pdf-to-long-image-cli');
+  const pdfToLongImageCli = await runCli([
+    'pdf', 'to-image',
+    '--input', firstPdf,
+    '--output-dir', pdfToLongImageDirectory,
+    '--pages', '1-2',
+    '--mode', 'long',
+    '--format', 'webp',
+    '--clarity', 'standard',
+    '--output-name', 'cli-long',
+    '--json'
+  ]);
+  assert.equal(pdfToLongImageCli.code, 0, pdfToLongImageCli.stderr);
+  const pdfToLongImageCliResult = parseCliJson(pdfToLongImageCli).result;
+  assert.equal(pdfToLongImageCliResult.tool, 'pdf.to-image');
+  assert.equal(pdfToLongImageCliResult.mode, 'long');
+  assert.equal(pdfToLongImageCliResult.output_count, 1);
+  assert.deepEqual(pdfToLongImageCliResult.selected_pages, [1, 2]);
+  assert.equal(path.basename(pdfToLongImageCliResult.outputs[0].path), 'cli-long_long_01_pages_01_02.webp');
+  assert.ok(await stat(pdfToLongImageCliResult.outputs[0].path).then(file => file.size > 0));
+
+  const pptImagesDryRun = await runCli([
+    'ppt', 'images',
+    '--input', deckPptx,
+    '--output-dir', path.join(fixtureDirectory, 'ppt-images-dry-run'),
+    '--images', '1,3',
+    '--skip-duplicates',
+    '--dry-run',
+    '--json'
+  ]);
+  assert.equal(pptImagesDryRun.code, 0, pptImagesDryRun.stderr);
+  const pptImagesDryRunResult = parseCliJson(pptImagesDryRun).result;
+  assert.equal(pptImagesDryRunResult.tool, 'ppt.images');
+  assert.equal(pptImagesDryRunResult.dry_run, true);
+  assert.equal(pptImagesDryRunResult.image_count, 3);
+  assert.equal(pptImagesDryRunResult.selected_count, 1);
+
+  const pptImagesDirectory = path.join(fixtureDirectory, 'ppt-images-cli');
+  const pptImagesCli = await runCli([
+    'ppt', 'images',
+    '--input', deckPptx,
+    '--output-dir', pptImagesDirectory,
+    '--pages', '2',
+    '--skip-duplicates',
+    '--output-name', 'deck-assets',
+    '--json'
+  ]);
+  assert.equal(pptImagesCli.code, 0, pptImagesCli.stderr);
+  const pptImagesCliResult = parseCliJson(pptImagesCli).result;
+  assert.equal(pptImagesCliResult.tool, 'ppt.images');
+  assert.equal(pptImagesCliResult.dry_run, false);
+  assert.equal(pptImagesCliResult.output_count, 1);
+  assert.equal(path.basename(pptImagesCliResult.outputs[0].path), 'slide_02_image_002.svg');
+  assert.ok(await stat(pptImagesCliResult.outputs[0].path).then(file => file.size > 0));
+  assert.ok(await stat(pptImagesCliResult.manifest_paths.json).then(file => file.size > 0));
+
+  const pptTextDryRun = await runCli([
+    'ppt', 'text',
+    '--input', deckPptx,
+    '--output-dir', path.join(fixtureDirectory, 'ppt-text-dry-run'),
+    '--pages', '1',
+    '--format', 'all',
+    '--dry-run',
+    '--json'
+  ]);
+  assert.equal(pptTextDryRun.code, 0, pptTextDryRun.stderr);
+  const pptTextDryRunResult = parseCliJson(pptTextDryRun).result;
+  assert.equal(pptTextDryRunResult.tool, 'ppt.text');
+  assert.equal(pptTextDryRunResult.dry_run, true);
+  assert.equal(pptTextDryRunResult.selected_count, 1);
+  assert.equal(pptTextDryRunResult.selected_slides[0].title, 'ToolKnit PPT 文本提取');
+
+  const pptTextDirectory = path.join(fixtureDirectory, 'ppt-text-cli');
+  const pptTextCli = await runCli([
+    'ppt', 'text',
+    '--input', deckPptx,
+    '--output-dir', pptTextDirectory,
+    '--pages', '2',
+    '--format', 'json',
+    '--output-name', 'deck-text',
+    '--json'
+  ]);
+  assert.equal(pptTextCli.code, 0, pptTextCli.stderr);
+  const pptTextCliResult = parseCliJson(pptTextCli).result;
+  assert.equal(pptTextCliResult.tool, 'ppt.text');
+  assert.equal(pptTextCliResult.dry_run, false);
+  assert.equal(pptTextCliResult.selected_count, 1);
+  assert.equal(pptTextCliResult.outputs.some(output => output.relative_path === 'slides.json'), true);
+  assert.ok(await stat(pptTextCliResult.manifest_paths.json).then(file => file.size > 0));
+
+  const pptOutlineDryRun = await runCli([
+    'ppt', 'outline',
+    '--prompt', '根据 ToolKnit 2.0 的 PPT 工具规划生成 5 页演示大纲。',
+    '--output-dir', path.join(fixtureDirectory, 'ppt-outline-dry-run'),
+    '--slide-count', '5',
+    '--deck-type', 'product-launch',
+    '--audience', '开源用户',
+    '--dry-run',
+    '--json'
+  ], { environment: { DEEPSEEK_API_KEY: '' } });
+  assert.equal(pptOutlineDryRun.code, 0, pptOutlineDryRun.stderr);
+  const pptOutlineDryRunResult = parseCliJson(pptOutlineDryRun).result;
+  assert.equal(pptOutlineDryRunResult.tool, 'ppt.outline');
+  assert.equal(pptOutlineDryRunResult.dry_run, true);
+  assert.equal(pptOutlineDryRunResult.plan.slide_count, 5);
+  assert.equal(pptOutlineDryRunResult.plan.deck_type, 'product-launch');
+  assert.equal(pptOutlineDryRunResult.plan.schema_version, 2);
+
+  const pptDraftDryRun = await runCli([
+    'ppt', 'draft',
+    '--prompt', '根据 ToolKnit 2.0 的 PPT 工具规划生成 5 页可编辑 PPTX 草稿。',
+    '--output-dir', path.join(fixtureDirectory, 'ppt-draft-dry-run'),
+    '--slide-count', '5',
+    '--deck-type', 'product-launch',
+    '--theme', 'minimal-mono',
+    '--dry-run',
+    '--json'
+  ], { environment: { DEEPSEEK_API_KEY: '' } });
+  assert.equal(pptDraftDryRun.code, 0, pptDraftDryRun.stderr);
+  const pptDraftDryRunResult = parseCliJson(pptDraftDryRun).result;
+  assert.equal(pptDraftDryRunResult.tool, 'ppt.draft');
+  assert.equal(pptDraftDryRunResult.dry_run, true);
+  assert.equal(pptDraftDryRunResult.plan.deck_type, 'product-launch');
+  assert.equal(pptDraftDryRunResult.plan.theme, 'minimal-mono');
 
   const forcedBanner = await runCli(['pdf', 'inspect', '--input', firstPdf, '--banner=always']);
   assert.equal(forcedBanner.code, 0, forcedBanner.stderr);
@@ -500,6 +815,7 @@ try {
     ]
   };
   let providerAuthorization = '';
+  let delayedProviderResponse = false;
   providerServer = createServer((request, response) => {
     providerAuthorization = String(request.headers.authorization || '');
     const chunks = [];
@@ -513,7 +829,13 @@ try {
       const content = isTableRequest
         ? generatedTable
         : generatedLayout;
-      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }));
+      const send = () => response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }));
+      if (delayedProviderResponse) {
+        delayedProviderResponse = false;
+        setTimeout(send, 3_000);
+      } else {
+        send();
+      }
     });
   });
   await new Promise(resolve => providerServer.listen(0, '127.0.0.1', resolve));
@@ -575,10 +897,28 @@ try {
   assert.match(initialize.result.instructions, /workspace root/i);
   assert.match(initialize.result.instructions, /per-page high-resolution numbered map/i);
   assert.match(initialize.result.instructions, /stable row, column, and chart numbers/i);
+  assert.match(initialize.result.instructions, /PPT to PDF/i);
+  assert.match(initialize.result.instructions, /PPT to image/i);
+  assert.match(initialize.result.instructions, /hardware inspection/i);
   client.notify('notifications/initialized');
   const listed = await client.request('tools/list', {});
-  assert.equal(listed.result.tools.length, 31);
+  assert.equal(listed.result.tools.length, 46);
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_pdf_to_image'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_images'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_text'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_compress'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_to_pdf'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_to_image'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_outline'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_ppt_draft'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_overview'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_cpu_memory'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_cpu_memory_live_stats'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_gpu_display'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_mainboard_firmware'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_storage_health'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_network_devices'));
+  assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_hardware_power_sensors'));
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_pdf_merge'));
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_pdf_enhance'));
   assert.ok(listed.result.tools.some(tool => tool.name === 'toolknit_audio_convert'));
@@ -606,6 +946,69 @@ try {
   const aiEditDefinition = listed.result.tools.find(tool => tool.name === 'toolknit_ai_document_edit');
   assert.equal(aiEditDefinition.inputSchema.properties.operations.items.additionalProperties, false);
   assert.match(aiEditDefinition.inputSchema.properties.operations.items.properties.control.anyOf[1].properties.source_path.description, /absolute path/i);
+
+  delayedProviderResponse = true;
+  const mcpCancellation = client.request('tools/call', {
+    name: 'toolknit_ppt_outline',
+    arguments: {
+      prompt: 'CANCEL_MCP_REQUEST: 生成一页 ToolKnit 测试大纲。',
+      output_dir: path.join(fixtureDirectory, 'mcp-cancel-outline'),
+      slide_count: 3,
+      locale: 'zh-CN'
+    },
+    _meta: { progressToken: 'mcp-cancel-test' }
+  });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  client.notify('notifications/cancelled', {
+    requestId: mcpCancellation.requestId,
+    reason: 'User cancelled this MCP request.'
+  });
+  const mcpCancellationResult = await mcpCancellation;
+  assert.equal(mcpCancellationResult.result.isError, true, mcpCancellationResult.result.content?.[0]?.text);
+  assert.equal(mcpCancellationResult.result.structuredContent.error.code, 'CANCELLED');
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'mcp-cancel-test' && message.params.progress === 100));
+
+  delayedProviderResponse = true;
+  const mcpDocumentCancellation = client.request('tools/call', {
+    name: 'toolknit_ai_document',
+    arguments: {
+      prompt: 'CANCEL_MCP_DOCUMENT: 生成四页 ToolKnit 测试文档。',
+      output_path: path.join(fixtureDirectory, 'mcp-cancel-document.pdf'),
+      page_count: 4,
+      locale: 'zh-CN'
+    },
+    _meta: { progressToken: 'mcp-cancel-document-test' }
+  });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  client.notify('notifications/cancelled', {
+    requestId: mcpDocumentCancellation.requestId,
+    reason: 'User cancelled the document request.'
+  });
+  const mcpDocumentCancellationResult = await mcpDocumentCancellation;
+  assert.equal(mcpDocumentCancellationResult.result.isError, true, mcpDocumentCancellationResult.result.content?.[0]?.text);
+  assert.equal(mcpDocumentCancellationResult.result.structuredContent.error.code, 'CANCELLED');
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'mcp-cancel-document-test' && message.params.progress === 100));
+
+  delayedProviderResponse = true;
+  const mcpTableCancellation = client.request('tools/call', {
+    name: 'toolknit_ai_table',
+    arguments: {
+      prompt: 'CANCEL_MCP_TABLE: 生成一份 ToolKnit 测试表格。',
+      output_path: path.join(fixtureDirectory, 'mcp-cancel-table.xlsx'),
+      format: 'xlsx',
+      locale: 'zh-CN'
+    },
+    _meta: { progressToken: 'mcp-cancel-table-test' }
+  });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  client.notify('notifications/cancelled', {
+    requestId: mcpTableCancellation.requestId,
+    reason: 'User cancelled the table request.'
+  });
+  const mcpTableCancellationResult = await mcpTableCancellation;
+  assert.equal(mcpTableCancellationResult.result.isError, true, mcpTableCancellationResult.result.content?.[0]?.text);
+  assert.equal(mcpTableCancellationResult.result.structuredContent.error.code, 'CANCELLED');
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'mcp-cancel-table-test' && message.params.progress === 100));
 
   const mcpBpm = await client.request('tools/call', {
     name: 'toolknit_audio_bpm',
@@ -690,6 +1093,138 @@ try {
   assert.equal(path.basename(mcpStitch.result.structuredContent.result.output_path), 'mcp-long-strip.jpg');
   assert.ok(await stat(mcpStitch.result.structuredContent.result.output_path).then(file => file.size > 0));
   assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'stitch-test' && message.params.progress === 100));
+
+  const mcpPptImagesDir = path.join(fixtureDirectory, 'mcp-ppt-images');
+  const mcpPptImages = await client.request('tools/call', {
+    name: 'toolknit_ppt_images',
+    _meta: { progressToken: 'ppt-images-test' },
+    arguments: {
+      input_path: deckPptx,
+      output_dir: mcpPptImagesDir,
+      pages: [2],
+      skip_duplicates: true,
+      output_name: 'mcp-deck-assets'
+    }
+  });
+  assert.equal(mcpPptImages.result.isError, false, mcpPptImages.result.content[0].text);
+  assert.equal(mcpPptImages.result.structuredContent.result.tool, 'ppt.images');
+  assert.equal(mcpPptImages.result.structuredContent.result.output_count, 1);
+  assert.equal(path.basename(mcpPptImages.result.structuredContent.result.outputs[0].path), 'slide_02_image_002.svg');
+  assert.ok(await stat(mcpPptImages.result.structuredContent.result.outputs[0].path).then(file => file.size > 0));
+  assert.ok(await stat(mcpPptImages.result.structuredContent.result.manifest_paths.json).then(file => file.size > 0));
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-images-test' && message.params.progress === 100));
+
+  const mcpPptTextDir = path.join(fixtureDirectory, 'mcp-ppt-text');
+  const mcpPptText = await client.request('tools/call', {
+    name: 'toolknit_ppt_text',
+    _meta: { progressToken: 'ppt-text-test' },
+    arguments: {
+      input_path: deckPptx,
+      output_dir: mcpPptTextDir,
+      pages: [1],
+      format: 'json',
+      output_name: 'mcp-deck-text'
+    }
+  });
+  assert.equal(mcpPptText.result.isError, false, mcpPptText.result.content[0].text);
+  assert.equal(mcpPptText.result.structuredContent.result.tool, 'ppt.text');
+  assert.equal(mcpPptText.result.structuredContent.result.selected_count, 1);
+  assert.equal(mcpPptText.result.structuredContent.result.selected_slides[0].title, 'ToolKnit PPT 文本提取');
+  assert.ok(await stat(mcpPptText.result.structuredContent.result.outputs[0].path).then(file => file.size > 0));
+  assert.ok(await stat(mcpPptText.result.structuredContent.result.manifest_paths.json).then(file => file.size > 0));
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-text-test' && message.params.progress === 100));
+
+  const mcpPptCompressDir = path.join(fixtureDirectory, 'mcp-ppt-compress');
+  const mcpPptCompress = await client.request('tools/call', {
+    name: 'toolknit_ppt_compress',
+    _meta: { progressToken: 'ppt-compress-test' },
+    arguments: {
+      input_path: deckPptx,
+      output_dir: mcpPptCompressDir,
+      level: 'medium',
+      output_name: 'mcp-deck-compressed'
+    }
+  });
+  assert.equal(mcpPptCompress.result.isError, false, mcpPptCompress.result.content[0].text);
+  assert.equal(mcpPptCompress.result.structuredContent.result.tool, 'ppt.compress');
+  assert.equal(mcpPptCompress.result.structuredContent.result.output_file, 'mcp-deck-compressed_compressed.pptx');
+  assert.ok(await stat(mcpPptCompress.result.structuredContent.result.output_path).then(file => file.size > 0));
+  assert.ok(await stat(mcpPptCompress.result.structuredContent.result.manifest_path).then(file => file.size > 0));
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-compress-test' && message.params.progress === 100));
+
+  const mcpPptToPdf = await client.request('tools/call', {
+    name: 'toolknit_ppt_to_pdf',
+    _meta: { progressToken: 'ppt-to-pdf-test' },
+    arguments: {
+      input_path: deckPptx,
+      output_dir: path.join(fixtureDirectory, 'mcp-ppt-to-pdf'),
+      dry_run: true,
+      output_name: 'mcp-deck-pdf'
+    }
+  });
+  assert.equal(mcpPptToPdf.result.isError, false, mcpPptToPdf.result.content[0].text);
+  assert.equal(mcpPptToPdf.result.structuredContent.result.tool, 'ppt.to-pdf');
+  assert.equal(mcpPptToPdf.result.structuredContent.result.dry_run, true);
+  assert.equal(mcpPptToPdf.result.structuredContent.result.output_file, 'mcp-deck-pdf.pdf');
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-to-pdf-test' && message.params.progress === 100));
+
+  const mcpPptToImage = await client.request('tools/call', {
+    name: 'toolknit_ppt_to_image',
+    _meta: { progressToken: 'ppt-to-image-test' },
+    arguments: {
+      input_path: deckPptx,
+      output_dir: path.join(fixtureDirectory, 'mcp-ppt-to-image'),
+      pages: [1, 2],
+      format: 'png',
+      clarity: 'high',
+      dry_run: true,
+      output_name: 'mcp-deck-pages'
+    }
+  });
+  assert.equal(mcpPptToImage.result.isError, false, mcpPptToImage.result.content[0].text);
+  assert.equal(mcpPptToImage.result.structuredContent.result.tool, 'ppt.to-image');
+  assert.equal(mcpPptToImage.result.structuredContent.result.dry_run, true);
+  assert.deepEqual(mcpPptToImage.result.structuredContent.result.selected_pages, [1, 2]);
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-to-image-test' && message.params.progress === 100));
+
+  const mcpPptOutline = await client.request('tools/call', {
+    name: 'toolknit_ppt_outline',
+    _meta: { progressToken: 'ppt-outline-test' },
+    arguments: {
+      prompt: '根据 ToolKnit 2.0 PPT 工具规划，生成 5 页面向开源用户的演示大纲。',
+      output_dir: path.join(fixtureDirectory, 'mcp-ppt-outline'),
+      slide_count: 5,
+      deck_type: 'product-launch',
+      audience: '开源用户',
+      purpose: '介绍 ToolKnit 2.0 PPT 自动化能力',
+      dry_run: true
+    }
+  });
+  assert.equal(mcpPptOutline.result.isError, false, mcpPptOutline.result.content[0].text);
+  assert.equal(mcpPptOutline.result.structuredContent.result.tool, 'ppt.outline');
+  assert.equal(mcpPptOutline.result.structuredContent.result.dry_run, true);
+  assert.equal(mcpPptOutline.result.structuredContent.result.plan.slide_count, 5);
+  assert.equal(mcpPptOutline.result.structuredContent.result.plan.deck_type, 'product-launch');
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-outline-test' && message.params.progress === 100));
+
+  const mcpPptDraft = await client.request('tools/call', {
+    name: 'toolknit_ppt_draft',
+    _meta: { progressToken: 'ppt-draft-test' },
+    arguments: {
+      prompt: '根据 ToolKnit 2.0 PPT 工具规划，生成 5 页可编辑 PPTX 草稿。',
+      output_dir: path.join(fixtureDirectory, 'mcp-ppt-draft'),
+      slide_count: 5,
+      deck_type: 'product-launch',
+      theme: 'minimal-mono',
+      dry_run: true
+    }
+  });
+  assert.equal(mcpPptDraft.result.isError, false, mcpPptDraft.result.content[0].text);
+  assert.equal(mcpPptDraft.result.structuredContent.result.tool, 'ppt.draft');
+  assert.equal(mcpPptDraft.result.structuredContent.result.dry_run, true);
+  assert.equal(mcpPptDraft.result.structuredContent.result.plan.deck_type, 'product-launch');
+  assert.equal(mcpPptDraft.result.structuredContent.result.plan.theme, 'minimal-mono');
+  assert.ok(client.notifications.some(message => message.method === 'notifications/progress' && message.params.progressToken === 'ppt-draft-test' && message.params.progress === 100));
 
   const mcpInspect = await client.request('tools/call', { name: 'toolknit_pdf_inspect', arguments: { input_path: firstPdf } });
   assert.equal(mcpInspect.result.isError, false);

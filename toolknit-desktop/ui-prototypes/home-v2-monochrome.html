@@ -1,0 +1,2211 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ToolKnit 2.0 - Monochrome Home Prototype</title>
+    <style>
+      @font-face {
+        font-family: "ToolKnitCN";
+        src: url("/assets/fonts/Alibaba-PuHuiTi-Heavy.ttf") format("truetype");
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ToolKnitEN";
+        src: url("/assets/fonts/BebasNeue-1.otf") format("opentype");
+        font-display: swap;
+      }
+
+      :root {
+        color-scheme: dark;
+        --bg: #060607;
+        --panel: rgba(14, 14, 16, 0.72);
+        --ink: #f5f5f3;
+        --muted: #8b8b87;
+        --quiet: #5b5b58;
+        --line: rgba(255, 255, 255, 0.06);
+        --line-strong: rgba(255, 255, 255, 0.16);
+        --white: #f2f2ef;
+        --black: #0a0a0a;
+        --radius: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        text-rendering: geometricPrecision;
+        letter-spacing: 0;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .text-cn,
+      .hero-title-sub,
+      .hero-desc,
+      .hero-support-note,
+      .github-intro strong,
+      .section-heading h2,
+      .section-heading p,
+      .favorite-name,
+      .favorite-desc,
+      .tool-finder-title,
+      .tool-finder-subtitle,
+      .home-search-field input,
+      .category-chip,
+      .tool-result-name,
+      .tool-result-desc,
+      .tool-category strong,
+      .support-copy h3,
+      .support-copy p,
+      .qr-image-wrap strong,
+      .toast,
+      .dialog-header h2,
+      .nav-link span,
+      .support-top span,
+      .primary-action span,
+      .secondary-action span,
+      .manage-favorites span {
+        font-family: "ToolKnitCN", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+        letter-spacing: 0;
+      }
+
+      .text-en-display,
+      .brand-name,
+      .hero-title-brand {
+        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        letter-spacing: 0;
+      }
+
+      .text-en,
+      .brand-version,
+      .eyebrow,
+      .hero-meta,
+      .github-intro span,
+      .github-stat span,
+      .section-index,
+      .favorite-category,
+      .loop-caption,
+      .loop-badge,
+      .footer-note,
+      .tool-category span,
+      .support-copy small {
+        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .payment-tab {
+        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        letter-spacing: 0;
+      }
+
+      .shader-bg,
+      .shader-overlay {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .shader-bg {
+        z-index: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .shader-overlay {
+        z-index: 1;
+        background:
+          radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.07), transparent 24%),
+          radial-gradient(circle at 84% 22%, rgba(255, 255, 255, 0.04), transparent 22%),
+          radial-gradient(circle at 52% 72%, rgba(255, 255, 255, 0.05), transparent 28%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 22%, rgba(0, 0, 0, 0.28));
+        mix-blend-mode: screen;
+        opacity: 0.72;
+      }
+
+      button,
+      input,
+      a {
+        font: inherit;
+        letter-spacing: 0;
+      }
+
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--white);
+        outline-offset: 3px;
+      }
+
+      .app-shell {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+        height: 100%;
+        min-width: 880px;
+        display: grid;
+        grid-template-rows: 68px minmax(0, 1fr);
+        background: rgba(6, 6, 7, 0.5);
+        backdrop-filter: blur(16px);
+      }
+
+      .topbar {
+        position: relative;
+        z-index: 20;
+        display: grid;
+        grid-template-columns: 270px 1fr;
+        align-items: center;
+        gap: 24px;
+        min-height: 68px;
+        padding: 0 28px;
+        background: rgba(8, 8, 9, 0.52);
+        backdrop-filter: blur(24px);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 11px;
+        color: var(--ink);
+        text-decoration: none;
+        width: fit-content;
+      }
+
+      .brand img {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        filter: grayscale(1) contrast(1.12) brightness(1.02);
+      }
+
+      .brand-name {
+        font-size: 22px;
+        font-weight: 400;
+        line-height: 1;
+      }
+
+      .brand-version {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 7px;
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .nav-link,
+      .icon-button,
+      .window-button {
+        border: 0;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .nav-link {
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 400;
+        text-decoration: none;
+        transition: color 150ms ease, background 150ms ease;
+      }
+
+      .nav-link:hover {
+        color: var(--ink);
+        background: #151515;
+      }
+
+      .nav-link svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        justify-self: end;
+      }
+
+      .window-cluster {
+        width: 155px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 2px;
+      }
+
+      .support-top {
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 13px;
+        border: 1px solid var(--white);
+        border-radius: 6px;
+        color: var(--black);
+        background: var(--white);
+        font-size: 14px;
+        font-weight: 400;
+        cursor: pointer;
+        transition: transform 150ms ease, background 150ms ease;
+      }
+
+      .support-top:hover {
+        background: #ffffff;
+        transform: translateY(-1px);
+      }
+
+      .support-top svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      .icon-button,
+      .window-button {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        transition: color 150ms ease, background 150ms ease;
+      }
+
+      .icon-button:hover,
+      .window-button:hover {
+        color: var(--ink);
+        background: #171717;
+      }
+
+      .icon-button svg,
+      .window-button svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .window-controls {
+        display: flex;
+        align-items: center;
+      }
+
+      .workspace {
+        min-height: 0;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #3b3b38 transparent;
+      }
+
+      .workspace::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .workspace::-webkit-scrollbar-thumb {
+        background: #343431;
+      }
+
+      .content-wrap {
+        width: min(1480px, 100%);
+        margin: 0 auto;
+        padding: 26px 40px 48px;
+      }
+
+      .hero {
+        min-height: 448px;
+        display: grid;
+        grid-template-columns: minmax(470px, 1.05fr) minmax(400px, 0.95fr);
+        align-items: center;
+        gap: 44px;
+      }
+
+      .hero-copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+        padding: 64px 16px 64px 0;
+      }
+
+      .eyebrow {
+        margin: 0 0 25px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .hero h1 {
+        margin: 0;
+        color: var(--white);
+        display: grid;
+        gap: 12px;
+        max-width: 680px;
+      }
+
+      .hero-title-brand {
+        font-size: clamp(58px, 6.9vw, 84px);
+        font-weight: 400;
+        line-height: 0.82;
+        color: var(--white);
+        text-shadow: 0 0 28px rgba(255, 255, 255, 0.03);
+      }
+
+      .hero-title-sub {
+        color: var(--muted);
+        font-size: 15px;
+        font-weight: 400;
+        line-height: 1.65;
+      }
+
+      .hero-desc {
+        max-width: 530px;
+        margin: 26px 0 0;
+        color: #b1b0aa;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 1.86;
+      }
+
+      .hero-actions {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 34px;
+      }
+
+      .primary-action,
+      .secondary-action {
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        padding: 0 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 400;
+        cursor: pointer;
+        text-decoration: none;
+        transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+      }
+
+      .primary-action {
+        border: 1px solid var(--white);
+        color: var(--black);
+        background: var(--white);
+      }
+
+      .secondary-action {
+        border: 1px solid var(--line-strong);
+        color: var(--ink);
+        background: transparent;
+      }
+
+      .primary-action:hover,
+      .secondary-action:hover {
+        transform: translateY(-1px);
+      }
+
+      .secondary-action:hover {
+        border-color: #74746f;
+        background: #111111;
+      }
+
+      .primary-action svg,
+      .secondary-action svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .hero-support-note {
+        max-width: 560px;
+        margin: 24px 0 0;
+        color: rgba(245, 245, 243, 0.76);
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.9;
+      }
+
+      .hero-support-note strong {
+        color: var(--ink);
+        font-weight: 400;
+      }
+
+      .hero-meta {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        margin-top: 24px;
+        color: var(--quiet);
+        font-size: 12px;
+      }
+
+      .hero-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .hero-meta span::before {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border: 1px solid #6a6a66;
+        border-radius: 50%;
+      }
+
+      .weave-stage {
+        position: relative;
+        min-width: 0;
+        height: 380px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+          rgba(8, 8, 9, 0.48);
+        backdrop-filter: blur(16px);
+      }
+
+      .loop-stage {
+        position: absolute;
+        inset: 20px 24px 24px;
+        border-radius: 20px;
+        overflow: hidden;
+      }
+
+      .loop-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        filter: grayscale(1) contrast(1.1) brightness(0.9) saturate(0);
+        opacity: 1;
+        transform: scale(1.035);
+        pointer-events: none;
+      }
+
+      .loop-stage::before,
+      .loop-stage::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .loop-stage::before {
+        background:
+          radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.03), transparent 26%),
+          radial-gradient(circle at 72% 66%, rgba(255, 255, 255, 0.03), transparent 22%),
+          linear-gradient(135deg, rgba(255, 255, 255, 0.016), transparent 42%, rgba(255, 255, 255, 0.01));
+        opacity: 0.72;
+      }
+
+      .loop-stage::after {
+        background:
+          linear-gradient(140deg, rgba(255, 255, 255, 0.024), transparent 36%, rgba(255, 255, 255, 0.01));
+        opacity: 0.22;
+      }
+
+      .loop-ring {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: min(76%, 360px);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        transform: translate(-50%, -50%);
+      }
+
+      .loop-ring::before,
+      .loop-ring::after {
+        content: '';
+        position: absolute;
+        inset: -14px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        animation: ringPulse 8s ease-in-out infinite;
+      }
+
+      .loop-ring::after {
+        inset: 16px;
+        animation-delay: -4s;
+      }
+
+      .loop-trace {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: min(88%, 440px);
+        height: 180px;
+        transform: translate(-50%, -50%);
+        border-radius: 999px;
+        background:
+          radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.58), transparent 8%),
+          radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.15), transparent 58%),
+          radial-gradient(circle at 82% 50%, rgba(255, 255, 255, 0.44), transparent 10%);
+        filter: blur(10px);
+        opacity: 0.55;
+        animation: traceFloat 9s ease-in-out infinite;
+      }
+
+      .loop-node {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--white);
+        box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.06), 0 0 30px rgba(255, 255, 255, 0.18);
+        animation: nodeOrbit 12s linear infinite;
+      }
+
+      .loop-node::before {
+        content: '';
+        position: absolute;
+        inset: -8px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        animation: nodePulse 3.8s ease-in-out infinite;
+      }
+
+      .loop-node-a { left: 18%; top: 30%; animation-duration: 11s; animation-delay: -1s; }
+      .loop-node-b { right: 18%; top: 58%; animation-duration: 14s; animation-delay: -5s; background: #e0e0dc; }
+      .loop-node-c { left: 52%; bottom: 16%; animation-duration: 9s; animation-delay: -3s; width: 11px; height: 11px; }
+
+      .loop-badge {
+        position: absolute;
+        right: 26px;
+        top: 26px;
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        color: #c8c8c5;
+        font-size: 11px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      @keyframes ringPulse {
+        0%, 100% { transform: scale(0.96); opacity: 0.46; }
+        50% { transform: scale(1.05); opacity: 0.9; }
+      }
+
+      @keyframes traceFloat {
+        0%, 100% { transform: translate(-50%, -50%) rotate(-6deg) scale(0.97); opacity: 0.45; }
+        50% { transform: translate(-50%, -50%) rotate(9deg) scale(1.03); opacity: 0.68; }
+      }
+
+      @keyframes nodeOrbit {
+        0% { transform: translate3d(0, 0, 0) rotate(0deg) translateX(0) rotate(0deg); }
+        25% { transform: translate3d(0, 0, 0) rotate(90deg) translateX(6px) rotate(-90deg); }
+        50% { transform: translate3d(0, 0, 0) rotate(180deg) translateX(0) rotate(-180deg); }
+        75% { transform: translate3d(0, 0, 0) rotate(270deg) translateX(-6px) rotate(-270deg); }
+        100% { transform: translate3d(0, 0, 0) rotate(360deg) translateX(0) rotate(-360deg); }
+      }
+
+      @keyframes nodePulse {
+        0%, 100% { transform: scale(0.82); opacity: 0.36; }
+        50% { transform: scale(1.12); opacity: 0.9; }
+      }
+
+      .github-strip {
+        min-height: 96px;
+        display: grid;
+        grid-template-columns: minmax(250px, 1.2fr) repeat(3, minmax(118px, 0.45fr)) auto;
+        align-items: center;
+        gap: 16px;
+        padding: 22px 22px;
+        border: 1px solid rgba(255, 255, 255, 0.045);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.018);
+      }
+
+      .github-intro {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        min-width: 0;
+      }
+
+      .github-intro svg {
+        width: 21px;
+        height: 21px;
+      }
+
+      .github-intro strong {
+        display: block;
+        font-size: 15px;
+        font-weight: 400;
+      }
+
+      .github-intro span {
+        display: block;
+        margin-top: 3px;
+        color: var(--quiet);
+        font-size: 11px;
+      }
+
+      .github-stat {
+        min-width: 0;
+      }
+
+      .github-stat strong {
+        display: block;
+        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-size: 24px;
+        font-weight: 400;
+      }
+
+      .github-stat span {
+        display: block;
+        margin-top: 3px;
+        color: var(--quiet);
+        font-size: 11px;
+      }
+
+      .github-open {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        border-radius: 50%;
+        color: var(--ink);
+        text-decoration: none;
+        transition: color 150ms ease, background 150ms ease;
+      }
+
+      .github-open:hover {
+        color: var(--black);
+        background: var(--white);
+      }
+
+      .github-open svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .favorites {
+        padding-top: 46px;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 26px;
+      }
+
+      .section-index {
+        display: block;
+        margin-bottom: 10px;
+        color: var(--quiet);
+        font-size: 11px;
+      }
+
+      .section-heading h2 {
+        margin: 0;
+        font-size: 26px;
+        font-weight: 400;
+        line-height: 1.08;
+      }
+
+      .section-heading p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .manage-favorites {
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 11px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        background: transparent;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .manage-favorites:hover {
+        border-color: var(--line-strong);
+        color: var(--ink);
+      }
+
+      .manage-favorites svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .favorite-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .favorite-item {
+        position: relative;
+        min-height: 138px;
+        display: grid;
+        grid-template-columns: 38px minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 16px;
+        padding: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 18px;
+        color: inherit;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+          rgba(255, 255, 255, 0.02);
+        text-align: left;
+        cursor: pointer;
+        transition: background 170ms ease, border-color 170ms ease, transform 170ms ease;
+      }
+
+      .favorite-item:hover {
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+          rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.13);
+        transform: translateY(-1px);
+      }
+
+      .favorite-icon {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        border-radius: 7px;
+      }
+
+      .favorite-icon svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .favorite-name {
+        display: block;
+        margin: 1px 0 0;
+        font-size: 15px;
+        font-weight: 400;
+      }
+
+      .favorite-desc {
+        display: block;
+        max-width: 260px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .favorite-category {
+        display: block;
+        margin-top: 14px;
+        color: var(--quiet);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .favorite-arrow {
+        color: #62625f;
+        transition: color 150ms ease, transform 150ms ease;
+      }
+
+      .favorite-arrow svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .favorite-item:hover .favorite-arrow {
+        color: var(--ink);
+        transform: translate(2px, -2px);
+      }
+
+      .favorite-item.is-opening {
+        background: var(--white);
+        color: var(--black);
+      }
+
+      .tool-explorer {
+        margin-top: 54px;
+        padding-top: 4px;
+      }
+
+      .tool-finder-head {
+        display: grid;
+        grid-template-columns: minmax(0, 0.72fr) minmax(360px, 1.28fr);
+        align-items: end;
+        gap: 42px;
+      }
+
+      .tool-finder-title {
+        margin: 0;
+        color: var(--white);
+        font-size: 27px;
+        font-weight: 400;
+        line-height: 1.08;
+      }
+
+      .tool-finder-subtitle {
+        max-width: 420px;
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.72;
+      }
+
+      .home-search-field {
+        position: relative;
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        padding: 0 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+          rgba(255, 255, 255, 0.025);
+        overflow: hidden;
+      }
+
+      .home-search-field::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+        opacity: 0;
+        transform: translateX(-40%);
+        transition: opacity 180ms ease, transform 280ms ease;
+      }
+
+      .home-search-field:focus-within {
+        border-color: rgba(255, 255, 255, 0.18);
+      }
+
+      .home-search-field:focus-within::after {
+        opacity: 1;
+        transform: translateX(40%);
+      }
+
+      .home-search-field svg {
+        position: relative;
+        z-index: 1;
+        width: 18px;
+        height: 18px;
+        color: #d5d5d1;
+      }
+
+      .home-search-field input {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 56px;
+        border: 0;
+        outline: 0;
+        color: var(--ink);
+        background: transparent;
+        font-size: 16px;
+      }
+
+      .home-search-field input::placeholder {
+        color: #696965;
+      }
+
+      .category-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .category-chip {
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 14px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 999px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.02);
+        font-size: 14px;
+        cursor: pointer;
+        transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease;
+      }
+
+      .category-chip:hover,
+      .category-chip.is-active {
+        color: var(--black);
+        border-color: var(--white);
+        background: var(--white);
+        transform: translateY(-1px);
+      }
+
+      .category-chip svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .tool-result-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 22px;
+      }
+
+      .tool-result-card {
+        min-height: 126px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 21px;
+        border: 1px solid rgba(255, 255, 255, 0.055);
+        border-radius: 18px;
+        color: var(--ink);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.01)),
+          rgba(255, 255, 255, 0.018);
+        text-align: left;
+        cursor: pointer;
+        transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+      }
+
+      .tool-result-card:hover {
+        border-color: rgba(255, 255, 255, 0.14);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.018)),
+          rgba(255, 255, 255, 0.026);
+        transform: translateY(-1px);
+      }
+
+      .tool-result-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .tool-result-icon {
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        color: #e7e7e3;
+      }
+
+      .tool-result-icon svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .tool-result-tag {
+        color: var(--quiet);
+        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .tool-result-name {
+        display: block;
+        margin-top: 18px;
+        font-size: 15px;
+        font-weight: 400;
+      }
+
+      .tool-result-desc {
+        display: block;
+        margin-top: 9px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .tool-result-empty {
+        grid-column: 1 / -1;
+        min-height: 120px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .footer-note {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        padding-top: 30px;
+        color: #494946;
+        font-size: 11px;
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background: rgba(0, 0, 0, 0.78);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 180ms ease, visibility 180ms ease;
+      }
+
+      .overlay.is-open {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+      }
+
+      .dialog {
+        width: min(920px, calc(100vw - 56px));
+        max-height: min(720px, calc(100vh - 56px));
+        overflow: auto;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        background: rgba(11, 11, 12, 0.92);
+        backdrop-filter: blur(20px);
+        box-shadow: 0 30px 100px rgba(0, 0, 0, 0.65);
+        transform: translateY(12px) scale(0.99);
+        transition: transform 180ms ease;
+      }
+
+      .overlay.is-open .dialog {
+        transform: translateY(0) scale(1);
+      }
+
+      .dialog-header {
+        min-height: 68px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 0 22px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .dialog-header h2 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 400;
+      }
+
+      .dialog-close {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 6px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .dialog-close:hover {
+        color: var(--ink);
+        background: #181818;
+      }
+
+      .dialog-close svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .tool-search {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 20px 22px 0;
+        padding: 0 13px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .tool-search svg {
+        width: 16px;
+        height: 16px;
+        color: var(--muted);
+      }
+
+      .tool-search input {
+        width: 100%;
+        height: 44px;
+        border: 0;
+        outline: 0;
+        color: var(--ink);
+        background: transparent;
+        font-size: 13px;
+      }
+
+      .tool-search input::placeholder {
+        color: #60605d;
+      }
+
+      .tool-categories {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        margin: 20px 22px 22px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .tool-category {
+        min-height: 104px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 16px;
+        color: var(--ink);
+        background: rgba(10, 10, 11, 0.96);
+        cursor: pointer;
+        transition: background 150ms ease;
+      }
+
+      .tool-category:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .tool-category svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .tool-category strong {
+        display: block;
+        font-size: 14px;
+        font-weight: 400;
+      }
+
+      .tool-category span {
+        display: block;
+        margin-top: 4px;
+        color: var(--quiet);
+        font-size: 11px;
+      }
+
+      .support-dialog {
+        width: min(840px, calc(100vw - 56px));
+      }
+
+      .support-content {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+      }
+
+      .support-copy {
+        padding: 34px;
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .support-copy .support-mark {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        border-radius: 50%;
+      }
+
+      .support-copy .support-mark svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .support-copy h3 {
+        margin: 28px 0 0;
+        font-size: 30px;
+        font-weight: 400;
+        line-height: 1.18;
+      }
+
+      .support-copy p {
+        margin: 20px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.82;
+      }
+
+      .support-copy small {
+        display: block;
+        margin-top: 30px;
+        color: var(--quiet);
+        font-size: 11px;
+      }
+
+      .support-payment {
+        padding: 28px;
+      }
+
+      .payment-tabs {
+        display: flex;
+        gap: 7px;
+        margin-bottom: 18px;
+      }
+
+      .payment-tab {
+        min-height: 32px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--muted);
+        background: transparent;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .payment-tab.is-active {
+        border-color: var(--white);
+        color: var(--black);
+        background: var(--white);
+      }
+
+      .qr-panel {
+        min-height: 288px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .qr-image-wrap {
+        text-align: center;
+      }
+
+      .qr-image-wrap img {
+        width: 180px;
+        height: 180px;
+        display: block;
+        margin: 0 auto;
+        border: 8px solid #ffffff;
+        border-radius: 4px;
+        object-fit: contain;
+        background: #ffffff;
+      }
+
+      .qr-image-wrap strong {
+        display: block;
+        margin-top: 15px;
+        font-size: 12px;
+      }
+
+      .qr-image-wrap span {
+        display: block;
+        margin-top: 5px;
+        color: var(--quiet);
+        font-size: 10px;
+      }
+
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 24px;
+        z-index: 200;
+        min-height: 40px;
+        display: flex;
+        align-items: center;
+        padding: 0 15px;
+        border: 1px solid #595954;
+        border-radius: 6px;
+        color: var(--black);
+        background: var(--white);
+        font-size: 14px;
+        font-weight: 400;
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, 10px);
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+
+      .toast.is-visible {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      .back-to-top {
+        position: fixed;
+        right: 15px;
+        bottom: 15px;
+        z-index: 190;
+        width: 46px;
+        height: 46px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        border-radius: 999px;
+        color: #080808;
+        background: rgba(245, 245, 242, 0.96);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+        cursor: pointer;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(12px) scale(0.92);
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease,
+          box-shadow 180ms ease,
+          background 180ms ease;
+      }
+
+      .back-to-top.is-visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0) scale(1);
+      }
+
+      .back-to-top:hover {
+        background: #ffffff;
+        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.42);
+        transform: translateY(-2px) scale(1);
+      }
+
+      .back-to-top svg {
+        width: 20px;
+        height: 20px;
+        animation: backTopArrow 1.25s cubic-bezier(0.7, 0, 0.3, 1) infinite;
+      }
+
+      @keyframes backTopArrow {
+        0%,
+        100% {
+          transform: translateY(4px);
+          opacity: 0.52;
+        }
+
+        45% {
+          transform: translateY(-4px);
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 1120px) {
+        .topbar { grid-template-columns: 220px 1fr; }
+        .nav-link span { display: none; }
+        .hero { grid-template-columns: minmax(430px, 1fr) minmax(330px, 0.8fr); }
+        .hero-title-brand { font-size: 64px; }
+        .favorite-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tool-finder-head { grid-template-columns: 1fr; gap: 22px; }
+        .tool-result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      }
+
+      @media (max-height: 760px) {
+        .hero { min-height: 370px; }
+        .hero-copy { padding-top: 40px; padding-bottom: 40px; }
+        .hero-title-brand { font-size: 64px; }
+        .hero-meta { margin-top: 28px; }
+        .weave-stage { height: 330px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas class="shader-bg" id="shaderBg" aria-hidden="true"></canvas>
+    <div class="shader-overlay" aria-hidden="true"></div>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="ToolKnit 首页">
+          <img src="/logo.png" alt="" />
+          <span class="brand-name">ToolKnit</span>
+          <span class="brand-version">2.0 LAB</span>
+        </a>
+
+        <div class="top-actions">
+          <a class="nav-link" href="https://toolknit.com" target="_blank" rel="noreferrer">
+            <i data-lucide="globe-2"></i>
+            <span>网页版本</span>
+          </a>
+          <button class="support-top" type="button" data-open-support>
+            <i data-lucide="heart"></i>
+            <span>支持作者</span>
+          </button>
+          <div class="window-cluster" aria-label="窗口与设置">
+            <button class="icon-button" type="button" title="设置" aria-label="设置" data-prototype-action="设置">
+              <i data-lucide="settings"></i>
+            </button>
+            <div class="window-controls" aria-label="窗口控制">
+              <button class="window-button" type="button" title="最小化" aria-label="最小化"><i data-lucide="minus"></i></button>
+              <button class="window-button" type="button" title="最大化" aria-label="最大化"><i data-lucide="square"></i></button>
+              <button class="window-button" type="button" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace" id="workspace">
+        <div class="content-wrap">
+          <section class="hero" aria-labelledby="heroTitle">
+            <div class="hero-copy">
+              <p class="eyebrow">TOOLKNIT / LOCAL CREATIVE WORKBENCH</p>
+              <h1 id="heroTitle">
+                <span class="hero-title-brand">ToolKnit</span>
+                <span class="hero-title-sub">本地文件工作台 / 安静、可靠、始终留在本机</span>
+              </h1>
+              <p class="hero-desc">把分散的文件工作，编织成一套安静、可靠、始终留在本地的处理方式。</p>
+              <div class="hero-actions">
+                <button class="primary-action" type="button" data-open-tools>
+                  <i data-lucide="layout-grid"></i>
+                  <span>打开工具库</span>
+                </button>
+                <button class="secondary-action" type="button" data-open-support>
+                  <i data-lucide="heart"></i>
+                  <span>支持持续更新</span>
+                </button>
+              </div>
+              <p class="hero-support-note">如果 ToolKnit 刚好帮你少传一次文件、少熬一会儿夜，<strong>点一下支持作者</strong>，它就会变成下一次更认真、更好用的更新。</p>
+              <div class="hero-meta" aria-label="产品信息">
+                <span>WINDOWS DESKTOP</span>
+                <span>LOCAL FIRST</span>
+                <span>OPEN SOURCE</span>
+              </div>
+            </div>
+
+            <div class="weave-stage" aria-label="ToolKnit 编织动态标识">
+              <div class="loop-stage" aria-hidden="true">
+                <video class="loop-video" id="loopVideo" muted playsinline preload="auto" aria-hidden="true">
+                  <source src="/assets/backgrounds/home-stage-loop.mp4" type="video/mp4" />
+                </video>
+                <span class="loop-badge">video loop / monochrome</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="github-strip" aria-label="GitHub 项目数据">
+            <div class="github-intro">
+              <i data-lucide="github"></i>
+              <div>
+                <strong>开源，也保持独立。</strong>
+                <span>ZihangDong / toolknit-desktop</span>
+              </div>
+            </div>
+            <div class="github-stat">
+              <strong id="githubStars">--</strong>
+              <span>STARS</span>
+            </div>
+            <div class="github-stat">
+              <strong id="githubForks">--</strong>
+              <span>FORKS</span>
+            </div>
+            <div class="github-stat">
+              <strong id="githubIssues">--</strong>
+              <span>OPEN ISSUES</span>
+            </div>
+            <a class="github-open" href="https://github.com/ZihangDong/toolknit-desktop" target="_blank" rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
+              <i data-lucide="arrow-up-right"></i>
+            </a>
+          </section>
+
+          <section class="favorites" id="favorites" aria-labelledby="favoritesTitle">
+            <div class="section-heading">
+              <div>
+                <span class="section-index">01 / YOUR WORKBENCH</span>
+                <h2 id="favoritesTitle">我的收藏</h2>
+                <p>只留下你真正会反复使用的工具。</p>
+              </div>
+              <button class="manage-favorites" type="button" data-open-tools>
+                <i data-lucide="plus"></i>
+                <span>管理收藏</span>
+              </button>
+            </div>
+
+            <div class="favorite-grid">
+              <button class="favorite-item" type="button" data-tool-name="PDF 文字增强">
+                <span class="favorite-icon"><i data-lucide="scan-text"></i></span>
+                <span>
+                  <span class="favorite-name">PDF 文字增强</span>
+                  <span class="favorite-desc">提高扫描文档的文字清晰度与阅读质量。</span>
+                  <span class="favorite-category">PDF / ENHANCE</span>
+                </span>
+                <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+              </button>
+              <button class="favorite-item" type="button" data-tool-name="AI 生成 PPT">
+                <span class="favorite-icon"><i data-lucide="presentation"></i></span>
+                <span>
+                  <span class="favorite-name">AI 生成 PPT</span>
+                  <span class="favorite-desc">从主题与大纲生成可继续编辑的演示文稿。</span>
+                  <span class="favorite-category">PPT / AI DRAFT</span>
+                </span>
+                <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+              </button>
+              <button class="favorite-item" type="button" data-tool-name="视频截取 GIF">
+                <span class="favorite-icon"><i data-lucide="film"></i></span>
+                <span>
+                  <span class="favorite-name">视频截取 GIF</span>
+                  <span class="favorite-desc">选取视频片段并导出尺寸可控的 GIF。</span>
+                  <span class="favorite-category">VIDEO / GIF</span>
+                </span>
+                <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+              </button>
+              <button class="favorite-item" type="button" data-tool-name="AI 文档">
+                <span class="favorite-icon"><i data-lucide="file-text"></i></span>
+                <span>
+                  <span class="favorite-name">AI 文档</span>
+                  <span class="favorite-desc">生成排版完整、可编辑并可导出的正式文档。</span>
+                  <span class="favorite-category">AI / DOCUMENT</span>
+                </span>
+                <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+              </button>
+              <button class="favorite-item" type="button" data-tool-name="CPU 与内存">
+                <span class="favorite-icon"><i data-lucide="cpu"></i></span>
+                <span>
+                  <span class="favorite-name">CPU 与内存</span>
+                  <span class="favorite-desc">读取处理器、内存插槽与当前运行参数。</span>
+                  <span class="favorite-category">HARDWARE / MEMORY</span>
+                </span>
+                <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+              </button>
+              <button class="favorite-item" type="button" data-tool-name="PDF 文件合并">
+                <span class="favorite-icon"><i data-lucide="files"></i></span>
+                <span>
+                  <span class="favorite-name">PDF 文件合并</span>
+                  <span class="favorite-desc">调整文件顺序，将多个 PDF 合并为一个。</span>
+                  <span class="favorite-category">PDF / MERGE</span>
+                </span>
+                <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+              </button>
+            </div>
+          </section>
+
+          <section class="tool-explorer" aria-labelledby="toolExplorerTitle">
+            <div class="tool-finder-head">
+              <div>
+                <span class="section-index">02 / TOOL EXPLORER</span>
+                <h2 class="tool-finder-title" id="toolExplorerTitle">搜索全部工具</h2>
+                <p class="tool-finder-subtitle">从这里开始找工具。默认展示全部已上线工具，也可以输入关键词或切换分类胶囊。</p>
+              </div>
+              <label class="home-search-field">
+                <i data-lucide="search"></i>
+                <input id="homeToolSearch" type="search" placeholder="搜索 PDF、PPT、图像、音视频、文本、AI、硬件..." autocomplete="off" />
+              </label>
+            </div>
+
+            <div class="category-strip" id="homeCategoryStrip" aria-label="工具分类">
+              <button class="category-chip is-active" type="button" data-home-category="all"><i data-lucide="sparkles"></i><span>全部</span></button>
+              <button class="category-chip" type="button" data-home-category="pdf"><i data-lucide="file-text"></i><span>PDF</span></button>
+              <button class="category-chip" type="button" data-home-category="ppt"><i data-lucide="presentation"></i><span>PPT</span></button>
+              <button class="category-chip" type="button" data-home-category="image"><i data-lucide="image"></i><span>图像</span></button>
+              <button class="category-chip" type="button" data-home-category="media"><i data-lucide="film"></i><span>音视频</span></button>
+              <button class="category-chip" type="button" data-home-category="text"><i data-lucide="type"></i><span>文本</span></button>
+              <button class="category-chip" type="button" data-home-category="calc"><i data-lucide="calculator"></i><span>计算器</span></button>
+              <button class="category-chip" type="button" data-home-category="creative"><i data-lucide="palette"></i><span>创意</span></button>
+              <button class="category-chip" type="button" data-home-category="ai"><i data-lucide="sparkles"></i><span>AI</span></button>
+              <button class="category-chip" type="button" data-home-category="hardware"><i data-lucide="cpu"></i><span>硬件</span></button>
+              <button class="category-chip" type="button" data-home-category="clean"><i data-lucide="trash-2"></i><span>清理</span></button>
+            </div>
+
+            <div class="tool-result-grid" id="homeToolGrid" aria-live="polite"></div>
+          </section>
+
+          <footer class="footer-note">
+            <span>TOOLKNIT DESKTOP 2.0 / UI CONCEPT 01</span>
+            <span>FILES STAY ON YOUR DEVICE</span>
+          </footer>
+        </div>
+      </main>
+    </div>
+
+    <button class="back-to-top" id="backToTop" type="button" aria-label="回到顶部">
+      <i data-lucide="arrow-up"></i>
+    </button>
+
+    <div class="overlay" id="toolsOverlay" aria-hidden="true">
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="toolsDialogTitle">
+        <header class="dialog-header">
+          <h2 id="toolsDialogTitle">工具库</h2>
+          <button class="dialog-close" type="button" data-close-overlay aria-label="关闭工具库"><i data-lucide="x"></i></button>
+        </header>
+        <label class="tool-search">
+          <i data-lucide="search"></i>
+          <input id="toolSearch" type="search" placeholder="搜索 PDF、PPT、图像、AI 或硬件工具" autocomplete="off" />
+        </label>
+        <div class="tool-categories" id="toolCategories">
+          <div class="tool-category" data-search="PDF 合并 拆分 压缩 编辑"><i data-lucide="file-text"></i><div><strong>PDF 工具</strong><span>10 TOOLS</span></div></div>
+          <div class="tool-category" data-search="PPT 演示文稿 图片 大纲"><i data-lucide="presentation"></i><div><strong>PPT 工具</strong><span>7 TOOLS</span></div></div>
+          <div class="tool-category" data-search="图片 图像 转换 压缩 颜色"><i data-lucide="image"></i><div><strong>图像工具</strong><span>6 TOOLS</span></div></div>
+          <div class="tool-category" data-search="音频 剪辑 格式 BPM"><i data-lucide="headphones"></i><div><strong>音频工具</strong><span>5 TOOLS</span></div></div>
+          <div class="tool-category" data-search="视频 转换 GIF 截帧"><i data-lucide="film"></i><div><strong>视频工具</strong><span>4 TOOLS</span></div></div>
+          <div class="tool-category" data-search="文本 格式 统计 识别"><i data-lucide="type"></i><div><strong>文本工具</strong><span>4 TOOLS</span></div></div>
+          <div class="tool-category" data-search="AI 文档 表格 润色 翻译"><i data-lucide="sparkles"></i><div><strong>AI 工具</strong><span>6 TOOLS</span></div></div>
+          <div class="tool-category" data-search="硬件 CPU 内存 主板 磁盘"><i data-lucide="monitor-cog"></i><div><strong>硬件工具</strong><span>7 TOOLS</span></div></div>
+          <div class="tool-category" data-search="清理 大文件 C盘"><i data-lucide="trash-2"></i><div><strong>清理工具</strong><span>2 TOOLS</span></div></div>
+          <div class="tool-category" data-search="计算器 BMI 日期"><i data-lucide="calculator"></i><div><strong>计算器</strong><span>5 TOOLS</span></div></div>
+          <div class="tool-category" data-search="创意 密码 打字 颜色"><i data-lucide="lightbulb"></i><div><strong>创意工具</strong><span>4 TOOLS</span></div></div>
+          <div class="tool-category" data-search="全部 收藏 管理"><i data-lucide="heart"></i><div><strong>管理收藏</strong><span>6 PINNED</span></div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="overlay" id="supportOverlay" aria-hidden="true">
+      <section class="dialog support-dialog" role="dialog" aria-modal="true" aria-labelledby="supportDialogTitle">
+        <header class="dialog-header">
+          <h2 id="supportDialogTitle">支持 ToolKnit</h2>
+          <button class="dialog-close" type="button" data-close-overlay aria-label="关闭支持作者"><i data-lucide="x"></i></button>
+        </header>
+        <div class="support-content">
+          <div class="support-copy">
+            <span class="support-mark"><i data-lucide="heart"></i></span>
+            <h3>让这个小工具，继续长出新的能力。</h3>
+            <p>ToolKnit 的下载、使用和源代码始终保持开放。你的支持会用于维护、测试以及下一项真正有用的更新。</p>
+            <small>THANK YOU FOR KEEPING TOOLKNIT INDEPENDENT.</small>
+          </div>
+          <div class="support-payment">
+            <div class="payment-tabs" role="tablist">
+              <button class="payment-tab is-active" type="button" data-payment="wechat">微信</button>
+              <button class="payment-tab" type="button" data-payment="alipay">支付宝</button>
+            </div>
+            <div class="qr-panel">
+              <div class="qr-image-wrap">
+                <img id="paymentQr" src="/assets/donate/wechat-qr.png" alt="微信收款码" />
+                <strong id="paymentName">微信支持</strong>
+                <span>感谢你愿意支持这个独立项目</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module">
+      import { createIcons, icons } from 'lucide';
+
+      createIcons({ icons });
+
+      const shaderCanvas = document.getElementById('shaderBg');
+      const shaderCtx = shaderCanvas.getContext('2d', { alpha: true });
+      const shaderState = {
+        width: 0,
+        height: 0,
+        dpr: Math.min(window.devicePixelRatio || 1, 2),
+        reduced: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      };
+
+      const ribbonSeeds = [
+        { radiusX: 0.22, radiusY: 0.16, speed: 0.23, phase: 0.0, opacity: 0.16 },
+        { radiusX: 0.29, radiusY: 0.21, speed: -0.18, phase: 1.8, opacity: 0.11 },
+        { radiusX: 0.35, radiusY: 0.14, speed: 0.13, phase: 3.4, opacity: 0.08 }
+      ];
+
+      function resizeShader() {
+        shaderState.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        shaderState.width = window.innerWidth;
+        shaderState.height = window.innerHeight;
+        shaderCanvas.width = Math.floor(shaderState.width * shaderState.dpr);
+        shaderCanvas.height = Math.floor(shaderState.height * shaderState.dpr);
+        shaderCanvas.style.width = `${shaderState.width}px`;
+        shaderCanvas.style.height = `${shaderState.height}px`;
+        shaderCtx.setTransform(shaderState.dpr, 0, 0, shaderState.dpr, 0, 0);
+      }
+
+      function drawLoopRibbon(seed, time, centerX, centerY) {
+        const { width, height } = shaderState;
+        const points = [];
+        const segments = 14;
+        const baseRadiusX = Math.min(width, height) * seed.radiusX;
+        const baseRadiusY = Math.min(width, height) * seed.radiusY;
+        for (let i = 0; i <= segments; i += 1) {
+          const progress = i / segments;
+          const angle = progress * Math.PI * 2 + time * seed.speed + seed.phase;
+          const wave = 1 + 0.12 * Math.sin(time * 1.2 + progress * 9.2 + seed.phase);
+          const x = centerX + Math.cos(angle) * baseRadiusX * wave;
+          const y = centerY + Math.sin(angle) * baseRadiusY * (1 + 0.08 * Math.cos(time * 1.05 + progress * 7.5));
+          points.push([x, y]);
+        }
+
+        shaderCtx.save();
+        shaderCtx.globalCompositeOperation = 'screen';
+        shaderCtx.filter = 'blur(12px)';
+        shaderCtx.lineWidth = 24;
+        shaderCtx.strokeStyle = `rgba(255, 255, 255, ${seed.opacity * 0.42})`;
+        shaderCtx.beginPath();
+        shaderCtx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i += 1) {
+          const [px, py] = points[i - 1];
+          const [cx, cy] = points[i];
+          const mx = (px + cx) / 2;
+          const my = (py + cy) / 2;
+          shaderCtx.quadraticCurveTo(px, py, mx, my);
+        }
+        shaderCtx.closePath();
+        shaderCtx.stroke();
+        shaderCtx.restore();
+
+        shaderCtx.save();
+        shaderCtx.globalCompositeOperation = 'screen';
+        shaderCtx.lineWidth = 1.2;
+        shaderCtx.strokeStyle = `rgba(255, 255, 255, ${seed.opacity})`;
+        shaderCtx.beginPath();
+        shaderCtx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i += 1) {
+          const [px, py] = points[i - 1];
+          const [cx, cy] = points[i];
+          const mx = (px + cx) / 2;
+          const my = (py + cy) / 2;
+          shaderCtx.quadraticCurveTo(px, py, mx, my);
+        }
+        shaderCtx.closePath();
+        shaderCtx.stroke();
+        shaderCtx.restore();
+      }
+
+      function drawGlow(time, x, y, outer, inner, opacity) {
+        const gradient = shaderCtx.createRadialGradient(x, y, 0, x, y, outer);
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${opacity})`);
+        gradient.addColorStop(0.3, `rgba(255, 255, 255, ${opacity * 0.35})`);
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        shaderCtx.fillStyle = gradient;
+        shaderCtx.beginPath();
+        shaderCtx.arc(x, y, outer, 0, Math.PI * 2);
+        shaderCtx.fill();
+
+        shaderCtx.save();
+        shaderCtx.globalAlpha = 0.85;
+        shaderCtx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.7})`;
+        shaderCtx.beginPath();
+        shaderCtx.arc(x + Math.cos(time * 2.1) * 2, y + Math.sin(time * 1.7) * 2, inner, 0, Math.PI * 2);
+        shaderCtx.fill();
+        shaderCtx.restore();
+      }
+
+      function renderShaderFrame(now) {
+        if (shaderState.reduced) return;
+        const time = now * 0.001;
+        const { width, height } = shaderState;
+
+        shaderCtx.clearRect(0, 0, width, height);
+        shaderCtx.fillStyle = '#060607';
+        shaderCtx.fillRect(0, 0, width, height);
+
+        const centerX = width * 0.56;
+        const centerY = height * 0.46;
+        const orbitX = width * 0.14;
+        const orbitY = height * 0.11;
+        const points = [
+          [centerX + Math.cos(time * 0.34) * orbitX, centerY + Math.sin(time * 0.34) * orbitY],
+          [centerX + Math.cos(time * -0.26 + 1.8) * orbitX * 1.18, centerY + Math.sin(time * -0.26 + 1.8) * orbitY * 1.1],
+          [centerX + Math.cos(time * 0.2 + 3.2) * orbitX * 0.88, centerY + Math.sin(time * 0.2 + 3.2) * orbitY * 1.22]
+        ];
+
+        shaderCtx.save();
+        shaderCtx.globalCompositeOperation = 'screen';
+        shaderCtx.filter = 'blur(26px)';
+        drawGlow(time, width * 0.22, height * 0.24, Math.min(width, height) * 0.26, Math.min(width, height) * 0.08, 0.08);
+        drawGlow(time, width * 0.79, height * 0.21, Math.min(width, height) * 0.2, Math.min(width, height) * 0.06, 0.06);
+        drawGlow(time, width * 0.56, height * 0.74, Math.min(width, height) * 0.22, Math.min(width, height) * 0.07, 0.05);
+        shaderCtx.restore();
+
+        ribbonSeeds.forEach(seed => drawLoopRibbon(seed, time, centerX, centerY));
+
+        shaderCtx.save();
+        shaderCtx.globalCompositeOperation = 'screen';
+        shaderCtx.filter = 'blur(8px)';
+        points.forEach(([x, y], index) => {
+          const radius = index === 2 ? 11 : index === 1 ? 13 : 15;
+          const gradient = shaderCtx.createRadialGradient(x, y, 0, x, y, radius * 4);
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+          gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.08)');
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          shaderCtx.fillStyle = gradient;
+          shaderCtx.beginPath();
+          shaderCtx.arc(x, y, radius * 4, 0, Math.PI * 2);
+          shaderCtx.fill();
+        });
+        shaderCtx.restore();
+
+        shaderCtx.save();
+        shaderCtx.globalCompositeOperation = 'screen';
+        points.forEach(([x, y], index) => {
+          const radius = index === 2 ? 4.8 : index === 1 ? 5.4 : 5.8;
+          shaderCtx.fillStyle = index === 1 ? 'rgba(238, 238, 236, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+          shaderCtx.beginPath();
+          shaderCtx.arc(x, y, radius, 0, Math.PI * 2);
+          shaderCtx.fill();
+        });
+        shaderCtx.restore();
+
+        requestAnimationFrame(renderShaderFrame);
+      }
+
+      if (shaderCanvas && shaderCtx) {
+        resizeShader();
+        requestAnimationFrame(renderShaderFrame);
+        window.addEventListener('resize', resizeShader);
+      }
+
+      const loopVideo = document.getElementById('loopVideo');
+      const loopVideoState = {
+        raf: 0,
+        ready: false,
+        direction: 1,
+        currentTime: 0.02,
+        lastStamp: 0
+      };
+
+      function driveLoopVideo(stamp) {
+        if (!loopVideo || !loopVideoState.ready) return;
+        const duration = Number.isFinite(loopVideo.duration) ? loopVideo.duration : 0;
+        if (duration <= 0.05) {
+          loopVideoState.raf = window.requestAnimationFrame(driveLoopVideo);
+          return;
+        }
+
+        if (!loopVideoState.lastStamp) loopVideoState.lastStamp = stamp;
+        const delta = (stamp - loopVideoState.lastStamp) / 1000;
+        loopVideoState.lastStamp = stamp;
+
+        const speed = 0.88;
+        let nextTime = loopVideoState.currentTime + (delta * speed * loopVideoState.direction);
+        const minTime = 0.02;
+        const maxTime = Math.max(duration - 0.02, minTime);
+
+        if (nextTime >= maxTime) {
+          nextTime = maxTime;
+          loopVideoState.direction = -1;
+        } else if (nextTime <= minTime) {
+          nextTime = minTime;
+          loopVideoState.direction = 1;
+        }
+
+        if (Math.abs(loopVideo.currentTime - nextTime) > 0.01) {
+          try {
+            loopVideo.currentTime = nextTime;
+          } catch {
+            /* ignore seek jitter */
+          }
+        }
+        loopVideoState.currentTime = nextTime;
+        loopVideoState.raf = window.requestAnimationFrame(driveLoopVideo);
+      }
+
+      function startLoopVideo() {
+        if (!loopVideo) return;
+        if (loopVideoState.raf) window.cancelAnimationFrame(loopVideoState.raf);
+        loopVideoState.ready = false;
+        loopVideoState.direction = 1;
+        loopVideoState.currentTime = 0.02;
+        loopVideoState.lastStamp = 0;
+
+        const boot = () => {
+          try {
+            loopVideo.pause();
+            loopVideo.currentTime = 0.02;
+          } catch {
+            /* ignore */
+          }
+          loopVideoState.ready = true;
+          loopVideoState.raf = window.requestAnimationFrame(driveLoopVideo);
+        };
+
+        if (loopVideo.readyState >= 2 && Number.isFinite(loopVideo.duration) && loopVideo.duration > 0) {
+          boot();
+        } else {
+          loopVideo.addEventListener('loadeddata', boot, { once: true });
+        }
+      }
+
+      if (loopVideo) {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          loopVideo.addEventListener('loadeddata', () => {
+            try {
+              loopVideo.pause();
+              loopVideo.currentTime = 0.02;
+            } catch {
+              /* ignore */
+            }
+          }, { once: true });
+        } else {
+          startLoopVideo();
+        }
+      }
+
+      const toolsOverlay = document.getElementById('toolsOverlay');
+      const supportOverlay = document.getElementById('supportOverlay');
+      const toolSearch = document.getElementById('toolSearch');
+      const workspace = document.getElementById('workspace');
+      const toolExplorer = document.querySelector('.tool-explorer');
+      const homeToolSearch = document.getElementById('homeToolSearch');
+      const homeToolGrid = document.getElementById('homeToolGrid');
+      const backToTop = document.getElementById('backToTop');
+      const categoryChips = Array.from(document.querySelectorAll('[data-home-category]'));
+      const toast = document.getElementById('toast');
+      let toastTimer = 0;
+      let activeHomeCategory = 'all';
+
+      const homeTools = [
+        { name: 'PDF 文件合并', category: 'pdf', tag: 'PDF / LOCAL', icon: 'files', desc: '多个 PDF 按顺序合并为一个' },
+        { name: 'PDF 文件拆分', category: 'pdf', tag: 'PDF / LOCAL', icon: 'scissors', desc: '选择页面并拆分为独立 PDF' },
+        { name: 'PDF 转图像', category: 'pdf', tag: 'PDF / LOCAL', icon: 'images', desc: '选择页面导出单图或长图' },
+        { name: 'PDF 页面旋转', category: 'pdf', tag: 'PDF / LOCAL', icon: 'rotate-cw', desc: '旋转 PDF 页面方向' },
+        { name: 'PDF 文件加密', category: 'pdf', tag: 'PDF / LOCAL', icon: 'lock', desc: '给 PDF 添加密码保护' },
+        { name: 'PDF 文件解密', category: 'pdf', tag: 'PDF / LOCAL', icon: 'lock-open', desc: '移除 PDF 密码保护' },
+        { name: 'PDF 文件压缩', category: 'pdf', tag: 'PDF / LOCAL', icon: 'minimize-2', desc: '压缩 PDF 体积，支持多等级' },
+        { name: 'PDF 文字增强', category: 'pdf', tag: 'PDF / LOCAL', icon: 'sparkles', desc: '提升模糊文字清晰度' },
+        { name: 'PPT 转 PDF', category: 'ppt', tag: 'PPT / STUDIO', icon: 'file-output', desc: '本地渲染 PPTX 为可分享 PDF' },
+        { name: 'PPT 转图片', category: 'ppt', tag: 'PPT / STUDIO', icon: 'images', desc: '选择页码逐页导出高清图片' },
+        { name: 'PPT 图片提取', category: 'ppt', tag: 'PPT / STUDIO', icon: 'image-up', desc: '导出 PPTX 内嵌原始图片素材' },
+        { name: 'PPT AI 文本提取', category: 'ppt', tag: 'PPT / STUDIO', icon: 'file-text', desc: '提取标题、正文与备注，可选 AI 整理' },
+        { name: 'PPT 压缩', category: 'ppt', tag: 'PPT / STUDIO', icon: 'archive', desc: '安全压缩 PPTX，保留图片质量与版式' },
+        { name: 'AI 生成 PPT 大纲', category: 'ppt', tag: 'PPT / STUDIO', icon: 'sparkles', desc: '从主题和资料生成结构化演示大纲' },
+        { name: 'AI 生成 PPT 草稿 / PPTX', category: 'ppt', tag: 'PPT / STUDIO', icon: 'presentation', desc: '从资料直接生成可编辑 PPTX 草稿' },
+        { name: '图片格式转换', category: 'image', tag: 'IMAGE / LOCAL', icon: 'repeat', desc: 'JPG / PNG / WebP / BMP / GIF / SVG 互转' },
+        { name: '图片压缩', category: 'image', tag: 'IMAGE / LOCAL', icon: 'minimize-2', desc: '三档画质 / 批量压缩' },
+        { name: '长图拼接', category: 'image', tag: 'IMAGE / LOCAL', icon: 'panels-top-left', desc: '纵向 / 横向 / 无缝拼接 / PNG / JPG' },
+        { name: '图标生成器', category: 'image', tag: 'IMAGE / LOCAL', icon: 'badge', desc: '一键生成多尺寸图标并打包' },
+        { name: '音频文件格式转换', category: 'media', tag: 'AUDIO / LOCAL', icon: 'repeat', desc: 'MP3 / AAC / WAV / FLAC / ALAC / OGG / WMA' },
+        { name: 'BPM 节拍测速器', category: 'media', tag: 'AUDIO / LOCAL', icon: 'activity', desc: '上传音频自动检测 BPM' },
+        { name: '音频剪辑', category: 'media', tag: 'AUDIO / LOCAL', icon: 'scissors', desc: '波形可视化剪辑、区域选择、导出片段' },
+        { name: '音频提取', category: 'media', tag: 'AUDIO / LOCAL', icon: 'headphones', desc: '从视频中提取音频' },
+        { name: '视频格式转换', category: 'media', tag: 'VIDEO / LOCAL', icon: 'film', desc: 'MP4 / AVI / MKV / MOV / WebM / FLV / WMV / TS' },
+        { name: '视频高清单帧图', category: 'media', tag: 'VIDEO / LOCAL', icon: 'frame', desc: '按精确时间导出视频单帧高清图片' },
+        { name: '视频截取 GIF', category: 'media', tag: 'VIDEO / LOCAL', icon: 'file-video', desc: '截取视频片段并生成 GIF 动图' },
+        { name: '音视频提取文字', category: 'media', tag: 'AUDIO / LOCAL', icon: 'captions', desc: '离线识别中英文语音并导出字幕' },
+        { name: '文本统计器', category: 'text', tag: 'TEXT / UTILITY', icon: 'chart-bar', desc: '实时统计字符数、单词数、行数、段落数' },
+        { name: '文本格式化', category: 'text', tag: 'TEXT / UTILITY', icon: 'type', desc: '大小写转换、去空行、去多余空格、排序去重' },
+        { name: '体脂率计算器', category: 'calc', tag: 'CALC / UTILITY', icon: 'scale', desc: 'BMI、体脂率、基础代谢率' },
+        { name: '时间戳计算器', category: 'calc', tag: 'CALC / UTILITY', icon: 'clock', desc: '时间戳与日期互转' },
+        { name: '房贷计算器', category: 'calc', tag: 'CALC / UTILITY', icon: 'house', desc: '等额本息、等额本金、还款明细' },
+        { name: '利息计算器', category: 'calc', tag: 'CALC / UTILITY', icon: 'percent', desc: '单利、复利、定投收益' },
+        { name: '密码生成器', category: 'calc', tag: 'CALC / UTILITY', icon: 'key-round', desc: '简易、中等、终极三种强度' },
+        { name: '配色提取器', category: 'creative', tag: 'CREATIVE / UTILITY', icon: 'palette', desc: '上传图片提取主色调，色卡层叠展示' },
+        { name: '打字测试器', category: 'creative', tag: 'CREATIVE / UTILITY', icon: 'keyboard', desc: '中英文双语词库，多档难度，实时打字速度测试' },
+        { name: 'AI 文字润色', category: 'ai', tag: 'AI / FORGE', icon: 'pen-line', desc: '智能分析润色方向，一键优化表达' },
+        { name: 'AI 智能翻译', category: 'ai', tag: 'AI / FORGE', icon: 'languages', desc: '逐句对照翻译，高亮对应关系' },
+        { name: 'AI 文档生成', category: 'ai', tag: 'AI / FORGE', icon: 'file-text', desc: '对话式生成专业 PDF 文档' },
+        { name: 'AI 表格生成', category: 'ai', tag: 'AI / FORGE', icon: 'table', desc: '对话式生成数据表与图表' },
+        { name: '整机概览', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'layout-dashboard', desc: '系统、机型、BIOS 与安全状态' },
+        { name: 'CPU 与内存', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'cpu', desc: '核心线程、频率、缓存与内存通道' },
+        { name: '显卡与显示器', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'monitor', desc: '显存、驱动、分辨率与刷新率' },
+        { name: '主板与固件', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'circuit-board', desc: '主板、BIOS/UEFI 与 PCIe 设备' },
+        { name: '磁盘与健康', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'hard-drive', desc: '容量、接口、分区与可靠性状态' },
+        { name: '网络与设备', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'network', desc: '网卡、蓝牙、音频、USB 与摄像头' },
+        { name: '电源与传感器', category: 'hardware', tag: 'HARDWARE / READONLY', icon: 'battery-charging', desc: '电池健康与硬件可提供的传感器数据' },
+        { name: 'AI 大文件清理', category: 'clean', tag: 'CLEAN / AI', icon: 'trash-2', desc: '扫描 50MB 以上文件并给出删除建议' }
+      ];
+
+      function openOverlay(overlay) {
+        overlay.classList.add('is-open');
+        overlay.setAttribute('aria-hidden', 'false');
+        if (overlay === toolsOverlay) requestAnimationFrame(() => toolSearch.focus());
+      }
+
+      function closeOverlay(overlay) {
+        overlay.classList.remove('is-open');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+
+      function showToast(message) {
+        clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+        toastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 2600);
+      }
+
+      function scrollToToolExplorer() {
+        if (!workspace || !toolExplorer) return;
+        const top = Math.max(0, toolExplorer.offsetTop - 64);
+        workspace.scrollTo({ top, behavior: 'smooth' });
+      }
+
+      function updateBackToTopVisibility() {
+        if (!workspace || !backToTop) return;
+        backToTop.classList.toggle('is-visible', workspace.scrollTop > 360);
+      }
+
+      document.querySelectorAll('[data-open-tools]').forEach(button => {
+        button.addEventListener('click', scrollToToolExplorer);
+      });
+
+      document.querySelectorAll('[data-open-support]').forEach(button => {
+        button.addEventListener('click', () => openOverlay(supportOverlay));
+      });
+
+      document.querySelectorAll('[data-close-overlay]').forEach(button => {
+        button.addEventListener('click', () => closeOverlay(button.closest('.overlay')));
+      });
+
+      document.querySelectorAll('.overlay').forEach(overlay => {
+        overlay.addEventListener('pointerdown', event => {
+          if (event.target === overlay) closeOverlay(overlay);
+        });
+      });
+
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          document.querySelectorAll('.overlay.is-open').forEach(closeOverlay);
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+          event.preventDefault();
+          scrollToToolExplorer();
+        }
+      });
+
+      backToTop?.addEventListener('click', () => {
+        workspace?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+
+      workspace?.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
+      updateBackToTopVisibility();
+
+      document.querySelectorAll('.favorite-item').forEach(item => {
+        item.addEventListener('click', () => {
+          item.classList.add('is-opening');
+          showToast(`原型演示：打开 ${item.dataset.toolName}`);
+          window.setTimeout(() => item.classList.remove('is-opening'), 420);
+        });
+      });
+
+      toolSearch.addEventListener('input', () => {
+        const query = toolSearch.value.trim().toLowerCase();
+        document.querySelectorAll('.tool-category').forEach(item => {
+          const searchable = `${item.textContent} ${item.dataset.search || ''}`.toLowerCase();
+          item.hidden = Boolean(query && !searchable.includes(query));
+        });
+      });
+
+      function renderHomeTools() {
+        const query = homeToolSearch.value.trim().toLowerCase();
+        const visibleTools = homeTools.filter(tool => {
+          const matchesCategory = activeHomeCategory === 'all' || tool.category === activeHomeCategory;
+          const searchable = `${tool.name} ${tool.tag} ${tool.desc}`.toLowerCase();
+          return matchesCategory && (!query || searchable.includes(query));
+        });
+
+        if (!visibleTools.length) {
+          homeToolGrid.innerHTML = '<div class="tool-result-empty">没有找到匹配的工具</div>';
+          return;
+        }
+
+        homeToolGrid.innerHTML = visibleTools.map(tool => `
+          <button class="tool-result-card" type="button" data-home-tool="${tool.name}">
+            <span class="tool-result-top">
+              <span class="tool-result-icon"><i data-lucide="${tool.icon}"></i></span>
+              <span class="tool-result-tag">${tool.tag}</span>
+            </span>
+            <span>
+              <span class="tool-result-name">${tool.name}</span>
+              <span class="tool-result-desc">${tool.desc}</span>
+            </span>
+          </button>
+        `).join('');
+
+        createIcons({ icons });
+        document.querySelectorAll('[data-home-tool]').forEach(card => {
+          card.addEventListener('click', () => showToast(`原型演示：打开 ${card.dataset.homeTool}`));
+        });
+      }
+
+      categoryChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+          activeHomeCategory = chip.dataset.homeCategory;
+          categoryChips.forEach(item => item.classList.toggle('is-active', item === chip));
+          renderHomeTools();
+        });
+      });
+
+      homeToolSearch.addEventListener('input', renderHomeTools);
+      renderHomeTools();
+
+      document.querySelectorAll('.tool-category').forEach(item => {
+        item.addEventListener('click', () => showToast(`原型演示：进入${item.querySelector('strong').textContent}`));
+      });
+
+      document.querySelectorAll('.payment-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.payment-tab').forEach(item => item.classList.toggle('is-active', item === tab));
+          const isWechat = tab.dataset.payment === 'wechat';
+          const qr = document.getElementById('paymentQr');
+          qr.src = isWechat ? '/assets/donate/wechat-qr.png' : '/assets/donate/alipay-qr.jpg';
+          qr.alt = isWechat ? '微信收款码' : '支付宝收款码';
+          document.getElementById('paymentName').textContent = isWechat ? '微信支持' : '支付宝支持';
+        });
+      });
+
+      document.querySelectorAll('[data-prototype-action="设置"]').forEach(button => {
+        button.addEventListener('click', () => {
+          window.location.href = './settings-v2-monochrome.html';
+        });
+      });
+
+      document.querySelectorAll('[data-prototype-action]').forEach(button => {
+        if (button.dataset.prototypeAction === '设置') return;
+        button.addEventListener('click', () => showToast(`${button.dataset.prototypeAction}将在正式接入时打开`));
+      });
+
+      async function loadGithubStats() {
+        const fallback = { stargazers_count: '344', forks_count: '--', open_issues_count: '--' };
+        try {
+          const response = await fetch('https://api.github.com/repos/ZihangDong/toolknit-desktop', {
+            headers: { Accept: 'application/vnd.github+json' }
+          });
+          if (!response.ok) throw new Error(`GitHub ${response.status}`);
+          const data = await response.json();
+          document.getElementById('githubStars').textContent = Number(data.stargazers_count).toLocaleString();
+          document.getElementById('githubForks').textContent = Number(data.forks_count).toLocaleString();
+          document.getElementById('githubIssues').textContent = Number(data.open_issues_count).toLocaleString();
+        } catch {
+          document.getElementById('githubStars').textContent = fallback.stargazers_count;
+          document.getElementById('githubForks').textContent = fallback.forks_count;
+          document.getElementById('githubIssues').textContent = fallback.open_issues_count;
+        }
+      }
+
+      loadGithubStats();
+    </script>
+  </body>
+</html>

@@ -9,6 +9,7 @@ const releaseTests = [
   'test:pdf-decrypt',
   'test:pdf-compress',
   'test:pdf-enhance',
+  'test:pdf-editor',
   'test:ai-doc',
   'test:ai-table',
   'test:ai-provider',
@@ -29,10 +30,19 @@ const releaseTests = [
   'test:video-frame',
   'test:video-gif',
   'test:image-stitch',
+  'test:ppt-image-extract',
+  'test:ppt-text-extract',
+  'test:ppt-compress',
+  'test:ppt-to-pdf',
+  'test:ppt-to-image',
+  'test:ppt-outline',
+  'test:ppt-draft',
   'test:dependencies',
+  'test:task-runtime',
   'test:help',
   'test:cli-package',
-  'test:cli-agent'
+  'test:cli-agent',
+  'build'
 ];
 
 const npmCli = process.env.npm_execpath;

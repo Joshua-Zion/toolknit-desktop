@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are prioritized for the current `1.3.x` release line and the current development branch before release.
+Security fixes are prioritized for the current `2.0.x` release line and the current development branch.
 
 ## Reporting a vulnerability
 

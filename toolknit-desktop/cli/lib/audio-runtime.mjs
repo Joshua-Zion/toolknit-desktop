@@ -6,7 +6,7 @@ import {
   AudioConvertError,
   getAudioConversionProfile
 } from './core/audio-convert-core.js';
-import { ToolKnitError } from './errors.mjs';
+import { isCancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 import {
   checkFfmpegAvailability,
   compactFfmpegError,
@@ -175,10 +175,11 @@ export async function publishAudioTemporaryOutput(temporary, outputDirectory, so
 }
 
 
-async function convertOneAudio({ command, input, outputDirectory, profile, position, total, reportProgress }) {
+async function convertOneAudio({ command, input, outputDirectory, profile, position, total, options, reportProgress }) {
   const temporary = await createAudioTemporaryOutput(outputDirectory, profile.extension);
   try {
-    const duration = await probeFfmpegDuration(command, input.path);
+    throwIfAborted(options.signal);
+    const duration = await probeFfmpegDuration(command, input.path, { signal: options.signal });
     let stdoutBuffer = '';
     const result = await runFfmpeg(command, [
       '-hide_banner',
@@ -193,6 +194,7 @@ async function convertOneAudio({ command, input, outputDirectory, profile, posit
       '-nostats',
       temporary.path
     ], {
+      signal: options.signal,
       onStdout(chunk) {
         stdoutBuffer += chunk.toString('utf8');
         let lineEnd;
@@ -206,6 +208,7 @@ async function convertOneAudio({ command, input, outputDirectory, profile, posit
         }
       }
     });
+    throwIfAborted(options.signal);
     if (result.code !== 0 || result.signal) {
       throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(result.stderr));
     }
@@ -235,6 +238,7 @@ export async function convertAudioBatch(args, options = {}) {
 
   activeAudioBatch = true;
   try {
+    throwIfAborted(options.signal);
     report(options, 0, 'Validating audio inputs.');
     const inputs = await inspectAudioInputs(args.input_paths);
     const outputDirectory = await prepareAudioOutputDirectory(args.output_dir);
@@ -246,7 +250,7 @@ export async function convertAudioBatch(args, options = {}) {
       throw new ToolKnitError('INVALID_ARGUMENT', message);
     }
     const command = await resolveFfmpeg();
-    const engine = await runFfmpeg(command, ['-version']);
+    const engine = await runFfmpeg(command, ['-version'], { signal: options.signal });
     if (engine.code !== 0) {
       throw new ToolKnitError('ENGINE_UNAVAILABLE', 'FFmpeg is unavailable. Install it or configure TOOLKNIT_FFMPEG_PATH.');
     }
@@ -255,6 +259,7 @@ export async function convertAudioBatch(args, options = {}) {
     const outputs = [];
     const errors = [];
     for (const [index, input] of inputs.entries()) {
+      throwIfAborted(options.signal);
       const position = index + 1;
       report(options, ((position - 1) / inputs.length) * 96, `Preparing ${position}/${inputs.length}: ${input.name}`);
       try {
@@ -265,9 +270,11 @@ export async function convertAudioBatch(args, options = {}) {
           profile,
           position,
           total: inputs.length,
+          options,
           reportProgress: (progress, message) => report(options, progress, message)
         }));
       } catch (error) {
+        if (isCancellationError(error) || options.signal?.aborted) throw error;
         const normalized = error instanceof ToolKnitError
           ? error
           : new ToolKnitError('PROCESSING_FAILED', 'FFmpeg could not convert this audio file.');

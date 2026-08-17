@@ -64,6 +64,14 @@ const toolToHelp = new Map([
   ['pdf-decrypt', 'pdf-decrypt'],
   ['pdf-compress', 'pdf-compress'],
   ['pdf-enhance', 'pdf-enhance'],
+  ['pdf-editor', 'pdf-editor'],
+  ['ppt-to-pdf', 'ppt-tools'],
+  ['ppt-to-image', 'ppt-tools'],
+  ['ppt-images', 'ppt-tools'],
+  ['ppt-text', 'ppt-tools'],
+  ['ppt-compress', 'ppt-tools'],
+  ['ppt-outline', 'ppt-tools'],
+  ['ppt-draft', 'ppt-tools'],
   ['image-convert', 'img-convert'],
   ['image-compress', 'img-compress'],
   ['image-stitch', 'image-stitch'],
@@ -87,6 +95,7 @@ const toolToHelp = new Map([
   ['color-space-compare', 'color-space-compare'],
   ['typing-test', 'typing-test'],
   ['large-file-cleanup', 'large-file-cleanup'],
+  ['c-drive-cleanup', 'c-drive-cleanup'],
   ['hardware-overview', 'hardware-tools'],
   ['hardware-cpu-memory', 'hardware-tools'],
   ['hardware-gpu-display', 'hardware-tools'],
@@ -112,7 +121,7 @@ for (const content of [HELP_CONTENT, HELP_CONTENT_EN]) {
   const visibleHelp = helpSections.map((section) => `${content[section].title}\n${content[section].html}`).join('\n');
   assert.match(visibleHelp, /CLI/i, 'Visible help must explain CLI.');
   assert.match(visibleHelp, /MCP/i, 'Visible help must explain IDE Agent / MCP.');
-  assert.match(visibleHelp, /30/, 'Visible help must state the current 30 MCP capabilities.');
+  assert.match(visibleHelp, /46/, 'Visible help must state the current 46 MCP capabilities.');
   assert.doesNotMatch(visibleHelp, /16\s*(项能力|capabilities)/i, 'Visible help must not advertise the retired 16-capability count.');
   assert.doesNotMatch(visibleHelp, /(自动检查更新|automatically checks.*update|forced update)/i, 'Visible help must not promise unsupported auto or forced updates.');
 }
@@ -132,6 +141,24 @@ for (const [locale, section] of [
   assert.match(text, /(?:打开文件夹|Open Folder)/i, `${locale} PDF-to-image help must explain how to open the output folder.`);
   assert.match(text, /(?:本机|本地|locally)/i, `${locale} PDF-to-image help must explain local processing.`);
   assert.doesNotMatch(text, /(?:界面原型|UI prototype|does not write files yet)/i, `${locale} PDF-to-image help must not describe the retired prototype.`);
+}
+
+for (const [locale, content, localeData] of [
+  ['Chinese', HELP_CONTENT['ppt-tools'], zh],
+  ['English', HELP_CONTENT_EN['ppt-tools'], en],
+]) {
+  const text = `${content.title}\n${content.html}`;
+  assert.match(text, /PNG\s*\/\s*JPG\s*\/\s*WebP/i, `${locale} PPT help must document the supported image formats.`);
+  assert.match(
+    text,
+    locale === 'Chinese'
+      ? /PPT 页面不会在此工具中拼成长图/
+      : /PPT slides are not stitched into long images in this tool/,
+    `${locale} PPT help must state that slides are not stitched into long images.`
+  );
+  assert.doesNotMatch(localeData.home.pptToImagePage.subtitle, /(?:长图|long[- ]image)/i, `${locale} PPT-to-image subtitle must not advertise long-image export.`);
+  assert.doesNotMatch(localeData.home.toolNames.pptToImageDesc, /(?:长图|long[- ]image)/i, `${locale} PPT-to-image list description must not advertise long-image export.`);
+  assert.doesNotMatch(localeData.home.toolNames.pptToImageMeta, /(?:长图|long[- ]image)/i, `${locale} PPT-to-image list metadata must not advertise long-image export.`);
 }
 
 console.log(`Help center contract passed: ${helpSections.length} visible sections, ${desktopTools.length} desktop tools.`);

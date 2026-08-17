@@ -7,7 +7,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { compactFfmpegError, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
-import { ToolKnitError } from './errors.mjs';
+import { cancellationError, isCancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 import { isPlaceholderAiApiKey, requestAiCompletion } from './core/ai-provider-core.js';
 
 const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -90,6 +90,7 @@ export async function installTranscriptionModel({ model_id, source = 'auto' }, o
   if (!['auto', 'official', 'china'].includes(normalizedSource)) {
     throw new ToolKnitError('INVALID_ARGUMENT', '--source must be auto, official, or china.');
   }
+  throwIfAborted(options.signal);
   await mkdir(MODEL_ROOT, { recursive: true });
   const destination = modelPath(model);
   const partial = `${destination}.part`;
@@ -100,6 +101,8 @@ export async function installTranscriptionModel({ model_id, source = 'auto' }, o
   const candidates = normalizedSource === 'auto' ? ['auto', 'china'] : [normalizedSource];
   let lastError = null;
   for (const candidate of candidates) {
+    throwIfAborted(options.signal);
+    let stream = null;
     try {
       // Re-read the .part size for every source. A connection can fail after
       // writing more bytes, so using the original offset would corrupt a retry.
@@ -108,14 +111,15 @@ export async function installTranscriptionModel({ model_id, source = 'auto' }, o
       if (start > model.bytes) { await rm(partial, { force: true }); start = 0; }
       const headers = { 'User-Agent': 'ToolKnit/1.3 offline-model-manager' };
       if (start > 0) headers.Range = `bytes=${start}-`;
-      const response = await fetch(sourceUrl(model, candidate), { headers, redirect: 'follow' });
+      const response = await fetch(sourceUrl(model, candidate), { headers, redirect: 'follow', signal: options.signal });
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
       const append = start > 0 && response.status === 206;
       if (!append && start > 0) { await rm(partial, { force: true }); start = 0; }
-      const stream = createWriteStream(partial, { flags: append ? 'a' : 'w' });
+      stream = createWriteStream(partial, { flags: append ? 'a' : 'w' });
       let downloaded = append ? start : 0;
       report(options, 0, `Downloading ${model.display_name} model.`);
       for await (const chunk of response.body) {
+        throwIfAborted(options.signal);
         if (!stream.write(chunk)) await new Promise(resolve => stream.once('drain', resolve));
         downloaded += chunk.length;
         report(options, Math.min(94, downloaded / model.bytes * 94), `Downloading ${model.display_name}: ${Math.floor(downloaded / 1024 / 1024)} MB / ${Math.ceil(model.bytes / 1024 / 1024)} MB`);
@@ -131,6 +135,10 @@ export async function installTranscriptionModel({ model_id, source = 'auto' }, o
       report(options, 100, `${model.display_name} model is ready.`);
       return result;
     } catch (error) {
+      if (stream) stream.destroy();
+      if (isCancellationError(error) || options.signal?.aborted) {
+        throw cancellationError(options.signal);
+      }
       lastError = error;
       // A complete but invalid package cannot be resumed. Remove it before
       // trying the fallback mirror; interrupted partial files stay resumable.
@@ -179,13 +187,62 @@ function safeStem(input) {
   return name || 'transcript';
 }
 
-async function spawnChecked(command, args) {
+async function spawnChecked(command, args, options = {}) {
   return new Promise((resolve, reject) => {
+    try {
+      throwIfAborted(options.signal);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     const child = spawn(command, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
+    let settled = false;
+    let aborted = false;
+    let forceKillTimer = null;
+    const cleanupAbort = () => {
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+        forceKillTimer = null;
+      }
+      options.signal?.removeEventListener?.('abort', onAbort);
+    };
+    const rejectOnce = error => {
+      if (settled) return;
+      settled = true;
+      cleanupAbort();
+      reject(error);
+    };
+    const onAbort = () => {
+      aborted = true;
+      if (!child.killed) {
+        try { child.kill('SIGTERM'); } catch {}
+        forceKillTimer = setTimeout(() => {
+          try {
+            if (!child.killed) child.kill('SIGKILL');
+          } catch {}
+        }, 2500);
+        forceKillTimer.unref?.();
+      }
+    };
+    options.signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
     child.stderr.on('data', chunk => { if (stderr.length < 65536) stderr += chunk.toString('utf8'); });
-    child.once('error', () => reject(new ToolKnitError('ENGINE_UNAVAILABLE', 'The bundled offline transcription engine is unavailable. Reinstall ToolKnit CLI.')));
-    child.once('close', code => code === 0 ? resolve() : reject(new ToolKnitError('PROCESSING_FAILED', stderr.trim().slice(-500) || 'The transcription engine failed.')));
+    child.once('error', () => {
+      rejectOnce(aborted || options.signal?.aborted
+        ? cancellationError(options.signal)
+        : new ToolKnitError('ENGINE_UNAVAILABLE', 'The bundled offline transcription engine is unavailable. Reinstall ToolKnit CLI.'));
+    });
+    child.once('close', code => {
+      if (settled) return;
+      settled = true;
+      cleanupAbort();
+      if (aborted || options.signal?.aborted) {
+        reject(cancellationError(options.signal));
+        return;
+      }
+      code === 0 ? resolve() : reject(new ToolKnitError('PROCESSING_FAILED', stderr.trim().slice(-500) || 'The transcription engine failed.'));
+    });
   });
 }
 
@@ -223,13 +280,14 @@ async function refineSrt(rawSrt, options) {
   if (!segments.length) throw new ToolKnitError('PROCESSING_FAILED', 'No subtitle segments were produced for AI refinement. Original files were kept.');
   const edits = new Map();
   for (let offset = 0; offset < segments.length; offset += 42) {
+    throwIfAborted(options.signal);
     const chunk = segments.slice(offset, offset + 42);
     report(options, 96 + Math.round(offset / segments.length * 3), 'Refining subtitle text with AI.');
     let completion;
     try {
       completion = await requestAiCompletion({
         url: process.env.TOOLKNIT_AI_API_URL || 'https://api.deepseek.com/v1/chat/completions', apiKey,
-        model: process.env.TOOLKNIT_AI_MODEL || 'deepseek-chat', maxTokens: 4000,
+        model: process.env.TOOLKNIT_AI_MODEL || 'deepseek-chat', maxTokens: 4000, signal: options.signal,
         messages: [
           { role: 'system', content: 'Return JSON only: {"segments":[{"id":number,"text":string}]}. Proofread speech-recognition subtitles. Keep exactly the supplied IDs in the same order. Never add, remove, merge, or split segments; do not invent missing words, names, numbers, or facts. Correct punctuation, grammar, and only clearly contextual recognition errors.' },
           { role: 'user', content: JSON.stringify({ segments: chunk.map(({ id, text }) => ({ id, text })) }) }
@@ -248,6 +306,7 @@ async function refineSrt(rawSrt, options) {
 }
 
 export async function transcribeMedia({ input_path, output_dir, language = 'auto', refine = false }, options = {}) {
+  throwIfAborted(options.signal);
   const input = await inputFile(input_path);
   const output = await prepareOutputDir(output_dir);
   const normalizedLanguage = String(language).trim().toLowerCase();
@@ -263,11 +322,13 @@ export async function transcribeMedia({ input_path, output_dir, language = 'auto
     const wav = path.join(temporary, 'input.wav');
     report(options, 3, 'Preparing audio for local recognition.');
     const ffmpeg = await resolveFfmpeg();
-    const converted = await runFfmpeg(ffmpeg, ['-hide_banner', '-nostdin', '-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
+    const converted = await runFfmpeg(ffmpeg, ['-hide_banner', '-nostdin', '-y', '-i', input, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav], { signal: options.signal });
+    throwIfAborted(options.signal);
     if (converted.code !== 0 || !await regularFile(wav)) throw new ToolKnitError('PROCESSING_FAILED', compactFfmpegError(converted.stderr, 'FFmpeg could not prepare this media file.'));
     report(options, 16, `Recognizing speech with the ${model.display_name} model.`);
     const whisper = await resolveWhisper();
-    await spawnChecked(whisper, ['-m', modelPath(model), '-f', wav, '-l', normalizedLanguage, '-otxt', '-osrt', '-oj', '-ojf', '-np', '-of', path.join(temporary, 'transcript')]);
+    await spawnChecked(whisper, ['-m', modelPath(model), '-f', wav, '-l', normalizedLanguage, '-otxt', '-osrt', '-oj', '-ojf', '-np', '-of', path.join(temporary, 'transcript')], { signal: options.signal });
+    throwIfAborted(options.signal);
     const sources = { json: path.join(temporary, 'transcript.json'), srt: path.join(temporary, 'transcript.srt'), txt: path.join(temporary, 'transcript.txt') };
     if (!await regularFile(sources.json) || !await regularFile(sources.srt) || !await regularFile(sources.txt)) throw new ToolKnitError('PROCESSING_FAILED', 'The transcription engine did not create every expected output.');
     report(options, 94, 'Publishing transcription results.');
@@ -285,6 +346,7 @@ export async function transcribeMedia({ input_path, output_dir, language = 'auto
         try { await access(outputs.raw_txt_path.replace(/\.txt$/i, '_refined.txt')); suffix++; continue; } catch {}
       }
       try {
+        throwIfAborted(options.signal);
         // link() is exclusive and stays within output_dir's volume. This prevents
         // partially publishing a JSON/SRT/TXT trio if another process wins a name.
         await link(sources.json, outputs.raw_json_path);
@@ -313,7 +375,9 @@ export async function transcribeMedia({ input_path, output_dir, language = 'auto
     if (suffix >= 10_000) throw new ToolKnitError('OUTPUT_WRITE_FAILED', 'Could not reserve unique output file names.');
     let refined = {};
     if (refine === true) {
+      throwIfAborted(options.signal);
       const refinedText = await refineSrt(await readFile(outputs.raw_srt_path, 'utf8'), options);
+      throwIfAborted(options.signal);
       const srtPath = outputs.raw_srt_path.replace(/\.srt$/i, '_refined.srt');
       const txtPath = outputs.raw_txt_path.replace(/\.txt$/i, '_refined.txt');
       await writeFile(srtPath, refinedText.srt, { encoding: 'utf8', flag: 'wx' });

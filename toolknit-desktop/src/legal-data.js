@@ -5,74 +5,57 @@ const LEGAL_CONTENT_ZH = {
     title: '程序声明',
     html: `<div class="help-doc">
       <h2>程序声明</h2>
-      <p>本声明旨在明确 ToolKnit（以下简称"本软件"）的开发者（以下简称"开发者"）与用户之间的权利义务关系。用户在安装、使用本软件之前，请仔细阅读本声明。一旦用户开始使用本软件，即视为已充分理解并接受本声明的全部内容。</p>
+      <p>本声明适用于 ToolKnit Desktop 2.0 及本仓库发布的 CLI / MCP 组件，用于说明软件性质、数据边界、第三方依赖与责任范围。使用前请结合实际任务阅读；继续使用即表示你理解本声明所述边界。</p>
 
-      <h3>一、软件性质</h3>
-      <p>本软件是一款<strong>免费、非开源</strong>的本地多功能工具箱桌面应用程序，由开发者独立开发和维护。本软件不包含任何广告、内购或付费功能，不以盈利为目的。</p>
+      <h3>一、软件性质与开源许可</h3>
+      <p>ToolKnit Desktop 是面向 Windows 10 / 11（64 位）的免费、本地优先文件工作台。桌面端与 CLI / MCP 的已发布源代码采用 <strong>Apache License 2.0</strong>，你可以在遵守该许可证及仓库 <code>NOTICE</code> 的前提下使用、修改和分发代码。</p>
+      <p>ToolKnit 网页端、官网托管服务、域名、服务账号以及 ToolKnit 名称、Logo 和视觉标识不因代码开源而自动获得授权。网页端与桌面开源仓库属于相关但边界独立的产品。</p>
 
-      <h3>二、本地处理与隐私</h3>
-      <p>本软件的<strong>所有文件处理功能</strong>（包括但不限于 PDF、图片、音频、视频、文本等工具）均在用户本地设备上完成，不会将用户的文件上传到任何服务器。开发者无法获取、查看或恢复用户处理的任何文件内容。</p>
-      <p>本软件的 AI 工具（包括 AI 润色、AI 翻译、AI 文档生成、AI 对话）需要将用户输入的<strong>文本内容</strong>发送至第三方 AI 接口（DeepSeek）进行处理。该过程仅传输文本数据，不涉及文件上传。AI 接口的数据处理受其自身的隐私政策约束，开发者无法控制第三方服务的隐私实践。</p>
+      <h3>二、本地文件处理</h3>
+      <p>PDF、PPT、图像、音频、视频、文本、计算器、硬件查看和清理等非 AI 文件能力默认在用户设备上运行，源文件不会上传到 ToolKnit 服务器。输出文件写入用户选择的本地目录，程序默认不覆盖已有文件。</p>
+      <p>PPT 转 PDF / 图像会调用本机安装的 LibreOffice 运行时；音视频处理会调用本机 FFmpeg；离线转写会调用本机 Whisper 模型。这些处理仍在本机完成。</p>
 
-      <h3>三、用户数据与统计</h3>
-      <p>本软件<strong>不收集</strong>任何用户个人隐私数据，不包含追踪代码、分析工具或用户行为统计功能。本软件仅在以下场景与服务器通信：</p>
+      <h3>三、AI 与联网边界</h3>
+      <p>只有用户主动执行 AI 文字润色、AI 翻译、AI 文档、AI 表格、PPT 文本 AI 整理、AI PPT 大纲、AI PPT 草稿 / PPTX、转写二次润色或 AI 大文件复核时，程序才会向用户选择并配置的第三方 AI 服务发起请求。</p>
       <ul>
-        <li><strong>用户认证</strong>：用户注册、登录时传输邮箱、用户名等账户信息</li>
-        <li><strong>使用次数统计</strong>：仅记录工具使用次数计数（不包含文件内容或个人信息），用于展示总使用次数</li>
-        <li><strong>版本更新检查</strong>：检查是否有新版本可用</li>
-        <li><strong>反馈提交</strong>：用户主动提交的反馈内容</li>
-        <li><strong>AI 接口调用</strong>：AI 工具处理文本时调用第三方 API</li>
+        <li>润色、翻译、文档、表格和 PPT AI 能力会发送用户输入的文字或从本地文件提取出的文字；源文件本体不会上传。</li>
+        <li>转写二次润色只发送已识别的字幕文字，不发送音频或视频。</li>
+        <li>AI 大文件复核只发送文件名、大小、类别、修改时间、相对目录线索和本地风险理由，不发送文件内容或完整绝对路径。</li>
+        <li>第三方 AI 服务如何保存和处理请求，受该服务自己的条款与隐私政策约束，ToolKnit 无法替代其作出保证。</li>
       </ul>
 
-      <h3>四、第三方组件</h3>
-      <p>本软件使用了以下开源第三方组件和库：</p>
+      <h3>四、其他网络访问</h3>
+      <p>桌面端不会进行静默行为分析或广告追踪。以下操作可能联网：</p>
       <ul>
-        <li><strong>FFmpeg</strong>：多媒体处理库，用于音频/视频格式转换、压缩等功能</li>
-        <li><strong>pdf-lib</strong>：PDF 文档处理库</li>
-        <li><strong>Lucide Icons</strong>：图标库</li>
-        <li><strong>其他开源库</strong>：详见各库的开源许可协议</li>
+        <li>用户在设置中下载 FFmpeg、Whisper 模型或 LibreOffice 时，访问所选的官方源或国内镜像，并进行完整性校验。</li>
+        <li>首页获取公开的 GitHub 仓库指标与公开支持记录；请求仅用于展示公开项目数据。</li>
+        <li>用户点击网页端、GitHub、Issue 或其他外部链接时，由系统浏览器打开相应网站。</li>
+        <li>用户主动调用所配置的 AI 服务时，访问该服务的 API。</li>
       </ul>
-      <p>这些第三方组件的版权归各自所有者所有，本软件仅作为使用者调用其功能。开发者不对第三方组件的安全性、稳定性或合规性承担责任。</p>
+      <p>本开源桌面版不提供账户注册、登录或云端收藏同步，也不会把应用内收藏上传到 ToolKnit 服务器。</p>
 
-      <h3>五、免责声明</h3>
-      <div class="help-note">
-        <p><strong>1. 文件处理风险</strong>：尽管本软件在本地处理文件，用户仍应在使用前备份重要文件。开发者不对因使用本软件导致的任何文件损坏、数据丢失、格式错误等后果承担责任。</p>
-      </div>
-      <div class="help-note">
-        <p><strong>2. AI 生成内容</strong>：本软件的 AI 工具生成的内容由第三方 AI 模型自动生成，开发者不保证内容的准确性、完整性、合法性或适用性。用户应自行判断和审核 AI 生成的内容，并对其使用行为承担全部责任。</p>
-      </div>
-      <div class="help-note">
-        <p><strong>3. 服务可用性</strong>：本软件的在线功能（用户认证、版本更新、AI 接口等）依赖于服务器和网络环境。开发者不保证这些功能的持续可用性，不对因网络故障、服务器维护、第三方服务变更等原因导致的服务中断承担责任。</p>
-      </div>
-      <div class="help-note">
-        <p><strong>4. 不可抗力</strong>：因自然灾害、政策法规变更、网络攻击等不可抗力因素导致的服务中断或数据损失，开发者不承担责任。</p>
-      </div>
+      <h3>五、本机数据与屏幕取色</h3>
+      <p>语言、输出目录、界面偏好、收藏、快捷键、已安装依赖状态和 AI 配置保存在本机应用数据中。AI Key 不会上传给 ToolKnit，但会在用户调用 AI 时作为鉴权信息发送给所选服务；请只在可信设备上配置并妥善保管。</p>
+      <p>屏幕取色仅在用户点击启动或触发已配置快捷键后工作。取色期间，程序在内存中读取准星周围的 <strong>21 × 21</strong> 像素区域用于放大预览，并返回中心像素颜色；该像素区域不会保存为文件，也不会上传。</p>
 
-      <h3>六、知识产权</h3>
-      <p>本软件的界面设计、图标、代码结构、功能实现等知识产权归开发者所有。用户不得对本软件进行反编译、反汇编、逆向工程或其他试图获取源代码的行为。</p>
-      <p>用户使用本软件处理的文件和数据，其知识产权归用户或相关权利人所有，开发者不主张任何权利。</p>
+      <h3>六、第三方组件与按需依赖</h3>
+      <p>本软件使用 Tauri、Rust、PDF.js、pdf-lib、FFmpeg、Whisper、LibreOffice、JSZip、ExcelJS、Chart.js、Lucide 等开源组件或运行时。相关权利归各自权利人所有，具体版本、源码与许可应以仓库依赖清单、锁文件和第三方声明为准。</p>
+      <p>FFmpeg、Whisper 模型和 LibreOffice 不随基础安装包全部内置。下载源、网络速度、磁盘空间、系统策略及第三方发布变化都可能影响安装和运行。</p>
 
-      <h3>七、使用限制</h3>
-      <p>用户在使用本软件时，应遵守以下限制：</p>
-      <ul>
-        <li>不得将本软件用于任何违法、侵权或危害他人利益的目的</li>
-        <li>不得利用本软件处理侵犯他人知识产权的文件</li>
-        <li>不得对本软件进行二次销售、捆绑销售或商业分发</li>
-        <li>不得篡改、移除本软件中的版权声明或免责声明</li>
-      </ul>
+      <h3>七、输出、AI 内容与责任限制</h3>
+      <p>请在处理重要文件前保留备份，并在投入实际使用前检查导出的页面、字体、颜色、公式、时间轴、压缩质量和文件完整性。格式转换和压缩可能产生兼容性或质量差异。</p>
+      <p>AI 结果可能包含事实、排版、翻译或判断错误，仅供辅助，不构成法律、医疗、财务或其他专业意见。用户应对输入内容的合法性、输出结果的复核及最终用途负责。</p>
+      <div class="help-note"><p>在适用法律允许的范围内，本软件按“现状”提供，不对特定用途适用性、持续可用性或无错误运行作出保证。开发者不对因错误操作、未备份、第三方服务变化、依赖故障或不可抗力造成的间接损失承担责任。</p></div>
 
-      <h3>八、声明变更</h3>
-      <p>开发者保留随时修改本声明的权利。声明变更后，用户继续使用本软件即视为接受修改后的声明。开发者将通过软件更新或应用内通知的方式告知用户声明变更事项。</p>
+      <h3>八、知识产权与品牌边界</h3>
+      <p>用户处理的文件、数据和依法享有权利的内容仍归用户或相应权利人所有。代码使用权以 Apache License 2.0 为准；该许可不授予 ToolKnit 商标、名称、Logo、视觉识别、官网、域名或托管服务的使用权，也不得冒充官方版本或官方账号。</p>
 
-      <h3>九、适用法律</h3>
-      <p>本声明的解释和适用以中华人民共和国法律为准。因本声明或使用本软件产生的任何争议，双方应友好协商解决；协商不成的，任何一方均可向开发者所在地有管辖权的人民法院提起诉讼。</p>
+      <h3>九、捐赠说明</h3>
+      <p>捐赠完全自愿，用于兼容性测试、依赖与镜像验证、文档、安装包发布和开源维护。捐赠不会解锁额外功能，也不构成购买、订阅、付费外包、技术支持合同或功能优先排期承诺。</p>
 
-      <h3>十、联系方式</h3>
-      <p>如对本声明有任何疑问，可通过软件内的<strong>反馈功能</strong>与开发者联系。</p>
-
-      <div class="help-note">
-        <p>最后更新日期：2025年7月1日<br/>开发者：董子航</p>
-      </div>
+      <h3>十、更新与联系</h3>
+      <p>本声明会随功能和数据边界变化而更新。正式版本、源代码和问题反馈请以官方 GitHub 仓库为准；提交问题前请移除文件内容、密钥、密码、完整私人路径等敏感信息。</p>
+      <div class="help-note"><p>适用版本：ToolKnit Desktop 2.0.0<br/>最后更新：2026 年 8 月 16 日<br/>开发者：董子航（Zihang Dong）</p></div>
     </div>`
   },
 
@@ -80,96 +63,65 @@ const LEGAL_CONTENT_ZH = {
     title: '使用规范',
     html: `<div class="help-doc">
       <h2>使用规范</h2>
-      <p>本使用规范旨在明确用户在使用 ToolKnit（以下简称"本软件"）时应遵守的规则和注意事项。用户在使用本软件前，请仔细阅读本规范。一旦开始使用本软件，即视为已充分理解并接受本规范的全部内容。</p>
+      <p>本规范说明使用 ToolKnit Desktop、CLI 和 MCP 时应遵守的基本规则。无论工具在本地还是通过 AI 服务处理，用户都应确保输入、操作和输出用途合法、安全并获得必要授权。</p>
 
-      <h3>一、合法使用</h3>
-      <p>用户在使用本软件时，必须遵守中华人民共和国相关法律法规以及用户所在国家/地区的适用法律。用户不得利用本软件从事以下行为：</p>
+      <h3>一、合法与授权使用</h3>
       <ul>
-        <li>处理、制作或传播违反法律法规的文件内容</li>
-        <li>处理侵犯他人知识产权、商业秘密或个人隐私的文件</li>
-        <li>利用本软件进行任何危害网络安全、信息安全的行为</li>
-        <li>利用本软件处理涉及国家秘密、商业机密的敏感文件（建议使用专业涉密设备处理）</li>
-        <li>以本软件为工具进行诈骗、侵权或其他违法犯罪活动</li>
+        <li>不得利用本软件制作、处理或传播违法、侵权、欺诈、恶意或危害他人的内容。</li>
+        <li>处理他人文件、个人信息、商业资料、受版权保护内容或录音录像前，应取得相应授权。</li>
+        <li>国家秘密、商业机密、医疗、财务、身份凭证等高敏感资料，应使用符合所属组织要求的设备和流程，不应仅依赖通用工具的技术边界。</li>
       </ul>
 
-      <h3>二、AI 工具使用规范</h3>
-      <p>本软件集成的 AI 工具（AI 润色、AI 翻译、AI 文档生成、AI 对话）调用第三方 AI 接口提供服务。用户在使用 AI 工具时应遵守以下规范：</p>
+      <h3>二、文件处理与输出检查</h3>
       <ul>
-        <li><strong>内容合法性</strong>：不得输入违法、色情、暴力、歧视等不良内容</li>
-        <li><strong>隐私保护</strong>：不得输入他人个人信息、医疗记录、财务数据等敏感隐私内容</li>
-        <li><strong>知识产权</strong>：不得输入受版权保护且未获授权的文本内容</li>
-        <li><strong>商业机密</strong>：不得输入涉及商业机密或保密协议保护的文本内容</li>
-        <li><strong>滥用禁止</strong>：不得通过自动化脚本等方式对 AI 接口进行恶意高频调用</li>
-      </ul>
-      <div class="help-note">
-        <p>AI 生成的内容仅供参考，不构成任何专业建议（法律、医疗、财务等）。用户应对 AI 生成内容的准确性和适用性进行独立判断。</p>
-      </div>
-
-      <h3>三、文件处理注意事项</h3>
-      <p>本软件的文件处理功能在本地完成，但用户仍需注意以下事项：</p>
-      <ul>
-        <li><strong>备份重要文件</strong>：处理前请务必备份原始文件，避免因操作失误导致文件损坏</li>
-        <li><strong>检查处理结果</strong>：处理完成后请检查输出文件，确认结果符合预期</li>
-        <li><strong>PDF 加密</strong>：请妥善保管加密密码，遗忘密码后将无法恢复 PDF 内容</li>
-        <li><strong>大文件处理</strong>：处理大文件可能消耗较多系统资源，建议关闭其他高负载程序</li>
-        <li><strong>格式兼容性</strong>：部分格式转换可能存在兼容性限制，建议先小批量测试</li>
+        <li>处理重要文件前保留原件和独立备份；不要把唯一副本作为输入。</li>
+        <li>导出后检查页数、文字、图片、公式、音画同步、压缩质量和目标格式兼容性，再删除原文件。</li>
+        <li>妥善保管 PDF 加密密码。遗忘密码时，ToolKnit 不保证能够恢复内容。</li>
+        <li>大文件和高分辨率任务会占用较多 CPU、内存和磁盘空间；处理期间避免强制结束程序或拔出存储设备。</li>
       </ul>
 
-      <h3>四、账户使用规范</h3>
-      <p>本软件提供用户注册和登录功能（用于收藏同步等功能）。用户在使用账户时应遵守以下规范：</p>
+      <h3>三、AI 使用与敏感信息</h3>
       <ul>
-        <li>注册时提供真实有效的邮箱地址</li>
-        <li>妥善保管账户密码，不得将账户转让、出借或共享给他人</li>
-        <li>不得注册多个账户进行滥用</li>
-        <li>账户安全由用户自行负责，因账户泄露导致的损失由用户承担</li>
+        <li>不要在提示词、导入文档或 Agent 对话中粘贴 API Key、账户密码、身份证号、银行卡号或未经授权的敏感信息。</li>
+        <li>使用前了解所选 AI 服务的地区、计费、内容与隐私政策，并自行承担第三方服务产生的费用。</li>
+        <li>AI 输出必须人工复核，不得把未经核验的内容直接作为专业结论、正式合同、医疗诊断或财务决策。</li>
+        <li>不得使用自动化脚本恶意高频调用第三方 AI 服务或依赖镜像。</li>
       </ul>
 
-      <h3>五、FFmpeg 扩展包</h3>
-      <p>本软件的音视频处理功能依赖 FFmpeg 扩展包。用户在使用相关功能时应了解：</p>
+      <h3>四、清理、硬件与屏幕取色</h3>
       <ul>
-        <li>FFmpeg 扩展包由本软件自动下载和管理，无需用户手动安装</li>
-        <li>FFmpeg 遵循 LGPL 或 GPL 许可协议，用户可从 FFmpeg 官网获取源代码</li>
-        <li>扩展包下载约 80-100MB，建议在 Wi-Fi 环境下下载</li>
+        <li>AI 大文件清理会先扫描本地元数据，只有用户勾选并确认后才将文件移入 Windows 回收站。项目、聊天记录、模型和重要资料应逐项复核。</li>
+        <li>硬件工具仅用于只读查看系统可返回的信息，不应被当作专业硬件诊断、超频或安全审计工具。</li>
+        <li>屏幕取色应只用于用户有权查看的画面。取色完成或不再使用时应退出取色状态，避免误操作。</li>
       </ul>
 
-      <h3>六、软件更新</h3>
-      <p>本软件支持在线检查更新和自动更新。用户应了解：</p>
+      <h3>五、按需依赖</h3>
       <ul>
-        <li>建议保持软件为最新版本，以获得最佳体验和安全性</li>
-        <li>部分关键更新可能为强制更新，用户必须更新后才能继续使用</li>
-        <li>更新过程不会影响用户的设置和数据</li>
-        <li>用户可手动检查更新：设置 → 版本与更新 → 检查更新</li>
+        <li>FFmpeg、Whisper 模型和 LibreOffice 应优先通过 ToolKnit 设置页提供的官方源或国内镜像安装，并等待下载、安装和校验完整结束。</li>
+        <li>不要使用来源不明的可执行文件替换受管理运行时。手动配置路径时，用户应自行确认来源、版本和许可证。</li>
+        <li>删除运行时会让对应工具暂时不可用，但不会删除用户输出文件。</li>
       </ul>
 
-      <h3>七、禁止行为</h3>
-      <p>用户在使用本软件时，以下行为被严格禁止：</p>
+      <h3>六、CLI / MCP / Agent</h3>
       <ul>
-        <li><strong>逆向工程</strong>：不得对本软件进行反编译、反汇编、调试或代码分析</li>
-        <li><strong>篡改软件</strong>：不得修改、破解、移除软件的功能限制或安全机制</li>
-        <li><strong>商业分发</strong>：不得将本软件进行二次销售、捆绑销售或作为商业产品分发</li>
-        <li><strong>恶意传播</strong>：不得将本软件与恶意软件、病毒捆绑传播</li>
-        <li><strong>冒名顶替</strong>：不得冒充开发者发布虚假信息或软件</li>
+        <li>始终提供明确的输入和输出路径；默认不覆盖已有文件，只有在用户明确授权时才使用覆盖选项。</li>
+        <li>密码和 API Key 不应出现在命令参数、Agent 对话、日志、文件名或公开截图中。桌面端密钥不会自动共享给 CLI / MCP。</li>
+        <li>让 Agent 先检查输入，再执行或 dry-run；涉及删除、覆盖、批量处理和 AI 调用时，应在提交前复核目标与范围。</li>
+        <li>Agent 必须实际调用 ToolKnit 工具并报告真实结果，不得用未经执行的文字答复冒充处理完成。</li>
       </ul>
 
-      <h3>八、违规处理</h3>
-      <p>如用户违反本使用规范，开发者有权采取以下措施：</p>
-      <ul>
-        <li>暂停或终止用户的账户使用权限</li>
-        <li>限制或禁止用户使用在线功能（AI 接口、反馈等）</li>
-        <li>对严重违规行为，保留追究法律责任的权利</li>
-      </ul>
+      <h3>七、开源代码与品牌使用</h3>
+      <p>可以依照 Apache License 2.0 使用、修改和分发本仓库代码，并保留许可证与必要声明。不得冒用 ToolKnit 名称、Logo、官网、域名、服务账号或视觉标识把第三方版本包装成官方版本，也不得把恶意软件与 ToolKnit 名义捆绑传播。</p>
 
-      <h3>九、规范变更</h3>
-      <p>开发者保留随时修改本使用规范的权利。规范变更后，用户继续使用本软件即视为接受修改后的规范。</p>
+      <h3>八、捐赠与反馈</h3>
+      <p>捐赠是自愿支持，不代表购买功能或获得优先排期。反馈问题时请提供可复现步骤、版本与已脱敏日志，不要上传包含私人内容的原文件、密钥或密码。</p>
 
-      <h3>十、责任限制</h3>
-      <div class="help-note">
-        <p>本软件以"现状"提供，开发者不对软件的<strong>适用性、稳定性、准确性</strong>做出任何明示或暗示的保证。在适用法律允许的最大范围内，开发者不对因使用或无法使用本软件导致的任何直接或间接损失（包括但不限于数据丢失、利润损失、业务中断）承担责任。</p>
-      </div>
+      <h3>九、更新与兼容性</h3>
+      <p>桌面端不会静默强制更新。建议从官方 GitHub Releases 获取新版本并核对发布说明；覆盖安装前先从系统托盘完全退出 ToolKnit。系统、驱动、WebView2、第三方格式和运行时变化可能造成兼容差异。</p>
 
-      <div class="help-note">
-        <p>最后更新日期：2025年7月1日<br/>开发者：董子航</p>
-      </div>
+      <h3>十、责任与规范变更</h3>
+      <div class="help-note"><p>用户应对输入内容、操作授权、结果复核和最终用途负责。本规范会随 2.0 功能边界更新；继续使用后续版本表示你理解当时版本中展示的最新说明。</p></div>
+      <div class="help-note"><p>适用版本：ToolKnit Desktop 2.0.0<br/>最后更新：2026 年 8 月 16 日<br/>开发者：董子航（Zihang Dong）</p></div>
     </div>`
   }
 };
@@ -179,74 +131,57 @@ const LEGAL_CONTENT_EN = {
     title: 'Program Declaration',
     html: `<div class="help-doc">
       <h2>Program Declaration</h2>
-      <p>This declaration aims to clarify the rights and obligations between the developer of ToolKnit (hereinafter "the Software") and the user. Please read this declaration carefully before installing and using the Software. By using the Software, you are deemed to have fully understood and accepted all contents of this declaration.</p>
+      <p>This declaration applies to ToolKnit Desktop 2.0 and the CLI / MCP components published in this repository. It explains the software's nature, data boundaries, third-party dependencies, and limits of responsibility. Please read it in the context of your intended task before use.</p>
 
-      <h3>1. Software Nature</h3>
-      <p>The Software is a <strong>free, non-open-source</strong> local multi-functional toolbox desktop application, independently developed and maintained by the developer. The Software contains no advertisements, in-app purchases, or paid features, and is not intended for profit.</p>
+      <h3>1. Software and Open-Source License</h3>
+      <p>ToolKnit Desktop is a free, local-first file workspace for 64-bit Windows 10 / 11. Published source code for the desktop app and CLI / MCP components is licensed under the <strong>Apache License 2.0</strong>. You may use, modify, and distribute that code subject to the license and the repository <code>NOTICE</code>.</p>
+      <p>The hosted ToolKnit website, domains, service accounts, ToolKnit name, logos, and visual identity are not automatically licensed with the source code. The hosted web product and the open-source desktop repository are related products with separate boundaries.</p>
 
-      <h3>2. Local Processing & Privacy</h3>
-      <p>All file processing features of the Software (including but not limited to PDF, image, audio, video, text tools) are performed on the user's local device. User files are not uploaded to any server. The developer cannot access, view, or recover any file content processed by users.</p>
-      <p>The AI tools of the Software (AI Polish, AI Translate, AI Document Generation, AI Chat) require sending user-input <strong>text content</strong> to a third-party AI API (DeepSeek) for processing. This process only transmits text data and does not involve file uploads. The data processing of the AI API is subject to its own privacy policy, and the developer cannot control the privacy practices of third-party services.</p>
+      <h3>2. Local File Processing</h3>
+      <p>Non-AI PDF, PPT, image, audio, video, text, calculator, hardware-inspection, and cleanup workflows run on the user's device by default. Source files are not uploaded to a ToolKnit server. Outputs are written to a user-selected local directory and existing files are not overwritten by default.</p>
+      <p>PPT-to-PDF/image uses a local LibreOffice runtime, audio/video processing uses local FFmpeg, and offline transcription uses a local Whisper model. These operations still happen on the device.</p>
 
-      <h3>3. User Data & Statistics</h3>
-      <p>The Software <strong>does not collect</strong> any user personal privacy data, and contains no tracking code, analytics tools, or user behavior statistics. The Software only communicates with servers in the following scenarios:</p>
+      <h3>3. AI and Network Boundary</h3>
+      <p>A request is sent to a user-selected third-party AI provider only when the user explicitly runs AI Polish, AI Translate, AI Document, AI Table, PPT text AI organization, AI PPT outline, AI PPT draft / PPTX, transcription refinement, or AI review in Large File Cleanup.</p>
       <ul>
-        <li><strong>User Authentication</strong>: Transmitting email, username, and other account information during registration and login</li>
-        <li><strong>Usage Count</strong>: Only recording tool usage count (excluding file content or personal information), used to display total usage</li>
-        <li><strong>Version Update Check</strong>: Checking for available new versions</li>
-        <li><strong>Feedback Submission</strong>: Feedback content voluntarily submitted by users</li>
-        <li><strong>AI API Calls</strong>: Calling third-party APIs when AI tools process text</li>
+        <li>Polish, translation, document, table, and PPT AI workflows send user-entered text or text extracted locally from a file; the source file itself is not uploaded.</li>
+        <li>Transcription refinement sends recognized subtitle text only, never the source audio or video.</li>
+        <li>AI review in Large File Cleanup sends filename, size, category, modification time, relative directory clues, and local risk reasons. It does not send file contents or full absolute paths.</li>
+        <li>Retention and processing by an AI provider are governed by that provider's own terms and privacy policy. ToolKnit cannot make guarantees on its behalf.</li>
       </ul>
 
-      <h3>4. Third-Party Components</h3>
-      <p>The Software uses the following open-source third-party components and libraries:</p>
+      <h3>4. Other Network Access</h3>
+      <p>The desktop app does not perform silent behavioral analytics or advertising tracking. It may access the network in these cases:</p>
       <ul>
-        <li><strong>FFmpeg</strong>: Multimedia processing library, used for audio/video format conversion, compression, etc.</li>
-        <li><strong>pdf-lib</strong>: PDF document processing library</li>
-        <li><strong>Lucide Icons</strong>: Icon library</li>
-        <li><strong>Other open-source libraries</strong>: See respective open-source license agreements</li>
+        <li>At the user's request, Settings downloads FFmpeg, Whisper models, or LibreOffice from the selected official source or China mirror and verifies the result.</li>
+        <li>The home page reads public GitHub repository metrics and the public support record for display.</li>
+        <li>Website, GitHub, Issue, and other external links open in the system browser after the user clicks them.</li>
+        <li>An explicitly requested AI action calls the configured AI provider API.</li>
       </ul>
-      <p>The copyrights of these third-party components belong to their respective owners. The Software only uses them as a caller. The developer is not responsible for the security, stability, or compliance of third-party components.</p>
+      <p>This open-source desktop edition has no account registration, sign-in, or cloud favorite sync. In-app favorites are not uploaded to a ToolKnit server.</p>
 
-      <h3>5. Disclaimer</h3>
-      <div class="help-note">
-        <p><strong>1. File Processing Risk</strong>: Although the Software processes files locally, users should back up important files before use. The developer is not liable for any file corruption, data loss, format errors, or other consequences resulting from the use of the Software.</p>
-      </div>
-      <div class="help-note">
-        <p><strong>2. AI-Generated Content</strong>: Content generated by the Software's AI tools is automatically produced by third-party AI models. The developer does not guarantee the accuracy, completeness, legality, or applicability of such content. Users should independently judge and review AI-generated content and assume full responsibility for their use.</p>
-      </div>
-      <div class="help-note">
-        <p><strong>3. Service Availability</strong>: The online features of the Software (user authentication, version updates, AI API, etc.) depend on servers and network environments. The developer does not guarantee the continuous availability of these features and is not liable for service interruptions caused by network failures, server maintenance, third-party service changes, etc.</p>
-      </div>
-      <div class="help-note">
-        <p><strong>4. Force Majeure</strong>: The developer is not liable for service interruptions or data losses caused by force majeure factors such as natural disasters, policy changes, or cyber attacks.</p>
-      </div>
+      <h3>5. Local Data and Screen Picker</h3>
+      <p>Language, output location, interface preferences, favorites, shortcuts, managed-runtime status, and AI configuration are stored in local application data. An AI key is not uploaded to ToolKnit, but it is sent as authentication to the selected provider when the user makes an AI request. Configure it only on a trusted device.</p>
+      <p>The screen picker works only after the user starts it or invokes the configured shortcut. While active, it reads a <strong>21 × 21</strong> pixel region around the crosshair into memory for magnification and returns the center pixel color. That region is not saved as a file or uploaded.</p>
 
-      <h3>6. Intellectual Property</h3>
-      <p>The intellectual property rights of the Software's interface design, icons, code structure, and feature implementation belong to the developer. Users may not reverse compile, reverse assemble, reverse engineer, or otherwise attempt to obtain the source code of the Software.</p>
-      <p>The intellectual property of files and data processed by users using the Software belongs to the user or relevant rights holders, and the developer claims no rights thereto.</p>
+      <h3>6. Third-Party Components and Optional Runtimes</h3>
+      <p>The software uses open-source components or runtimes including Tauri, Rust, PDF.js, pdf-lib, FFmpeg, Whisper, LibreOffice, JSZip, ExcelJS, Chart.js, and Lucide. Rights remain with their respective owners. Refer to dependency manifests, lockfiles, and third-party notices for authoritative versions and licenses.</p>
+      <p>FFmpeg, Whisper models, and LibreOffice are not all bundled with the base installer. Installation can be affected by the selected source, network speed, disk space, system policy, and upstream releases.</p>
 
-      <h3>7. Usage Restrictions</h3>
-      <p>When using the Software, users must comply with the following restrictions:</p>
-      <ul>
-        <li>Must not use the Software for any illegal, infringing, or harmful purposes</li>
-        <li>Must not use the Software to process files that infringe others' intellectual property</li>
-        <li>Must not resell, bundle-sell, or commercially distribute the Software</li>
-        <li>Must not tamper with or remove copyright notices or disclaimers in the Software</li>
-      </ul>
+      <h3>7. Outputs, AI Content, and Liability</h3>
+      <p>Keep a backup of important files and inspect exported pages, fonts, colors, formulas, timelines, compression quality, and file integrity before relying on a result. Conversion and compression may introduce format or quality differences.</p>
+      <p>AI output may contain factual, layout, translation, or judgment errors. It is assistance only and is not legal, medical, financial, or other professional advice. The user is responsible for lawful input, review, and final use.</p>
+      <div class="help-note"><p>To the extent permitted by applicable law, the software is provided “as is” without a warranty of fitness for a particular purpose, uninterrupted availability, or error-free operation. The developer is not responsible for indirect loss caused by misuse, missing backups, third-party service changes, dependency failures, or force majeure.</p></div>
 
-      <h3>8. Declaration Changes</h3>
-      <p>The developer reserves the right to modify this declaration at any time. After changes are made, continued use of the Software constitutes acceptance of the modified declaration. The developer will inform users of declaration changes through software updates or in-app notifications.</p>
+      <h3>8. Intellectual Property and Brand Boundary</h3>
+      <p>Files and data processed by the user remain with the user or their rightful owners. Code rights are governed by Apache License 2.0. That license does not grant rights to ToolKnit trademarks, names, logos, visual identity, official websites, domains, or hosted services, and it does not permit impersonating an official release or account.</p>
 
-      <h3>9. Applicable Law</h3>
-      <p>This declaration is interpreted and applied in accordance with the laws of the People's Republic of China. Any disputes arising from this declaration or the use of the Software shall be resolved through amicable negotiation; if negotiation fails, either party may file a lawsuit with the people's court having jurisdiction at the developer's location.</p>
+      <h3>9. Donations</h3>
+      <p>Donations are voluntary support for compatibility testing, dependency and mirror verification, documentation, package distribution, and open-source maintenance. A donation does not unlock features or create a purchase, subscription, paid-development contract, support contract, or priority roadmap commitment.</p>
 
-      <h3>10. Contact</h3>
-      <p>If you have any questions about this declaration, you can contact the developer through the <strong>Feedback</strong> feature in the Software.</p>
-
-      <div class="help-note">
-        <p>Last updated: July 1, 2025<br/>Developer: Zihang Dong</p>
-      </div>
+      <h3>10. Updates and Contact</h3>
+      <p>This declaration may be updated when features or data boundaries change. Use the official GitHub repository for releases, source code, and issue reports. Remove file contents, keys, passwords, and private full paths from reports before submitting them.</p>
+      <div class="help-note"><p>Applies to: ToolKnit Desktop 2.0.0<br/>Last updated: August 16, 2026<br/>Developer: Zihang Dong</p></div>
     </div>`
   },
 
@@ -254,96 +189,65 @@ const LEGAL_CONTENT_EN = {
     title: 'Usage Policy',
     html: `<div class="help-doc">
       <h2>Usage Policy</h2>
-      <p>This usage policy aims to clarify the rules and precautions that users must follow when using ToolKnit (hereinafter "the Software"). Please read this policy carefully before using the Software. By using the Software, you are deemed to have fully understood and accepted all contents of this policy.</p>
+      <p>This policy states the basic rules for ToolKnit Desktop, CLI, and MCP. Whether a task runs locally or uses an AI provider, users must ensure that inputs, actions, and outputs are lawful, safe, and properly authorized.</p>
 
-      <h3>1. Lawful Use</h3>
-      <p>When using the Software, users must comply with the relevant laws and regulations of the People's Republic of China and the applicable laws of the user's country/region. Users must not use the Software to engage in the following:</p>
+      <h3>1. Lawful and Authorized Use</h3>
       <ul>
-        <li>Processing, producing, or distributing file content that violates laws and regulations</li>
-        <li>Processing files that infringe others' intellectual property, trade secrets, or personal privacy</li>
-        <li>Using the Software for any behavior that endangers network or information security</li>
-        <li>Using the Software to process sensitive files involving state secrets or trade secrets (professional classified equipment is recommended)</li>
-        <li>Using the Software as a tool for fraud, infringement, or other illegal activities</li>
+        <li>Do not use the software to create, process, or distribute illegal, infringing, fraudulent, malicious, or harmful content.</li>
+        <li>Obtain the required permission before processing another person's files, personal data, business material, copyrighted content, recordings, or video.</li>
+        <li>State secrets, trade secrets, medical or financial records, identity documents, and other highly sensitive material require organization-approved devices and procedures; do not rely on a general-purpose tool alone.</li>
       </ul>
 
-      <h3>2. AI Tool Usage Policy</h3>
-      <p>The AI tools integrated into the Software (AI Polish, AI Translate, AI Document Generation, AI Chat) call third-party AI APIs to provide services. Users must follow these rules when using AI tools:</p>
+      <h3>2. File Processing and Output Review</h3>
       <ul>
-        <li><strong>Content Legality</strong>: Must not input illegal, pornographic, violent, discriminatory, or other harmful content</li>
-        <li><strong>Privacy Protection</strong>: Must not input others' personal information, medical records, financial data, or other sensitive privacy content</li>
-        <li><strong>Intellectual Property</strong>: Must not input copyrighted text content without authorization</li>
-        <li><strong>Trade Secrets</strong>: Must not input text content involving trade secrets or protected by confidentiality agreements</li>
-        <li><strong>Anti-Abuse</strong>: Must not make malicious high-frequency calls to AI APIs through automated scripts or other means</li>
-      </ul>
-      <div class="help-note">
-        <p>AI-generated content is for reference only and does not constitute any professional advice (legal, medical, financial, etc.). Users should independently judge the accuracy and applicability of AI-generated content.</p>
-      </div>
-
-      <h3>3. File Processing Precautions</h3>
-      <p>The Software processes files locally, but users should still note the following:</p>
-      <ul>
-        <li><strong>Back Up Important Files</strong>: Always back up original files before processing to avoid file corruption from operational errors</li>
-        <li><strong>Check Results</strong>: After processing, check the output files to confirm the results meet expectations</li>
-        <li><strong>PDF Encryption</strong>: Keep your encryption password safe — PDF content cannot be recovered if the password is lost</li>
-        <li><strong>Large Files</strong>: Processing large files may consume significant system resources; close other high-load programs</li>
-        <li><strong>Format Compatibility</strong>: Some format conversions may have compatibility limitations; test with small batches first</li>
+        <li>Keep originals and an independent backup before processing important files. Do not use the only copy as input.</li>
+        <li>Verify page count, text, images, formulas, synchronization, compression quality, and target-format compatibility before deleting an original.</li>
+        <li>Keep PDF encryption passwords safe. ToolKnit does not guarantee recovery if a password is lost.</li>
+        <li>Large or high-resolution jobs can use substantial CPU, memory, and disk space. Avoid force-closing the app or disconnecting storage during processing.</li>
       </ul>
 
-      <h3>4. Account Usage Policy</h3>
-      <p>The Software offers user registration and login (for favorites sync and other features). Users must follow these rules when using accounts:</p>
+      <h3>3. AI Use and Sensitive Information</h3>
       <ul>
-        <li>Provide a real and valid email address during registration</li>
-        <li>Keep account passwords secure; do not transfer, lend, or share accounts with others</li>
-        <li>Do not register multiple accounts for abuse</li>
-        <li>Users are responsible for their own account security; losses due to account leakage are borne by the user</li>
+        <li>Do not paste API keys, account passwords, government identifiers, bank details, or unauthorized sensitive information into prompts, imported documents, or Agent conversations.</li>
+        <li>Review the selected AI provider's regional availability, pricing, content rules, and privacy policy. The user is responsible for third-party charges.</li>
+        <li>Review AI output manually. Do not treat unverified output as a professional conclusion, formal contract, medical diagnosis, or financial decision.</li>
+        <li>Do not use automation to abuse third-party AI services or runtime mirrors.</li>
       </ul>
 
-      <h3>5. FFmpeg Extension</h3>
-      <p>The audio/video processing features of the Software depend on the FFmpeg extension. Users should understand the following when using related features:</p>
+      <h3>4. Cleanup, Hardware, and Screen Picking</h3>
       <ul>
-        <li>The FFmpeg extension is automatically downloaded and managed by the Software; no manual installation required</li>
-        <li>FFmpeg is licensed under LGPL or GPL; users can obtain source code from the FFmpeg official website</li>
-        <li>The extension download is approximately 80-100MB; downloading over Wi-Fi is recommended</li>
+        <li>Large File Cleanup scans local metadata first and moves files to the Windows Recycle Bin only after the user selects and confirms them. Review projects, chats, models, and important data item by item.</li>
+        <li>Hardware tools are read-only views of information Windows can expose. They are not professional hardware diagnostics, overclocking tools, or security audits.</li>
+        <li>Use the screen picker only on content you are authorized to view, and exit picker mode when the task is complete.</li>
       </ul>
 
-      <h3>6. Software Updates</h3>
-      <p>The Software supports online update checks and automatic updates. Users should understand:</p>
+      <h3>5. Optional Runtimes</h3>
       <ul>
-        <li>It is recommended to keep the Software up to date for the best experience and security</li>
-        <li>Some critical updates may be mandatory; users must update before continuing to use the Software</li>
-        <li>The update process does not affect user settings and data</li>
-        <li>Users can manually check for updates: Settings → Version & Updates → Check for Updates</li>
+        <li>Install FFmpeg, Whisper models, and LibreOffice through the verified official source or China mirror offered in Settings, and wait for download, installation, and verification to finish.</li>
+        <li>Do not replace a managed runtime with an executable from an untrusted source. Users who configure a path manually are responsible for its source, version, and license.</li>
+        <li>Removing a runtime temporarily disables dependent tools but does not delete user output files.</li>
       </ul>
 
-      <h3>7. Prohibited Behaviors</h3>
-      <p>The following behaviors are strictly prohibited when using the Software:</p>
+      <h3>6. CLI / MCP / Agent</h3>
       <ul>
-        <li><strong>Reverse Engineering</strong>: Must not reverse compile, disassemble, debug, or analyze the code of the Software</li>
-        <li><strong>Tampering</strong>: Must not modify, crack, or remove feature restrictions or security mechanisms</li>
-        <li><strong>Commercial Distribution</strong>: Must not resell, bundle-sell, or distribute the Software as a commercial product</li>
-        <li><strong>Malicious Distribution</strong>: Must not bundle the Software with malware or viruses for distribution</li>
-        <li><strong>Impersonation</strong>: Must not impersonate the developer to publish false information or software</li>
+        <li>Always provide explicit input and output paths. Existing files are not overwritten by default; use overwrite options only with explicit user authorization.</li>
+        <li>Passwords and API keys must not appear in command arguments, Agent conversations, logs, filenames, or public screenshots. Desktop AI settings are not automatically shared with CLI / MCP.</li>
+        <li>Ask an Agent to inspect inputs before execution or dry-run. Review targets and scope before deletion, overwrite, batch processing, or AI calls.</li>
+        <li>An Agent must actually invoke ToolKnit and report real results. It must not substitute an unexecuted chat response for completed processing.</li>
       </ul>
 
-      <h3>8. Violation Handling</h3>
-      <p>If users violate this usage policy, the developer reserves the right to take the following measures:</p>
-      <ul>
-        <li>Suspend or terminate the user's account access</li>
-        <li>Restrict or prohibit users from using online features (AI API, feedback, etc.)</li>
-        <li>For serious violations, reserve the right to pursue legal responsibility</li>
-      </ul>
+      <h3>7. Open-Source Code and Brand Use</h3>
+      <p>You may use, modify, and distribute repository code under Apache License 2.0 while preserving the license and required notices. Do not use ToolKnit names, logos, websites, domains, service accounts, or visual identity to present a third-party build as official, and do not bundle malware under the ToolKnit name.</p>
 
-      <h3>9. Policy Changes</h3>
-      <p>The developer reserves the right to modify this usage policy at any time. After changes are made, continued use of the Software constitutes acceptance of the modified policy.</p>
+      <h3>8. Donations and Feedback</h3>
+      <p>Donations are voluntary and do not purchase features or priority scheduling. When reporting a problem, provide reproducible steps, the app version, and sanitized logs. Do not upload source files containing private content, keys, or passwords.</p>
 
-      <h3>10. Limitation of Liability</h3>
-      <div class="help-note">
-        <p>The Software is provided "as is," and the developer makes no express or implied warranties regarding the <strong>applicability, stability, or accuracy</strong> of the Software. To the maximum extent permitted by applicable law, the developer is not liable for any direct or indirect losses (including but not limited to data loss, profit loss, business interruption) resulting from the use of or inability to use the Software.</p>
-      </div>
+      <h3>9. Updates and Compatibility</h3>
+      <p>The desktop app does not silently force updates. Obtain releases from official GitHub Releases and review release notes. Exit ToolKnit completely from the system tray before an in-place upgrade. Windows, drivers, WebView2, third-party formats, and runtime changes may affect compatibility.</p>
 
-      <div class="help-note">
-        <p>Last updated: July 1, 2025<br/>Developer: Zihang Dong</p>
-      </div>
+      <h3>10. Responsibility and Policy Changes</h3>
+      <div class="help-note"><p>Users are responsible for input content, authorization, result review, and final use. This policy may be updated with the 2.0 feature boundary; continued use of a later release means you understand the latest policy shown for that release.</p></div>
+      <div class="help-note"><p>Applies to: ToolKnit Desktop 2.0.0<br/>Last updated: August 16, 2026<br/>Developer: Zihang Dong</p></div>
     </div>`
   }
 };

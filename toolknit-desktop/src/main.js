@@ -1,7 +1,6 @@
       import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
       import { createIcons, icons } from 'lucide';
       import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
-      import { initDarkVeil } from './darkveil.js';
       import { initLightRays } from './lightrays.js';
       import { initPlasma } from './plasma.js';
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
@@ -64,6 +63,7 @@
         assertColorExtractorImageBytes,
         assertColorExtractorDimensions,
         assertColorExtractorFile,
+        paletteFromRgba,
         readColorExtractorImageDimensions
       } from './color-extractor-core.js';
       import {
@@ -86,11 +86,14 @@
       } from './audio-convert-core.js';
       import {
         BpmDetectError,
+        analyzeAudioKeyPcm,
+        analyzeBpmPcm,
+        analyzeMusicTempoPcm,
         assertBpmAudioBuffer,
         assertBpmInputSize,
+        fuseBpmAnalyses,
         getBpmAnalysisSpec,
-        isBpmSupportedAudioName,
-        normalizeBpmCandidates
+        isBpmSupportedAudioName
       } from './bpm-detect-core.js';
       import {
         AudioExtractError,
@@ -113,27 +116,78 @@
       import { frameTimeLabel, normalizeVideoFrameFormat, normalizeVideoFrameTimestamp, validateVideoFrameInput } from './video-frame-core.js';
       import { createDefaultVideoGifSelection, normalizeVideoGifRequest, validateVideoGifInput, videoGifTimeLabel } from './video-gif-core.js';
       import { calculateImageStitchLayout, normalizeImageStitchRequest } from './image-stitch-core.js';
+      import {
+        PPT_RENDER_LIMITS,
+        createPptToPdfFileName,
+        inspectPptxRenderBytes,
+        sanitizePptRenderBaseName
+      } from './ppt-render-core.js';
+      import {
+        PPT_IMAGE_EXTRACT_LIMITS,
+        analyzePptxImages,
+        createPptImageManifestMarkdown,
+        normalizePptPageSelection,
+        planPptImageExport,
+        sanitizePptImageBaseName
+      } from './ppt-image-extract-core.js';
+      import {
+        PPT_TEXT_EXTRACT_LIMITS,
+        analyzePptxText,
+        buildPptTextAiMessages,
+        createPptTextMarkdown,
+        createPptTextJson,
+        createPptTextTxt,
+        normalizePptTextAiMode,
+        normalizePptTextFormat,
+        normalizePptTextPageSelection,
+        planPptTextExport,
+        sanitizePptTextBaseName
+      } from './ppt-text-extract-core.js';
+      import {
+        PPT_COMPRESS_LIMITS,
+        compressPptxBytes,
+        createPptCompressManifest,
+        sanitizePptCompressBaseName
+      } from './ppt-compress-core.js';
+      import {
+        buildPptOutlineMessages,
+        createPptOutlineManifest,
+        createPptOutlineMarkdown,
+        extractPptOutlineJson,
+        normalizePptOutlineRequest,
+        normalizePptOutlineResult,
+        sanitizePptOutlineBaseName
+      } from './ppt-outline-core.js';
+      import {
+        buildPptDraftPptx,
+        createPptDraftManifest,
+        createPptDraftMarkdown,
+        inferPptDraftTheme,
+        normalizePptDraftRequest,
+        normalizePptDraftOutline,
+        resolvePptDraftSubjectCopy,
+        resolvePptDraftThemeTokens,
+        placeholderSvg,
+        sanitizePptDraftBaseName
+      } from './ppt-draft-core.js';
       import { initPdfToImageTool } from './pdf-to-image-ui.js';
       import { initColorSpaceCompareTool } from './color-space-compare-ui.js';
+      import { initPdfEditorTool } from './pdf-editor-ui.js';
       import JSZip from 'jszip';
+      import { TaskRunner } from '../shared/task-runtime.mjs';
 
-      // Disable context menu globally, but allow on tool items for favorites
+      // Keep custom tool menus, but preserve native editing menus in text fields.
       document.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
         if (e.target.closest('.audio-list-item')) return;
         if (e.target.closest('.cleanup-large-files-table tr[data-path], .cleanup-large-files-context-menu')) return;
         e.preventDefault();
       });
-      document.addEventListener('copy', (e) => {
-        if (e.target?.closest?.('[data-allow-programmatic-copy]')
-          || document.activeElement?.matches?.('[data-allow-programmatic-copy]')) return;
-        e.preventDefault();
-      });
-      document.addEventListener('cut', (e) => e.preventDefault());
 
       const WINDOW_RADIUS_KEY = 'toolknit.window-radius.v1';
       const WINDOW_RESIZE_KEY = 'toolknit.window-resizable.v1';
-      const WINDOW_MIN_WIDTH = 1210;
-      const WINDOW_MIN_HEIGHT = 780;
+      const WINDOW_MIN_WIDTH = 1400;
+      const WINDOW_MIN_HEIGHT = 900;
       const WINDOW_RADIUS_PRESETS = {
         none: 0,
         small: 10,
@@ -141,6 +195,489 @@
       };
       const WINDOW_RADIUS_CUSTOM_DEFAULT = 10;
       const WINDOW_RADIUS_MAX = 32;
+      const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
+      const isScreenPickerWindow = typeof window !== 'undefined'
+        && new URLSearchParams(window.location.search).get('screen-picker') === '1';
+      const appWindow = isTauri ? getCurrentWindow() : null;
+
+      // Global UI feedback is intentionally kept separate from tool audio
+      // contexts (BPM, typing and audio clipping). It is synthesized locally,
+      // so no asset download or additional permission is required.
+      const UI_SOUND_STORAGE_KEY = 'toolknit.ui-sound.v1';
+      const UI_SOUND_STYLES = Object.freeze({
+        '1': Object.freeze({
+          click: Object.freeze([{ frequency: 520, endFrequency: 690, duration: 0.095, volume: 0.24, waveform: 'sine' }]),
+          touch: Object.freeze([{ frequency: 360, endFrequency: 430, duration: 0.065, volume: 0.14, waveform: 'sine' }]),
+          slide: Object.freeze([{ frequency: 285, endFrequency: 330, duration: 0.045, volume: 0.08, waveform: 'sine' }]),
+          hover: Object.freeze([{ frequency: 440, endFrequency: 470, duration: 0.04, volume: 0.05, waveform: 'sine' }])
+        }),
+        '2': Object.freeze({
+          click: Object.freeze([
+            { frequency: 610, endFrequency: 760, duration: 0.075, volume: 0.2, waveform: 'triangle' },
+            { frequency: 920, endFrequency: 980, duration: 0.045, volume: 0.055, waveform: 'sine' }
+          ]),
+          touch: Object.freeze([{ frequency: 430, endFrequency: 510, duration: 0.055, volume: 0.12, waveform: 'triangle' }]),
+          slide: Object.freeze([{ frequency: 330, endFrequency: 390, duration: 0.04, volume: 0.07, waveform: 'triangle' }]),
+          hover: Object.freeze([{ frequency: 520, endFrequency: 550, duration: 0.035, volume: 0.045, waveform: 'triangle' }])
+        }),
+        '3': Object.freeze({
+          click: Object.freeze([{ frequency: 245, endFrequency: 360, duration: 0.105, volume: 0.17, waveform: 'square' }]),
+          touch: Object.freeze([{ frequency: 190, endFrequency: 250, duration: 0.07, volume: 0.1, waveform: 'square' }]),
+          slide: Object.freeze([{ frequency: 150, endFrequency: 205, duration: 0.05, volume: 0.065, waveform: 'square' }]),
+          hover: Object.freeze([{ frequency: 280, endFrequency: 305, duration: 0.038, volume: 0.04, waveform: 'square' }])
+        })
+      });
+      const UI_SOUND_MIN_INTERVALS = Object.freeze({ click: 34, touch: 55, slide: 42, hover: 115 });
+
+      function readUiSoundState() {
+        let parsed = null;
+        try { parsed = JSON.parse(localStorage.getItem(UI_SOUND_STORAGE_KEY) || 'null'); } catch { /* storage may be unavailable */ }
+        return {
+          enabled: parsed?.enabled !== false,
+          style: Object.prototype.hasOwnProperty.call(UI_SOUND_STYLES, String(parsed?.style)) ? String(parsed.style) : '1'
+        };
+      }
+
+      let uiSoundState = readUiSoundState();
+      let uiSoundContext = null;
+      let uiSoundMaster = null;
+      let uiSoundLastPlayed = Object.create(null);
+      let uiSoundDragState = null;
+      const uiSoundVoices = new Set();
+
+      function saveUiSoundState() {
+        try { localStorage.setItem(UI_SOUND_STORAGE_KEY, JSON.stringify(uiSoundState)); } catch { /* keep runtime behavior if storage is blocked */ }
+      }
+
+      function setUiSoundState(patch = {}) {
+        uiSoundState = {
+          enabled: patch.enabled === undefined ? uiSoundState.enabled : Boolean(patch.enabled),
+          style: Object.prototype.hasOwnProperty.call(UI_SOUND_STYLES, String(patch.style ?? uiSoundState.style))
+            ? String(patch.style ?? uiSoundState.style)
+            : uiSoundState.style
+        };
+        saveUiSoundState();
+        if (!uiSoundState.enabled) {
+          // Disabled means no live audio graph should remain behind the UI.
+          uiSoundDragState = null;
+          disposeUiSoundContext();
+        }
+        window.dispatchEvent(new CustomEvent('toolknit-ui-sound-change', { detail: { ...uiSoundState } }));
+        return { ...uiSoundState };
+      }
+
+      function ensureUiSoundContext({ userGesture = false } = {}) {
+        if (!uiSoundState.enabled || isScreenPickerWindow) return null;
+        if (uiSoundContext?.state === 'closed') disposeUiSoundContext();
+        if (!userGesture && !uiSoundContext) return null;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+        if (!uiSoundContext) {
+          let candidateContext = null;
+          try {
+            candidateContext = new AudioContextClass();
+            uiSoundContext = candidateContext;
+            uiSoundMaster = uiSoundContext.createGain();
+            uiSoundMaster.gain.value = 0.6;
+            uiSoundMaster.connect(uiSoundContext.destination);
+          } catch {
+            try { candidateContext?.close().catch(() => {}); } catch { /* context creation failed */ }
+            uiSoundContext = null;
+            uiSoundMaster = null;
+            return null;
+          }
+        }
+        if (userGesture && uiSoundContext.state === 'suspended') uiSoundContext.resume().catch(() => {});
+        return uiSoundContext;
+      }
+
+      function playUiSound(kind = 'click', { userGesture = false, styleOverride = null, force = false } = {}) {
+        if ((!uiSoundState.enabled && !force) || !UI_SOUND_STYLES[styleOverride || uiSoundState.style]?.[kind]) return false;
+        const now = performance.now();
+        const minInterval = UI_SOUND_MIN_INTERVALS[kind] || 40;
+        if (!force && now - (uiSoundLastPlayed[kind] || 0) < minInterval) return false;
+        const context = ensureUiSoundContext({ userGesture });
+        if (!context || !uiSoundMaster || context.state === 'closed') return false;
+        uiSoundLastPlayed[kind] = now;
+        const profile = UI_SOUND_STYLES[styleOverride || uiSoundState.style][kind];
+        const start = context.currentTime + 0.004;
+        profile.forEach(tone => {
+          let oscillator = null;
+          let gain = null;
+          let voice = null;
+          const releaseVoice = () => {
+            if (voice) uiSoundVoices.delete(voice);
+            try { oscillator?.disconnect(); } catch { /* already disconnected */ }
+            try { gain?.disconnect(); } catch { /* already disconnected */ }
+          };
+          try {
+            oscillator = context.createOscillator();
+            gain = context.createGain();
+            voice = { oscillator, gain };
+            const duration = Math.max(0.025, Number(tone.duration) || 0.06);
+            const volume = Math.max(0.001, Number(tone.volume) || 0.02);
+            oscillator.type = tone.waveform || 'sine';
+            oscillator.frequency.setValueAtTime(Number(tone.frequency) || 440, start);
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, Number(tone.endFrequency) || tone.frequency || 440), start + duration);
+            gain.gain.setValueAtTime(0.0001, start);
+            gain.gain.exponentialRampToValueAtTime(volume, start + Math.min(0.012, duration * 0.28));
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+            oscillator.connect(gain);
+            gain.connect(uiSoundMaster);
+            uiSoundVoices.add(voice);
+            oscillator.addEventListener('ended', releaseVoice, { once: true });
+            oscillator.start(start);
+            oscillator.stop(start + duration + 0.012);
+          } catch {
+            releaseVoice();
+          }
+        });
+        return true;
+      }
+
+      function disposeUiSoundContext() {
+        const context = uiSoundContext;
+        uiSoundVoices.forEach(({ oscillator, gain }) => {
+          try { oscillator.stop(); } catch { /* voice may already be stopped */ }
+          try { oscillator.disconnect(); } catch { /* already disconnected */ }
+          try { gain.disconnect(); } catch { /* already disconnected */ }
+        });
+        uiSoundVoices.clear();
+        try { uiSoundMaster?.disconnect(); } catch { /* already disconnected */ }
+        uiSoundMaster = null;
+        uiSoundContext = null;
+        if (context && context.state !== 'closed') context.close().catch(() => {});
+      }
+
+      function isUiSoundInteractive(target) {
+        return target instanceof Element
+          && target.closest('button, a, input, select, textarea, summary, [role="button"], [role="switch"], [data-sound-click]');
+      }
+
+      function initUiSoundEvents() {
+        if (isScreenPickerWindow) return;
+        document.addEventListener('pointerover', event => {
+          const target = isUiSoundInteractive(event.target);
+          if (!target || target.matches(':disabled,[aria-disabled="true"],.no-ui-sound') || (event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) return;
+          // Hover never creates an AudioContext; it becomes active after the first gesture.
+          playUiSound('hover');
+        }, { passive: true });
+        document.addEventListener('click', event => {
+          const target = isUiSoundInteractive(event.target);
+          if (!target || target.matches(':disabled,[aria-disabled="true"],.no-ui-sound')) return;
+          playUiSound('click', { userGesture: true });
+        }, true);
+        document.addEventListener('pointerdown', event => {
+          const target = event.target instanceof Element ? event.target.closest('input[type="range"], [draggable="true"], [data-sound-slide], .audio-clip-handle') : null;
+          if (!target || target.matches(':disabled,[aria-disabled="true"],.no-ui-sound')) return;
+          uiSoundDragState = { pointerId: event.pointerId, target, x: event.clientX, y: event.clientY };
+          playUiSound('touch', { userGesture: true });
+        }, { passive: true });
+        document.addEventListener('pointermove', event => {
+          if (!uiSoundDragState || event.pointerId !== uiSoundDragState.pointerId) return;
+          const distance = Math.hypot(event.clientX - uiSoundDragState.x, event.clientY - uiSoundDragState.y);
+          if (distance < 4) return;
+          uiSoundDragState.x = event.clientX;
+          uiSoundDragState.y = event.clientY;
+          playUiSound('slide');
+        }, { passive: true });
+        const stopDrag = event => {
+          if (uiSoundDragState && (event.pointerId === undefined || event.pointerId === uiSoundDragState.pointerId)) uiSoundDragState = null;
+        };
+        document.addEventListener('pointerup', stopDrag, { passive: true });
+        document.addEventListener('pointercancel', stopDrag, { passive: true });
+        document.addEventListener('input', event => {
+          if (event.target instanceof HTMLInputElement && event.target.type === 'range') playUiSound('slide', { userGesture: true });
+        }, { passive: true });
+        document.addEventListener('dragstart', event => {
+          if (event.target instanceof Element && !event.target.closest('.no-ui-sound')) playUiSound('touch', { userGesture: true });
+        }, { passive: true });
+        const suspendUiSound = () => {
+          uiSoundDragState = null;
+          if (uiSoundContext?.state === 'running') uiSoundContext.suspend().catch(() => {});
+        };
+        document.addEventListener('visibilitychange', () => { if (document.hidden) suspendUiSound(); });
+        window.addEventListener('blur', suspendUiSound, { passive: true });
+        const disposeAllAudio = () => {
+          disposeUiSoundContext();
+          disposeTypingAudioContext();
+        };
+        window.addEventListener('pagehide', disposeAllAudio, { passive: true });
+        window.addEventListener('beforeunload', disposeAllAudio, { passive: true });
+      }
+
+      window.toolknitUiSound = Object.freeze({
+        getState: () => ({ ...uiSoundState }),
+        setEnabled: enabled => setUiSoundState({ enabled }),
+        setStyle: style => setUiSoundState({ style }),
+        play: (kind = 'click', options = {}) => playUiSound(kind, { ...options, userGesture: true }),
+        preview: style => playUiSound('click', { styleOverride: String(style || uiSoundState.style), userGesture: true, force: true })
+      });
+      initUiSoundEvents();
+      if (isScreenPickerWindow) {
+        setTimeout(() => { void bootstrapScreenPickerOverlay(); }, 0);
+      }
+      let nativeWindowRadiusQueue = Promise.resolve();
+      let nativeWindowChromeRepairQueue = Promise.resolve();
+
+      // Self-contained early bootstrap for the full-screen color picker window.
+      // It runs on a macrotask so an unrelated top-level init failure elsewhere
+      // in this bundle cannot leave the picker stuck on "starting…".
+      async function bootstrapScreenPickerOverlay() {
+        if (window.__toolknitScreenPickerBootstrapped) return;
+        window.__toolknitScreenPickerBootstrapped = true;
+        const overlay = document.getElementById('screenPickerOverlay');
+        if (!overlay) return;
+        document.documentElement.dataset.screenPicker = '1';
+        overlay.classList.add('visible');
+
+        const canvas = document.getElementById('screenPickerCanvas');
+        const crosshair = overlay.querySelector('.screen-picker-crosshair');
+        const readoutSwatch = document.getElementById('screenPickerReadoutSwatch');
+        const readoutHex = document.getElementById('screenPickerReadoutHex');
+        const readoutRgb = document.getElementById('screenPickerReadoutRgb');
+        const readout = overlay.querySelector('.screen-picker-readout');
+        const finishBtn = document.getElementById('screenPickerFinishBtn');
+
+        const LENS_SIZE = 200;
+
+        let bounds = null;
+        let scaleX = 1;
+        let scaleY = 1;
+        let latestSample = null;
+        let dragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let rafId = null;
+        let nextSampleAt = 0;
+        let sampling = false;
+
+        const { invoke } = await import('@tauri-apps/api/core');
+        const { emitTo, listen } = await import('@tauri-apps/api/event');
+
+        const emit = (name, payload) => {
+          return emitTo('main', name, payload).catch(error => console.error('[screen-picker] emit failed', name, error));
+        };
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+        const crosshairPhysical = () => {
+          if (!crosshair || !bounds) return null;
+          const localX = parseFloat(crosshair.style.left) || 0;
+          const localY = parseFloat(crosshair.style.top) || 0;
+          return {
+            x: Math.round((Number(bounds.x) || 0) + localX / scaleX),
+            y: Math.round((Number(bounds.y) || 0) + localY / scaleY),
+          };
+        };
+
+        const draw = (sample) => {
+          if (!canvas || !sample?.pixels?.length) return;
+          const gridWidth = Number(sample.width) || 21;
+          const gridHeight = Number(sample.height) || 21;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const size = LENS_SIZE;
+          if (canvas.width !== size || canvas.height !== size) { canvas.width = size; canvas.height = size; }
+          ctx.clearRect(0, 0, size, size);
+          ctx.imageSmoothingEnabled = false;
+          const cellW = size / gridWidth;
+          const cellH = size / gridHeight;
+          for (let row = 0; row < gridHeight; row++) {
+            for (let col = 0; col < gridWidth; col++) {
+              const offset = (row * gridWidth + col) * 3;
+              const r = Number(sample.pixels[offset]) || 0;
+              const g = Number(sample.pixels[offset + 1]) || 0;
+              const b = Number(sample.pixels[offset + 2]) || 0;
+              ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+              ctx.fillRect(Math.floor(col * cellW), Math.floor(row * cellH), Math.ceil(cellW) + 1, Math.ceil(cellH) + 1);
+            }
+          }
+          const centerCol = Math.floor(gridWidth / 2);
+          const centerRow = Math.floor(gridHeight / 2);
+          const cx = centerCol * cellW + cellW / 2;
+          const cy = centerRow * cellH + cellH / 2;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,255,255,.95)';
+          ctx.lineWidth = 2;
+          ctx.shadowColor = 'rgba(0,0,0,.85)';
+          ctx.shadowBlur = 2;
+          ctx.beginPath();
+          ctx.moveTo(cx - 8, cy);
+          ctx.lineTo(cx + 8, cy);
+          ctx.moveTo(cx, cy - 8);
+          ctx.lineTo(cx, cy + 8);
+          ctx.stroke();
+          ctx.restore();
+        };
+
+        const position = () => {
+          if (!crosshair || !canvas || !bounds) return;
+          const localX = parseFloat(crosshair.style.left) || 0;
+          const localY = parseFloat(crosshair.style.top) || 0;
+          const viewportWidth = window.innerWidth || bounds.width;
+          const viewportHeight = window.innerHeight || bounds.height;
+          let lensLeft = localX + 34;
+          let lensTop = localY - LENS_SIZE - 30;
+          if (lensLeft + LENS_SIZE > viewportWidth - 16) lensLeft = localX - LENS_SIZE - 34;
+          if (lensTop < 16) lensTop = localY + 34;
+          lensLeft = clamp(lensLeft, 16, Math.max(16, viewportWidth - LENS_SIZE - 16));
+          lensTop = clamp(lensTop, 16, Math.max(16, viewportHeight - LENS_SIZE - 16));
+          canvas.style.left = `${lensLeft}px`;
+          canvas.style.top = `${lensTop}px`;
+          if (readout) {
+            readout.style.left = `${lensLeft}px`;
+            readout.style.top = `${clamp(lensTop + LENS_SIZE + 12, 16, Math.max(16, viewportHeight - 58))}px`;
+          }
+        };
+
+        const placeCrosshair = (localX, localY) => {
+          if (!crosshair || !bounds) return;
+          const viewportWidth = window.innerWidth || bounds.width;
+          const viewportHeight = window.innerHeight || bounds.height;
+          crosshair.style.left = `${clamp(localX, 0, viewportWidth)}px`;
+          crosshair.style.top = `${clamp(localY, 0, viewportHeight)}px`;
+          position();
+        };
+
+        const applySample = (sample) => {
+          if (!sample) return;
+          latestSample = sample;
+          draw(sample);
+          const hex = String(sample?.hex || '#000000').toUpperCase();
+          const rgb = String(sample?.rgb || 'rgb(0, 0, 0)');
+          if (readoutSwatch) readoutSwatch.style.backgroundColor = hex;
+          if (readoutHex) readoutHex.textContent = hex;
+          if (readoutRgb) readoutRgb.textContent = rgb;
+        };
+
+        const sampleNow = async () => {
+          if (sampling) return;
+          const target = crosshairPhysical();
+          if (!target) return;
+          sampling = true;
+          if (crosshair) crosshair.style.visibility = 'hidden';
+          try {
+            const next = await invoke('screen_color_sample', { x: target.x, y: target.y });
+            applySample(next);
+          } catch (error) {
+            console.error('[screen-picker] sample failed', error);
+          } finally {
+            if (crosshair) crosshair.style.visibility = '';
+            sampling = false;
+          }
+        };
+
+        const loop = (now) => {
+          rafId = null;
+          if (!bounds) return;
+          if (now >= nextSampleAt) {
+            nextSampleAt = now + 30;
+            void sampleNow();
+          }
+          rafId = requestAnimationFrame(loop);
+        };
+
+        const startLoop = () => {
+          if (rafId !== null) return;
+          nextSampleAt = performance.now();
+          rafId = requestAnimationFrame(loop);
+        };
+
+        const stopLoop = () => {
+          if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        };
+
+        const pick = async () => {
+          stopLoop();
+          const target = crosshairPhysical();
+          let picked = latestSample;
+          if (target) {
+            if (crosshair) crosshair.style.visibility = 'hidden';
+            try {
+              const next = await invoke('screen_color_sample', { x: target.x, y: target.y });
+              applySample(next);
+              picked = next || picked;
+            } catch (error) {
+              console.error('[screen-picker] pick failed', error);
+            } finally {
+              if (crosshair) crosshair.style.visibility = '';
+            }
+          }
+          await emit('screen-color-picked', picked);
+          try { await navigator.clipboard.writeText(String(picked?.hex || '')); } catch {}
+          await emit('screen-picker-closed');
+          await invoke('close_screen_color_picker').catch(() => {});
+        };
+
+        const cancel = () => {
+          stopLoop();
+          latestSample = null;
+          void (async () => {
+            await emit('screen-picker-cancelled');
+            await invoke('close_screen_color_picker').catch(() => {});
+          })();
+        };
+
+        const reset = (nextBounds = null) => {
+          if (nextBounds && typeof nextBounds === 'object') bounds = nextBounds;
+          if (!bounds) return;
+          scaleX = (window.innerWidth || bounds.width) / Math.max(1, Number(bounds.width) || 1);
+          scaleY = (window.innerHeight || bounds.height) / Math.max(1, Number(bounds.height) || 1);
+          dragging = false;
+          latestSample = null;
+          placeCrosshair((window.innerWidth || bounds.width) / 2, (window.innerHeight || bounds.height) / 2);
+          emit('screen-picker-ready');
+          startLoop();
+        };
+
+        crosshair?.addEventListener('mousedown', (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          dragging = true;
+          dragOffsetX = event.clientX - (parseFloat(crosshair.style.left) || 0);
+          dragOffsetY = event.clientY - (parseFloat(crosshair.style.top) || 0);
+          crosshair.classList.add('dragging');
+        });
+
+        window.addEventListener('mousemove', (event) => {
+          if (!dragging) return;
+          placeCrosshair(event.clientX - dragOffsetX, event.clientY - dragOffsetY);
+        }, { passive: true });
+
+        window.addEventListener('mouseup', (event) => {
+          if (!dragging || event.button !== 0) return;
+          dragging = false;
+          crosshair?.classList.remove('dragging');
+          void pick();
+        });
+
+        finishBtn?.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          cancel();
+        });
+
+        window.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            cancel();
+          }
+        }, { capture: true });
+
+        try {
+          await listen('screen-picker-opened', (event) => reset(event?.payload));
+        } catch (error) {
+          console.error('[screen-picker] listen failed', error);
+        }
+
+        try {
+          bounds = await invoke('screen_picker_bounds');
+        } catch (error) {
+          console.error('[screen-picker] bounds failed', error);
+        }
+        reset(bounds);
+      }
 
       function clampWindowRadius(value) {
         const numeric = Number(value);
@@ -164,11 +701,215 @@
         return WINDOW_RADIUS_PRESETS[setting.mode] ?? 0;
       }
 
+      function clearLegacyWindowRadiusStyles() {
+        document.querySelectorAll('html, body, .app, .settings-overlay, .global-window-controls, .transition-mask').forEach(layer => {
+          layer.style.removeProperty('border-radius');
+          layer.style.removeProperty('clip-path');
+          layer.style.removeProperty('-webkit-clip-path');
+          layer.style.removeProperty('overflow');
+        });
+      }
+
+      function applyNativeWindowRadius(radius) {
+        if (!isTauri) return;
+
+        // Queue updates so a quick custom-radius edit cannot finish out of order.
+        nativeWindowRadiusQueue = nativeWindowRadiusQueue
+          .catch(() => undefined)
+          .then(async () => {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('set_window_corner_radius', { radius });
+          })
+          .catch(error => {
+            // Browser preview and older desktop builds simply keep the CSS fallback.
+            console.warn('Native window corner radius is unavailable:', error);
+          });
+      }
+
+      function repairNativeWindowChrome() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return Promise.resolve();
+
+        // Windows/WebView2 can occasionally reintroduce native decorations
+        // after changing resizable/maximized state on a transparent frameless
+        // window. Repair it from the renderer side so the shell never falls
+        // back to the Win32 title bar.
+        nativeWindowChromeRepairQueue = nativeWindowChromeRepairQueue
+          .catch(() => undefined)
+          .then(async () => {
+            if (typeof appWindow.setDecorations === 'function') {
+              await appWindow.setDecorations(false);
+            }
+            if (typeof appWindow.setShadow === 'function') {
+              await appWindow.setShadow(false);
+            }
+          })
+          .catch(error => {
+            console.warn('Native frameless chrome repair failed:', error);
+          });
+
+        return nativeWindowChromeRepairQueue;
+      }
+
+      function scheduleNativeWindowChromeRepair({ reapplyRadius = true } = {}) {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return;
+        [0, 60, 160, 360, 760].forEach(delay => {
+          window.setTimeout(() => {
+            repairNativeWindowChrome().finally(() => {
+              if (reapplyRadius) applyWindowRadiusSetting(readWindowRadiusSetting());
+            });
+          }, delay);
+        });
+      }
+
       function applyWindowRadiusSetting(setting = readWindowRadiusSetting()) {
+        if (isScreenPickerWindow) return 0;
         const radius = windowRadiusPixels(setting);
-        document.documentElement.style.setProperty('--toolknit-window-radius', `${radius}px`);
-        document.body?.style.setProperty('--toolknit-window-radius', `${radius}px`);
+        const value = `${radius}px`;
+        const root = document.documentElement;
+        root.style.setProperty('--toolknit-window-radius', value);
+        root.dataset.windowRadius = setting.mode;
+        const body = document.body;
+        body?.classList.toggle('use-native-window-radius', isTauri);
+        body?.style.setProperty('--toolknit-window-radius', value);
+        body?.setAttribute('data-window-radius', setting.mode);
+        document.querySelectorAll('.app, .settings-overlay, .global-window-controls, .transition-mask').forEach(layer => {
+          layer.style.setProperty('--toolknit-window-radius', value);
+        });
+
+        clearLegacyWindowRadiusStyles();
+
+        if (isTauri) {
+          applyNativeWindowRadius(radius);
+        } else if (body) {
+          // Preview fallback: one clipping boundary only, without reintroducing
+          // the stacked overlay clips that make the desktop window look square.
+          root.style.setProperty('border-radius', value, 'important');
+          root.style.setProperty('overflow', 'hidden', 'important');
+          root.style.setProperty('clip-path', `inset(0 round ${value})`, 'important');
+          root.style.setProperty('-webkit-clip-path', `inset(0 round ${value})`, 'important');
+        }
         return radius;
+      }
+
+      let windowRadiusSyncTimer = null;
+      function syncWindowRadiusAfterLayoutChange() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return;
+        clearTimeout(windowRadiusSyncTimer);
+        windowRadiusSyncTimer = setTimeout(() => {
+          applyWindowRadiusSetting(readWindowRadiusSetting());
+        }, 80);
+      }
+
+      function setWindowFrameMaximizedState(enabled) {
+        const maximized = Boolean(enabled);
+        document.documentElement?.classList.toggle('window-is-maximized', maximized);
+        document.body?.classList.toggle('window-is-maximized', maximized);
+
+        // Keep every page's shared title-bar control honest. The same button
+        // toggles maximize/restore, so its icon and accessible label must
+        // follow the native state instead of remaining a permanent square.
+        const iconName = maximized ? 'copy' : 'square';
+        const labelKey = maximized ? 'common.restore' : 'common.maximize';
+        const label = t(labelKey);
+        let iconChanged = false;
+        document.querySelectorAll('.ctrl-btn[data-action="maximize"]').forEach(button => {
+          const icon = button.querySelector('[data-lucide]');
+          if (icon && icon.getAttribute('data-lucide') !== iconName) {
+            icon.setAttribute('data-lucide', iconName);
+            iconChanged = true;
+          }
+          button.dataset.i18nTitle = labelKey;
+          button.dataset.i18nAriaLabel = labelKey;
+          button.title = label;
+          button.setAttribute('aria-label', label);
+          button.setAttribute('aria-pressed', maximized ? 'true' : 'false');
+        });
+        if (iconChanged) {
+          try { createIcons({ icons }); } catch (error) {
+            console.warn('Window control icon refresh failed:', error);
+          }
+        }
+      }
+
+      async function readWindowFrameMaximizedState() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return false;
+        try {
+          const maximized = await appWindow.isMaximized();
+          const fullscreen = typeof appWindow.isFullscreen === 'function'
+            ? await appWindow.isFullscreen().catch(() => false)
+            : false;
+          return Boolean(maximized || fullscreen);
+        } catch {
+          return false;
+        }
+      }
+
+      async function syncWindowFrameState() {
+        if (!isTauri || !appWindow || isScreenPickerWindow || !document?.body) return;
+        setWindowFrameMaximizedState(await readWindowFrameMaximizedState());
+      }
+
+      function syncWindowFrameAfterLayoutChange() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return;
+        [0, 80, 180, 360, 720].forEach(delay => {
+          setTimeout(async () => {
+            await syncWindowFrameState();
+            applyWindowRadiusSetting(readWindowRadiusSetting());
+          }, delay);
+        });
+      }
+
+      let nativeWindowFrameStateTimer = 0;
+
+      function scheduleNativeWindowFrameStateSync() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return;
+        clearTimeout(nativeWindowFrameStateTimer);
+        nativeWindowFrameStateTimer = setTimeout(async () => {
+          nativeWindowFrameStateTimer = 0;
+          await syncWindowFrameState();
+          applyWindowRadiusSetting(readWindowRadiusSetting());
+        }, 120);
+      }
+
+      function observeNativeWindowFrameState() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return;
+        ['onResized', 'onScaleChanged'].forEach(method => {
+          if (typeof appWindow[method] !== 'function') return;
+          appWindow[method](scheduleNativeWindowFrameStateSync).catch(error => {
+            console.warn(`Native window ${method} listener failed:`, error);
+          });
+        });
+      }
+
+      let windowMaximizeQueue = Promise.resolve();
+      function toggleWindowFrameMaximize() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return Promise.resolve();
+        windowMaximizeQueue = windowMaximizeQueue
+          .catch(() => undefined)
+          .then(async () => {
+            await appWindow.toggleMaximize();
+            // Read the native state after the command completes. This avoids
+            // a stale optimistic icon when Windows is still changing bounds.
+            await syncWindowFrameState();
+            scheduleNativeWindowChromeRepair();
+            syncWindowFrameAfterLayoutChange();
+          });
+        return windowMaximizeQueue;
+      }
+
+      async function handleWindowControlAction(action) {
+        if (!isTauri || !appWindow || isScreenPickerWindow || !action) return;
+        try {
+          if (action === 'minimize') {
+            await appWindow.minimize();
+          } else if (action === 'maximize') {
+            await toggleWindowFrameMaximize();
+          } else if (action === 'close') {
+            await appWindow.hide();
+          }
+        } catch (e) {
+          console.error('Window control failed:', e);
+        }
       }
 
       function saveWindowRadiusSetting(setting) {
@@ -191,9 +932,151 @@
       }
 
       applyWindowRadiusSetting();
+      scheduleNativeWindowChromeRepair();
+      observeNativeWindowFrameState();
 
       createIcons({ icons });
       applyTranslations();
+
+      // Full-screen tools are visually hidden with opacity while inactive. Keep
+      // their controls out of the keyboard and accessibility trees until open.
+      const MODAL_A11Y_ROOT_SELECTOR = [
+        '[id$="Overlay"]',
+        '[id$="Workspace"]',
+        '[id$="Dialog"]',
+        '#pdfMergeSelection',
+        '#aiDocStyleInspector'
+      ].join(', ');
+
+      function syncModalA11yState(root) {
+        if (!(root instanceof HTMLElement)) return;
+        const visible = root.classList.contains('visible');
+        root.toggleAttribute('inert', !visible);
+        root.setAttribute('aria-hidden', String(!visible));
+      }
+
+      function initModalA11yStates() {
+        const roots = Array.from(document.querySelectorAll(MODAL_A11Y_ROOT_SELECTOR));
+        roots.forEach(syncModalA11yState);
+        const observer = new MutationObserver(entries => {
+          entries.forEach(entry => syncModalA11yState(entry.target));
+        });
+        roots.forEach(root => observer.observe(root, {
+          attributes: true,
+          attributeFilter: ['class']
+        }));
+      }
+
+      initModalA11yStates();
+
+      // Keep long dynamic values inspectable without letting result dialogs
+      // grow past their bounds. The visual rule uses ellipsis; title/aria-label
+      // retain the complete value for mouse and assistive-technology users.
+      const MODAL_OVERFLOW_ROOT_SELECTOR = [
+        '.audio-convert-success-overlay',
+        '.audio-clip-success-overlay',
+        '.pdf-preview-drawer',
+        '.donation-overlay',
+        '.feedback-drawer',
+        '.transcription-model-overlay',
+        '.transcription-gate-overlay',
+        '.pdf-editor-edit-modal',
+        '#pdfEncryptPasswordDialog',
+        '#pdfDecryptPasswordDialog'
+      ].join(', ');
+      const MODAL_OVERFLOW_TARGET_SELECTOR = [
+        '.audio-convert-success-meta',
+        '.audio-convert-success-value',
+        '.audio-convert-success-path',
+        '.audio-clip-success-meta',
+        '.audio-clip-success-path',
+        '.cleanup-large-files-success-failures span',
+        '.pdf-compress-result-name',
+        '.pdf-page-workspace-file',
+        '.ppt-render-v2-file',
+        '.ppt-images-v2-file',
+        '.ppt-text-v2-file',
+        '.ppt-compress-v2-file',
+        '.transcription-selected-file',
+        '.pdf-editor-filecard-name'
+      ].join(', ');
+      const MODAL_OVERFLOW_ARIA_SELECTOR = [
+        '.audio-convert-success-value',
+        '.audio-convert-success-path',
+        '.audio-clip-success-path',
+        '.pdf-compress-result-name',
+        '.pdf-page-workspace-file',
+        '.ppt-render-v2-file',
+        '.ppt-images-v2-file',
+        '.ppt-text-v2-file',
+        '.ppt-compress-v2-file',
+        '.transcription-selected-file',
+        '.pdf-editor-filecard-name'
+      ].join(', ');
+
+      function syncModalOverflowTitle(node) {
+        if (!(node instanceof HTMLElement) || node.id === 'dependencyGateDesc') return;
+        const value = (node.textContent || '').replace(/\s+/g, ' ').trim();
+        const ownsTitle = node.dataset.tkOverflowTitle === '1';
+        const ownsAria = node.dataset.tkOverflowAria === '1';
+        if (!value) {
+          if (ownsTitle) node.removeAttribute('title');
+          if (ownsAria) node.removeAttribute('aria-label');
+          delete node.dataset.tkOverflowTitle;
+          delete node.dataset.tkOverflowAria;
+          return;
+        }
+
+        // Paths and filenames are the common offenders. Avoid a layout read
+        // here because result text can update several times during a batch.
+        const needsOverflowHint = value.length >= 28 || /(?:[A-Za-z]:[\\/]|https?:\/\/|\\\\)/.test(value);
+        if (!needsOverflowHint) {
+          if (ownsTitle) node.removeAttribute('title');
+          if (ownsAria) node.removeAttribute('aria-label');
+          delete node.dataset.tkOverflowTitle;
+          delete node.dataset.tkOverflowAria;
+          return;
+        }
+
+        node.setAttribute('title', value);
+        node.dataset.tkOverflowTitle = '1';
+        if (node.matches(MODAL_OVERFLOW_ARIA_SELECTOR) && !node.hasAttribute('aria-label')) {
+          node.setAttribute('aria-label', value);
+          node.dataset.tkOverflowAria = '1';
+        } else if (ownsAria) {
+          node.setAttribute('aria-label', value);
+        }
+      }
+
+      function scanModalOverflowNode(node) {
+        if (!node) return;
+        if (node.nodeType === 3) {
+          if (node.parentElement?.matches(MODAL_OVERFLOW_TARGET_SELECTOR)) syncModalOverflowTitle(node.parentElement);
+          return;
+        }
+        if (node.nodeType !== 1) return;
+        if (node.matches(MODAL_OVERFLOW_TARGET_SELECTOR)) syncModalOverflowTitle(node);
+        node.querySelectorAll?.(MODAL_OVERFLOW_TARGET_SELECTOR).forEach(syncModalOverflowTitle);
+      }
+
+      function initModalOverflowTitles() {
+        const roots = Array.from(document.querySelectorAll(MODAL_OVERFLOW_ROOT_SELECTOR));
+        roots.forEach(root => {
+          scanModalOverflowNode(root);
+          const observer = new MutationObserver(records => {
+            records.forEach(record => {
+              if (record.type === 'characterData') scanModalOverflowNode(record.target);
+              else {
+                scanModalOverflowNode(record.target);
+                record.addedNodes.forEach(scanModalOverflowNode);
+              }
+            });
+          });
+          observer.observe(root, { childList: true, characterData: true, subtree: true });
+        });
+      }
+
+      initModalOverflowTitles();
 
       function enablePdfPageStageHorizontalWheel(stage) {
         if (!stage) return;
@@ -215,38 +1098,11 @@
 
       document.querySelectorAll('.pdf-merge-page-stage').forEach(enablePdfPageStageHorizontalWheel);
 
-      const darkveilBg = document.getElementById('darkveilBg');
-      // Randomly choose between the original dark color and a blue variant on each entry.
-      // Keep the default background as a managed resource: hidden windows and custom
-      // backgrounds should not leave a WebGL animation running underneath.
-      const darkveilVariant = Math.random() < 0.5 ? 'original' : 'blue';
-      const DARKVEIL_OPTIONS = {
-        hueShift: darkveilVariant === 'blue' ? 220 : 0,
-        noiseIntensity: 0.03,
-        scanlineIntensity: 0,
-        speed: 1.6,
-        scanlineFrequency: 5,
-        warpAmount: 0,
-        resolutionScale: 1
-      };
-      let darkveilDispose = null;
-
       function stopDefaultDynamicBackground() {
-        if (typeof darkveilDispose === 'function') {
-          darkveilDispose();
-          darkveilDispose = null;
-        }
       }
 
       function syncDefaultDynamicBackground() {
-        const shouldRun = Boolean(darkveilBg && !document.hidden && !document.body.classList.contains('has-custom-background'));
-        if (!shouldRun) {
-          stopDefaultDynamicBackground();
-          return;
-        }
-        if (!darkveilDispose) {
-          darkveilDispose = initDarkVeil(darkveilBg, DARKVEIL_OPTIONS);
-        }
+        stopDefaultDynamicBackground();
       }
       document.addEventListener('visibilitychange', syncDefaultDynamicBackground);
       window.addEventListener('pageshow', syncDefaultDynamicBackground);
@@ -315,27 +1171,17 @@
         return null;
       }
 
-      const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
-      const appWindow = isTauri ? getCurrentWindow() : null;
       const OUTPUT_ROOT_KEY = 'toolknit.output-root.v1';
-      const BACKGROUND_KEY = 'toolknit.custom-background.v1';
-
-      function syncWindowResizeChrome(enabled = readWindowResizeSetting()) {
-        document.querySelectorAll('.ctrl-btn[data-action="maximize"]').forEach(btn => {
-          btn.disabled = !enabled;
-          btn.classList.toggle('is-disabled', !enabled);
-          btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
-        });
-      }
 
       async function applyWindowResizeSetting(enabled = readWindowResizeSetting()) {
-        syncWindowResizeChrome(enabled);
+        if (isScreenPickerWindow) return Boolean(enabled);
         if (!isTauri || !appWindow) return Boolean(enabled);
         try {
           await appWindow.setMinSize(new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT));
           await appWindow.setMaxSize(null);
           if (enabled) {
             await appWindow.setResizable(true);
+            await repairNativeWindowChrome();
           } else {
             try {
               if (await appWindow.isMaximized()) await appWindow.unmaximize();
@@ -344,7 +1190,10 @@
               await appWindow.setSize(new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT));
             } catch {}
             await appWindow.setResizable(false);
+            await repairNativeWindowChrome();
           }
+          syncWindowFrameAfterLayoutChange();
+          scheduleNativeWindowChromeRepair();
         } catch (error) {
           console.error('Failed to apply window resize setting:', error);
           window.showToast?.(getLang() === 'zh' ? '窗口拉伸设置应用失败。' : 'Failed to apply window resize setting.');
@@ -352,12 +1201,12 @@
         return Boolean(enabled);
       }
 
-      void applyWindowResizeSetting();
+      if (!isScreenPickerWindow) void applyWindowResizeSetting();
 
       // Tauri uses data-tauri-drag-region. The older WebKit-only CSS hint was not
       // reliable on every Windows WebView, especially after opening an overlay.
       if (isTauri && appWindow) {
-        const dragRegions = '.main-header-drag-region, .settings-header, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header';
+        const dragRegions = '.main-header-drag-region, .settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header';
         document.querySelectorAll(dragRegions).forEach(region => {
           region.setAttribute('data-tauri-drag-region', '');
         });
@@ -443,9 +1292,11 @@
       }
       async function openOutputFolder(outputPath) {
         if (!isTauri || !outputPath) return false;
+        const targetPath = String(outputPath).trim();
+        if (!targetPath) return false;
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          await invoke('open_path', { path: outputParentFolder(outputPath) });
+          await invoke('open_path', { path: targetPath });
           return true;
         } catch (error) {
           console.error('Open output folder failed:', error);
@@ -496,20 +1347,6 @@
             e.preventDefault();
             item.click();
           }
-        });
-      });
-
-      // Planned hardware modules intentionally have no collection backend yet.
-      // Keep their visual entries discoverable without treating a click as usage.
-      document.querySelectorAll('.audio-list-item[data-availability="planned"]').forEach(item => {
-        item.addEventListener('click', event => {
-          event.stopImmediatePropagation();
-          showToast(t('home.hardwareComingSoon'));
-        });
-        item.addEventListener('contextmenu', event => {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          showToast(t('home.hardwareComingSoon'));
         });
       });
 
@@ -625,8 +1462,182 @@
         }
       });
 
-      let navigatedFromHome = false;
-      let homeToolLaunchToken = 0;
+      const appRoot = document.querySelector('.app');
+
+      const homeV2ShaderCanvas = document.getElementById('homeV2ShaderBg');
+      // The canvas is a fully painted, opaque decorative surface. Keeping it
+      // opaque avoids an extra transparent-compositing pass in WebView2.
+      const homeV2ShaderContext = homeV2ShaderCanvas?.getContext('2d', {
+        alpha: false,
+        desynchronized: true
+      });
+      const homeV2ShaderState = {
+        width: 0,
+        height: 0,
+        // This is a soft background layer; 1.25x is visually crisp while
+        // keeping the backing store substantially smaller on HiDPI screens.
+        dpr: Math.min(window.devicePixelRatio || 1, 1.25),
+        raf: 0,
+        lastRenderAt: 0,
+        animationTime: 0,
+        lastAnimationAt: 0,
+        scrolling: false,
+        scrollIdleTimer: 0,
+        reduced: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      };
+      const homeV2RibbonSeeds = [
+        { radiusX: 0.22, radiusY: 0.16, speed: 0.23, phase: 0, opacity: 0.16 },
+        { radiusX: 0.29, radiusY: 0.21, speed: -0.18, phase: 1.8, opacity: 0.11 },
+        { radiusX: 0.35, radiusY: 0.14, speed: 0.13, phase: 3.4, opacity: 0.08 }
+      ];
+
+      function resizeHomeV2Shader() {
+        if (!homeV2ShaderCanvas || !homeV2ShaderContext) return;
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const canvasWidth = Math.floor(width * dpr);
+        const canvasHeight = Math.floor(height * dpr);
+        if (
+          homeV2ShaderState.width === width &&
+          homeV2ShaderState.height === height &&
+          homeV2ShaderState.dpr === dpr &&
+          homeV2ShaderCanvas.width === canvasWidth &&
+          homeV2ShaderCanvas.height === canvasHeight
+        ) return;
+        homeV2ShaderState.dpr = dpr;
+        homeV2ShaderState.width = width;
+        homeV2ShaderState.height = height;
+        homeV2ShaderCanvas.width = canvasWidth;
+        homeV2ShaderCanvas.height = canvasHeight;
+        homeV2ShaderContext.setTransform(homeV2ShaderState.dpr, 0, 0, homeV2ShaderState.dpr, 0, 0);
+      }
+
+      function drawHomeV2Ribbon(seed, time, centerX, centerY) {
+        if (!homeV2ShaderContext) return;
+        const { width, height } = homeV2ShaderState;
+        const points = [];
+        const segments = 14;
+        const radiusX = Math.min(width, height) * seed.radiusX;
+        const radiusY = Math.min(width, height) * seed.radiusY;
+        for (let index = 0; index <= segments; index += 1) {
+          const progress = index / segments;
+          const angle = progress * Math.PI * 2 + time * seed.speed + seed.phase;
+          const wave = 1 + 0.12 * Math.sin(time * 1.2 + progress * 9.2 + seed.phase);
+          points.push([
+            centerX + Math.cos(angle) * radiusX * wave,
+            centerY + Math.sin(angle) * radiusY * (1 + 0.08 * Math.cos(time * 1.05 + progress * 7.5))
+          ]);
+        }
+
+        // Build the path once and reuse it for the glow and the crisp line.
+        // The previous implementation rebuilt the same curve twice per seed.
+        homeV2ShaderContext.beginPath();
+        homeV2ShaderContext.moveTo(points[0][0], points[0][1]);
+        for (let index = 1; index < points.length; index += 1) {
+          const previous = points[index - 1];
+          const current = points[index];
+          homeV2ShaderContext.quadraticCurveTo(previous[0], previous[1], (previous[0] + current[0]) / 2, (previous[1] + current[1]) / 2);
+        }
+        homeV2ShaderContext.closePath();
+
+        homeV2ShaderContext.save();
+        homeV2ShaderContext.filter = 'blur(12px)';
+        homeV2ShaderContext.lineWidth = 24;
+        homeV2ShaderContext.strokeStyle = `rgba(255, 255, 255, ${seed.opacity * 0.42})`;
+        homeV2ShaderContext.stroke();
+        homeV2ShaderContext.restore();
+
+        homeV2ShaderContext.save();
+        homeV2ShaderContext.lineWidth = 1.2;
+        homeV2ShaderContext.strokeStyle = `rgba(255, 255, 255, ${seed.opacity})`;
+        homeV2ShaderContext.stroke();
+        homeV2ShaderContext.restore();
+      }
+
+      function renderHomeV2Shader(now) {
+        if (!homeV2ShaderContext || !appRoot?.classList.contains('is-v2-home') || document.hidden) {
+          homeV2ShaderState.raf = 0;
+          return;
+        }
+        // Scrolling uses the compositor to move the document. Repainting a
+        // full-window canvas at the same time only steals main-thread/raster
+        // time, so the scroll handler pauses this loop and keeps the last
+        // completed frame visible.
+        if (homeV2ShaderState.scrolling) {
+          homeV2ShaderState.raf = 0;
+          return;
+        }
+        const frameInterval = 1000 / 30;
+        if (homeV2ShaderState.lastRenderAt && now - homeV2ShaderState.lastRenderAt < frameInterval) {
+          homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
+          return;
+        }
+        homeV2ShaderState.lastRenderAt = now;
+        const previousAnimationAt = homeV2ShaderState.lastAnimationAt || now;
+        homeV2ShaderState.animationTime += Math.min(Math.max(now - previousAnimationAt, 0), 200);
+        homeV2ShaderState.lastAnimationAt = now;
+        const { width, height } = homeV2ShaderState;
+        const time = homeV2ShaderState.animationTime * 0.001;
+        homeV2ShaderContext.fillStyle = '#060607';
+        homeV2ShaderContext.fillRect(0, 0, width, height);
+
+        const centerX = width * 0.56;
+        const centerY = height * 0.46;
+        homeV2RibbonSeeds.forEach(seed => drawHomeV2Ribbon(seed, time, centerX, centerY));
+        homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
+      }
+
+      function markHomeV2Scrolling() {
+        if (!appRoot?.classList.contains('is-v2-home')) return;
+        if (!homeV2ShaderState.scrolling) homeV2ShaderState.lastAnimationAt = 0;
+        homeV2ShaderState.scrolling = true;
+        if (homeV2ShaderState.raf) {
+          window.cancelAnimationFrame(homeV2ShaderState.raf);
+          homeV2ShaderState.raf = 0;
+        }
+        if (homeV2ShaderState.scrollIdleTimer) window.clearTimeout(homeV2ShaderState.scrollIdleTimer);
+        homeV2ShaderState.scrollIdleTimer = window.setTimeout(() => {
+          homeV2ShaderState.scrolling = false;
+          homeV2ShaderState.scrollIdleTimer = 0;
+          homeV2ShaderState.lastRenderAt = 0;
+          homeV2ShaderState.lastAnimationAt = 0;
+          syncHomeV2Shader();
+        }, 160);
+      }
+
+      function syncHomeV2Shader() {
+        if (!homeV2ShaderContext || homeV2ShaderState.reduced) return;
+        if (appRoot?.classList.contains('is-v2-home') && !document.hidden && !homeV2ShaderState.raf) {
+          resizeHomeV2Shader();
+          homeV2ShaderState.lastRenderAt = 0;
+          homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
+        }
+        if ((!appRoot?.classList.contains('is-v2-home') || document.hidden) && homeV2ShaderState.raf) {
+          window.cancelAnimationFrame(homeV2ShaderState.raf);
+          homeV2ShaderState.raf = 0;
+          homeV2ShaderState.lastRenderAt = 0;
+        }
+      }
+
+      function syncV2HomeShell(category) {
+        const isHome = category === 'home';
+        appRoot?.classList.toggle('is-v2-home', isHome);
+        document.body.classList.toggle('v2-home-active', isHome);
+        if (!isHome) {
+          homeV2ShaderState.scrolling = false;
+          homeV2ShaderState.lastAnimationAt = 0;
+          if (homeV2ShaderState.scrollIdleTimer) {
+            window.clearTimeout(homeV2ShaderState.scrollIdleTimer);
+            homeV2ShaderState.scrollIdleTimer = 0;
+          }
+        }
+        syncHomeV2Shader();
+      }
+
+      syncV2HomeShell(document.querySelector('.content-section.active')?.dataset.category || 'home');
+      window.addEventListener('resize', resizeHomeV2Shader, { passive: true });
+      document.addEventListener('visibilitychange', syncHomeV2Shader);
 
       function switchCategory(category) {
         if (isSwitching) return;
@@ -652,63 +1663,47 @@
           };
           targetSection.addEventListener('animationend', clearEnteringState);
         }
+        syncV2HomeShell(category);
         isSwitching = false;
       }
 
-      function clearHomeToolNavigation() {
-        navigatedFromHome = false;
-        homeToolLaunchToken += 1;
-      }
-
-      function launchToolFromHome(toolId, category, delay = 0) {
-        if (!toolId || !category) return;
-        const launchToken = ++homeToolLaunchToken;
-        navigatedFromHome = true;
-        switchCategory(category);
-
-        const openTool = () => {
-          if (!navigatedFromHome || launchToken !== homeToolLaunchToken) return;
-          const toolItem = Array.from(document.querySelectorAll('.audio-list-item'))
-            .find(item => item.dataset.tool === toolId);
-          toolItem?.click();
-        };
-        if (delay > 0) window.setTimeout(openTool, delay);
-        else openTool();
+      function launchToolFromHome(toolId) {
+        if (!toolId) return;
+        const toolItem = Array.from(document.querySelectorAll('.audio-list-item'))
+          .find(item => item.dataset.tool === toolId);
+        if (!toolItem || toolItem.dataset.availability === 'planned') return;
+        // Invoke the target tool directly. Keeping this event local avoids any
+        // category-level click handlers replaying the intermediate page first.
+        toolItem.dispatchEvent(new MouseEvent('click', {
+          bubbles: false,
+          cancelable: true,
+          view: window
+        }));
       }
 
       navItems.forEach(item => {
         item.addEventListener('click', () => {
           const category = item.dataset.category;
           if (category && !item.classList.contains('active')) {
-            clearHomeToolNavigation();
             switchCategory(category);
           }
         });
       });
 
-      if (isTauri && appWindow) {
+      document.querySelectorAll('[data-home-return]').forEach(button => {
+        button.addEventListener('click', () => switchCategory('home'));
+      });
+
+      if (isTauri && appWindow && !isScreenPickerWindow) {
         document.querySelectorAll('.ctrl-btn[data-action]').forEach(btn => {
           btn.addEventListener('pointerdown', (e) => e.stopPropagation());
           btn.addEventListener('mousedown', (e) => e.stopPropagation());
-          btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-            try {
-              if (action === 'minimize') {
-                await appWindow.minimize();
-              } else if (action === 'maximize') {
-                await appWindow.toggleMaximize();
-              } else if (action === 'close') {
-                await appWindow.hide();
-              }
-            } catch (e) {
-              console.error('Window control failed:', e);
-            }
-          });
+          btn.addEventListener('click', () => handleWindowControlAction(btn.dataset.action));
         });
       }
 
       const settingsOverlay = document.getElementById('settingsOverlay');
-      const settingsBtn = document.getElementById('settingsBtn');
+      const settingsBtns = document.querySelectorAll('#settingsBtn, button[id$="V2Settings"]');
       const settingsBack = document.getElementById('settingsBack');
       const settingsContent = settingsOverlay?.querySelector('.settings-content');
 
@@ -734,6 +1729,44 @@
       onLangChange(syncLangButtons);
       syncLangButtons();
 
+      const uiSoundToggle = document.getElementById('uiSoundToggle');
+      const uiSoundStyleBtns = document.querySelectorAll('[data-sound-style]');
+      const uiSoundPreview = document.getElementById('uiSoundPreview');
+
+      function syncUiSoundControls(state = window.toolknitUiSound?.getState?.() || { enabled: true, style: '1' }) {
+        const enabled = state.enabled !== false;
+        uiSoundToggle?.classList.toggle('active', enabled);
+        uiSoundToggle?.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        uiSoundStyleBtns.forEach(button => {
+          const active = String(button.dataset.soundStyle) === String(state.style);
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        uiSoundPreview?.toggleAttribute('disabled', !enabled);
+      }
+
+      uiSoundToggle?.addEventListener('click', () => {
+        const current = window.toolknitUiSound?.getState?.() || { enabled: true, style: '1' };
+        const next = window.toolknitUiSound?.setEnabled?.(!current.enabled) || { ...current, enabled: !current.enabled };
+        syncUiSoundControls(next);
+        if (next.enabled) window.toolknitUiSound?.preview?.(next.style);
+      });
+      uiSoundStyleBtns.forEach(button => {
+        button.addEventListener('click', () => {
+          const style = String(button.dataset.soundStyle || '1');
+          const next = window.toolknitUiSound?.setStyle?.(style) || { enabled: true, style };
+          syncUiSoundControls(next);
+          if (next.enabled) window.toolknitUiSound?.preview?.(style);
+        });
+      });
+      uiSoundPreview?.addEventListener('click', () => {
+        const state = window.toolknitUiSound?.getState?.() || { enabled: true, style: '1' };
+        if (!state.enabled) return;
+        window.toolknitUiSound?.preview?.(state.style);
+      });
+      window.addEventListener('toolknit-ui-sound-change', event => syncUiSoundControls(event.detail));
+      syncUiSoundControls();
+
       const windowRadiusOptionBtns = document.querySelectorAll('.settings-radius-option[data-window-radius-mode]');
       const windowRadiusCustomInput = document.getElementById('windowRadiusCustomInput');
       const windowRadiusValue = document.getElementById('windowRadiusValue');
@@ -743,7 +1776,6 @@
       function syncWindowResizeControl(enabled = readWindowResizeSetting()) {
         windowResizeToggle?.classList.toggle('active', enabled);
         windowResizeToggle?.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-        syncWindowResizeChrome(enabled);
       }
 
       function syncWindowRadiusControls(setting = readWindowRadiusSetting()) {
@@ -883,203 +1915,201 @@
         });
       }
 
-      const customBackground = document.getElementById('customBackground');
-      const customBackgroundStatus = document.getElementById('customBackgroundStatus');
-      const chooseCustomBackground = document.getElementById('chooseCustomBackground');
-      const clearCustomBackground = document.getElementById('clearCustomBackground');
-      const customBackgroundInput = document.getElementById('customBackgroundInput');
-      function pauseCustomBackgroundVideos() {
-        customBackground?.querySelectorAll('video').forEach(video => video.pause?.());
-      }
-      function updateCustomBackgroundStatus(record) {
-        if (!customBackgroundStatus) return;
-        if (!record) customBackgroundStatus.textContent = t('settings.defaultBackground');
-        else customBackgroundStatus.textContent = record.type === 'video'
-          ? t('settings.customVideoBackground')
-          : t('settings.customImageBackground');
-      }
-
-      function restoreDefaultBackground({ forgetSavedBackground = false } = {}) {
-        pauseCustomBackgroundVideos();
-        customBackground?.replaceChildren();
-        document.body.classList.remove('has-custom-background');
-        updateCustomBackgroundStatus(null);
-        if (clearCustomBackground) clearCustomBackground.disabled = true;
-        if (forgetSavedBackground) {
-            try { localStorage.removeItem(BACKGROUND_KEY); } catch {}
-        }
-        syncDefaultDynamicBackground();
-      }
-
-      function syncCustomBackgroundPlayback() {
-        const videos = Array.from(customBackground?.querySelectorAll('video') || []);
-        const shouldPlay = Boolean(!document.hidden && document.body.classList.contains('has-custom-background'));
-        videos.forEach(video => {
-          if (shouldPlay) {
-            const playPromise = video.play?.();
-            if (playPromise?.catch) playPromise.catch(() => {});
-          } else {
-            video.pause?.();
-          }
-        });
-      }
-
-      async function applyCustomBackground(record) {
-        if (!customBackground) return;
-        pauseCustomBackgroundVideos();
-        customBackground.replaceChildren();
-        const active = record && typeof record.path === 'string' && (record.type === 'image' || record.type === 'video');
-        document.body.classList.toggle('has-custom-background', Boolean(active));
-        syncDefaultDynamicBackground();
-        updateCustomBackgroundStatus(active ? record : null);
-        if (clearCustomBackground) clearCustomBackground.disabled = !active;
-        if (!active) {
-          restoreDefaultBackground();
-          return;
-        }
-        let source = record.path;
-        if (isTauri) {
-          try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            source = await invoke('get_custom_background_media_url', { path: record.path });
-          } catch (error) {
-            console.error('Cannot create custom background media URL:', error);
-            restoreDefaultBackground({ forgetSavedBackground: true });
-            window.showToast?.(t('settings.backgroundLoadFailed'));
-            return;
-          }
-        }
-        async function traceBackground(event) {
-          if (!isTauri) return;
-          try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            await invoke('log_custom_background_event', { event });
-          } catch {}
-        }
-        const media = document.createElement(record.type === 'video' ? 'video' : 'img');
-        media.src = source;
-        if (record.type === 'video') { media.autoplay = true; media.loop = true; media.muted = true; media.playsInline = true; }
-        media.addEventListener('loadeddata', () => {
-          void traceBackground(`loaded type=${record.type} path=${record.path} source=${source}`);
-        }, { once: true });
-        media.addEventListener('error', async () => {
-          if (!customBackground.contains(media)) return;
-          const mediaError = media.error;
-          const details = `load-failed type=${record.type} code=${mediaError?.code ?? 'unknown'} network=${media.networkState} ready=${media.readyState} path=${record.path} source=${source}`;
-          console.error('Custom background failed:', details);
-          await traceBackground(details);
-          restoreDefaultBackground({ forgetSavedBackground: true });
-          window.showToast?.(t('settings.backgroundLoadFailed'));
-        }, { once: true });
-        customBackground.append(media);
-        syncCustomBackgroundPlayback();
-      }
-      document.addEventListener('visibilitychange', syncCustomBackgroundPlayback);
-      window.addEventListener('pageshow', syncCustomBackgroundPlayback);
-      window.addEventListener('pagehide', pauseCustomBackgroundVideos);
-      function savedBackground() { try { return JSON.parse(localStorage.getItem(BACKGROUND_KEY) || 'null'); } catch { return null; } }
-      void applyCustomBackground(savedBackground());
-      async function saveCustomBackground(record) {
-        try { localStorage.setItem(BACKGROUND_KEY, JSON.stringify(record)); } catch {}
-        await applyCustomBackground(record);
-        window.showToast?.(record.type === 'video'
-          ? t('settings.customVideoBackground')
-          : t('settings.customImageBackground'));
-      }
-
-      async function importCustomBackground(sourcePath) {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const imported = await invoke('import_custom_background', { sourcePath });
-          await saveCustomBackground({ path: imported.path, type: imported.media_type });
-        } catch (error) {
-          console.error('Import custom background failed:', error);
-          window.showToast?.(t('common.errorOccurred', { error: String(error?.message || error) }));
-        }
-      }
-
-      function setCustomBackgroundImporting(importing) {
-        if (!chooseCustomBackground) return;
-        chooseCustomBackground.disabled = importing;
-        chooseCustomBackground.textContent = importing
-          ? t('settings.preparingBackground')
-          : t('settings.uploadBackground');
-      }
-
-      async function importPickedCustomBackground(sourcePath) {
-        setCustomBackgroundImporting(true);
-        try {
-          await importCustomBackground(sourcePath);
-        } finally {
-          setCustomBackgroundImporting(false);
-        }
-      }
-
-      async function importCustomBackgroundWithDependencies(sourcePath) {
-        const extension = String(sourcePath).split('.').at(-1)?.toLowerCase();
-        const isVideo = ['mp4', 'webm', 'ogv', 'ogg', 'mov'].includes(extension);
-        if (isVideo && !await ensureFfmpegAvailable()) {
-          showDependencyGate({
-            openFn: () => importPickedCustomBackground(sourcePath),
-            needsFfmpeg: true,
-            needsModel: false
-          });
-          return;
-        }
-        await importPickedCustomBackground(sourcePath);
-      }
-
-      chooseCustomBackground?.addEventListener('click', async () => {
-        if (!isTauri) {
-          customBackgroundInput?.click();
-          return;
-        }
-        try {
-          const { open } = await import('@tauri-apps/plugin-dialog');
-          const selected = await open({
-            multiple: false,
-            title: '选择自定义背景',
-            filters: [
-              { name: '图像或视频', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'mp4', 'webm', 'ogv', 'ogg', 'mov'] }
-            ]
-          });
-          if (typeof selected === 'string') {
-            await importCustomBackgroundWithDependencies(selected);
-          }
-        } catch (error) {
-          console.error('Choose custom background failed:', error);
-          window.showToast?.(t('common.errorOccurred', { error: String(error?.message || error) }));
-          setCustomBackgroundImporting(false);
-        }
-      });
-      customBackgroundInput?.addEventListener('change', async () => {
-        const file = customBackgroundInput.files?.[0];
-        if (!file) return;
-        const isVideo = file.type.startsWith('video/');
-        const isImage = file.type.startsWith('image/');
-        if (!isVideo && !isImage) return;
-        await saveCustomBackground({ path: URL.createObjectURL(file), type: isVideo ? 'video' : 'image' });
-        customBackgroundInput.value = '';
-      });
-      clearCustomBackground?.addEventListener('click', async () => {
-        if (isTauri) {
-          try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            await invoke('clear_custom_background');
-          } catch (error) {
-            console.error('Clear custom background failed:', error);
-            window.showToast?.(t('settings.backgroundClearFailed'));
-            return;
-          }
-        }
-        try { localStorage.removeItem(BACKGROUND_KEY); } catch {}
-        restoreDefaultBackground();
-        window.showToast?.(t('settings.backgroundCleared'));
-      });
       onLangChange(() => {
         void refreshStoragePath();
-        updateCustomBackgroundStatus(savedBackground());
       });
+
+      // ===== Version update check =====
+      const versionUpdateStatus = document.getElementById('versionUpdateStatus');
+      const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
+      const openReleasePageBtn = document.getElementById('openReleasePageBtn');
+      const APP_VERSION_FALLBACK = '2.0.0';
+      const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/ZihangDong/toolknit-desktop/releases/latest';
+      const GITHUB_RELEASES_PAGE = 'https://github.com/ZihangDong/toolknit-desktop/releases/latest';
+      let versionCheckRunning = false;
+
+      function parseVersionToken(raw) {
+        const cleaned = String(raw || '').trim().replace(/^v/i, '');
+        const parts = cleaned.split('.').map(part => Number.parseInt(part, 10));
+        if (!parts.length || parts.some(Number.isNaN)) return null;
+        return parts;
+      }
+
+      function compareVersionTokens(a, b) {
+        const left = parseVersionToken(a);
+        const right = parseVersionToken(b);
+        if (!left || !right) return 0;
+        const length = Math.max(left.length, right.length);
+        for (let i = 0; i < length; i += 1) {
+          const leftPart = left[i] || 0;
+          const rightPart = right[i] || 0;
+          if (leftPart > rightPart) return 1;
+          if (leftPart < rightPart) return -1;
+        }
+        return 0;
+      }
+
+      async function getLocalAppVersion() {
+        try {
+          const { getVersion } = await import('@tauri-apps/api/app');
+          const version = await getVersion();
+          if (version && String(version).trim()) return String(version).trim();
+        } catch (error) {
+          console.error('Failed to read app version:', error);
+        }
+        return APP_VERSION_FALLBACK;
+      }
+
+      function setVersionUpdateStatus(text, kind = 'neutral') {
+        if (!versionUpdateStatus) return;
+        versionUpdateStatus.textContent = text;
+        versionUpdateStatus.dataset.kind = kind;
+      }
+
+      async function runVersionUpdateCheck() {
+        if (versionCheckRunning) return;
+        versionCheckRunning = true;
+        if (checkVersionUpdateBtn) checkVersionUpdateBtn.disabled = true;
+        if (openReleasePageBtn) openReleasePageBtn.hidden = true;
+        setVersionUpdateStatus(t('settings.versionChecking'), 'checking');
+        try {
+          const data = await fetchGithubJson(GITHUB_LATEST_RELEASE_API);
+          const latest = data?.tag_name;
+          if (!latest) throw new Error('No release tag returned');
+          const localVersion = await getLocalAppVersion();
+          if (compareVersionTokens(latest, localVersion) > 0) {
+            setVersionUpdateStatus(t('settings.versionAvailable', { version: latest }), 'available');
+            if (openReleasePageBtn) openReleasePageBtn.hidden = false;
+          } else {
+            setVersionUpdateStatus(t('settings.versionUpToDate', { version: localVersion }), 'up-to-date');
+          }
+        } catch (error) {
+          console.error('Version update check failed:', error);
+          setVersionUpdateStatus(t('settings.versionUpdateFailed'), 'error');
+        } finally {
+          versionCheckRunning = false;
+          if (checkVersionUpdateBtn) checkVersionUpdateBtn.disabled = false;
+        }
+      }
+
+      checkVersionUpdateBtn?.addEventListener('click', runVersionUpdateCheck);
+      openReleasePageBtn?.addEventListener('click', () => openExternalUrl(GITHUB_RELEASES_PAGE));
+
+      void getLocalAppVersion().then(version => {
+        setVersionUpdateStatus(t('settings.versionCurrent', { version }));
+      });
+
+      onLangChange(() => {
+        if (!versionUpdateStatus || versionUpdateStatus.dataset.kind !== 'neutral') return;
+        void getLocalAppVersion().then(version => {
+          setVersionUpdateStatus(t('settings.versionCurrent', { version }));
+        });
+      });
+
+      // ===== Screen picker global shortcut =====
+      const screenPickerShortcutBtn = document.getElementById('screenPickerShortcutBtn');
+      const screenPickerShortcutLabel = document.getElementById('screenPickerShortcutLabel');
+      const screenPickerShortcutReset = document.getElementById('screenPickerShortcutReset');
+      let screenPickerRecording = false;
+      let screenPickerKeyHandler = null;
+
+      async function refreshScreenPickerShortcut() {
+        if (!screenPickerShortcutLabel) return;
+        if (!isTauri) {
+          screenPickerShortcutLabel.textContent = 'Ctrl+Shift+C';
+          return;
+        }
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const info = await invoke('get_screen_picker_shortcut');
+          screenPickerShortcutLabel.textContent = info?.value || info?.default || 'Ctrl+Shift+C';
+        } catch (error) {
+          console.error('Cannot read screen picker shortcut:', error);
+          screenPickerShortcutLabel.textContent = 'Ctrl+Shift+C';
+        }
+      }
+
+      function stopScreenPickerRecording() {
+        screenPickerRecording = false;
+        if (screenPickerKeyHandler) {
+          window.removeEventListener('keydown', screenPickerKeyHandler, true);
+          screenPickerKeyHandler = null;
+        }
+        screenPickerShortcutBtn?.classList.remove('is-recording');
+      }
+
+      function screenPickerKeyToken(event) {
+        const code = event?.code || '';
+        if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+        if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+        if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+        return '';
+      }
+
+      function screenPickerShortcutFromEvent(event) {
+        const modifiers = [];
+        if (event.ctrlKey) modifiers.push('Ctrl');
+        if (event.altKey) modifiers.push('Alt');
+        if (event.shiftKey) modifiers.push('Shift');
+        if (event.metaKey) modifiers.push('Super');
+        const key = screenPickerKeyToken(event);
+        if (!key || key === 'Escape') return '';
+        return [...modifiers, key].join('+');
+      }
+
+      screenPickerShortcutBtn?.addEventListener('click', async () => {
+        if (!isTauri) {
+          showToast(getLang() === 'zh' ? '屏幕取色快捷键仅支持桌面版。' : 'Screen picker shortcut is desktop-only.');
+          return;
+        }
+        if (screenPickerRecording) {
+          stopScreenPickerRecording();
+          await refreshScreenPickerShortcut();
+          return;
+        }
+        screenPickerRecording = true;
+        screenPickerShortcutBtn.classList.add('is-recording');
+        screenPickerShortcutLabel.textContent = t('settings.screenPickerShortcutRecording');
+        screenPickerKeyHandler = async (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            stopScreenPickerRecording();
+            await refreshScreenPickerShortcut();
+            return;
+          }
+          const next = screenPickerShortcutFromEvent(event);
+          if (!next) return;
+          event.preventDefault();
+          event.stopPropagation();
+          stopScreenPickerRecording();
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('set_screen_picker_shortcut', { shortcut: next });
+            await refreshScreenPickerShortcut();
+            showToast(t('settings.screenPickerShortcutSaved'));
+          } catch (error) {
+            await refreshScreenPickerShortcut();
+            showToast(String(error?.message || error) || t('settings.screenPickerShortcutInvalid'));
+          }
+        };
+        window.addEventListener('keydown', screenPickerKeyHandler, true);
+      });
+
+      screenPickerShortcutReset?.addEventListener('click', async () => {
+        if (!isTauri) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const info = await invoke('get_screen_picker_shortcut');
+          await invoke('set_screen_picker_shortcut', { shortcut: info?.default || 'Ctrl+Shift+C' });
+          stopScreenPickerRecording();
+          await refreshScreenPickerShortcut();
+          showToast(t('settings.screenPickerShortcutResetDone'));
+        } catch (error) {
+          showToast(String(error?.message || error));
+        }
+      });
+
+      void refreshScreenPickerShortcut();
 
       // ===== Offline model manager and local transcription =====
       const MODEL_SOURCE_KEY = 'toolknit.transcription-model-source.v1';
@@ -1095,6 +2125,9 @@
       const transcriptionCtaText = document.getElementById('transcriptionCtaText');
       const transcriptionInput = document.getElementById('transcriptionInput');
       const transcriptionFiles = document.getElementById('transcriptionFiles');
+      const transcriptionPreview = document.getElementById('transcriptionPreview');
+      const transcriptionCopyTextBtn = document.getElementById('transcriptionCopyTextBtn');
+      const transcriptionOpenFolderBtn = document.getElementById('transcriptionOpenFolderBtn');
       const transcriptionSelectedFile = document.getElementById('transcriptionSelectedFile');
       const transcriptionSelectedFileName = document.getElementById('transcriptionSelectedFileName');
       const transcriptionProcessBtn = document.getElementById('transcriptionProcessBtn');
@@ -1129,7 +2162,25 @@
       let transcriptionProcessing = false;
       let transcriptionPlasmaDispose = null;
       let transcriptionOutputDir = '';
+      let transcriptionPreviewText = '';
       let dependencyGateState = null;
+
+      function setTranscriptionOutputDir(outputDir = '') {
+        transcriptionOutputDir = String(outputDir || '');
+        if (transcriptionOpenFolderBtn) transcriptionOpenFolderBtn.disabled = !transcriptionOutputDir;
+      }
+
+      function setTranscriptionCopyButtonState(copied = false) {
+        if (!transcriptionCopyTextBtn) return;
+        const label = transcriptionCopyTextBtn.querySelector('span');
+        if (label) label.textContent = copied ? t('home.transcription.copiedText') : t('home.transcription.copyText');
+        transcriptionCopyTextBtn.disabled = !transcriptionPreviewText;
+      }
+
+      function syncTranscriptionInlineLabels() {
+        if (transcriptionFiles) transcriptionFiles.dataset.empty = t('home.transcription.emptyOutputs');
+        setTranscriptionCopyButtonState(false);
+      }
 
       function formatTranscriptionBytes(bytes) {
         if (!Number.isFinite(bytes) || bytes < 1) return '--';
@@ -1375,6 +2426,202 @@
         (async () => { const { listen } = await import('@tauri-apps/api/event'); await listen('ffmpeg-runtime-download-progress', event => { ffmpegRuntimeProgress = event.payload; renderFfmpegRuntime(); updateDependencyGateProgress('ffmpeg', event.payload); }); })().catch(error => console.error('Cannot listen for FFmpeg runtime download:', error));
       }
 
+      // LibreOffice is an optional, separately managed PPT rendering runtime.
+      const LIBREOFFICE_SOURCE_KEY = 'toolknit.libreoffice-runtime-source.v1';
+      const libreOfficeRuntimeSummary = document.getElementById('libreOfficeRuntimeSummary');
+      const manageLibreOfficeRuntime = document.getElementById('manageLibreOfficeRuntime');
+      const libreOfficeRuntimeOverlay = document.getElementById('libreOfficeRuntimeOverlay');
+      const libreOfficeRuntimeClose = document.getElementById('libreOfficeRuntimeClose');
+      const libreOfficeRuntimeList = document.getElementById('libreOfficeRuntimeList');
+      const libreOfficeRuntimeSourceOptions = document.getElementById('libreOfficeRuntimeSourceOptions');
+      let libreOfficeRuntimeStatus = null;
+      let libreOfficeRuntimeProgress = null;
+      let libreOfficeRuntimeSource = localStorage.getItem(LIBREOFFICE_SOURCE_KEY) || 'auto';
+      // A full status lookup probes soffice and may walk hundreds of files to
+      // calculate the managed runtime size. Keep that work out of the PPT
+      // page-entry path and share in-flight checks between callers.
+      const LIBREOFFICE_AVAILABILITY_TTL = 30_000;
+      const LIBREOFFICE_STATUS_TTL = 15_000;
+      let libreOfficeRuntimeAvailable = null;
+      let libreOfficeRuntimeAvailabilityAt = 0;
+      let libreOfficeRuntimeAvailabilityPromise = null;
+      let libreOfficeRuntimeStatusAt = 0;
+      let libreOfficeRuntimeStatusPromise = null;
+
+      function normalizeLibreOfficeAvailability(value) {
+        if (typeof value === 'boolean') return value;
+        if (value && typeof value === 'object') {
+          if (typeof value.available === 'boolean') return value.available;
+          if (typeof value.installed === 'boolean') return value.installed;
+        }
+        return Boolean(value);
+      }
+
+      function cacheLibreOfficeAvailability(available, at = Date.now()) {
+        libreOfficeRuntimeAvailable = Boolean(available);
+        libreOfficeRuntimeAvailabilityAt = at;
+        return libreOfficeRuntimeAvailable;
+      }
+
+      async function checkLibreOfficeRuntimeAvailable({ force = false } = {}) {
+        if (!isTauri) return false;
+        const now = Date.now();
+        if (!force && typeof libreOfficeRuntimeAvailable === 'boolean'
+          && now - libreOfficeRuntimeAvailabilityAt < LIBREOFFICE_AVAILABILITY_TTL) {
+          return libreOfficeRuntimeAvailable;
+        }
+        if (libreOfficeRuntimeAvailabilityPromise) return libreOfficeRuntimeAvailabilityPromise;
+        libreOfficeRuntimeAvailabilityPromise = (async () => {
+          const { invoke } = await import('@tauri-apps/api/core');
+          try {
+            const available = normalizeLibreOfficeAvailability(await invoke('is_libreoffice_runtime_available'));
+            cacheLibreOfficeAvailability(available);
+            return available;
+          } catch (error) {
+            // Older already-installed builds do not expose the lightweight
+            // command. Fall back once, then use the same short-lived cache.
+            try {
+              const status = await invoke('get_libreoffice_runtime_status');
+              libreOfficeRuntimeStatus = status;
+              libreOfficeRuntimeStatusAt = Date.now();
+              updateLibreOfficeRuntimeSummary();
+              renderLibreOfficeRuntime();
+              return cacheLibreOfficeAvailability(Boolean(status?.installed));
+            } catch (fallbackError) {
+              console.error('Cannot check PPT runtime availability:', fallbackError || error);
+              return cacheLibreOfficeAvailability(false);
+            }
+          }
+        })().finally(() => { libreOfficeRuntimeAvailabilityPromise = null; });
+        return libreOfficeRuntimeAvailabilityPromise;
+      }
+
+      function updateLibreOfficeRuntimeSummary() {
+        if (!libreOfficeRuntimeSummary) return;
+        libreOfficeRuntimeSummary.textContent = libreOfficeRuntimeStatus?.installed
+          ? (getLang() === 'en' ? `Installed (${formatRuntimeBytes(libreOfficeRuntimeStatus.bytes)})` : `已安装 (${formatRuntimeBytes(libreOfficeRuntimeStatus.bytes)})`)
+          : t('settings.libreOfficeRuntimeEmpty');
+      }
+
+      function renderLibreOfficeRuntime() {
+        if (!libreOfficeRuntimeList) return;
+        libreOfficeRuntimeList.replaceChildren();
+        const row = document.createElement('div'); row.className = 'transcription-model-row';
+        const info = document.createElement('div');
+        const name = document.createElement('div'); name.className = 'transcription-model-name'; name.textContent = 'LibreOffice';
+        const meta = document.createElement('div'); meta.className = 'transcription-model-meta';
+        meta.textContent = libreOfficeRuntimeStatus?.installed
+          ? `${formatRuntimeBytes(libreOfficeRuntimeStatus.bytes)} - ${displayFilesystemPath(libreOfficeRuntimeStatus.path)}`
+          : (getLang() === 'en' ? 'Required for PPT to PDF and PPT to image' : 'PPT 转 PDF、PPT 转图像所需的本地运行时');
+        info.append(name, meta);
+        const actions = document.createElement('div'); actions.className = 'transcription-model-actions';
+        if (libreOfficeRuntimeProgress && libreOfficeRuntimeProgress.phase !== 'complete') {
+          const status = document.createElement('span'); status.className = 'transcription-model-current';
+          const total = Math.max(1, libreOfficeRuntimeProgress.total_bytes || 0);
+          status.textContent = libreOfficeRuntimeProgress.phase === 'installing'
+            ? (getLang() === 'en' ? 'Installing' : '正在安装')
+            : `${Math.min(100, Math.round((libreOfficeRuntimeProgress.downloaded_bytes || 0) / total * 100))}%`;
+          actions.append(status);
+        } else if (libreOfficeRuntimeStatus?.installed) {
+          const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'settings-btn'; remove.textContent = getLang() === 'en' ? 'Delete' : '删除';
+          remove.addEventListener('click', async () => {
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('delete_libreoffice_runtime');
+              libreOfficeRuntimeStatus = { installed: false, bytes: 0, path: null, source: null, version: null };
+              libreOfficeRuntimeStatusAt = Date.now();
+              cacheLibreOfficeAvailability(false, libreOfficeRuntimeStatusAt);
+              updateLibreOfficeRuntimeSummary();
+              renderLibreOfficeRuntime();
+            }
+            catch (error) { window.showToast?.(String(error?.message || error)); }
+          });
+          actions.append(remove);
+        } else {
+          const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-btn'; install.textContent = getLang() === 'en' ? 'Download' : '下载';
+          install.addEventListener('click', async () => {
+            try {
+              libreOfficeRuntimeProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: 0 }; renderLibreOfficeRuntime();
+              const { invoke } = await import('@tauri-apps/api/core');
+              const status = await invoke('download_libreoffice_runtime', { source: resolvedLibreOfficeDownloadSource() });
+              libreOfficeRuntimeProgress = null;
+              if (status && typeof status === 'object') {
+                libreOfficeRuntimeStatus = status;
+                libreOfficeRuntimeStatusAt = Date.now();
+                cacheLibreOfficeAvailability(Boolean(status.installed), libreOfficeRuntimeStatusAt);
+              } else {
+                cacheLibreOfficeAvailability(true);
+              }
+              updateLibreOfficeRuntimeSummary();
+              renderLibreOfficeRuntime();
+            } catch (error) { libreOfficeRuntimeProgress = null; renderLibreOfficeRuntime(); window.showToast?.(String(error?.message || error)); }
+          });
+          actions.append(install);
+        }
+        row.append(info, actions);
+        if (libreOfficeRuntimeProgress && libreOfficeRuntimeProgress.phase !== 'complete') {
+          const bar = document.createElement('div'); bar.className = 'transcription-model-progress';
+          const fill = document.createElement('span'); const total = Math.max(1, libreOfficeRuntimeProgress.total_bytes || 0);
+          fill.style.width = `${Math.min(100, (libreOfficeRuntimeProgress.downloaded_bytes || 0) / total * 100)}%`; bar.append(fill); row.append(bar);
+        }
+        libreOfficeRuntimeList.append(row);
+      }
+
+      async function refreshLibreOfficeRuntime({ force = false } = {}) {
+        if (!isTauri) return null;
+        const now = Date.now();
+        if (!force && libreOfficeRuntimeStatus && now - libreOfficeRuntimeStatusAt < LIBREOFFICE_STATUS_TTL) {
+          updateLibreOfficeRuntimeSummary();
+          renderLibreOfficeRuntime();
+          return libreOfficeRuntimeStatus;
+        }
+        if (libreOfficeRuntimeStatusPromise) return libreOfficeRuntimeStatusPromise;
+        libreOfficeRuntimeStatusPromise = (async () => {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const status = await invoke('get_libreoffice_runtime_status');
+            libreOfficeRuntimeStatus = status;
+            libreOfficeRuntimeStatusAt = Date.now();
+            cacheLibreOfficeAvailability(Boolean(status?.installed), libreOfficeRuntimeStatusAt);
+            updateLibreOfficeRuntimeSummary();
+            renderLibreOfficeRuntime();
+            return status;
+          } catch (error) {
+            console.error('Cannot read PPT runtime:', error);
+            return null;
+          }
+        })().finally(() => { libreOfficeRuntimeStatusPromise = null; });
+        return libreOfficeRuntimeStatusPromise;
+      }
+      function openLibreOfficeRuntimeManager() { if (!libreOfficeRuntimeOverlay) return; libreOfficeRuntimeOverlay.classList.add('visible'); libreOfficeRuntimeOverlay.setAttribute('aria-hidden', 'false'); void refreshLibreOfficeRuntime({ force: true }); }
+      function closeLibreOfficeRuntimeManager() { libreOfficeRuntimeOverlay?.classList.remove('visible'); libreOfficeRuntimeOverlay?.setAttribute('aria-hidden', 'true'); }
+      manageLibreOfficeRuntime?.addEventListener('click', openLibreOfficeRuntimeManager);
+      libreOfficeRuntimeClose?.addEventListener('click', closeLibreOfficeRuntimeManager);
+      libreOfficeRuntimeOverlay?.addEventListener('click', event => { if (event.target === libreOfficeRuntimeOverlay) closeLibreOfficeRuntimeManager(); });
+      libreOfficeRuntimeSourceOptions?.querySelectorAll('[data-source]').forEach(button => {
+        button.classList.toggle('active', button.dataset.source === libreOfficeRuntimeSource);
+        button.addEventListener('click', () => { libreOfficeRuntimeSource = button.dataset.source || 'auto'; localStorage.setItem(LIBREOFFICE_SOURCE_KEY, libreOfficeRuntimeSource); libreOfficeRuntimeSourceOptions.querySelectorAll('[data-source]').forEach(item => item.classList.toggle('active', item === button)); });
+      });
+      if (isTauri) {
+        // The settings panel performs the detailed refresh on demand. Do not
+        // start a recursive runtime-directory scan during app bootstrap.
+        (async () => { const { listen } = await import('@tauri-apps/api/event'); await listen('libreoffice-runtime-download-progress', event => { libreOfficeRuntimeProgress = event.payload; renderLibreOfficeRuntime(); updateDependencyGateProgress('libreoffice', event.payload); }); })().catch(error => console.error('Cannot listen for PPT runtime download:', error));
+      }
+
+      function resolvedLibreOfficeDownloadSource() {
+        if (libreOfficeRuntimeSource !== 'auto') return libreOfficeRuntimeSource;
+        return getLang() === 'en' ? 'auto-official' : 'auto-china';
+      }
+
+      async function ensurePptRuntimeAvailable() {
+        if (!isTauri) return false;
+        // Export is the last user-visible gate, so refresh the cheap boolean
+        // check in case the runtime was removed outside ToolKnit meanwhile.
+        if (await checkLibreOfficeRuntimeAvailable({ force: true })) return true;
+        showDependencyGate({ openFn: () => {}, needsFfmpeg: false, needsModel: false, needsLibreOffice: true });
+        throw new Error('ppt-render:runtime-missing');
+      }
+
       function resolvedFfmpegDownloadSource() {
         if (ffmpegRuntimeSource !== 'auto') return ffmpegRuntimeSource;
         return getLang() === 'en' ? 'auto-official' : 'auto-china';
@@ -1403,9 +2650,14 @@
       function renderDependencyGate() {
         const state = dependencyGateState;
         if (!state || !dependencyGateList) return;
+        if (dependencyGateOverlay && state.taskSnapshot) {
+          dependencyGateOverlay.dataset.taskState = state.taskSnapshot.state;
+          dependencyGateOverlay.dataset.taskId = state.taskSnapshot.task_id;
+        }
         const isTranscription = state.needsModel;
-        if (dependencyGateTitle) dependencyGateTitle.textContent = t(isTranscription ? 'home.dependencies.transcriptionTitle' : 'home.dependencies.title');
-        if (dependencyGateDesc) dependencyGateDesc.textContent = t(isTranscription ? 'home.dependencies.transcriptionDesc' : 'home.dependencies.desc');
+        const isPpt = state.needsLibreOffice;
+        if (dependencyGateTitle) dependencyGateTitle.textContent = t(isTranscription ? 'home.dependencies.transcriptionTitle' : (isPpt ? 'home.dependencies.pptTitle' : 'home.dependencies.title'));
+        if (dependencyGateDesc) dependencyGateDesc.textContent = t(isTranscription ? 'home.dependencies.transcriptionDesc' : (isPpt ? 'home.dependencies.pptDesc' : 'home.dependencies.desc'));
         dependencyGateList.replaceChildren();
         const appendItem = (type, label, size, progress, complete) => {
           const row = document.createElement('div');
@@ -1417,15 +2669,16 @@
         };
         if (state.needsFfmpeg) appendItem('ffmpeg', 'FFmpeg', '29 MB', state.ffmpegProgress, state.ffmpegComplete);
         if (state.needsModel) appendItem('model', 'Whisper Small', '465 MB', state.modelProgress, state.modelComplete);
+        if (state.needsLibreOffice) appendItem('libreoffice', 'LibreOffice', '356 MB', state.libreOfficeProgress, state.libreOfficeComplete);
 
-        const types = [state.needsFfmpeg && 'ffmpeg', state.needsModel && 'model'].filter(Boolean);
+        const types = [state.needsFfmpeg && 'ffmpeg', state.needsModel && 'model', state.needsLibreOffice && 'libreoffice'].filter(Boolean);
         const overall = types.length
           ? Math.round(types.reduce((sum, type) => sum + (state[`${type}Complete`] ? 100 : dependencyProgressPercent(state[`${type}Progress`])), 0) / types.length)
           : 100;
         if (dependencyGateProgress) dependencyGateProgress.hidden = !state.downloading;
         if (dependencyGateProgressFill) dependencyGateProgressFill.style.width = `${overall}%`;
         if (dependencyGateProgressText) {
-          const currentName = state.current === 'model' ? 'Whisper Small' : 'FFmpeg';
+          const currentName = state.current === 'model' ? 'Whisper Small' : (state.current === 'libreoffice' ? 'LibreOffice' : 'FFmpeg');
           dependencyGateProgressText.textContent = state.cancelling
             ? t('home.dependencies.cancelling')
             : `${t('home.dependencies.current')}${currentName} · ${overall}%`;
@@ -1443,26 +2696,31 @@
 
       function updateDependencyGateProgress(type, progress) {
         const state = dependencyGateState;
-        if (!state || !state.downloading || !state[`needs${type === 'ffmpeg' ? 'Ffmpeg' : 'Model'}`]) return;
+        if (!state || !state.downloading || !state[`needs${type === 'ffmpeg' ? 'Ffmpeg' : (type === 'model' ? 'Model' : 'LibreOffice')}`]) return;
         state[`${type}Progress`] = progress || null;
         if (progress?.phase === 'complete') state[`${type}Complete`] = true;
         renderDependencyGate();
       }
 
-      function showDependencyGate({ openFn, needsFfmpeg, needsModel }) {
+      function showDependencyGate({ openFn, needsFfmpeg, needsModel, needsLibreOffice }) {
         dependencyGateState = {
           openFn,
           needsFfmpeg: Boolean(needsFfmpeg),
           needsModel: Boolean(needsModel),
+          needsLibreOffice: Boolean(needsLibreOffice),
           ffmpegProgress: null,
           modelProgress: null,
+          libreOfficeProgress: null,
           ffmpegComplete: !needsFfmpeg,
           modelComplete: !needsModel,
-          current: needsFfmpeg ? 'ffmpeg' : 'model',
+          libreOfficeComplete: !needsLibreOffice,
+          current: needsFfmpeg ? 'ffmpeg' : (needsModel ? 'model' : 'libreoffice'),
           downloading: false,
           cancelling: false,
           cancelled: false,
-          error: ''
+          error: '',
+          runner: null,
+          taskSnapshot: null
         };
         renderDependencyGate();
         dependencyGateOverlay?.classList.add('visible');
@@ -1483,31 +2741,78 @@
         state.downloading = true;
         state.error = '';
         renderDependencyGate();
+        const runner = new TaskRunner({
+          tool: 'dependencies.install',
+          onEvent(event) {
+            if (dependencyGateState !== state) return;
+            state.taskSnapshot = event;
+            renderDependencyGate();
+          },
+          onCancel: async () => {
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('cancel_dependency_downloads');
+            } catch (error) {
+              console.error('Cannot cancel dependency download:', error);
+            }
+          }
+        });
+        state.runner = runner;
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          if (state.needsFfmpeg) {
-            state.current = 'ffmpeg'; renderDependencyGate();
-            if (!await ensureFfmpegAvailable()) await invoke('download_ffmpeg_runtime', { source: resolvedFfmpegDownloadSource() });
-            if (state.cancelled) throw new Error('dependency-download:cancelled');
-            state.ffmpegComplete = true; state.ffmpegProgress = { phase: 'complete', downloaded_bytes: 1, total_bytes: 1 };
-            ffmpegRuntimeProgress = null;
-            await refreshFfmpegRuntime();
-          }
-          if (state.needsModel) {
-            state.current = 'model'; renderDependencyGate();
-            await refreshTranscriptionModels();
-            if (!activeTranscriptionModel()) {
-              const small = transcriptionModels.find(model => model.id === 'small');
-              state.modelProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: small?.bytes || 487_601_967 };
-              renderDependencyGate();
-              await invoke('download_transcription_model', { modelId: 'small', source: resolvedModelDownloadSource() });
-              await invoke('set_current_transcription_model', { modelId: 'small' });
+          await runner.run(async ({ report, throwIfCancelled }) => {
+            report(0, t('home.dependencies.downloadingAll'), { phase: 'prepare' });
+            if (state.needsFfmpeg) {
+              state.current = 'ffmpeg'; renderDependencyGate();
+              report(8, 'FFmpeg', { phase: 'ffmpeg' });
+              if (!await ensureFfmpegAvailable()) await invoke('download_ffmpeg_runtime', { source: resolvedFfmpegDownloadSource() });
+              throwIfCancelled();
+              state.ffmpegComplete = true; state.ffmpegProgress = { phase: 'complete', downloaded_bytes: 1, total_bytes: 1 };
+              ffmpegRuntimeProgress = null;
+              await refreshFfmpegRuntime();
+              report(state.needsModel ? 50 : 96, 'FFmpeg', { phase: 'ffmpeg-complete' });
             }
-            if (state.cancelled) throw new Error('dependency-download:cancelled');
-            state.modelComplete = true; state.modelProgress = { phase: 'complete', downloaded_bytes: 1, total_bytes: 1 };
-            transcriptionModelProgress.delete('small');
-            await refreshTranscriptionModels();
-          }
+            if (state.needsModel) {
+              state.current = 'model'; renderDependencyGate();
+              report(state.needsFfmpeg ? 52 : 8, 'Whisper Small', { phase: 'model' });
+              await refreshTranscriptionModels();
+              if (!activeTranscriptionModel()) {
+                const small = transcriptionModels.find(model => model.id === 'small');
+                state.modelProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: small?.bytes || 487_601_967 };
+                renderDependencyGate();
+                await invoke('download_transcription_model', { modelId: 'small', source: resolvedModelDownloadSource() });
+                await invoke('set_current_transcription_model', { modelId: 'small' });
+              }
+              throwIfCancelled();
+              state.modelComplete = true; state.modelProgress = { phase: 'complete', downloaded_bytes: 1, total_bytes: 1 };
+              transcriptionModelProgress.delete('small');
+              await refreshTranscriptionModels();
+              report(96, 'Whisper Small', { phase: 'model-complete' });
+            }
+            if (state.needsLibreOffice) {
+              state.current = 'libreoffice'; renderDependencyGate();
+              report(state.needsFfmpeg || state.needsModel ? 97 : 8, 'LibreOffice', { phase: 'libreoffice' });
+              const available = await checkLibreOfficeRuntimeAvailable({ force: true });
+              if (!available) {
+                const pptRuntime = await invoke('download_libreoffice_runtime', { source: resolvedLibreOfficeDownloadSource() });
+                if (pptRuntime && typeof pptRuntime === 'object') {
+                  libreOfficeRuntimeStatus = pptRuntime;
+                  libreOfficeRuntimeStatusAt = Date.now();
+                  cacheLibreOfficeAvailability(Boolean(pptRuntime.installed), libreOfficeRuntimeStatusAt);
+                } else {
+                  cacheLibreOfficeAvailability(true);
+                }
+              }
+              throwIfCancelled();
+              state.libreOfficeComplete = true;
+              state.libreOfficeProgress = { phase: 'complete', downloaded_bytes: 1, total_bytes: 1 };
+              libreOfficeRuntimeProgress = null;
+              updateLibreOfficeRuntimeSummary();
+              renderLibreOfficeRuntime();
+              report(96, 'LibreOffice', { phase: 'libreoffice-complete' });
+            }
+            return true;
+          });
           const openFn = state.openFn;
           state.downloading = false;
           renderDependencyGate();
@@ -1517,7 +2822,7 @@
           const message = String(error?.message || error || '');
           ffmpegRuntimeProgress = null;
           transcriptionModelProgress.delete('small');
-          if (state.cancelled || message.includes('dependency-download:cancelled')) {
+          if (state.cancelled || error?.code === 'CANCELLED' || message.includes('dependency-download:cancelled')) {
             state.downloading = false;
             closeDependencyGate(true);
             return;
@@ -1527,6 +2832,7 @@
           state.error = `${t('home.dependencies.failed')} ${message}`.trim();
           renderFfmpegRuntime();
           renderTranscriptionModels();
+          renderLibreOfficeRuntime();
           renderDependencyGate();
         }
       }
@@ -1539,8 +2845,7 @@
         state.cancelled = true;
         state.cancelling = true;
         renderDependencyGate();
-        try { const { invoke } = await import('@tauri-apps/api/core'); await invoke('cancel_dependency_downloads'); }
-        catch (error) { console.error('Cannot cancel dependency download:', error); }
+        await state.runner?.cancel(t('home.dependencies.cancelling'));
       });
 
       function updateTranscriptionUploadState() {
@@ -1556,8 +2861,31 @@
       }
 
       function renderTranscriptionFile() {
-        transcriptionFiles?.replaceChildren();
+        transcriptionOverlay?.classList.remove('has-result');
+        if (transcriptionFiles) {
+          transcriptionFiles.replaceChildren();
+          transcriptionFiles.classList.remove('has-files');
+        }
+        setTranscriptionOutputDir('');
+        renderTranscriptionPreviewEmpty();
         updateTranscriptionUploadState();
+      }
+
+      function renderTranscriptionPreviewEmpty() {
+        transcriptionPreviewText = '';
+        setTranscriptionCopyButtonState(false);
+        if (!transcriptionPreview) return;
+        transcriptionPreview.classList.add('is-empty');
+        transcriptionPreview.replaceChildren();
+        const empty = document.createElement('div');
+        empty.className = 'transcription-v2-preview-empty';
+        empty.innerHTML = `
+          <i data-lucide="subtitles"></i>
+          <strong>${escapeHtml(t('home.transcription.previewEmptyTitle'))}</strong>
+          <span>${escapeHtml(t('home.transcription.previewEmptyDesc'))}</span>
+        `;
+        transcriptionPreview.append(empty);
+        createIcons?.({ icons });
       }
 
       function updateTranscriptionProcessButton() {
@@ -1616,6 +2944,7 @@
         transcriptionLanguageOptions.querySelectorAll('[data-language]').forEach(item => item.classList.toggle('active', item === button));
       }));
       updateTranscriptionUploadState();
+      syncTranscriptionInlineLabels();
       document.querySelectorAll('.audio-list-item[data-tool="transcription"]').forEach(item => {
         item.addEventListener('click', () => { void openTranscriptionTool(); });
         item.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openTranscriptionTool(); } });
@@ -1658,13 +2987,57 @@
 
       function parseTranscriptionSrt(value) {
         return String(value || '').replace(/^\uFEFF/, '').trim().split(/\r?\n\s*\r?\n/).map(block => {
-          const lines = block.split(/\r?\n/);
-          const id = Number(lines.shift());
-          const timing = lines.shift() || '';
-          const match = /^(\S+)\s+-->\s+(\S+)$/.exec(timing.trim());
-          if (!Number.isInteger(id) || !match || lines.length === 0) return null;
-          return { id, start: match[1], end: match[2], text: lines.join('\n').trim() };
+          const lines = block.split(/\r?\n/).map(line => line.trimEnd()).filter(line => line.trim());
+          if (!lines.length) return null;
+          let id = Number(lines[0]);
+          let timingIndex = 1;
+          if (!Number.isInteger(id)) {
+            id = 0;
+            timingIndex = 0;
+          }
+          const timing = lines[timingIndex] || '';
+          const match = /^(.+?)\s+-->\s+(.+?)(?:\s+.*)?$/.exec(timing.trim());
+          const textLines = lines.slice(timingIndex + 1);
+          if (!match || textLines.length === 0) return null;
+          return { id, start: match[1], end: match[2], text: textLines.join('\n').trim() };
         }).filter(Boolean);
+      }
+
+      function renderTranscriptionPreview(segments, textValue = '') {
+        const normalizedText = String(textValue || '').trim();
+        transcriptionPreviewText = normalizedText || segments.map(segment => segment.text.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+        setTranscriptionCopyButtonState(false);
+        if (!transcriptionPreview) return;
+        transcriptionPreview.replaceChildren();
+        transcriptionPreview.classList.remove('is-empty');
+        if (!segments.length && !transcriptionPreviewText) {
+          renderTranscriptionPreviewEmpty();
+          return;
+        }
+        if (segments.length) {
+          const fragment = document.createDocumentFragment();
+          segments.slice(0, 500).forEach(segment => {
+            const row = document.createElement('div');
+            row.className = 'transcription-v2-segment';
+            row.innerHTML = `
+              <span class="transcription-v2-segment-time">${escapeHtml(segment.start)} → ${escapeHtml(segment.end)}</span>
+              <p>${escapeHtml(segment.text)}</p>
+            `;
+            fragment.append(row);
+          });
+          if (segments.length > 500) {
+            const more = document.createElement('div');
+            more.className = 'transcription-v2-preview-more';
+            more.textContent = t('home.transcription.previewLimit', { count: 500 });
+            fragment.append(more);
+          }
+          transcriptionPreview.append(fragment);
+          return;
+        }
+        const textBlock = document.createElement('div');
+        textBlock.className = 'transcription-v2-text-preview';
+        textBlock.textContent = transcriptionPreviewText;
+        transcriptionPreview.append(textBlock);
       }
 
       function parseRefinedTranscriptionResponse(value, expectedIds) {
@@ -1728,26 +3101,81 @@
         return { srtPath: written.first_path, txtPath: written.second_path };
       }
 
-      function showTranscriptionResult(result, refined = null) {
-        if (!transcriptionFiles) return;
-        transcriptionFiles.replaceChildren();
+      async function showTranscriptionResult(result, refined = null) {
+        transcriptionOverlay?.classList.add('has-result');
+        if (transcriptionFiles) {
+          transcriptionFiles.replaceChildren();
+          transcriptionFiles.classList.add('has-files');
+        }
+        const outputDir = String(result?.raw_srt_path || result?.raw_txt_path || '').replace(/[/\\][^/\\]+$/, '');
+        setTranscriptionOutputDir(outputDir);
+        const previewSrtPath = refined?.srtPath || result.raw_srt_path;
+        const previewTxtPath = refined?.txtPath || result.raw_txt_path;
+        try {
+          const [srtValue, txtValue] = await Promise.all([
+            previewSrtPath ? readTranscriptionText(previewSrtPath) : Promise.resolve(''),
+            previewTxtPath ? readTranscriptionText(previewTxtPath) : Promise.resolve('')
+          ]);
+          renderTranscriptionPreview(parseTranscriptionSrt(srtValue), txtValue);
+        } catch (error) {
+          console.error('Cannot preview transcription result:', error);
+          renderTranscriptionPreview([], '');
+        }
         const paths = [
           [t('home.transcription.rawJson'), result.raw_json_path],
           [t('home.transcription.rawSrt'), result.raw_srt_path],
           [t('home.transcription.rawTxt'), result.raw_txt_path],
           ...(refined ? [[t('home.transcription.refinedSrt'), refined.srtPath], [t('home.transcription.refinedTxt'), refined.txtPath]] : [])
         ];
-        paths.forEach(([label, path]) => {
-          const item = document.createElement('div'); item.className = 'audio-convert-file-item';
-          const name = document.createElement('span'); name.className = 'audio-convert-file-name'; name.textContent = `${label}: ${path.split(/[\\/]/).pop()}`;
-          item.append(name); transcriptionFiles.append(item);
+        paths.forEach(([label, path], index) => {
+          if (!transcriptionFiles) return;
+          const filePath = String(path || '');
+          const item = document.createElement('div');
+          item.className = 'audio-convert-file-item';
+          item.title = displayFilesystemPath(filePath);
+          item.innerHTML = `
+            <span class="audio-convert-file-index">${index + 1}</span>
+            <span class="audio-convert-file-name">${escapeHtml(filePath.split(/[\\/]/).pop() || label)}</span>
+            <span class="transcription-result-type">${escapeHtml(label)}</span>
+          `;
+          item.addEventListener('dblclick', async () => {
+            if (!isTauri || !filePath) return;
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('open_path', { path: filePath });
+            } catch (error) {
+              console.error('Cannot open transcription output file:', error);
+            }
+          });
+          transcriptionFiles.append(item);
         });
       }
 
+      transcriptionCopyTextBtn?.addEventListener('click', async () => {
+        if (!transcriptionPreviewText || !navigator.clipboard?.writeText) return;
+        try {
+          await navigator.clipboard.writeText(transcriptionPreviewText);
+          setTranscriptionCopyButtonState(true);
+          window.showToast?.(t('home.transcription.copyDone'));
+          setTimeout(() => setTranscriptionCopyButtonState(false), 1200);
+        } catch (error) {
+          console.error('Cannot copy transcription text:', error);
+        }
+      });
+
+      transcriptionOpenFolderBtn?.addEventListener('click', async () => {
+        if (!isTauri || !transcriptionOutputDir) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: transcriptionOutputDir });
+        } catch (error) {
+          console.error('Cannot open transcription output folder:', error);
+        }
+      });
+
       function showTranscriptionSuccess(result, refined = null, refineFailed = false) {
-        if (!transcriptionSuccessOverlay) return;
         const outputDir = String(result.raw_srt_path || '').replace(/[/\\][^/\\]+$/, '');
-        transcriptionOutputDir = outputDir;
+        setTranscriptionOutputDir(outputDir);
         if (transcriptionSuccessMeta) {
           transcriptionSuccessMeta.textContent = refineFailed
             ? t('home.transcription.refineFailed')
@@ -1755,7 +3183,7 @@
         }
         if (transcriptionSuccessCount) transcriptionSuccessCount.textContent = String(refined ? 5 : 3);
         if (transcriptionSuccessPath) transcriptionSuccessPath.textContent = displayFilesystemPath(outputDir);
-        transcriptionSuccessOverlay.classList.add('visible');
+        window.showToast?.(refineFailed ? t('home.transcription.refineFailed') : t('home.transcription.doneInline'));
       }
 
       transcriptionSuccessOk?.addEventListener('click', () => transcriptionSuccessOverlay?.classList.remove('visible'));
@@ -1801,7 +3229,7 @@
               refineFailed = true;
             }
           }
-          showTranscriptionResult(result, refined);
+          await showTranscriptionResult(result, refined);
           completion = { result, refined, refineFailed };
           setTranscriptionProgress(100, transcriptionProgressLabel('complete'));
         } catch (error) {
@@ -1817,14 +3245,18 @@
         }
       });
 
-      onLangChange(() => { updateTranscriptionUploadState(); updateOfflineModelSummary(); renderTranscriptionModels(); updateFfmpegRuntimeSummary(); renderFfmpegRuntime(); renderDependencyGate(); });
+      onLangChange(() => { updateTranscriptionUploadState(); syncTranscriptionInlineLabels(); updateOfflineModelSummary(); renderTranscriptionModels(); updateFfmpegRuntimeSummary(); renderFfmpegRuntime(); renderDependencyGate(); });
 
       const helpBtn = document.getElementById('helpBtn');
-      if (settingsBtn && settingsOverlay) {
-        settingsBtn.addEventListener('click', () => {
+      if (settingsBtns.length && settingsOverlay) {
+        settingsBtns.forEach(settingsBtn => settingsBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          document.getElementById('helpOverlay')?.classList.remove('visible');
           if (settingsContent) settingsContent.scrollTop = 0;
+          settingsOverlay.style.zIndex = '50000';
           settingsOverlay.classList.add('visible');
-        });
+        }));
       }
       if (helpBtn) {
         helpBtn.addEventListener('click', () => {
@@ -1835,6 +3267,7 @@
       if (settingsBack && settingsOverlay) {
         settingsBack.addEventListener('click', () => {
           settingsOverlay.classList.remove('visible');
+          settingsOverlay.style.zIndex = '';
         });
       }
 
@@ -2276,8 +3709,9 @@
           if (hardwareOverviewUpdatedAt) hardwareOverviewUpdatedAt.textContent = formatHardwareOverviewUpdatedAt(hardwareOverviewScannedAt);
         } catch (error) {
           console.error('Failed to collect hardware overview:', error);
-          renderHardwareOverviewError(hwText('readFailedTitle'), hwText('readFailedDesc'));
-          window.showToast?.(hwText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderHardwareOverviewError(hwText('readFailedTitle'), errMsg || hwText('readFailedDesc'));
+          window.showToast?.(errMsg || hwText('readFailedDesc'));
         } finally {
           hardwareOverviewLoading = false;
           hardwareOverviewRefresh?.classList.remove('is-loading');
@@ -2549,8 +3983,9 @@
           startCpuMemoryLiveUpdates();
         } catch (error) {
           console.error('Failed to collect CPU and memory information:', error);
-          renderCpuMemoryError(cpuMemoryText('readFailedTitle'), cpuMemoryText('readFailedDesc'));
-          window.showToast?.(cpuMemoryText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderCpuMemoryError(cpuMemoryText('readFailedTitle'), errMsg || cpuMemoryText('readFailedDesc'));
+          window.showToast?.(errMsg || cpuMemoryText('readFailedDesc'));
         } finally {
           hardwareCpuMemoryLoading = false;
           hardwareCpuMemoryRefresh?.classList.remove('is-loading');
@@ -2799,8 +4234,9 @@
           updateGpuDisplayUpdatedAt();
         } catch (error) {
           console.error('Failed to collect GPU and display information:', error);
-          renderGpuDisplayError(gpuDisplayText('readFailedTitle'), gpuDisplayText('readFailedDesc'));
-          window.showToast?.(gpuDisplayText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderGpuDisplayError(gpuDisplayText('readFailedTitle'), errMsg || gpuDisplayText('readFailedDesc'));
+          window.showToast?.(errMsg || gpuDisplayText('readFailedDesc'));
         } finally {
           hardwareGpuDisplayLoading = false;
           hardwareGpuDisplayRefresh?.classList.remove('is-loading');
@@ -2983,8 +4419,9 @@
           mainboardUpdatedAt();
         } catch (error) {
           console.error('Failed to collect mainboard and firmware information:', error);
-          renderMainboardError(mainboardText('readFailedTitle'), mainboardText('readFailedDesc'));
-          window.showToast?.(mainboardText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderMainboardError(mainboardText('readFailedTitle'), errMsg || mainboardText('readFailedDesc'));
+          window.showToast?.(errMsg || mainboardText('readFailedDesc'));
         } finally {
           hardwareMainboardLoading = false;
           hardwareMainboardRefresh?.classList.remove('is-loading');
@@ -3168,8 +4605,9 @@
           storageUpdatedAt();
         } catch (error) {
           console.error('Failed to collect storage and health information:', error);
-          renderStorageError(storageText('readFailedTitle'), storageText('readFailedDesc'));
-          window.showToast?.(storageText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderStorageError(storageText('readFailedTitle'), errMsg || storageText('readFailedDesc'));
+          window.showToast?.(errMsg || storageText('readFailedDesc'));
         } finally {
           hardwareStorageLoading = false;
           hardwareStorageRefresh?.classList.remove('is-loading');
@@ -3318,8 +4756,9 @@
           networkDevicesUpdatedAt();
         } catch (error) {
           console.error('Failed to collect network and device information:', error);
-          renderNetworkDevicesError(networkDevicesText('readFailedTitle'), networkDevicesText('readFailedDesc'));
-          window.showToast?.(networkDevicesText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderNetworkDevicesError(networkDevicesText('readFailedTitle'), errMsg || networkDevicesText('readFailedDesc'));
+          window.showToast?.(errMsg || networkDevicesText('readFailedDesc'));
         } finally {
           hardwareNetworkDevicesLoading = false;
           hardwareNetworkDevicesRefresh?.classList.remove('is-loading');
@@ -3520,8 +4959,9 @@
           powerSensorsUpdatedAt();
         } catch (error) {
           console.error('Failed to collect power and sensor information:', error);
-          renderPowerSensorsError(powerSensorsText('readFailedTitle'), powerSensorsText('readFailedDesc'));
-          window.showToast?.(powerSensorsText('readFailedDesc'));
+          const errMsg = String((typeof error === 'string' ? error : error?.message) || '').trim();
+          renderPowerSensorsError(powerSensorsText('readFailedTitle'), errMsg || powerSensorsText('readFailedDesc'));
+          window.showToast?.(errMsg || powerSensorsText('readFailedDesc'));
         } finally {
           hardwarePowerSensorsLoading = false;
           hardwarePowerSensorsRefresh?.classList.remove('is-loading');
@@ -3559,6 +4999,4348 @@
           if (hardwarePowerSensorsScannedAt) powerSensorsUpdatedAt(hardwarePowerSensorsScannedAt);
         } else {
           renderPowerSensorsLoading();
+        }
+      });
+
+      // ===== PPT Images Extractor =====
+      const pptImagesOverlay = document.getElementById('pptImagesOverlay');
+      const pptImagesBack = document.getElementById('pptImagesBack');
+      const pptImagesPlasmaBg = document.getElementById('pptImagesPlasmaBg');
+      const pptImagesBody = document.getElementById('pptImagesBody');
+      const pptImagesWorkspace = document.getElementById('pptImagesScrollArea');
+      const pptImagesDropZone = document.getElementById('pptImagesDropZone');
+      const pptImagesFileInput = document.getElementById('pptImagesFileInput');
+      const pptImagesCta = document.getElementById('pptImagesCta');
+      const pptImagesFileName = document.getElementById('pptImagesFileName');
+      const pptImagesEmpty = document.getElementById('pptImagesEmpty');
+      const pptImagesResults = document.getElementById('pptImagesResults');
+      const pptImagesSummary = document.getElementById('pptImagesSummary');
+      const pptImagesPageFilter = document.getElementById('pptImagesPageFilter');
+      const pptImagesSkipDuplicates = document.getElementById('pptImagesSkipDuplicates');
+      const pptImagesSelectAll = document.getElementById('pptImagesSelectAll');
+      const pptImagesClearSelection = document.getElementById('pptImagesClearSelection');
+      const pptImagesExportBtn = document.getElementById('pptImagesExportBtn');
+      const pptImagesList = document.getElementById('pptImagesList');
+      const pptImagesProcessMask = document.getElementById('pptImagesProcessMask');
+      const pptImagesProcessBarFill = document.getElementById('pptImagesProcessBarFill');
+      const pptImagesProcessText = document.getElementById('pptImagesProcessText');
+      const pptImagesSuccessOverlay = document.getElementById('pptImagesSuccessOverlay');
+      const pptImagesSuccessMeta = document.getElementById('pptImagesSuccessMeta');
+      const pptImagesSuccessCount = document.getElementById('pptImagesSuccessCount');
+      const pptImagesSuccessPath = document.getElementById('pptImagesSuccessPath');
+      const pptImagesSuccessOpenFolder = document.getElementById('pptImagesSuccessOpenFolder');
+      const pptImagesSuccessOk = document.getElementById('pptImagesSuccessOk');
+      const pptImagesScrollTop = document.getElementById('pptImagesScrollTop');
+      let pptImagesPlasmaInstance = null;
+      let pptImagesBusy = false;
+      let pptImagesManifest = null;
+      let pptImagesZip = null;
+      let pptImagesFile = null;
+      let pptImagesSelected = new Set();
+      let pptImagesPreviewUrls = [];
+      let pptImagesPreviewToken = 0;
+      let pptImagesLastOutputPath = '';
+
+      function pptImagesText(key, params) {
+        return t(`home.pptImagesPage.${key}`, params);
+      }
+
+      function normalizeDesktopBytes(rawBytes) {
+        if (rawBytes instanceof Uint8Array) return rawBytes;
+        if (rawBytes instanceof ArrayBuffer) return new Uint8Array(rawBytes);
+        if (ArrayBuffer.isView(rawBytes)) return new Uint8Array(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
+        if (Array.isArray(rawBytes)) return Uint8Array.from(rawBytes);
+        if (rawBytes && typeof rawBytes.length === 'number') return Uint8Array.from(rawBytes);
+        return new Uint8Array();
+      }
+
+      function pptRenderIsSupportedFile(file) {
+        const name = String(file?.name || file?.path || '').toLowerCase();
+        return name.endsWith('.pptx');
+      }
+
+      function pptRenderDragHasExternalFiles(event) {
+        const transfer = event?.dataTransfer;
+        if (!transfer) return false;
+        const types = Array.from(transfer.types || []);
+        return types.includes('Files') || transfer.files?.length > 0;
+      }
+
+      function pptRenderDropHasPptx(event) {
+        const files = Array.from(event?.dataTransfer?.files || []);
+        if (files.length < 1) return false;
+        return files.some(file => pptRenderIsSupportedFile(file));
+      }
+
+      function pptRenderErrorMessage(error, text) {
+        const message = String(error?.userMessage || error?.message || error || '');
+        if (/runtime-missing|dependency/i.test(message)) return text('runtimeMissing');
+        if (/invalid-extension|invalid_extension/i.test(message)) return text('unsupportedFormat');
+        if (/input-too-large|input_too_large|too large/i.test(message)) return text('fileTooLarge');
+        if (/too-many-slides|too_many_slides/i.test(message)) return text('tooManySlides', { count: PPT_RENDER_LIMITS.maxSlides });
+        if (/empty-ppt|empty_ppt/i.test(message)) return text('emptyPpt');
+        if (/invalid-pptx|invalid_pptx|invalid-input|read-failed/i.test(message)) return text('invalidPptx');
+        if (/busy|another file conversion/i.test(message)) return text('busy');
+        if (/cancelled|canceled/i.test(message)) return text('cancelled');
+        if (/timeout|timed out|did not respond/i.test(message)) return text('timeout');
+        return text('exportFailed', { error: message || 'unknown error' });
+      }
+
+      async function readPptRenderInputFile(file) {
+        if (!pptRenderIsSupportedFile(file)) {
+          throw new Error('ppt-render:invalid-extension');
+        }
+        if (isTauri && file.path) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const rawBytes = await invoke('read_file_bytes_limited', {
+            path: file.path,
+            maxBytes: PPT_RENDER_LIMITS.maxInputBytes
+          });
+          return normalizeDesktopBytes(rawBytes);
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength > PPT_RENDER_LIMITS.maxInputBytes) {
+          throw new Error('ppt-render:input-too-large');
+        }
+        return bytes;
+      }
+
+      function createPptRenderTool(config) {
+        const overlay = document.getElementById(config.overlayId);
+        const back = document.getElementById(config.backId);
+        const plasmaBg = document.getElementById(config.plasmaBgId);
+        const body = document.getElementById(config.bodyId);
+        const dropZone = document.getElementById(config.dropZoneId);
+        const fileInput = document.getElementById(config.fileInputId);
+        const cta = document.getElementById(config.ctaId);
+        const fileName = document.getElementById(config.fileNameId);
+        const empty = document.getElementById(config.emptyId);
+        const results = document.getElementById(config.resultsId);
+        const summary = document.getElementById(config.summaryId);
+        const stats = document.getElementById(config.statsId);
+        const actionBtn = document.getElementById(config.actionBtnId);
+        const processMask = document.getElementById(config.processMaskId);
+        const processBarFill = document.getElementById(config.processBarFillId);
+        const processText = document.getElementById(config.processTextId);
+        const successOverlay = config.successOverlayId ? document.getElementById(config.successOverlayId) : null;
+        const successMeta = config.successMetaId ? document.getElementById(config.successMetaId) : null;
+        const successPages = config.successPagesId ? document.getElementById(config.successPagesId) : null;
+        const successSize = config.successSizeId ? document.getElementById(config.successSizeId) : null;
+        const successPath = config.successPathId ? document.getElementById(config.successPathId) : null;
+        const successOpenFolder = config.successOpenFolderId ? document.getElementById(config.successOpenFolderId) : null;
+        const successOk = config.successOkId ? document.getElementById(config.successOkId) : null;
+        let plasmaInstance = null;
+        let busy = false;
+        let selectedFile = null;
+        let manifest = null;
+        let lastOutputPath = '';
+
+        const text = (key, params) => t(`home.${config.i18nKey}.${key}`, params);
+
+        function setProgress(percent, message, visible = true) {
+          if (processBarFill) processBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+          if (processText) processText.textContent = message || text('processing');
+          if (processMask) processMask.classList.toggle('visible', Boolean(visible));
+        }
+
+        function summaryText() {
+          if (!manifest) return '';
+          return text('summary', {
+            slides: manifest.slide_count,
+            size: formatFileSize(manifest.input_bytes),
+            output: createPptToPdfFileName(manifest.base_name || manifest.source_name)
+          });
+        }
+
+        function renderStats() {
+          if (!manifest || !stats) return;
+          const outputFile = createPptToPdfFileName(manifest.base_name || manifest.source_name);
+          const items = [
+            { label: text('statSource'), value: manifest.source_name || '--', hint: text('statLocal') },
+            { label: text('statSlides'), value: String(manifest.slide_count || 0), hint: text('statSlidesHint') },
+            { label: text('statInputSize'), value: formatFileSize(manifest.input_bytes || 0), hint: text('statInputHint') },
+            { label: text('statOutput'), value: outputFile, hint: text(config.mode === 'image' ? 'statOutputImageHint' : 'statOutputPdfHint') }
+          ];
+          stats.innerHTML = items.map(item => `
+            <div class="ppt-compress-stat">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+              <em>${escapeHtml(item.hint)}</em>
+            </div>
+          `).join('');
+          if (summary) {
+            summary.innerHTML = `
+              <span>${escapeHtml(summaryText())}</span>
+              <strong>${escapeHtml(text(config.mode === 'image' ? 'readyImage' : 'readyPdf'))}</strong>
+            `;
+          }
+        }
+
+        function resetState() {
+          busy = false;
+          selectedFile = null;
+          manifest = null;
+          lastOutputPath = '';
+          if (fileInput) fileInput.value = '';
+          if (fileName) {
+            fileName.textContent = '';
+            fileName.classList.remove('visible');
+          }
+          if (cta) {
+            const label = cta.querySelector('span');
+            if (label) label.textContent = text('cta');
+            cta.disabled = false;
+          }
+          if (empty) empty.hidden = false;
+          if (results) results.hidden = true;
+          if (summary) summary.innerHTML = '';
+          if (stats) stats.innerHTML = '';
+          if (actionBtn) {
+            actionBtn.disabled = true;
+            actionBtn.hidden = true;
+          }
+          dropZone?.classList.remove('visible');
+          if (body) body.scrollTop = 0;
+          setProgress(0, text('processing'), false);
+        }
+
+        function updateControls() {
+          if (actionBtn) {
+            const canRun = Boolean(manifest && selectedFile && !busy);
+            actionBtn.disabled = !canRun;
+            actionBtn.hidden = !canRun;
+          }
+          if (cta) cta.disabled = busy;
+        }
+
+        function showOverlay() {
+          if (!overlay) return;
+          overlay.classList.add('visible');
+          overlay.setAttribute('aria-hidden', 'false');
+          if (body) body.scrollTop = 0;
+          if (plasmaBg && !plasmaInstance) {
+            plasmaInstance = initStandardToolPlasma(plasmaBg);
+          }
+          updateControls();
+        }
+
+        async function openOverlay() {
+          if (!overlay) return;
+          if (isTauri) {
+            // Resolve the lightweight availability check before opening. The
+            // expensive version/size details are intentionally deferred to
+            // settings and conversion-time backend validation.
+            const available = await checkLibreOfficeRuntimeAvailable();
+            if (!available) {
+              showDependencyGate({ openFn: showOverlay, needsFfmpeg: false, needsModel: false, needsLibreOffice: true });
+              return;
+            }
+          }
+          showOverlay();
+        }
+
+        function closeOverlay() {
+          if (!overlay) return;
+          if (busy) {
+            showToast(text('busy'));
+            return;
+          }
+          overlay.classList.remove('visible');
+          overlay.setAttribute('aria-hidden', 'true');
+          plasmaInstance = disposeStandardToolPlasma(plasmaInstance);
+          resetState();
+        }
+
+        async function handleFile(file) {
+          if (!file || busy) return;
+          if (!pptRenderIsSupportedFile(file)) {
+            showToast(text('unsupportedFormat'));
+            return;
+          }
+          busy = true;
+          updateControls();
+          setProgress(12, text('reading'));
+          try {
+            const bytes = await readPptRenderInputFile(file);
+            setProgress(46, text('analyzing'));
+            manifest = await inspectPptxRenderBytes(bytes, {
+              sourceName: file.name || file.path || 'presentation.pptx'
+            });
+            selectedFile = { ...file, size: bytes.byteLength };
+            if (fileName) {
+              fileName.textContent = `${file.name || file.path || 'presentation.pptx'} · ${summaryText()}`;
+              fileName.classList.add('visible');
+            }
+            if (cta) {
+              const label = cta.querySelector('span');
+              if (label) label.textContent = text('replace');
+            }
+            if (empty) empty.hidden = true;
+            if (results) results.hidden = false;
+            renderStats();
+            setProgress(100, text('analyzing'));
+            window.setTimeout(() => setProgress(0, text('processing'), false), 260);
+            showToast(text('scanDone', { slides: manifest.slide_count, size: formatFileSize(manifest.input_bytes) }));
+          } catch (error) {
+            console.error(`${config.mode === 'image' ? 'PPT to image' : 'PPT to PDF'} scan failed:`, error);
+            setProgress(0, text('processing'), false);
+            showToast(pptRenderErrorMessage(error, text));
+          } finally {
+            busy = false;
+            updateControls();
+          }
+        }
+
+        async function chooseFile() {
+          if (busy) return;
+          if (!isTauri) {
+            fileInput?.click();
+            return;
+          }
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
+            });
+            if (typeof selected === 'string') {
+              await handleFile({ name: selected.split(/[\\/]/).pop() || selected, path: selected, size: 0 });
+            }
+          } catch (error) {
+            console.error('Choose PPTX failed:', error);
+            showToast(t('common.errorOccurred', { error: String(error?.message || error) }));
+          }
+        }
+
+        async function convertToPdf(outputCategory) {
+          if (!selectedFile || !manifest) throw new Error('ppt-render:invalid-input');
+          if (!isTauri || !selectedFile.path) throw new Error('ppt-render:desktop-only');
+          await ensurePptRuntimeAvailable();
+          const { invoke } = await import('@tauri-apps/api/core');
+          const outputDir = await getOutputDir(outputCategory);
+          const baseName = sanitizePptRenderBaseName(manifest.base_name || selectedFile.name || selectedFile.path || 'presentation.pptx');
+          return invoke('convert_ppt_to_pdf', {
+            inputPath: selectedFile.path,
+            outputDir,
+            outputName: baseName
+          });
+        }
+
+        function showSuccess(result) {
+          lastOutputPath = result?.outputDir || '';
+          if (successMeta) {
+            successMeta.textContent = result?.warnings?.length
+              ? `${text('successMeta')} ${text('successWarning')}`
+              : text('successMeta');
+          }
+          if (successPages) successPages.textContent = String(result?.pageCount || manifest?.slide_count || 0);
+          if (successSize) successSize.textContent = formatFileSize(result?.outputBytes || 0);
+          if (successPath) successPath.textContent = displayFilesystemPath(result?.outputDir || '');
+          successOverlay?.classList.add('visible');
+        }
+
+        async function exportPdf() {
+          if (!selectedFile || !manifest || busy) return;
+          busy = true;
+          updateControls();
+          setProgress(18, text('converting'));
+          try {
+            const result = await convertToPdf('PPT_To_PDF');
+            setProgress(100, text('writing'));
+            showToast(text('exportDone', { pages: result.pageCount || manifest.slide_count, size: formatFileSize(result.outputBytes || 0) }));
+            showSuccess(result);
+          } catch (error) {
+            console.error('PPT to PDF export failed:', error);
+            if (error?.message !== 'ppt-render:runtime-missing') showToast(error?.message === 'ppt-render:desktop-only' ? text('desktopOnly') : pptRenderErrorMessage(error, text));
+          } finally {
+            window.setTimeout(() => setProgress(0, text('processing'), false), 260);
+            busy = false;
+            updateControls();
+          }
+        }
+
+        async function openImageWorkspace() {
+          if (!selectedFile || !manifest || busy) return;
+          busy = true;
+          updateControls();
+          setProgress(16, text('converting'));
+          try {
+            const result = await convertToPdf('PPT_To_Image');
+            setProgress(92, text('openingWorkspace'));
+            showToast(text('workspaceReady', { pages: result.pageCount || manifest.slide_count }));
+            const pdfFile = {
+              name: result.outputFile || createPptToPdfFileName(manifest.base_name || manifest.source_name),
+              path: result.outputPath,
+              size: result.outputBytes || 0,
+              outputCategory: 'PPT_To_Image'
+            };
+            busy = false;
+            updateControls();
+            closeOverlay();
+            await pdfToImageTool.openWithFile(pdfFile, { allowLongExport: false });
+          } catch (error) {
+            console.error('PPT to image preparation failed:', error);
+            if (error?.message !== 'ppt-render:runtime-missing') showToast(error?.message === 'ppt-render:desktop-only' ? text('desktopOnly') : pptRenderErrorMessage(error, text));
+          } finally {
+            window.setTimeout(() => setProgress(0, text('processing'), false), 260);
+            busy = false;
+            updateControls();
+          }
+        }
+
+        back?.addEventListener('click', closeOverlay);
+        cta?.addEventListener('click', () => { void chooseFile(); });
+        fileInput?.addEventListener('change', event => {
+          const file = event.target.files?.[0];
+          if (file) void handleFile(file);
+        });
+        actionBtn?.addEventListener('click', () => {
+          if (config.mode === 'image') void openImageWorkspace();
+          else void exportPdf();
+        });
+        successOk?.addEventListener('click', () => {
+          successOverlay?.classList.remove('visible');
+        });
+        successOpenFolder?.addEventListener('click', async () => {
+          if (!isTauri || !lastOutputPath) return;
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('open_path', { path: lastOutputPath });
+          } catch (error) {
+            console.error('Open PPT output folder failed:', error);
+            showToast(text('openFolderFailed'));
+          }
+        });
+        document.querySelectorAll(`.audio-list-item[data-tool="${config.toolName}"]`).forEach(item => item.addEventListener('click', openOverlay));
+
+        if (overlay) {
+          overlay.addEventListener('dragover', event => {
+            if (!pptRenderDragHasExternalFiles(event)) return;
+            event.preventDefault();
+            if (!busy) dropZone?.classList.add('visible');
+          });
+          overlay.addEventListener('dragleave', event => {
+            if (event.target === overlay) dropZone?.classList.remove('visible');
+          });
+          overlay.addEventListener('drop', event => {
+            if (!pptRenderDragHasExternalFiles(event)) return;
+            event.preventDefault();
+            dropZone?.classList.remove('visible');
+            if (!pptRenderDropHasPptx(event)) {
+              showToast(text('unsupportedFormat'));
+              return;
+            }
+            const file = Array.from(event.dataTransfer?.files || []).find(item => pptRenderIsSupportedFile(item));
+            if (file) void handleFile(file);
+          });
+        }
+
+        if (isTauri && overlay) {
+          (async () => {
+            const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+            const webview = getCurrentWebview();
+            await webview.onDragDropEvent(event => {
+              if (!overlay.classList.contains('visible')) return;
+              const payload = event.payload;
+              if (payload.type === 'enter' || payload.type === 'over') {
+                const paths = payload.paths || [];
+                const hasPptx = paths.length < 1 || paths.some(item => /\.pptx$/i.test(item));
+                if (!busy && hasPptx) dropZone?.classList.add('visible');
+              } else if (payload.type === 'leave') {
+                dropZone?.classList.remove('visible');
+              } else if (payload.type === 'drop') {
+                dropZone?.classList.remove('visible');
+                const path = (payload.paths || []).find(item => /\.pptx$/i.test(item));
+                if (!path) {
+                  showToast(text('unsupportedFormat'));
+                  return;
+                }
+                void handleFile({ name: path.split(/[\\/]/).pop() || path, path, size: 0 });
+              }
+            });
+          })().catch(error => console.error(`Cannot register ${config.toolName} drag and drop:`, error));
+        }
+
+        onLangChange(() => {
+          if (!overlay?.classList.contains('visible')) return;
+          if (manifest) {
+            if (fileName && selectedFile) {
+              fileName.textContent = `${selectedFile.name || selectedFile.path || 'presentation.pptx'} · ${summaryText()}`;
+            }
+            renderStats();
+          }
+        });
+
+        resetState();
+        return { openOverlay };
+      }
+
+      createPptRenderTool({
+        mode: 'pdf',
+        toolName: 'ppt-to-pdf',
+        i18nKey: 'pptToPdfPage',
+        overlayId: 'pptToPdfOverlay',
+        backId: 'pptToPdfBack',
+        plasmaBgId: 'pptToPdfPlasmaBg',
+        bodyId: 'pptToPdfBody',
+        dropZoneId: 'pptToPdfDropZone',
+        fileInputId: 'pptToPdfFileInput',
+        ctaId: 'pptToPdfCta',
+        fileNameId: 'pptToPdfFileName',
+        emptyId: 'pptToPdfEmpty',
+        resultsId: 'pptToPdfResults',
+        summaryId: 'pptToPdfSummary',
+        statsId: 'pptToPdfStats',
+        actionBtnId: 'pptToPdfExportBtn',
+        processMaskId: 'pptToPdfProcessMask',
+        processBarFillId: 'pptToPdfProcessBarFill',
+        processTextId: 'pptToPdfProcessText',
+        successOverlayId: 'pptToPdfSuccessOverlay',
+        successMetaId: 'pptToPdfSuccessMeta',
+        successPagesId: 'pptToPdfSuccessPages',
+        successSizeId: 'pptToPdfSuccessSize',
+        successPathId: 'pptToPdfSuccessPath',
+        successOpenFolderId: 'pptToPdfSuccessOpenFolder',
+        successOkId: 'pptToPdfSuccessOk'
+      });
+
+      createPptRenderTool({
+        mode: 'image',
+        toolName: 'ppt-to-image',
+        i18nKey: 'pptToImagePage',
+        overlayId: 'pptToImageOverlay',
+        backId: 'pptToImageBack',
+        plasmaBgId: 'pptToImagePlasmaBg',
+        bodyId: 'pptToImageBody',
+        dropZoneId: 'pptToImageDropZone',
+        fileInputId: 'pptToImageFileInput',
+        ctaId: 'pptToImageCta',
+        fileNameId: 'pptToImageFileName',
+        emptyId: 'pptToImageEmpty',
+        resultsId: 'pptToImageResults',
+        summaryId: 'pptToImageSummary',
+        statsId: 'pptToImageStats',
+        actionBtnId: 'pptToImageOpenWorkspaceBtn',
+        processMaskId: 'pptToImageProcessMask',
+        processBarFillId: 'pptToImageProcessBarFill',
+        processTextId: 'pptToImageProcessText'
+      });
+
+      function releasePptImagesPreviewUrls() {
+        pptImagesPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+        pptImagesPreviewUrls = [];
+        pptImagesPreviewToken += 1;
+      }
+
+      function resetPptImagesState() {
+        releasePptImagesPreviewUrls();
+        pptImagesManifest = null;
+        pptImagesZip = null;
+        pptImagesFile = null;
+        pptImagesSelected = new Set();
+        pptImagesLastOutputPath = '';
+        pptImagesBusy = false;
+        if (pptImagesFileInput) pptImagesFileInput.value = '';
+        if (pptImagesFileName) {
+          pptImagesFileName.textContent = '';
+          pptImagesFileName.classList.remove('visible');
+        }
+        if (pptImagesCta) {
+          const label = pptImagesCta.querySelector('span');
+          if (label) label.textContent = pptImagesText('cta');
+          pptImagesCta.disabled = false;
+        }
+        if (pptImagesEmpty) pptImagesEmpty.hidden = false;
+        if (pptImagesResults) pptImagesResults.hidden = true;
+        if (pptImagesSummary) pptImagesSummary.innerHTML = '';
+        if (pptImagesPageFilter) pptImagesPageFilter.value = '';
+        pptImagesPageFilter?.classList.remove('is-invalid');
+        if (pptImagesSkipDuplicates) pptImagesSkipDuplicates.checked = false;
+        if (pptImagesList) pptImagesList.innerHTML = '';
+        if (pptImagesDropZone) pptImagesDropZone.classList.remove('visible');
+        if (pptImagesExportBtn) {
+          pptImagesExportBtn.disabled = true;
+          pptImagesExportBtn.hidden = true;
+        }
+        pptImagesScrollTop?.classList.remove('visible');
+        if (pptImagesWorkspace) pptImagesWorkspace.scrollTop = 0;
+        setPptImagesProgress(0, pptImagesText('processing'), false);
+      }
+
+      function setPptImagesProgress(percent, message, visible = true) {
+        if (pptImagesProcessBarFill) pptImagesProcessBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (pptImagesProcessText) pptImagesProcessText.textContent = message || pptImagesText('processing');
+        if (pptImagesProcessMask) pptImagesProcessMask.classList.toggle('visible', Boolean(visible));
+      }
+
+      function updatePptImagesScrollTop() {
+        if (!pptImagesWorkspace || !pptImagesScrollTop) return;
+        pptImagesScrollTop.classList.toggle('visible', pptImagesWorkspace.scrollTop > 160);
+      }
+
+      function pptImagesDragHasExternalFiles(event) {
+        const transfer = event?.dataTransfer;
+        if (!transfer) return false;
+        const types = Array.from(transfer.types || []);
+        return types.includes('Files') || transfer.files?.length > 0;
+      }
+
+      function pptImagesDropHasPptx(event) {
+        const files = Array.from(event?.dataTransfer?.files || []);
+        if (files.length < 1) return false;
+        return files.some(file => pptImagesIsSupportedFile(file));
+      }
+
+      function openPptImagesOverlay() {
+        if (!pptImagesOverlay) return;
+        pptImagesOverlay.classList.add('visible');
+        pptImagesOverlay.setAttribute('aria-hidden', 'false');
+        if (pptImagesWorkspace) pptImagesWorkspace.scrollTop = 0;
+        updatePptImagesScrollTop();
+        if (pptImagesPlasmaBg && !pptImagesPlasmaInstance) {
+          pptImagesPlasmaInstance = initStandardToolPlasma(pptImagesPlasmaBg);
+        }
+      }
+
+      function closePptImagesOverlay() {
+        if (!pptImagesOverlay) return;
+        if (pptImagesBusy) {
+          showToast(pptImagesText('processing'));
+          return;
+        }
+        pptImagesOverlay.classList.remove('visible');
+        pptImagesOverlay.setAttribute('aria-hidden', 'true');
+        pptImagesPlasmaInstance = disposeStandardToolPlasma(pptImagesPlasmaInstance);
+        resetPptImagesState();
+      }
+
+      function pptImagesIsSupportedFile(file) {
+        const name = String(file?.name || file?.path || '').toLowerCase();
+        return name.endsWith('.pptx');
+      }
+
+      async function readPptImagesInputFile(file) {
+        if (!pptImagesIsSupportedFile(file)) {
+          throw new Error('ppt-image-extract:invalid_extension');
+        }
+        if (isTauri && file.path) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const rawBytes = await invoke('read_file_bytes_limited', {
+            path: file.path,
+            maxBytes: PPT_IMAGE_EXTRACT_LIMITS.maxInputBytes
+          });
+          return normalizeDesktopBytes(rawBytes);
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength > PPT_IMAGE_EXTRACT_LIMITS.maxInputBytes) {
+          throw new Error('ppt-image-extract:input_too_large');
+        }
+        return bytes;
+      }
+
+      function pptImagesFormatDimensions(item) {
+        return item?.width && item?.height
+          ? `${item.width} × ${item.height}`
+          : pptImagesText('unknownDimensions');
+      }
+
+      function pptImagesFormatSlide(item) {
+        return item?.slide_number
+          ? pptImagesText('slide', { page: item.slide_number })
+          : pptImagesText('unlocated');
+      }
+
+      function pptImagesSummaryText() {
+        if (!pptImagesManifest) return '';
+        const totalBytes = pptImagesManifest.images.reduce((sum, item) => sum + (item.bytes || 0), 0);
+        return pptImagesText('summary', {
+          slides: pptImagesManifest.slide_count,
+          images: pptImagesManifest.image_count,
+          duplicates: pptImagesManifest.duplicate_count,
+          size: formatFileSize(totalBytes)
+        });
+      }
+
+      function selectedPptImagesArray() {
+        return [...pptImagesSelected]
+          .map(value => Number(value))
+          .filter(value => Number.isSafeInteger(value) && value > 0)
+          .sort((left, right) => left - right);
+      }
+
+      function getPptImagesExportPlan({ allowEmpty = false } = {}) {
+        if (!pptImagesManifest) return null;
+        const selected = selectedPptImagesArray();
+        if (!allowEmpty && selected.length < 1) {
+          throw new Error('ppt-image-extract:empty_selection');
+        }
+        const allSelected = selected.length === pptImagesManifest.images.length;
+        return planPptImageExport(pptImagesManifest, {
+          images: allSelected ? null : selected,
+          pages: pptImagesPageFilter?.value?.trim() || null,
+          skip_duplicates: Boolean(pptImagesSkipDuplicates?.checked)
+        });
+      }
+
+      function isPptImagesPageFilterValid() {
+        if (!pptImagesManifest) return true;
+        const value = pptImagesPageFilter?.value?.trim() || '';
+        if (!value) return true;
+        try {
+          normalizePptPageSelection(value, pptImagesManifest.slide_count);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      function updatePptImagesControls() {
+        if (!pptImagesManifest) {
+          if (pptImagesExportBtn) pptImagesExportBtn.disabled = true;
+          if (pptImagesExportBtn) pptImagesExportBtn.hidden = true;
+          return;
+        }
+        const pageFilterValid = isPptImagesPageFilterValid();
+        let selectedCount = pptImagesSelected.size;
+        if (!pageFilterValid) {
+          selectedCount = 0;
+        } else {
+          try {
+            selectedCount = getPptImagesExportPlan({ allowEmpty: true })?.selected_count || 0;
+          } catch {
+            selectedCount = 0;
+          }
+        }
+        pptImagesPageFilter?.classList.toggle('is-invalid', !pageFilterValid);
+        if (pptImagesSummary) {
+          pptImagesSummary.innerHTML = `
+            <span>${escapeHtml(pptImagesSummaryText())}</span>
+            <strong>${escapeHtml(pptImagesText('selectedSummary', { selected: selectedCount, total: pptImagesManifest.image_count }))}</strong>
+          `;
+        }
+        if (pptImagesExportBtn) {
+          const canExport = !pptImagesBusy && pageFilterValid && selectedCount > 0;
+          pptImagesExportBtn.disabled = !canExport;
+          pptImagesExportBtn.hidden = !canExport;
+        }
+      }
+
+      function syncPptImagesSkipDuplicates() {
+        if (!pptImagesList || !pptImagesManifest) return;
+        const skip = Boolean(pptImagesSkipDuplicates?.checked);
+        pptImagesList.querySelectorAll('.ppt-images-item').forEach(row => {
+          const input = row.querySelector('.ppt-images-check');
+          const isDuplicate = row.classList.contains('is-duplicate');
+          if (skip && isDuplicate) {
+            if (input) {
+              input.checked = false;
+              input.disabled = true;
+            }
+            row.classList.add('is-locked');
+            const index = Number(row.dataset.index);
+            if (Number.isSafeInteger(index)) pptImagesSelected.delete(index);
+          } else {
+            if (input) input.disabled = false;
+            row.classList.remove('is-locked');
+          }
+        });
+        updatePptImagesControls();
+      }
+
+      function renderPptImagesList() {
+        if (!pptImagesList || !pptImagesManifest) return;
+        const rows = pptImagesManifest.images.map(item => {
+          const duplicateText = item.duplicate_of
+            ? pptImagesText('duplicateOf', { id: item.duplicate_of })
+            : pptImagesText('original');
+          return `
+            <label class="ppt-images-item${item.is_duplicate ? ' is-duplicate' : ''}" data-index="${escapeAttr(item.index)}">
+              <input class="ppt-images-check" type="checkbox" data-index="${escapeAttr(item.index)}"${pptImagesSelected.has(item.index) ? ' checked' : ''}>
+              <span class="ppt-images-thumb" data-media-path="${escapeAttr(item.media_path)}" data-extension="${escapeAttr(item.extension)}">
+                <i data-lucide="image"></i>
+                <em>${escapeHtml(pptImagesText('noPreview'))}</em>
+              </span>
+              <span class="ppt-images-info">
+                <strong>${escapeHtml(`#${item.id} · ${item.original_name || item.suggested_file_name}`)}</strong>
+                <span>${escapeHtml([pptImagesFormatSlide(item), item.extension?.toUpperCase(), pptImagesFormatDimensions(item), formatFileSize(item.bytes)].filter(Boolean).join(' · '))}</span>
+              </span>
+              <span class="ppt-images-badge">${escapeHtml(duplicateText)}</span>
+            </label>
+          `;
+        }).join('');
+        pptImagesList.innerHTML = rows;
+        pptImagesList.querySelectorAll('.ppt-images-check').forEach(input => {
+          input.addEventListener('change', () => {
+            if (input.disabled) return;
+            const index = Number(input.dataset.index);
+            if (!Number.isSafeInteger(index)) return;
+            if (input.checked) pptImagesSelected.add(index);
+            else pptImagesSelected.delete(index);
+            updatePptImagesControls();
+          });
+        });
+        try { createIcons({ icons }); } catch (_) {}
+        syncPptImagesSkipDuplicates();
+        void renderPptImagesPreviews();
+      }
+
+      function pptImagesCanPreview(item) {
+        const extension = String(item?.extension || '').toLowerCase();
+        return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(extension) && Number(item.bytes || 0) <= 8 * 1024 * 1024;
+      }
+
+      async function renderPptImagesPreviews() {
+        if (!pptImagesZip || !pptImagesManifest || !pptImagesList) return;
+        releasePptImagesPreviewUrls();
+        const token = pptImagesPreviewToken;
+        let rendered = 0;
+        for (const item of pptImagesManifest.images) {
+          if (token !== pptImagesPreviewToken) return;
+          if (!pptImagesCanPreview(item)) continue;
+          const thumb = pptImagesList.querySelector(`.ppt-images-item[data-index="${item.index}"] .ppt-images-thumb`);
+          if (!thumb) continue;
+          const zipFile = pptImagesZip.file(item.media_path);
+          if (!zipFile) continue;
+          try {
+            const bytes = await zipFile.async('uint8array');
+            if (token !== pptImagesPreviewToken) return;
+            const url = URL.createObjectURL(new Blob([bytes], { type: item.mime_type || 'application/octet-stream' }));
+            pptImagesPreviewUrls.push(url);
+            thumb.innerHTML = `<img src="${escapeAttr(url)}" alt="" draggable="false">`;
+            rendered += 1;
+            if (rendered % 12 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+          } catch (error) {
+            console.warn('PPT image preview failed:', error);
+          }
+        }
+      }
+
+      async function handlePptImagesFile(file) {
+        if (!file || pptImagesBusy) return;
+        if (!pptImagesIsSupportedFile(file)) {
+          showToast(pptImagesText('unsupportedFormat'));
+          return;
+        }
+        pptImagesBusy = true;
+        releasePptImagesPreviewUrls();
+        setPptImagesProgress(12, pptImagesText('reading'));
+        try {
+          const bytes = await readPptImagesInputFile(file);
+          setPptImagesProgress(42, pptImagesText('analyzing'));
+          const manifest = await analyzePptxImages(bytes, { sourceName: file.name || file.path || 'presentation.pptx' });
+          const zip = await JSZip.loadAsync(bytes);
+          pptImagesManifest = manifest;
+          pptImagesZip = zip;
+          pptImagesFile = file;
+          pptImagesSelected = new Set(manifest.images.map(item => item.index));
+          if (pptImagesFileName) {
+            pptImagesFileName.textContent = `${file.name || file.path || 'presentation.pptx'} · ${pptImagesSummaryText()}`;
+            pptImagesFileName.classList.add('visible');
+          }
+          if (pptImagesCta) {
+            const label = pptImagesCta.querySelector('span');
+            if (label) label.textContent = pptImagesText('replace');
+          }
+          if (pptImagesEmpty) pptImagesEmpty.hidden = true;
+          if (pptImagesResults) pptImagesResults.hidden = false;
+          setPptImagesProgress(78, pptImagesText('previewing'));
+          renderPptImagesList();
+          setPptImagesProgress(100, pptImagesText('previewing'));
+          window.setTimeout(() => setPptImagesProgress(0, pptImagesText('processing'), false), 260);
+          showToast(pptImagesSummaryText());
+        } catch (error) {
+          console.error('PPT images scan failed:', error);
+          setPptImagesProgress(0, pptImagesText('processing'), false);
+          const message = String(error?.userMessage || error?.message || error);
+          showToast(message.includes('invalid_extension') ? pptImagesText('unsupportedFormat') : message);
+        } finally {
+          pptImagesBusy = false;
+          updatePptImagesControls();
+        }
+      }
+
+      function pptImagesJoinPath(directory, fileName) {
+        const root = String(directory || '').replace(/[\\/]+$/, '');
+        const sep = root.includes('\\') ? '\\' : '/';
+        return `${root}${sep}${fileName}`;
+      }
+
+      function pptImagesUniqueFileName(fileName, counter) {
+        if (!counter) return fileName;
+        const match = /^(.*?)(\.[^.]+)?$/.exec(fileName);
+        return `${match?.[1] || fileName}_${counter}${match?.[2] || ''}`;
+      }
+
+      async function writePptImagesFileInChunks(invoke, fullPath, bytes) {
+        const chunkSize = 4 * 1024 * 1024;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize));
+          await invoke('write_file_chunk', { path: fullPath, offset, bytes: Array.from(chunk) });
+        }
+        if (bytes.length === 0) {
+          await invoke('write_file_chunk', { path: fullPath, offset: 0, bytes: [] });
+        }
+      }
+
+      async function writeUniquePptImagesFile(invoke, directory, fileName, bytes) {
+        for (let counter = 0; counter < 1000; counter++) {
+          const candidateName = pptImagesUniqueFileName(fileName, counter);
+          const candidatePath = pptImagesJoinPath(directory, candidateName);
+          const exists = await invoke('exists_path', { path: candidatePath }).catch(() => false);
+          if (exists) continue;
+          await writePptImagesFileInChunks(invoke, candidatePath, bytes);
+          return candidatePath;
+        }
+        throw new Error('ppt-image-extract:output_conflict');
+      }
+
+      async function getPptImagesOutputDirectory(baseName) {
+        const root = await getOutputDir('PPT_Images');
+        const folderBase = `${sanitizePptImageBaseName(baseName)}_ppt_images`;
+        if (!isTauri) return pptImagesJoinPath(root, folderBase);
+        const { invoke } = await import('@tauri-apps/api/core');
+        for (let counter = 0; counter < 1000; counter++) {
+          const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
+          const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
+          if (!exists) return candidate;
+        }
+        return pptImagesJoinPath(root, `${folderBase}_${Date.now()}`);
+      }
+
+      async function exportPptImages() {
+        if (!pptImagesManifest || !pptImagesZip || pptImagesBusy) return;
+        if (!isPptImagesPageFilterValid()) {
+          showToast(pptImagesText('invalidPageFilter', { count: pptImagesManifest.slide_count }));
+          updatePptImagesControls();
+          return;
+        }
+        let plan;
+        try {
+          plan = getPptImagesExportPlan();
+        } catch (error) {
+          const message = String(error?.userMessage || error?.message || error);
+          showToast(message.includes('empty_selection') ? pptImagesText('emptySelection') : message);
+          return;
+        }
+        pptImagesBusy = true;
+        if (pptImagesExportBtn) pptImagesExportBtn.disabled = true;
+        setPptImagesProgress(8, pptImagesText('exporting'));
+        try {
+          const baseName = sanitizePptImageBaseName(pptImagesFile?.name || pptImagesFile?.path || pptImagesManifest.source_name);
+          const outputs = [];
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const outputDir = await getPptImagesOutputDirectory(baseName);
+            for (let index = 0; index < plan.selected_images.length; index++) {
+              const item = plan.selected_images[index];
+              const zipFile = pptImagesZip.file(item.media_path);
+              if (!zipFile) continue;
+              const bytes = await zipFile.async('uint8array');
+              const outputPath = await writeUniquePptImagesFile(invoke, outputDir, item.suggested_file_name, bytes);
+              outputs.push({ item, path: outputPath, relative_path: outputPath.split(/[\\/]/).pop() || item.suggested_file_name, bytes: bytes.byteLength });
+              const progress = 10 + Math.round(((index + 1) / plan.selected_images.length) * 76);
+              setPptImagesProgress(progress, `${pptImagesText('exporting')} (${index + 1}/${plan.selected_images.length})`);
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            setPptImagesProgress(92, pptImagesText('writingManifest'));
+            const result = {
+              ...pptImagesManifest,
+              input: { name: pptImagesFile?.name || pptImagesManifest.source_name, path: pptImagesFile?.path || null },
+              output_dir: outputDir,
+              options: {
+                pages: plan.pages,
+                images: plan.images,
+                skip_duplicates: plan.skip_duplicates
+              },
+              selected_count: plan.selected_count,
+              selected_bytes: plan.selected_bytes,
+              outputs
+            };
+            const encoder = new TextEncoder();
+            await writeUniquePptImagesFile(invoke, outputDir, 'manifest.json', encoder.encode(JSON.stringify(result, null, 2)));
+            await writeUniquePptImagesFile(invoke, outputDir, 'manifest.md', encoder.encode(createPptImageManifestMarkdown(result)));
+            pptImagesLastOutputPath = outputDir;
+            showPptImagesSuccess(outputDir, outputs.length);
+          } else {
+            const outputZip = new JSZip();
+            for (let index = 0; index < plan.selected_images.length; index++) {
+              const item = plan.selected_images[index];
+              const zipFile = pptImagesZip.file(item.media_path);
+              if (!zipFile) continue;
+              const bytes = await zipFile.async('uint8array');
+              outputZip.file(item.suggested_file_name, bytes);
+              outputs.push({ item, relative_path: item.suggested_file_name, bytes: bytes.byteLength });
+              const progress = 10 + Math.round(((index + 1) / plan.selected_images.length) * 76);
+              setPptImagesProgress(progress, `${pptImagesText('exporting')} (${index + 1}/${plan.selected_images.length})`);
+            }
+            const result = {
+              ...pptImagesManifest,
+              input: { name: pptImagesFile?.name || pptImagesManifest.source_name, path: null },
+              output_dir: `~/Downloads/${baseName}_ppt_images.zip`,
+              options: {
+                pages: plan.pages,
+                images: plan.images,
+                skip_duplicates: plan.skip_duplicates
+              },
+              selected_count: plan.selected_count,
+              selected_bytes: plan.selected_bytes,
+              outputs
+            };
+            outputZip.file('manifest.json', JSON.stringify(result, null, 2));
+            outputZip.file('manifest.md', createPptImageManifestMarkdown(result));
+            setPptImagesProgress(94, pptImagesText('writingManifest'));
+            const blob = await outputZip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${baseName}_ppt_images.zip`;
+            anchor.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            pptImagesLastOutputPath = result.output_dir;
+            showPptImagesSuccess(result.output_dir, outputs.length);
+          }
+          setPptImagesProgress(100, pptImagesText('writingManifest'));
+          showToast(pptImagesText('exportDone', { count: outputs.length }));
+        } catch (error) {
+          console.error('PPT images export failed:', error);
+          showToast(t('common.errorOccurred', { error: String(error?.userMessage || error?.message || error) }));
+        } finally {
+          window.setTimeout(() => setPptImagesProgress(0, pptImagesText('processing'), false), 260);
+          pptImagesBusy = false;
+          updatePptImagesControls();
+        }
+      }
+
+      function showPptImagesSuccess(outputPath, count) {
+        if (pptImagesSuccessMeta) pptImagesSuccessMeta.textContent = pptImagesText('successMeta');
+        if (pptImagesSuccessCount) pptImagesSuccessCount.textContent = String(count);
+        if (pptImagesSuccessPath) pptImagesSuccessPath.textContent = displayFilesystemPath(outputPath);
+        if (pptImagesSuccessOverlay) pptImagesSuccessOverlay.classList.add('visible');
+      }
+
+      pptImagesBack?.addEventListener('click', closePptImagesOverlay);
+      pptImagesCta?.addEventListener('click', () => {
+        if (pptImagesBusy) return;
+        if (!isTauri) {
+          pptImagesFileInput?.click();
+          return;
+        }
+        (async () => {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
+            });
+            if (typeof selected === 'string') {
+              await handlePptImagesFile({ name: selected.split(/[\\/]/).pop() || selected, path: selected, size: 0 });
+            }
+          } catch (error) {
+            console.error('Choose PPTX failed:', error);
+            showToast(t('common.errorOccurred', { error: String(error?.message || error) }));
+          }
+        })();
+      });
+      pptImagesFileInput?.addEventListener('change', event => {
+        const file = event.target.files?.[0];
+        if (file) void handlePptImagesFile(file);
+      });
+      pptImagesSelectAll?.addEventListener('click', () => {
+        if (!pptImagesManifest) return;
+        const skip = Boolean(pptImagesSkipDuplicates?.checked);
+        const indices = pptImagesManifest.images
+          .filter(item => !(skip && item.is_duplicate))
+          .map(item => item.index);
+        pptImagesSelected = new Set(indices);
+        pptImagesList?.querySelectorAll('.ppt-images-check').forEach(input => {
+          input.checked = !input.disabled;
+        });
+        updatePptImagesControls();
+      });
+      pptImagesClearSelection?.addEventListener('click', () => {
+        pptImagesSelected = new Set();
+        pptImagesList?.querySelectorAll('.ppt-images-check').forEach(input => { input.checked = false; });
+        updatePptImagesControls();
+      });
+      pptImagesSkipDuplicates?.addEventListener('change', syncPptImagesSkipDuplicates);
+      pptImagesPageFilter?.addEventListener('input', updatePptImagesControls);
+      pptImagesPageFilter?.addEventListener('blur', () => {
+        if (pptImagesManifest && !isPptImagesPageFilterValid()) {
+          showToast(pptImagesText('invalidPageFilter', { count: pptImagesManifest.slide_count }));
+        }
+      });
+      pptImagesExportBtn?.addEventListener('click', () => { void exportPptImages(); });
+      pptImagesList?.addEventListener('dragstart', event => {
+        if (event.target?.closest?.('.ppt-images-thumb, .ppt-images-item')) {
+          event.preventDefault();
+        }
+      });
+      pptImagesWorkspace?.addEventListener('scroll', updatePptImagesScrollTop, { passive: true });
+      pptImagesScrollTop?.addEventListener('click', () => {
+        pptImagesWorkspace?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      pptImagesSuccessOk?.addEventListener('click', () => {
+        pptImagesSuccessOverlay?.classList.remove('visible');
+      });
+      pptImagesSuccessOpenFolder?.addEventListener('click', async () => {
+        if (!isTauri || !pptImagesLastOutputPath) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: pptImagesLastOutputPath });
+        } catch (error) {
+          console.error('Open PPT images output folder failed:', error);
+          showToast(pptImagesText('openFolderFailed'));
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="ppt-images"]').forEach(item => item.addEventListener('click', openPptImagesOverlay));
+
+      if (pptImagesOverlay) {
+        pptImagesOverlay.addEventListener('dragover', event => {
+          if (!pptImagesDragHasExternalFiles(event)) return;
+          event.preventDefault();
+          if (!pptImagesBusy) pptImagesDropZone?.classList.add('visible');
+        });
+        pptImagesOverlay.addEventListener('dragleave', event => {
+          if (event.target === pptImagesOverlay) pptImagesDropZone?.classList.remove('visible');
+        });
+        pptImagesOverlay.addEventListener('drop', event => {
+          if (!pptImagesDragHasExternalFiles(event)) return;
+          event.preventDefault();
+          pptImagesDropZone?.classList.remove('visible');
+          if (!pptImagesDropHasPptx(event)) {
+            showToast(pptImagesText('unsupportedFormat'));
+            return;
+          }
+          const file = Array.from(event.dataTransfer?.files || []).find(item => pptImagesIsSupportedFile(item));
+          if (file) void handlePptImagesFile(file);
+        });
+      }
+
+      if (isTauri && pptImagesOverlay) {
+        (async () => {
+          const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+          const webview = getCurrentWebview();
+          await webview.onDragDropEvent(event => {
+            if (!pptImagesOverlay.classList.contains('visible')) return;
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+              const paths = payload.paths || [];
+              const hasPptx = paths.length < 1 || paths.some(item => /\.pptx$/i.test(item));
+              if (!pptImagesBusy && hasPptx) pptImagesDropZone?.classList.add('visible');
+            } else if (payload.type === 'leave') {
+              pptImagesDropZone?.classList.remove('visible');
+            } else if (payload.type === 'drop') {
+              pptImagesDropZone?.classList.remove('visible');
+              const path = (payload.paths || []).find(item => /\.pptx$/i.test(item));
+              if (!path) {
+                showToast(pptImagesText('unsupportedFormat'));
+                return;
+              }
+              void handlePptImagesFile({ name: path.split(/[\\/]/).pop() || path, path, size: 0 });
+            }
+          });
+        })().catch(error => console.error('Cannot register PPT images drag and drop:', error));
+      }
+
+      onLangChange(() => {
+        if (!pptImagesOverlay?.classList.contains('visible')) return;
+        if (pptImagesManifest) {
+          if (pptImagesFileName && pptImagesFile) {
+            pptImagesFileName.textContent = `${pptImagesFile.name || pptImagesFile.path || 'presentation.pptx'} · ${pptImagesSummaryText()}`;
+          }
+          renderPptImagesList();
+        }
+      });
+
+      // ===== PPT AI Text Extractor =====
+      const pptTextOverlay = document.getElementById('pptTextOverlay');
+      const pptTextBack = document.getElementById('pptTextBack');
+      const pptTextPlasmaBg = document.getElementById('pptTextPlasmaBg');
+      const pptTextWorkspace = document.getElementById('pptTextScrollArea');
+      const pptTextDropZone = document.getElementById('pptTextDropZone');
+      const pptTextFileInput = document.getElementById('pptTextFileInput');
+      const pptTextCta = document.getElementById('pptTextCta');
+      const pptTextFileName = document.getElementById('pptTextFileName');
+      const pptTextEmpty = document.getElementById('pptTextEmpty');
+      const pptTextResults = document.getElementById('pptTextResults');
+      const pptTextSummary = document.getElementById('pptTextSummary');
+      const pptTextPageFilter = document.getElementById('pptTextPageFilter');
+      const pptTextFormat = document.getElementById('pptTextFormat');
+      const pptTextAiMode = document.getElementById('pptTextAiMode');
+      const pptTextExportBtn = document.getElementById('pptTextExportBtn');
+      const pptTextList = document.getElementById('pptTextList');
+      const pptTextProcessMask = document.getElementById('pptTextProcessMask');
+      const pptTextProcessBarFill = document.getElementById('pptTextProcessBarFill');
+      const pptTextProcessText = document.getElementById('pptTextProcessText');
+      const pptTextSuccessOverlay = document.getElementById('pptTextSuccessOverlay');
+      const pptTextSuccessMeta = document.getElementById('pptTextSuccessMeta');
+      const pptTextSuccessCount = document.getElementById('pptTextSuccessCount');
+      const pptTextSuccessPath = document.getElementById('pptTextSuccessPath');
+      const pptTextSuccessOpenFolder = document.getElementById('pptTextSuccessOpenFolder');
+      const pptTextSuccessOk = document.getElementById('pptTextSuccessOk');
+      const pptTextScrollTop = document.getElementById('pptTextScrollTop');
+      let pptTextPlasmaInstance = null;
+      let pptTextBusy = false;
+      let pptTextManifest = null;
+      let pptTextFile = null;
+      let pptTextLastOutputPath = '';
+
+      function pptTextText(key, params) {
+        return t(`home.pptTextPage.${key}`, params);
+      }
+
+      function resetPptTextState() {
+        pptTextManifest = null;
+        pptTextFile = null;
+        pptTextLastOutputPath = '';
+        pptTextBusy = false;
+        if (pptTextFileInput) pptTextFileInput.value = '';
+        if (pptTextFileName) {
+          pptTextFileName.textContent = '';
+          pptTextFileName.classList.remove('visible');
+        }
+        if (pptTextCta) {
+          const label = pptTextCta.querySelector('span');
+          if (label) label.textContent = pptTextText('cta');
+          pptTextCta.disabled = false;
+        }
+        if (pptTextEmpty) pptTextEmpty.hidden = false;
+        if (pptTextResults) pptTextResults.hidden = true;
+        if (pptTextSummary) pptTextSummary.innerHTML = '';
+        if (pptTextPageFilter) pptTextPageFilter.value = '';
+        pptTextPageFilter?.classList.remove('is-invalid');
+        if (pptTextFormat) pptTextFormat.value = 'markdown';
+        if (pptTextAiMode) pptTextAiMode.value = 'none';
+        if (pptTextList) pptTextList.innerHTML = '';
+        if (pptTextDropZone) pptTextDropZone.classList.remove('visible');
+        if (pptTextExportBtn) {
+          pptTextExportBtn.disabled = true;
+          pptTextExportBtn.hidden = true;
+          pptTextExportBtn.textContent = pptTextText('exportRaw');
+        }
+        pptTextScrollTop?.classList.remove('visible');
+        if (pptTextWorkspace) pptTextWorkspace.scrollTop = 0;
+        setPptTextProgress(0, pptTextText('processing'), false);
+      }
+
+      function setPptTextProgress(percent, message, visible = true) {
+        if (pptTextProcessBarFill) pptTextProcessBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (pptTextProcessText) pptTextProcessText.textContent = message || pptTextText('processing');
+        if (pptTextProcessMask) pptTextProcessMask.classList.toggle('visible', Boolean(visible));
+      }
+
+      function updatePptTextScrollTop() {
+        if (!pptTextWorkspace || !pptTextScrollTop) return;
+        pptTextScrollTop.classList.toggle('visible', pptTextWorkspace.scrollTop > 160);
+      }
+
+      function openPptTextOverlay() {
+        if (!pptTextOverlay) return;
+        pptTextOverlay.classList.add('visible');
+        pptTextOverlay.setAttribute('aria-hidden', 'false');
+        if (pptTextWorkspace) pptTextWorkspace.scrollTop = 0;
+        updatePptTextScrollTop();
+        if (pptTextPlasmaBg && !pptTextPlasmaInstance) {
+          pptTextPlasmaInstance = initStandardToolPlasma(pptTextPlasmaBg);
+        }
+      }
+
+      function closePptTextOverlay() {
+        if (!pptTextOverlay) return;
+        if (pptTextBusy) {
+          showToast(pptTextText('processing'));
+          return;
+        }
+        pptTextOverlay.classList.remove('visible');
+        pptTextOverlay.setAttribute('aria-hidden', 'true');
+        pptTextPlasmaInstance = disposeStandardToolPlasma(pptTextPlasmaInstance);
+        resetPptTextState();
+      }
+
+      function pptTextIsSupportedFile(file) {
+        const name = String(file?.name || file?.path || '').toLowerCase();
+        return name.endsWith('.pptx');
+      }
+
+      async function readPptTextInputFile(file) {
+        if (!pptTextIsSupportedFile(file)) {
+          throw new Error('ppt-text-extract:invalid_extension');
+        }
+        if (isTauri && file.path) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const rawBytes = await invoke('read_file_bytes_limited', {
+            path: file.path,
+            maxBytes: PPT_TEXT_EXTRACT_LIMITS.maxInputBytes
+          });
+          return normalizeDesktopBytes(rawBytes);
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength > PPT_TEXT_EXTRACT_LIMITS.maxInputBytes) {
+          throw new Error('ppt-text-extract:input_too_large');
+        }
+        return bytes;
+      }
+
+      function pptTextSummaryText() {
+        if (!pptTextManifest) return '';
+        return pptTextText('summary', {
+          slides: pptTextManifest.slide_count,
+          chars: pptTextManifest.text_characters,
+          notes: pptTextManifest.notes_slide_count,
+          empty: pptTextManifest.empty_slide_count
+        });
+      }
+
+      function getPptTextExportPlan() {
+        if (!pptTextManifest) return null;
+        return planPptTextExport(pptTextManifest, {
+          pages: pptTextPageFilter?.value?.trim() || null,
+          format: pptTextFormat?.value || 'markdown',
+          ai_mode: pptTextAiMode?.value || 'none'
+        });
+      }
+
+      function isPptTextPageFilterValid() {
+        if (!pptTextManifest) return true;
+        const value = pptTextPageFilter?.value?.trim() || '';
+        if (!value) return true;
+        try {
+          normalizePptTextPageSelection(value, pptTextManifest.slide_count);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      function updatePptTextControls() {
+        if (!pptTextManifest) {
+          if (pptTextExportBtn) pptTextExportBtn.disabled = true;
+          if (pptTextExportBtn) pptTextExportBtn.hidden = true;
+          return;
+        }
+        const pageFilterValid = isPptTextPageFilterValid();
+        let selectedCount = 0;
+        try {
+          selectedCount = pageFilterValid ? getPptTextExportPlan()?.selected_count || 0 : 0;
+        } catch {
+          selectedCount = 0;
+        }
+        pptTextPageFilter?.classList.toggle('is-invalid', !pageFilterValid);
+        if (pptTextSummary) {
+          pptTextSummary.innerHTML = `
+            <span>${escapeHtml(pptTextSummaryText())}</span>
+            <strong>${escapeHtml(pptTextText('selectedSummary', { selected: selectedCount, total: pptTextManifest.slide_count }))}</strong>
+          `;
+        }
+        if (pptTextExportBtn) {
+          const canExport = !pptTextBusy && pageFilterValid && selectedCount > 0;
+          pptTextExportBtn.disabled = !canExport;
+          pptTextExportBtn.hidden = !canExport;
+          pptTextExportBtn.textContent = (pptTextAiMode?.value || 'none') === 'none'
+            ? pptTextText('exportRaw')
+            : pptTextText('exportAi');
+        }
+        syncPptTextListState();
+      }
+
+      function pptTextSlidePreview(slide) {
+        const parts = [];
+        if (slide.body?.length) parts.push(slide.body.slice(0, 2).map(item => String(item).replace(/^ +/, '')).join(' / '));
+        if (slide.notes?.length) parts.push(`${pptTextText('notesLabel')} ${String(slide.notes[0]).replace(/^ +/, '')}`);
+        return parts.join(' · ') || pptTextText('noBody');
+      }
+
+      function pptTextSelectedPageSet() {
+        if (!pptTextManifest) return null;
+        const value = pptTextPageFilter?.value?.trim() || '';
+        if (!value) return null;
+        try {
+          return new Set(normalizePptTextPageSelection(value, pptTextManifest.slide_count));
+        } catch {
+          return null;
+        }
+      }
+
+      function syncPptTextListState() {
+        if (!pptTextList) return;
+        const selected = pptTextSelectedPageSet();
+        pptTextList.querySelectorAll('.ppt-text-item').forEach(row => {
+          const page = Number(row.dataset.page);
+          const filteredOut = selected ? !selected.has(page) : false;
+          row.classList.toggle('is-filtered-out', filteredOut);
+        });
+      }
+
+      function pptTextDetailHtml(slide) {
+        const blocks = [
+          `<div class="ppt-text-detail-block"><h4>${escapeHtml(pptTextText('titleLabel'))}</h4><p class="ppt-text-detail-text">${escapeHtml(slide.title || pptTextText('untitled'))}</p></div>`
+        ];
+        if (slide.body?.length) {
+          blocks.push(`<div class="ppt-text-detail-block"><h4>${escapeHtml(pptTextText('bodyLabel'))}</h4><div class="ppt-text-detail-lines">${slide.body.map(item => `<div class="ppt-text-detail-line">${escapeHtml(String(item))}</div>`).join('')}</div></div>`);
+        }
+        if (slide.notes?.length) {
+          blocks.push(`<div class="ppt-text-detail-block"><h4>${escapeHtml(pptTextText('notesLabel'))}</h4><div class="ppt-text-detail-lines">${slide.notes.map(item => `<div class="ppt-text-detail-line">${escapeHtml(String(item))}</div>`).join('')}</div></div>`);
+        }
+        return blocks.join('');
+      }
+
+      function renderPptTextList() {
+        if (!pptTextList || !pptTextManifest) return;
+        const rows = pptTextManifest.slides.map(slide => `
+          <article class="ppt-text-item" data-page="${escapeAttr(slide.page)}">
+            <button class="ppt-text-item-toggle" type="button" data-page="${escapeAttr(slide.page)}" aria-expanded="false">
+              <span class="ppt-text-page">${escapeHtml(String(slide.page))}</span>
+              <span class="ppt-text-content">
+                <strong>${escapeHtml(slide.title || pptTextText('untitled'))}</strong>
+                <span class="ppt-text-preview">${escapeHtml(pptTextSlidePreview(slide))}</span>
+              </span>
+              <span class="ppt-text-meta">
+                <span>${escapeHtml(slide.has_notes ? pptTextText('hasNotes') : pptTextText('noNotes'))}</span>
+                <em>${escapeHtml(pptTextText('charCount', { count: slide.text_characters }))}</em>
+              </span>
+              <i class="ppt-text-chevron" data-lucide="chevron-down"></i>
+            </button>
+            <div class="ppt-text-detail" hidden>${pptTextDetailHtml(slide)}</div>
+          </article>
+        `).join('');
+        pptTextList.innerHTML = rows;
+        pptTextList.querySelectorAll('.ppt-text-item-toggle').forEach(toggle => {
+          toggle.addEventListener('click', () => {
+            const item = toggle.closest('.ppt-text-item');
+            const detail = item?.querySelector('.ppt-text-detail');
+            const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+            toggle.setAttribute('aria-expanded', String(!isOpen));
+            item?.classList.toggle('is-open', !isOpen);
+            if (detail) detail.hidden = isOpen;
+          });
+        });
+        try { createIcons({ icons }); } catch (_) {}
+        updatePptTextControls();
+      }
+
+      async function handlePptTextFile(file) {
+        if (!file || pptTextBusy) return;
+        if (!pptTextIsSupportedFile(file)) {
+          showToast(pptTextText('unsupportedFormat'));
+          return;
+        }
+        pptTextBusy = true;
+        setPptTextProgress(12, pptTextText('reading'));
+        try {
+          const bytes = await readPptTextInputFile(file);
+          setPptTextProgress(48, pptTextText('analyzing'));
+          const manifest = await analyzePptxText(bytes, { sourceName: file.name || file.path || 'presentation.pptx' });
+          pptTextManifest = manifest;
+          pptTextFile = file;
+          if (pptTextFileName) {
+            pptTextFileName.textContent = `${file.name || file.path || 'presentation.pptx'} · ${pptTextSummaryText()}`;
+            pptTextFileName.classList.add('visible');
+          }
+          if (pptTextCta) {
+            const label = pptTextCta.querySelector('span');
+            if (label) label.textContent = pptTextText('replace');
+          }
+          if (pptTextEmpty) pptTextEmpty.hidden = true;
+          if (pptTextResults) pptTextResults.hidden = false;
+          renderPptTextList();
+          setPptTextProgress(100, pptTextText('analyzing'));
+          window.setTimeout(() => setPptTextProgress(0, pptTextText('processing'), false), 260);
+          showToast(pptTextText('scanDone', { slides: manifest.slide_count, chars: manifest.text_characters }));
+        } catch (error) {
+          console.error('PPT text scan failed:', error);
+          setPptTextProgress(0, pptTextText('processing'), false);
+          const message = String(error?.userMessage || error?.message || error);
+          showToast(message.includes('invalid_extension') ? pptTextText('unsupportedFormat') : message);
+        } finally {
+          pptTextBusy = false;
+          updatePptTextControls();
+        }
+      }
+
+      function pptTextOutputFormats(format) {
+        return format === 'all' ? ['markdown', 'txt', 'json'] : [format];
+      }
+
+      function pptTextOutputFileName(format) {
+        if (format === 'markdown') return 'slides.md';
+        if (format === 'txt') return 'slides.txt';
+        return 'slides.json';
+      }
+
+      function pptTextSerialize(format, result) {
+        if (format === 'markdown') return createPptTextMarkdown(result);
+        if (format === 'txt') return createPptTextTxt(result);
+        return createPptTextJson(result);
+      }
+
+      async function getPptTextOutputDirectory(baseName) {
+        const root = await getOutputDir('PPT_Text');
+        const folderBase = `${sanitizePptTextBaseName(baseName)}_ppt_text`;
+        if (!isTauri) return pptImagesJoinPath(root, folderBase);
+        const { invoke } = await import('@tauri-apps/api/core');
+        for (let counter = 0; counter < 1000; counter++) {
+          const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
+          const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
+          if (!exists) return candidate;
+        }
+        return pptImagesJoinPath(root, `${folderBase}_${Date.now()}`);
+      }
+
+      async function buildPptTextAiResult(baseResult, plan) {
+        const aiMode = normalizePptTextAiMode(plan.ai_mode);
+        if (aiMode === 'none') return null;
+        const locale = getLang() === 'en' ? 'en' : 'zh-CN';
+        const { messages, source } = buildPptTextAiMessages({ ...baseResult, locale }, { ai_mode: aiMode, locale });
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 120000);
+        try {
+          const content = await callDeepSeek(messages, controller.signal, 4096);
+          return {
+            mode: aiMode,
+            content: String(content || '').trim(),
+            source
+          };
+        } catch (error) {
+          if (controller.signal.aborted) {
+            throw new Error(t('home.aiPolish.requestTimeout'));
+          }
+          throw error;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      }
+
+      function pptTextExportErrorMessage(error) {
+        const message = String(error?.userMessage || error?.message || error || '').trim();
+        if (!message) return t('common.errorOccurred', { error: 'unknown error' });
+        if (/api[_ -]?key|密钥|no api key|missing.*key/i.test(message)) {
+          return t('home.aiPolish.noApiKey');
+        }
+        if (/abort|timeout|timed out|超时/i.test(message)) {
+          return t('home.aiPolish.requestTimeout');
+        }
+        if (/network|网络/i.test(message)) {
+          return t('home.aiPolish.networkError');
+        }
+        if (/provider|api|http|接口|请求失败/i.test(message)) {
+          return t('home.aiPolish.apiError');
+        }
+        return t('common.errorOccurred', { error: message });
+      }
+
+      async function exportPptText() {
+        if (!pptTextManifest || pptTextBusy) return;
+        if (!isPptTextPageFilterValid()) {
+          showToast(pptTextText('invalidPageFilter', { count: pptTextManifest.slide_count }));
+          updatePptTextControls();
+          return;
+        }
+        let plan;
+        try {
+          plan = getPptTextExportPlan();
+        } catch (error) {
+          showToast(String(error?.userMessage || error?.message || error));
+          return;
+        }
+        pptTextBusy = true;
+        if (pptTextExportBtn) pptTextExportBtn.disabled = true;
+        setPptTextProgress(8, pptTextText('exporting'));
+        try {
+          const baseName = sanitizePptTextBaseName(pptTextFile?.name || pptTextFile?.path || pptTextManifest.source_name);
+          const result = {
+            ...pptTextManifest,
+            input: { name: pptTextFile?.name || pptTextManifest.source_name, path: pptTextFile?.path || null },
+            selected_slides: plan.selected_slides,
+            selected_count: plan.selected_count,
+            selected_text_characters: plan.selected_text_characters,
+            pages: plan.pages,
+            format: normalizePptTextFormat(plan.format),
+            ai_mode: normalizePptTextAiMode(plan.ai_mode),
+            locale: getLang() === 'en' ? 'en' : 'zh-CN',
+            outputs: []
+          };
+          if (result.ai_mode !== 'none') {
+            setPptTextProgress(44, pptTextText('aiOrganizing'));
+            result.ai_result = await buildPptTextAiResult(result, plan);
+          }
+          const encoder = new TextEncoder();
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const outputDir = await getPptTextOutputDirectory(baseName);
+            setPptTextProgress(76, pptTextText('writing'));
+            for (const format of pptTextOutputFormats(result.format)) {
+              const fileName = pptTextOutputFileName(format);
+              const content = pptTextSerialize(format, { ...result, output_dir: outputDir });
+              const outputPath = await writeUniquePptImagesFile(invoke, outputDir, fileName, encoder.encode(content));
+              result.outputs.push({ path: outputPath, relative_path: outputPath.split(/[\\/]/).pop() || fileName, format });
+            }
+            if (result.ai_result?.content) {
+              const fileName = `ai-${result.ai_mode}.md`;
+              const outputPath = await writeUniquePptImagesFile(invoke, outputDir, fileName, encoder.encode(`${result.ai_result.content.trim()}\n`));
+              result.outputs.push({ path: outputPath, relative_path: outputPath.split(/[\\/]/).pop() || fileName, format: 'markdown', kind: 'ai_result' });
+            }
+            result.output_dir = outputDir;
+            await writeUniquePptImagesFile(invoke, outputDir, 'manifest.json', encoder.encode(JSON.stringify(result, null, 2)));
+            pptTextLastOutputPath = outputDir;
+            showPptTextSuccess(outputDir, result.outputs.length);
+          } else {
+            const outputZip = new JSZip();
+            const outputDir = `~/Downloads/${baseName}_ppt_text.zip`;
+            setPptTextProgress(76, pptTextText('writing'));
+            for (const format of pptTextOutputFormats(result.format)) {
+              const fileName = pptTextOutputFileName(format);
+              outputZip.file(fileName, pptTextSerialize(format, { ...result, output_dir: outputDir }));
+              result.outputs.push({ relative_path: fileName, format });
+            }
+            if (result.ai_result?.content) {
+              const fileName = `ai-${result.ai_mode}.md`;
+              outputZip.file(fileName, `${result.ai_result.content.trim()}\n`);
+              result.outputs.push({ relative_path: fileName, format: 'markdown', kind: 'ai_result' });
+            }
+            result.output_dir = outputDir;
+            outputZip.file('manifest.json', JSON.stringify(result, null, 2));
+            const blob = await outputZip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${baseName}_ppt_text.zip`;
+            anchor.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            pptTextLastOutputPath = outputDir;
+            showPptTextSuccess(outputDir, result.outputs.length);
+          }
+          setPptTextProgress(100, pptTextText('writing'));
+          showToast(pptTextText('exportDone', { count: result.outputs.length }));
+        } catch (error) {
+          console.error('PPT text export failed:', error);
+          showToast(pptTextExportErrorMessage(error));
+        } finally {
+          window.setTimeout(() => setPptTextProgress(0, pptTextText('processing'), false), 260);
+          pptTextBusy = false;
+          updatePptTextControls();
+        }
+      }
+
+      function showPptTextSuccess(outputPath, count) {
+        if (pptTextSuccessMeta) pptTextSuccessMeta.textContent = pptTextText('successMeta');
+        if (pptTextSuccessCount) pptTextSuccessCount.textContent = String(count);
+        if (pptTextSuccessPath) pptTextSuccessPath.textContent = displayFilesystemPath(outputPath);
+        if (pptTextSuccessOverlay) pptTextSuccessOverlay.classList.add('visible');
+      }
+
+      pptTextBack?.addEventListener('click', closePptTextOverlay);
+      pptTextCta?.addEventListener('click', () => {
+        if (pptTextBusy) return;
+        if (!isTauri) {
+          pptTextFileInput?.click();
+          return;
+        }
+        (async () => {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
+            });
+            if (typeof selected === 'string') {
+              await handlePptTextFile({ name: selected.split(/[\\/]/).pop() || selected, path: selected, size: 0 });
+            }
+          } catch (error) {
+            console.error('Choose PPTX failed:', error);
+            showToast(t('common.errorOccurred', { error: String(error?.message || error) }));
+          }
+        })();
+      });
+      pptTextFileInput?.addEventListener('change', event => {
+        const file = event.target.files?.[0];
+        if (file) void handlePptTextFile(file);
+      });
+      pptTextPageFilter?.addEventListener('input', updatePptTextControls);
+      pptTextPageFilter?.addEventListener('blur', () => {
+        if (pptTextManifest && !isPptTextPageFilterValid()) {
+          showToast(pptTextText('invalidPageFilter', { count: pptTextManifest.slide_count }));
+        }
+      });
+      pptTextFormat?.addEventListener('change', updatePptTextControls);
+      pptTextAiMode?.addEventListener('change', updatePptTextControls);
+      pptTextExportBtn?.addEventListener('click', () => { void exportPptText(); });
+      pptTextWorkspace?.addEventListener('scroll', updatePptTextScrollTop, { passive: true });
+      pptTextScrollTop?.addEventListener('click', () => {
+        pptTextWorkspace?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      pptTextSuccessOk?.addEventListener('click', () => {
+        pptTextSuccessOverlay?.classList.remove('visible');
+      });
+      pptTextSuccessOpenFolder?.addEventListener('click', async () => {
+        if (!isTauri || !pptTextLastOutputPath) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: pptTextLastOutputPath });
+        } catch (error) {
+          console.error('Open PPT text output folder failed:', error);
+          showToast(pptTextText('openFolderFailed'));
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="ppt-text"]').forEach(item => item.addEventListener('click', openPptTextOverlay));
+
+      if (pptTextOverlay) {
+        pptTextOverlay.addEventListener('dragover', event => {
+          if (!pptImagesDragHasExternalFiles(event)) return;
+          event.preventDefault();
+          if (!pptTextBusy) pptTextDropZone?.classList.add('visible');
+        });
+        pptTextOverlay.addEventListener('dragleave', event => {
+          if (event.target === pptTextOverlay) pptTextDropZone?.classList.remove('visible');
+        });
+        pptTextOverlay.addEventListener('drop', event => {
+          if (!pptImagesDragHasExternalFiles(event)) return;
+          event.preventDefault();
+          pptTextDropZone?.classList.remove('visible');
+          const file = Array.from(event.dataTransfer?.files || []).find(item => pptTextIsSupportedFile(item));
+          if (!file) {
+            showToast(pptTextText('unsupportedFormat'));
+            return;
+          }
+          void handlePptTextFile(file);
+        });
+      }
+
+      if (isTauri && pptTextOverlay) {
+        (async () => {
+          const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+          const webview = getCurrentWebview();
+          await webview.onDragDropEvent(event => {
+            if (!pptTextOverlay.classList.contains('visible')) return;
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+              const paths = payload.paths || [];
+              const hasPptx = paths.length < 1 || paths.some(item => /\.pptx$/i.test(item));
+              if (!pptTextBusy && hasPptx) pptTextDropZone?.classList.add('visible');
+            } else if (payload.type === 'leave') {
+              pptTextDropZone?.classList.remove('visible');
+            } else if (payload.type === 'drop') {
+              pptTextDropZone?.classList.remove('visible');
+              const path = (payload.paths || []).find(item => /\.pptx$/i.test(item));
+              if (!path) {
+                showToast(pptTextText('unsupportedFormat'));
+                return;
+              }
+              void handlePptTextFile({ name: path.split(/[\\/]/).pop() || path, path, size: 0 });
+            }
+          });
+        })().catch(error => console.error('Cannot register PPT text drag and drop:', error));
+      }
+
+      onLangChange(() => {
+        if (!pptTextOverlay?.classList.contains('visible')) return;
+        if (pptTextManifest) {
+          if (pptTextFileName && pptTextFile) {
+            pptTextFileName.textContent = `${pptTextFile.name || pptTextFile.path || 'presentation.pptx'} · ${pptTextSummaryText()}`;
+          }
+          renderPptTextList();
+        }
+      });
+
+      // ===== PPT Compress =====
+      const pptCompressOverlay = document.getElementById('pptCompressOverlay');
+      const pptCompressBack = document.getElementById('pptCompressBack');
+      const pptCompressPlasmaBg = document.getElementById('pptCompressPlasmaBg');
+      const pptCompressWorkspace = document.getElementById('pptCompressScrollArea');
+      const pptCompressScrollTop = document.getElementById('pptCompressScrollTop');
+      const pptCompressDropZone = document.getElementById('pptCompressDropZone');
+      const pptCompressFileInput = document.getElementById('pptCompressFileInput');
+      const pptCompressCta = document.getElementById('pptCompressCta');
+      const pptCompressFileName = document.getElementById('pptCompressFileName');
+      const pptCompressEmpty = document.getElementById('pptCompressEmpty');
+      const pptCompressResults = document.getElementById('pptCompressResults');
+      const pptCompressSummary = document.getElementById('pptCompressSummary');
+      const pptCompressLevel = document.getElementById('pptCompressLevel');
+      const pptCompressExportBtn = document.getElementById('pptCompressExportBtn');
+      const pptCompressStats = document.getElementById('pptCompressStats');
+      const pptCompressProcessMask = document.getElementById('pptCompressProcessMask');
+      const pptCompressProcessBarFill = document.getElementById('pptCompressProcessBarFill');
+      const pptCompressProcessText = document.getElementById('pptCompressProcessText');
+      const pptCompressSuccessOverlay = document.getElementById('pptCompressSuccessOverlay');
+      const pptCompressSuccessMeta = document.getElementById('pptCompressSuccessMeta');
+      const pptCompressSuccessOriginal = document.getElementById('pptCompressSuccessOriginal');
+      const pptCompressSuccessCompressed = document.getElementById('pptCompressSuccessCompressed');
+      const pptCompressSuccessSaved = document.getElementById('pptCompressSuccessSaved');
+      const pptCompressSuccessPath = document.getElementById('pptCompressSuccessPath');
+      const pptCompressSuccessOpenFolder = document.getElementById('pptCompressSuccessOpenFolder');
+      const pptCompressSuccessOk = document.getElementById('pptCompressSuccessOk');
+      let pptCompressPlasmaInstance = null;
+      let pptCompressBusy = false;
+      let pptCompressFile = null;
+      let pptCompressInputBytes = null;
+      let pptCompressAnalysis = null;
+      let pptCompressLastOutputPath = '';
+      let pptCompressAnalyzeToken = 0;
+
+      function pptCompressText(key, params) {
+        return t(`home.pptCompressPage.${key}`, params);
+      }
+
+      function resetPptCompressState() {
+        pptCompressFile = null;
+        pptCompressInputBytes = null;
+        pptCompressAnalysis = null;
+        pptCompressLastOutputPath = '';
+        pptCompressBusy = false;
+        pptCompressAnalyzeToken += 1;
+        if (pptCompressFileInput) pptCompressFileInput.value = '';
+        if (pptCompressFileName) {
+          pptCompressFileName.textContent = '';
+          pptCompressFileName.classList.remove('visible');
+        }
+        if (pptCompressCta) {
+          const label = pptCompressCta.querySelector('span');
+          if (label) label.textContent = pptCompressText('cta');
+          pptCompressCta.disabled = false;
+        }
+        if (pptCompressEmpty) pptCompressEmpty.hidden = false;
+        if (pptCompressResults) pptCompressResults.hidden = true;
+        if (pptCompressSummary) pptCompressSummary.innerHTML = '';
+        if (pptCompressStats) pptCompressStats.innerHTML = '';
+        if (pptCompressLevel) pptCompressLevel.value = 'medium';
+        if (pptCompressDropZone) pptCompressDropZone.classList.remove('visible');
+        if (pptCompressExportBtn) {
+          pptCompressExportBtn.disabled = true;
+          pptCompressExportBtn.hidden = true;
+        }
+        pptCompressScrollTop?.classList.remove('visible');
+        if (pptCompressWorkspace) pptCompressWorkspace.scrollTop = 0;
+        setPptCompressProgress(0, pptCompressText('processing'), false);
+      }
+
+      function setPptCompressProgress(percent, message, visible = true) {
+        if (pptCompressProcessBarFill) pptCompressProcessBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (pptCompressProcessText) pptCompressProcessText.textContent = message || pptCompressText('processing');
+        if (pptCompressProcessMask) pptCompressProcessMask.classList.toggle('visible', Boolean(visible));
+      }
+
+      function updatePptCompressScrollTop() {
+        if (!pptCompressWorkspace || !pptCompressScrollTop) return;
+        pptCompressScrollTop.classList.toggle('visible', pptCompressWorkspace.scrollTop > 160);
+      }
+
+      function openPptCompressOverlay() {
+        if (!pptCompressOverlay) return;
+        pptCompressOverlay.classList.add('visible');
+        pptCompressOverlay.setAttribute('aria-hidden', 'false');
+        if (pptCompressWorkspace) pptCompressWorkspace.scrollTop = 0;
+        updatePptCompressScrollTop();
+        if (pptCompressPlasmaBg && !pptCompressPlasmaInstance) {
+          pptCompressPlasmaInstance = initStandardToolPlasma(pptCompressPlasmaBg);
+        }
+      }
+
+      function closePptCompressOverlay() {
+        if (!pptCompressOverlay) return;
+        if (pptCompressBusy) {
+          showToast(pptCompressText('processing'));
+          return;
+        }
+        pptCompressOverlay.classList.remove('visible');
+        pptCompressOverlay.setAttribute('aria-hidden', 'true');
+        pptCompressPlasmaInstance = disposeStandardToolPlasma(pptCompressPlasmaInstance);
+        resetPptCompressState();
+      }
+
+      function pptCompressIsSupportedFile(file) {
+        const name = String(file?.name || file?.path || '').toLowerCase();
+        return name.endsWith('.pptx');
+      }
+
+      async function readPptCompressInputFile(file) {
+        if (!pptCompressIsSupportedFile(file)) {
+          throw new Error('ppt-compress:invalid_extension');
+        }
+        if (isTauri && file.path) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const rawBytes = await invoke('read_file_bytes_limited', {
+            path: file.path,
+            maxBytes: PPT_COMPRESS_LIMITS.maxInputBytes
+          });
+          return normalizeDesktopBytes(rawBytes);
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength > PPT_COMPRESS_LIMITS.maxInputBytes) {
+          throw new Error('ppt-compress:input_too_large');
+        }
+        return bytes;
+      }
+
+      function pptCompressCurrentLevel() {
+        return pptCompressLevel?.value || 'medium';
+      }
+
+      function pptCompressLevelLabel() {
+        const option = pptCompressLevel?.selectedOptions?.[0];
+        return option?.textContent?.trim() || pptCompressCurrentLevel();
+      }
+
+      function pptCompressLevelUsesImageCompression() {
+        return ['medium', 'high'].includes(pptCompressCurrentLevel());
+      }
+
+      function pptCompressImageMimeType(extension) {
+        const normalized = String(extension || '').toLowerCase().replace(/^\./, '');
+        if (normalized === 'jpg' || normalized === 'jpeg') return 'image/jpeg';
+        if (normalized === 'png') return 'image/png';
+        return '';
+      }
+
+      async function loadPptCompressImage(bytes, mimeType) {
+        const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+        if ('createImageBitmap' in window) {
+          try {
+            const bitmap = await createImageBitmap(blob);
+            return {
+              image: bitmap,
+              width: bitmap.width,
+              height: bitmap.height,
+              close: () => bitmap.close?.()
+            };
+          } catch {
+            // Fall through to HTMLImageElement for older WebViews / edge cases.
+          }
+        }
+        const url = URL.createObjectURL(blob);
+        try {
+          const image = await new Promise((resolve, reject) => {
+            const element = new Image();
+            element.onload = () => resolve(element);
+            element.onerror = () => reject(new Error('Cannot decode PPT image.'));
+            element.src = url;
+          });
+          return {
+            image,
+            width: image.naturalWidth || image.width,
+            height: image.naturalHeight || image.height,
+            close: () => {}
+          };
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+
+      function pptCompressCanvasHasAlpha(canvas) {
+        const width = canvas.width;
+        const height = canvas.height;
+        if (!width || !height) return false;
+        const sampleSize = 160;
+        const sampleCanvas = document.createElement('canvas');
+        sampleCanvas.width = Math.min(sampleSize, width);
+        sampleCanvas.height = Math.min(sampleSize, height);
+        const sampleContext = sampleCanvas.getContext('2d', { willReadFrequently: true });
+        if (!sampleContext) return true;
+        sampleContext.drawImage(canvas, 0, 0, sampleCanvas.width, sampleCanvas.height);
+        const data = sampleContext.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data;
+        for (let index = 3; index < data.length; index += 4) {
+          if (data[index] < 250) return true;
+        }
+        return false;
+      }
+
+      async function compressPptImageForBrowser(task) {
+        const extension = String(task?.extension || '').toLowerCase();
+        const sourceMime = pptCompressImageMimeType(extension);
+        if (!sourceMime) return null;
+        const decoded = await loadPptCompressImage(task.bytes, sourceMime);
+        try {
+          const sourceWidth = Math.max(1, decoded.width || 1);
+          const sourceHeight = Math.max(1, decoded.height || 1);
+          const maxDimension = Math.max(600, Number(task.maxDimension) || 2200);
+          const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+          const width = Math.max(1, Math.round(sourceWidth * scale));
+          const height = Math.max(1, Math.round(sourceHeight * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext('2d', { alpha: true, willReadFrequently: extension === 'png' });
+          if (!context) return null;
+          context.drawImage(decoded.image, 0, 0, width, height);
+
+          let outputExtension = extension === 'jpeg' ? 'jpg' : extension;
+          let outputMime = sourceMime;
+          if (extension === 'png') {
+            if (!task.allowPngToJpeg || pptCompressCanvasHasAlpha(canvas)) return null;
+            outputExtension = 'jpg';
+            outputMime = 'image/jpeg';
+          }
+          if (outputMime === 'image/jpeg') {
+            context.globalCompositeOperation = 'destination-over';
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, width, height);
+            context.globalCompositeOperation = 'source-over';
+          }
+          const quality = Math.max(0.45, Math.min(0.95, Number(task.quality) || 0.82));
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, outputMime, quality));
+          if (!blob) return null;
+          return {
+            bytes: new Uint8Array(await blob.arrayBuffer()),
+            extension: outputExtension,
+            width,
+            height
+          };
+        } finally {
+          decoded.close?.();
+        }
+      }
+
+      function pptCompressSavingText(result) {
+        if (!result || result.saved_bytes <= 0) return pptCompressText('statOptimized');
+        const percent = `${Math.round((result.saving_ratio || 0) * 1000) / 10}%`;
+        return `${formatFileSize(result.saved_bytes)} · ${percent}`;
+      }
+
+      function pptCompressSummaryText() {
+        if (!pptCompressAnalysis) return '';
+        return pptCompressText('summary', {
+          slides: pptCompressAnalysis.slide_count,
+          media: pptCompressAnalysis.media_count,
+          original: formatFileSize(pptCompressAnalysis.original_bytes)
+        });
+      }
+
+      function renderPptCompressStats() {
+        if (!pptCompressAnalysis || !pptCompressStats) return;
+        const ops = pptCompressAnalysis.operations || {};
+        const statItems = [
+          {
+            label: pptCompressText('statOriginal'),
+            value: formatFileSize(pptCompressAnalysis.original_bytes),
+            hint: pptCompressText('statLevel', { level: pptCompressLevelLabel() })
+          },
+          {
+            label: pptCompressText('statCompressed'),
+            value: formatFileSize(pptCompressAnalysis.compressed_bytes),
+            hint: pptCompressAnalysis.used_original_bytes ? pptCompressText('statOptimized') : formatFileSize(pptCompressAnalysis.attempted_compressed_bytes)
+          },
+          {
+            label: pptCompressText('statSaved'),
+            value: pptCompressSavingText(pptCompressAnalysis),
+            hint: pptCompressAnalysis.already_optimized ? pptCompressText('statOptimized') : ''
+          },
+          {
+            label: pptCompressText('statCleaned'),
+            value: String(pptCompressAnalysis.removed_count || 0),
+            hint: pptCompressText('cleanedDetail', {
+              thumbnails: ops.removed_thumbnails || 0,
+              unused: ops.removed_unused_media || 0,
+              duplicates: ops.deduplicated_media || 0,
+              printer: ops.removed_printer_settings || 0
+            })
+          },
+          {
+            label: pptCompressText('statImages'),
+            value: String(ops.compressed_images || 0),
+            hint: pptCompressText('imageDetail', {
+              before: formatFileSize(ops.image_input_bytes || 0),
+              after: formatFileSize(ops.image_output_bytes || 0),
+              skipped: ops.skipped_images || 0
+            })
+          }
+        ];
+        pptCompressStats.innerHTML = statItems.map(item => `
+          <div class="ppt-compress-stat">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.value)}</strong>
+            <em>${escapeHtml(item.hint || '')}</em>
+          </div>
+        `).join('');
+        if (pptCompressSummary) {
+          pptCompressSummary.innerHTML = `
+            <span>${escapeHtml(pptCompressSummaryText())}</span>
+            <strong>${escapeHtml(pptCompressText('statSaved'))}：${escapeHtml(pptCompressSavingText(pptCompressAnalysis))}</strong>
+          `;
+        }
+      }
+
+      function updatePptCompressControls() {
+        const canExport = Boolean(pptCompressAnalysis && !pptCompressBusy);
+        if (pptCompressExportBtn) {
+          pptCompressExportBtn.disabled = !canExport;
+          pptCompressExportBtn.hidden = !canExport;
+        }
+      }
+
+      async function analyzePptCompressBytes({ silent = false } = {}) {
+        if (!pptCompressInputBytes || !pptCompressFile) return;
+        const token = ++pptCompressAnalyzeToken;
+        pptCompressBusy = true;
+        updatePptCompressControls();
+        if (!silent) setPptCompressProgress(36, pptCompressLevelUsesImageCompression() ? pptCompressText('compressingImages') : pptCompressText('analyzing'));
+        try {
+          const analysis = await compressPptxBytes(pptCompressInputBytes, {
+            sourceName: pptCompressFile.name || pptCompressFile.path || 'presentation.pptx',
+            level: pptCompressCurrentLevel(),
+            imageCompressor: compressPptImageForBrowser
+          });
+          if (token !== pptCompressAnalyzeToken) return;
+          pptCompressAnalysis = analysis;
+          if (pptCompressFileName) {
+            pptCompressFileName.textContent = `${pptCompressFile.name || pptCompressFile.path || 'presentation.pptx'} · ${pptCompressSummaryText()}`;
+            pptCompressFileName.classList.add('visible');
+          }
+          if (pptCompressEmpty) pptCompressEmpty.hidden = true;
+          if (pptCompressResults) pptCompressResults.hidden = false;
+          renderPptCompressStats();
+          if (!silent) {
+            setPptCompressProgress(100, pptCompressText('analyzing'));
+            window.setTimeout(() => setPptCompressProgress(0, pptCompressText('processing'), false), 260);
+            showToast(pptCompressText('scanDone', { saved: pptCompressSavingText(analysis) }));
+          }
+        } catch (error) {
+          console.error('PPT compression analysis failed:', error);
+          setPptCompressProgress(0, pptCompressText('processing'), false);
+          const message = String(error?.userMessage || error?.message || error);
+          showToast(message.includes('invalid_extension') ? pptCompressText('unsupportedFormat') : message);
+        } finally {
+          if (token === pptCompressAnalyzeToken) {
+            pptCompressBusy = false;
+            updatePptCompressControls();
+          }
+        }
+      }
+
+      async function handlePptCompressFile(file) {
+        if (!file || pptCompressBusy) return;
+        if (!pptCompressIsSupportedFile(file)) {
+          showToast(pptCompressText('unsupportedFormat'));
+          return;
+        }
+        pptCompressBusy = true;
+        pptCompressAnalyzeToken += 1;
+        setPptCompressProgress(12, pptCompressText('reading'));
+        try {
+          pptCompressInputBytes = await readPptCompressInputFile(file);
+          pptCompressFile = file;
+          if (pptCompressCta) {
+            const label = pptCompressCta.querySelector('span');
+            if (label) label.textContent = pptCompressText('replace');
+          }
+          pptCompressBusy = false;
+          setPptCompressProgress(34, pptCompressLevelUsesImageCompression() ? pptCompressText('compressingImages') : pptCompressText('analyzing'));
+          await analyzePptCompressBytes();
+        } catch (error) {
+          console.error('PPT compression upload failed:', error);
+          pptCompressBusy = false;
+          setPptCompressProgress(0, pptCompressText('processing'), false);
+          const message = String(error?.userMessage || error?.message || error);
+          showToast(message.includes('invalid_extension') ? pptCompressText('unsupportedFormat') : message);
+          updatePptCompressControls();
+        }
+      }
+
+      async function getPptCompressOutputDirectory(baseName) {
+        const root = await getOutputDir('PPT_Compress');
+        const folderBase = `${sanitizePptCompressBaseName(baseName)}_ppt_compress`;
+        if (!isTauri) return pptImagesJoinPath(root, folderBase);
+        const { invoke } = await import('@tauri-apps/api/core');
+        for (let counter = 0; counter < 1000; counter++) {
+          const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
+          const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
+          if (!exists) return candidate;
+        }
+        return pptImagesJoinPath(root, `${folderBase}_${Date.now()}`);
+      }
+
+      function pptCompressOutputFileName(baseName) {
+        return `${sanitizePptCompressBaseName(baseName)}_compressed.pptx`;
+      }
+
+      async function exportPptCompress() {
+        if (!pptCompressFile || !pptCompressInputBytes || pptCompressBusy) return;
+        pptCompressBusy = true;
+        updatePptCompressControls();
+        setPptCompressProgress(18, pptCompressLevelUsesImageCompression() ? pptCompressText('compressingImages') : pptCompressText('compressing'));
+        try {
+          const baseName = sanitizePptCompressBaseName(pptCompressFile.name || pptCompressFile.path || 'presentation.pptx');
+          let result = pptCompressAnalysis;
+          if (!result || result.level !== pptCompressCurrentLevel()) {
+            result = await compressPptxBytes(pptCompressInputBytes, {
+              sourceName: pptCompressFile.name || pptCompressFile.path || 'presentation.pptx',
+              level: pptCompressCurrentLevel(),
+              imageCompressor: compressPptImageForBrowser
+            });
+            pptCompressAnalysis = result;
+            renderPptCompressStats();
+          }
+          const publicResult = {
+            ...createPptCompressManifest(result),
+            input: { name: pptCompressFile.name || result.source_name, path: pptCompressFile.path || null },
+            output_file: pptCompressOutputFileName(baseName)
+          };
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const outputDir = await getPptCompressOutputDirectory(baseName);
+            publicResult.output_dir = outputDir;
+            publicResult.output_path = pptImagesJoinPath(outputDir, publicResult.output_file);
+            publicResult.manifest_path = pptImagesJoinPath(outputDir, 'manifest.json');
+            setPptCompressProgress(76, pptCompressText('writing'));
+            const outputPath = await writeUniquePptImagesFile(invoke, outputDir, publicResult.output_file, result.bytes);
+            publicResult.output_path = outputPath;
+            await writeUniquePptImagesFile(invoke, outputDir, 'manifest.json', new TextEncoder().encode(JSON.stringify(publicResult, null, 2)));
+            pptCompressLastOutputPath = outputDir;
+            showPptCompressSuccess(outputDir, publicResult);
+          } else {
+            const outputZip = new JSZip();
+            const downloadName = `${baseName}_ppt_compress.zip`;
+            const outputDir = `~/Downloads/${downloadName}`;
+            publicResult.output_dir = outputDir;
+            setPptCompressProgress(76, pptCompressText('writing'));
+            outputZip.file(publicResult.output_file, result.bytes);
+            outputZip.file('manifest.json', JSON.stringify(publicResult, null, 2));
+            const blob = await outputZip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = downloadName;
+            anchor.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            pptCompressLastOutputPath = outputDir;
+            showPptCompressSuccess(outputDir, publicResult);
+          }
+          setPptCompressProgress(100, pptCompressText('writing'));
+          showToast(pptCompressText('exportDone', { saved: pptCompressSavingText(result) }));
+        } catch (error) {
+          console.error('PPT compression export failed:', error);
+          showToast(t('common.errorOccurred', { error: String(error?.userMessage || error?.message || error) }));
+        } finally {
+          window.setTimeout(() => setPptCompressProgress(0, pptCompressText('processing'), false), 260);
+          pptCompressBusy = false;
+          updatePptCompressControls();
+        }
+      }
+
+      function showPptCompressSuccess(outputPath, result) {
+        if (pptCompressSuccessMeta) {
+          pptCompressSuccessMeta.textContent = result?.already_optimized
+            ? pptCompressText('successOptimizedMeta')
+            : pptCompressText('successMeta');
+        }
+        if (pptCompressSuccessOriginal) pptCompressSuccessOriginal.textContent = formatFileSize(result?.original_bytes || 0);
+        if (pptCompressSuccessCompressed) pptCompressSuccessCompressed.textContent = formatFileSize(result?.compressed_bytes || 0);
+        if (pptCompressSuccessSaved) pptCompressSuccessSaved.textContent = pptCompressSavingText(result);
+        if (pptCompressSuccessPath) pptCompressSuccessPath.textContent = displayFilesystemPath(outputPath);
+        if (pptCompressSuccessOverlay) pptCompressSuccessOverlay.classList.add('visible');
+      }
+
+      pptCompressBack?.addEventListener('click', closePptCompressOverlay);
+      pptCompressCta?.addEventListener('click', () => {
+        if (pptCompressBusy) return;
+        if (!isTauri) {
+          pptCompressFileInput?.click();
+          return;
+        }
+        (async () => {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
+            });
+            if (typeof selected === 'string') {
+              await handlePptCompressFile({ name: selected.split(/[\\/]/).pop() || selected, path: selected, size: 0 });
+            }
+          } catch (error) {
+            console.error('Choose PPTX failed:', error);
+            showToast(t('common.errorOccurred', { error: String(error?.message || error) }));
+          }
+        })();
+      });
+      pptCompressFileInput?.addEventListener('change', event => {
+        const file = event.target.files?.[0];
+        if (file) void handlePptCompressFile(file);
+      });
+      pptCompressLevel?.addEventListener('change', () => {
+        if (!pptCompressInputBytes || pptCompressBusy) {
+          updatePptCompressControls();
+          return;
+        }
+        setPptCompressProgress(16, pptCompressLevelUsesImageCompression() ? pptCompressText('compressingImages') : pptCompressText('analyzing'));
+        void analyzePptCompressBytes();
+      });
+      pptCompressExportBtn?.addEventListener('click', () => { void exportPptCompress(); });
+      pptCompressWorkspace?.addEventListener('scroll', updatePptCompressScrollTop, { passive: true });
+      pptCompressScrollTop?.addEventListener('click', () => {
+        pptCompressWorkspace?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      pptCompressSuccessOk?.addEventListener('click', () => {
+        pptCompressSuccessOverlay?.classList.remove('visible');
+      });
+      pptCompressSuccessOpenFolder?.addEventListener('click', async () => {
+        if (!isTauri || !pptCompressLastOutputPath) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: pptCompressLastOutputPath });
+        } catch (error) {
+          console.error('Open PPT compression output folder failed:', error);
+          showToast(pptCompressText('openFolderFailed'));
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="ppt-compress"]').forEach(item => item.addEventListener('click', openPptCompressOverlay));
+
+      if (pptCompressOverlay) {
+        pptCompressOverlay.addEventListener('dragover', event => {
+          if (!pptImagesDragHasExternalFiles(event)) return;
+          event.preventDefault();
+          if (!pptCompressBusy) pptCompressDropZone?.classList.add('visible');
+        });
+        pptCompressOverlay.addEventListener('dragleave', event => {
+          if (event.target === pptCompressOverlay) pptCompressDropZone?.classList.remove('visible');
+        });
+        pptCompressOverlay.addEventListener('drop', event => {
+          if (!pptImagesDragHasExternalFiles(event)) return;
+          event.preventDefault();
+          pptCompressDropZone?.classList.remove('visible');
+          const file = Array.from(event.dataTransfer?.files || []).find(item => pptCompressIsSupportedFile(item));
+          if (!file) {
+            showToast(pptCompressText('unsupportedFormat'));
+            return;
+          }
+          void handlePptCompressFile(file);
+        });
+      }
+
+      if (isTauri && pptCompressOverlay) {
+        (async () => {
+          const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+          const webview = getCurrentWebview();
+          await webview.onDragDropEvent(event => {
+            if (!pptCompressOverlay.classList.contains('visible')) return;
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+              const paths = payload.paths || [];
+              const hasPptx = paths.length < 1 || paths.some(item => /\.pptx$/i.test(item));
+              if (!pptCompressBusy && hasPptx) pptCompressDropZone?.classList.add('visible');
+            } else if (payload.type === 'leave') {
+              pptCompressDropZone?.classList.remove('visible');
+            } else if (payload.type === 'drop') {
+              pptCompressDropZone?.classList.remove('visible');
+              const path = (payload.paths || []).find(item => /\.pptx$/i.test(item));
+              if (!path) {
+                showToast(pptCompressText('unsupportedFormat'));
+                return;
+              }
+              void handlePptCompressFile({ name: path.split(/[\\/]/).pop() || path, path, size: 0 });
+            }
+          });
+        })().catch(error => console.error('Cannot register PPT compression drag and drop:', error));
+      }
+
+      onLangChange(() => {
+        if (!pptCompressOverlay?.classList.contains('visible')) return;
+        if (pptCompressAnalysis) {
+          if (pptCompressFileName && pptCompressFile) {
+            pptCompressFileName.textContent = `${pptCompressFile.name || pptCompressFile.path || 'presentation.pptx'} · ${pptCompressSummaryText()}`;
+          }
+          renderPptCompressStats();
+        }
+      });
+
+      // ===== PPT AI Outline =====
+      const pptOutlineOverlay = document.getElementById('pptOutlineOverlay');
+      const pptOutlineBack = document.getElementById('pptOutlineBack');
+      const pptOutlinePlasmaBg = document.getElementById('pptOutlinePlasmaBg');
+      const pptOutlineScrollArea = document.getElementById('pptOutlineScrollArea');
+      const pptOutlineScrollTop = document.getElementById('pptOutlineScrollTop');
+      const pptOutlinePrompt = document.getElementById('pptOutlinePrompt');
+      const pptOutlineSlideCount = document.getElementById('pptOutlineSlideCount');
+      const pptOutlineLocale = document.getElementById('pptOutlineLocale');
+      const pptOutlineDeckType = document.getElementById('pptOutlineDeckType');
+      const pptOutlineAudience = document.getElementById('pptOutlineAudience');
+      const pptOutlinePurpose = document.getElementById('pptOutlinePurpose');
+      const pptOutlineTone = document.getElementById('pptOutlineTone');
+      const pptOutlineStyle = document.getElementById('pptOutlineStyle');
+      const pptOutlineGenerateBtn = document.getElementById('pptOutlineGenerateBtn');
+      const pptOutlinePresetButtons = Array.from(document.querySelectorAll('[data-ppt-outline-preset]'));
+      const pptOutlineEmpty = document.getElementById('pptOutlineEmpty');
+      const pptOutlineResult = document.getElementById('pptOutlineResult');
+      const pptOutlineSummary = document.getElementById('pptOutlineSummary');
+      const pptOutlineMeta = document.getElementById('pptOutlineMeta');
+      const pptOutlineFactBank = document.getElementById('pptOutlineFactBank');
+      const pptOutlineQuality = document.getElementById('pptOutlineQuality');
+      const pptOutlineSlideList = document.getElementById('pptOutlineSlideList');
+      const pptOutlineProcessMask = document.getElementById('pptOutlineProcessMask');
+      const pptOutlineProcessBarFill = document.getElementById('pptOutlineProcessBarFill');
+      const pptOutlineProcessText = document.getElementById('pptOutlineProcessText');
+      const pptOutlineSuccessOverlay = document.getElementById('pptOutlineSuccessOverlay');
+      const pptOutlineSuccessMeta = document.getElementById('pptOutlineSuccessMeta');
+      const pptOutlineSuccessSlides = document.getElementById('pptOutlineSuccessSlides');
+      const pptOutlineSuccessFiles = document.getElementById('pptOutlineSuccessFiles');
+      const pptOutlineSuccessPath = document.getElementById('pptOutlineSuccessPath');
+      const pptOutlineSuccessOpenFolder = document.getElementById('pptOutlineSuccessOpenFolder');
+      const pptOutlineSuccessToDraft = document.getElementById('pptOutlineSuccessToDraft');
+      const pptOutlineSuccessOk = document.getElementById('pptOutlineSuccessOk');
+      let pptOutlinePlasmaInstance = null;
+      let pptOutlineBusy = false;
+      let pptOutlineController = null;
+      let pptOutlineLastResult = null;
+      let pptOutlineLastOutputPath = '';
+      let pptOutlineLastPresetPrompt = '';
+
+      function pptOutlineText(key, params) {
+        return t(`home.pptOutlinePage.${key}`, params);
+      }
+
+      function pptOutlineDeckTypeLabel(value) {
+        const deckType = String(value || 'auto');
+        const keyMap = {
+          auto: 'deckTypeAuto',
+          'product-launch': 'deckTypeProductLaunch',
+          'investor-pitch': 'deckTypeInvestorPitch',
+          'work-report': 'deckTypeWorkReport',
+          training: 'deckTypeTraining',
+          'industry-research': 'deckTypeIndustryResearch',
+          'competitive-analysis': 'deckTypeCompetitiveAnalysis',
+          'short-video-demo': 'deckTypeShortVideoDemo',
+          'project-review': 'deckTypeProjectReview'
+        };
+        return pptOutlineText(keyMap[deckType] || 'deckTypeAuto');
+      }
+
+      function setPptOutlineProgress(percent, message, visible = true) {
+        if (pptOutlineProcessBarFill) pptOutlineProcessBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (pptOutlineProcessText) pptOutlineProcessText.textContent = message || pptOutlineText('processing');
+        if (pptOutlineProcessMask) pptOutlineProcessMask.classList.toggle('visible', Boolean(visible));
+      }
+
+      function updatePptOutlineScrollTop() {
+        if (!pptOutlineScrollArea || !pptOutlineScrollTop) return;
+        pptOutlineScrollTop.classList.toggle('visible', pptOutlineScrollArea.scrollTop > 160);
+      }
+
+      function pptAiGenerationErrorMessage(error, text) {
+        const message = String(error?.userMessage || error?.message || error || '').trim();
+        if (!message) return t('common.errorOccurred', { error: 'unknown error' });
+        if (message === text('needApiKey') || /api[_ -]?key|密钥|no api key|missing.*key/i.test(message)) {
+          return text('needApiKey');
+        }
+        if (/abort|timeout|timed out|超时/i.test(message)) {
+          return text('requestTimeout');
+        }
+        if (/prompt\s+is\s+required|prompt.*required|missing.*prompt|主题或资料|请输入.*主题/i.test(message)) {
+          return text('promptRequired');
+        }
+        if (/valid PPT outline JSON|invalid_ai_response|invalid json|JSON/i.test(message)) {
+          return text('invalidAiResponse');
+        }
+        if (/provider|api|http|接口|请求失败/i.test(message)) {
+          return text('providerError');
+        }
+        return t('common.errorOccurred', { error: message });
+      }
+
+      function getPptAiPreset(key) {
+        const zh = getLang() !== 'en';
+        const presets = {
+          'product-launch': {
+            name: zh ? '产品发布' : 'Product launch',
+            slideCount: 8,
+            deckType: 'product-launch',
+            theme: 'minimal-mono',
+            audience: zh ? '潜在用户、社区读者、短视频观众、产品团队' : 'Potential users, community readers, short-video viewers, and product teams',
+            purpose: zh ? '讲清产品价值、版本亮点和使用场景，引导下载、试用或关注' : 'Explain product value, release highlights, and use cases; drive downloads, trials, or follows',
+            tone: zh ? '清晰、有冲击力、发布感强，适合公开展示' : 'Clear, punchy, launch-ready, and suitable for public presentation',
+            style: zh ? '少文字、大标题、强视觉焦点；每页给出产品截图、流程图或对比图占位；黑白/科技风' : 'Concise copy, large headlines, strong visual focus; include product screenshot, workflow, or comparison placeholders on each slide; dark tech style',
+            prompt: zh
+              ? '请为「我的产品 / 项目」生成一份产品发布演示。重点说明：它解决了什么问题、核心能力、与传统方案的差异、本地/隐私/效率价值、适合人群、演示亮点、下载/试用引导。若我没有提供具体数据，请把未确认数据放入待补充清单，不要编造。'
+              : 'Create a product launch presentation for “my product / project”. Cover the problem, core capabilities, differentiation from existing workflows, privacy/local/efficiency value, target users, demo highlights, and download/trial CTA. If specific metrics are not provided, list them as missing facts instead of inventing them.'
+          },
+          'work-report': {
+            name: zh ? '工作汇报' : 'Work report',
+            slideCount: 8,
+            deckType: 'work-report',
+            theme: 'minimal-light',
+            audience: zh ? '主管、项目成员、跨部门协作方' : 'Managers, project members, and cross-functional partners',
+            purpose: zh ? '清楚汇报阶段成果、关键问题、资源需求和下一步计划' : 'Report progress, key issues, resource needs, and next-step plans clearly',
+            tone: zh ? '专业、克制、结论先行，适合会议汇报' : 'Professional, concise, conclusion-first, and meeting-ready',
+            style: zh ? '白底极简、信息分层明确；多用进度、里程碑、风险和计划模块；避免堆字' : 'Clean light theme with clear hierarchy; use progress, milestone, risk, and plan modules; avoid dense text',
+            prompt: zh
+              ? '请为「本阶段项目进展」生成一份工作汇报。内容包括：目标背景、已完成事项、关键成果、问题风险、资源需求、下一阶段计划、需要领导/团队决策的事项。请把缺少的数据列为待补充，不要编造。'
+              : 'Create a work report for “this project phase”. Include background goals, completed work, key results, issues and risks, resource needs, next-step plan, and decisions needed from leaders or the team. Mark missing data as to-be-filled instead of inventing it.'
+          },
+          'investor-pitch': {
+            name: zh ? '路演融资' : 'Investor pitch',
+            slideCount: 10,
+            deckType: 'investor-pitch',
+            theme: 'tech-blue',
+            audience: zh ? '投资人、潜在合作伙伴、创业评审' : 'Investors, potential partners, and startup judges',
+            purpose: zh ? '建立问题严重性、方案可信度和商业潜力，推动进一步沟通' : 'Establish the problem, solution credibility, and business potential; drive follow-up conversations',
+            tone: zh ? '有野心但可信，逻辑紧凑，突出证据和增长空间' : 'Ambitious but credible, tightly structured, evidence-driven, and growth-oriented',
+            style: zh ? '科技蓝、强对比、数据占位明确；包含市场、竞品、产品演示、进展和融资诉求模块' : 'Tech-blue, high contrast, clear metric placeholders; include market, competitors, product demo, traction, and ask sections',
+            prompt: zh
+              ? '请为「创业项目 / 产品方案」生成一份融资路演 PPT。包括：问题、目标用户、解决方案、产品演示、市场机会、商业模式、竞争优势、进展数据、团队与融资/合作诉求。未知数字必须标为待补充。'
+              : 'Create an investor pitch deck for “a startup project / product solution”. Include problem, target users, solution, product demo, market opportunity, business model, competitive edge, traction metrics, team, and fundraising/partnership ask. Unknown numbers must be marked as missing facts.'
+          },
+          training: {
+            name: zh ? '培训课件' : 'Training deck',
+            slideCount: 12,
+            deckType: 'training',
+            theme: 'minimal-light',
+            audience: zh ? '新手用户、学生、内部培训对象' : 'Beginners, students, and internal trainees',
+            purpose: zh ? '把复杂内容拆成可理解、可跟学、可复习的课程结构' : 'Turn complex material into a learnable, followable, reviewable course structure',
+            tone: zh ? '耐心、清晰、循序渐进，像优秀讲师一样讲解' : 'Patient, clear, step-by-step, like a strong instructor',
+            style: zh ? '浅色简洁、步骤化、案例化；每个概念配一个示例或练习；重点突出易错点' : 'Clean light style with steps and examples; pair each concept with an example or exercise; highlight common mistakes',
+            prompt: zh
+              ? '请为「课程 / 培训主题」生成一份培训课件。包括：学习目标、概念解释、步骤拆解、案例演示、常见错误、练习任务、总结回顾。语言要清楚，适合新手跟学。'
+              : 'Create a training deck for “a course / training topic”. Include learning goals, concept explanations, step-by-step breakdown, examples, common mistakes, practice tasks, and recap. Make it clear enough for beginners to follow.'
+          },
+          'industry-research': {
+            name: zh ? '行业研究' : 'Industry research',
+            slideCount: 10,
+            deckType: 'industry-research',
+            theme: 'minimal-mono',
+            audience: zh ? '管理层、研究团队、产品策略人员、内容读者' : 'Executives, research teams, product strategists, and content readers',
+            purpose: zh ? '沉淀趋势判断、机会风险和可执行建议' : 'Summarize trends, opportunities, risks, and actionable recommendations',
+            tone: zh ? '冷静、客观、有洞察，避免营销腔' : 'Calm, objective, insight-driven, and non-promotional',
+            style: zh ? '黑白极简、报告感；使用趋势线、矩阵、案例卡片、机会风险对照；数据未知处明确标注' : 'Minimal monochrome report style; use trend lines, matrices, case cards, and opportunity/risk comparisons; mark missing data clearly',
+            prompt: zh
+              ? '请为「行业 / 趋势主题」生成一份研究报告。包括：背景变化、关键趋势、代表案例、机会风险、对用户/企业的影响、行动建议。没有来源的数据必须列为待补充，不要编造成事实。'
+              : 'Create an industry research deck for “an industry / trend topic”. Include background shifts, key trends, representative cases, opportunities and risks, impact on users/businesses, and action recommendations. Data without sources must be marked as missing instead of invented.'
+          },
+          'short-video-demo': {
+            name: zh ? '短视频演示' : 'Short-video demo',
+            slideCount: 6,
+            deckType: 'short-video-demo',
+            theme: 'minimal-mono',
+            audience: zh ? '短视频观众、路人用户、社交平台读者' : 'Short-video viewers, casual users, and social-platform readers',
+            purpose: zh ? '快速抓住注意力，展示反差和卖点，引导点赞、关注或下载' : 'Grab attention fast, show contrast and value, and drive likes, follows, or downloads',
+            tone: zh ? '直接、有梗、有反差，节奏快但不浮夸' : 'Direct, witty, contrast-driven, fast-paced but not overhyped',
+            style: zh ? '大字报式标题、强反差画面、每页一个镜头；明确 3 秒钩子、演示画面和结尾 CTA' : 'Poster-like big headlines, strong visual contrast, one shot per slide; include a 3-second hook, demo visuals, and final CTA',
+            prompt: zh
+              ? '请把「视频主题 / 产品亮点」生成适合短视频展示的 PPT 脚本 / 分镜。包括：3 秒钩子、痛点、反差、功能演示、证据画面、结尾行动引导；每页都要有明确视觉画面。'
+              : 'Turn “a video topic / product highlight” into a PPT-based short-video script/storyboard. Include a 3-second hook, pain point, contrast, feature demo, proof shot, and final CTA; every slide needs a concrete visual scene.'
+          }
+        };
+        return presets[key] || null;
+      }
+
+      function setPptAiPresetActive(buttons, attrName, key) {
+        buttons.forEach(button => {
+          button.classList.toggle('active', button.dataset[attrName] === key);
+        });
+      }
+
+      function setPptAiPresetDisabled(buttons, disabled) {
+        buttons.forEach(button => {
+          button.disabled = Boolean(disabled);
+        });
+      }
+
+      function applyPptOutlinePreset(key) {
+        if (pptOutlineBusy) {
+          showToast(pptOutlineText('processing'));
+          return;
+        }
+        const preset = getPptAiPreset(key);
+        if (!preset) return;
+        const currentPrompt = String(pptOutlinePrompt?.value || '').trim();
+        const shouldReplacePrompt = !currentPrompt || currentPrompt === pptOutlineLastPresetPrompt;
+        if (pptOutlinePrompt && shouldReplacePrompt) {
+          pptOutlinePrompt.value = preset.prompt;
+          pptOutlineLastPresetPrompt = preset.prompt;
+        } else {
+          pptOutlineLastPresetPrompt = '';
+        }
+        if (pptOutlineSlideCount) pptOutlineSlideCount.value = String(preset.slideCount);
+        if (pptOutlineDeckType) pptOutlineDeckType.value = preset.deckType;
+        if (pptOutlineAudience) pptOutlineAudience.value = preset.audience;
+        if (pptOutlinePurpose) pptOutlinePurpose.value = preset.purpose;
+        if (pptOutlineTone) pptOutlineTone.value = preset.tone;
+        if (pptOutlineStyle) pptOutlineStyle.value = preset.style;
+        setPptAiPresetActive(pptOutlinePresetButtons, 'pptOutlinePreset', key);
+        showToast(pptOutlineText(shouldReplacePrompt ? 'presetAppliedToast' : 'presetAppliedKeepPromptToast', { name: preset.name }));
+      }
+
+      function resetPptOutlineState({ clearPrompt = false } = {}) {
+        pptOutlineBusy = false;
+        pptOutlineController?.abort();
+        pptOutlineController = null;
+        pptOutlineLastResult = null;
+        pptOutlineLastOutputPath = '';
+        if (clearPrompt && pptOutlinePrompt) {
+          pptOutlinePrompt.value = '';
+          pptOutlineLastPresetPrompt = '';
+          setPptAiPresetActive(pptOutlinePresetButtons, 'pptOutlinePreset', '');
+        }
+        if (clearPrompt) {
+          if (pptOutlineAudience) pptOutlineAudience.value = '';
+          if (pptOutlinePurpose) pptOutlinePurpose.value = '';
+          if (pptOutlineTone) pptOutlineTone.value = '';
+          if (pptOutlineStyle) pptOutlineStyle.value = '';
+          if (pptOutlineSlideCount) pptOutlineSlideCount.value = '8';
+          if (pptOutlineDeckType) pptOutlineDeckType.value = 'auto';
+        }
+        if (pptOutlineLocale) pptOutlineLocale.value = getLang() === 'en' ? 'en' : 'zh-CN';
+        if (pptOutlineEmpty) pptOutlineEmpty.hidden = false;
+        if (pptOutlineResult) pptOutlineResult.hidden = true;
+        if (pptOutlineSummary) pptOutlineSummary.innerHTML = '';
+        if (pptOutlineMeta) pptOutlineMeta.innerHTML = '';
+        if (pptOutlineFactBank) pptOutlineFactBank.innerHTML = '';
+        if (pptOutlineQuality) pptOutlineQuality.innerHTML = '';
+        if (pptOutlineSlideList) pptOutlineSlideList.innerHTML = '';
+        if (pptOutlineGenerateBtn) pptOutlineGenerateBtn.disabled = false;
+        setPptAiPresetDisabled(pptOutlinePresetButtons, false);
+        pptOutlineScrollTop?.classList.remove('visible');
+        setPptOutlineProgress(0, pptOutlineText('processing'), false);
+      }
+
+      function openPptOutlineOverlay() {
+        if (!pptOutlineOverlay) return;
+        pptOutlineOverlay.classList.add('visible');
+        pptOutlineOverlay.setAttribute('aria-hidden', 'false');
+        pptOutlineGenerateBtn?.classList.add('visible');
+        if (pptOutlineScrollArea) pptOutlineScrollArea.scrollTop = 0;
+        updatePptOutlineScrollTop();
+        if (pptOutlineLocale) pptOutlineLocale.value = getLang() === 'en' ? 'en' : 'zh-CN';
+        if (pptOutlineDeckType) pptOutlineDeckType.value = pptOutlineDeckType.value || 'auto';
+        if (pptOutlinePlasmaBg && !pptOutlinePlasmaInstance) {
+          pptOutlinePlasmaInstance = initStandardToolPlasma(pptOutlinePlasmaBg);
+        }
+        window.setTimeout(() => pptOutlinePrompt?.focus(), 80);
+      }
+
+      function closePptOutlineOverlay() {
+        if (!pptOutlineOverlay) return;
+        if (pptOutlineBusy) {
+          showToast(pptOutlineText('processing'));
+          return;
+        }
+        pptOutlineOverlay.classList.remove('visible');
+        pptOutlineOverlay.setAttribute('aria-hidden', 'true');
+        pptOutlinePlasmaInstance = disposeStandardToolPlasma(pptOutlinePlasmaInstance);
+        resetPptOutlineState({ clearPrompt: false });
+      }
+
+      function collectPptOutlineRequest() {
+        const prompt = String(pptOutlinePrompt?.value || '').trim();
+        if (!prompt) {
+          showToast(pptOutlineText('promptRequired'));
+          pptOutlinePrompt?.focus();
+          return null;
+        }
+        const slideCount = Number(pptOutlineSlideCount?.value || 8);
+        if (!Number.isSafeInteger(slideCount) || slideCount < 3 || slideCount > 30) {
+          showToast(pptOutlineText('slideCountInvalid'));
+          pptOutlineSlideCount?.focus();
+          return null;
+        }
+        try {
+          return normalizePptOutlineRequest({
+            prompt,
+            slide_count: slideCount,
+            locale: pptOutlineLocale?.value || (getLang() === 'en' ? 'en' : 'zh-CN'),
+            deck_type: pptOutlineDeckType?.value || 'auto',
+            audience: pptOutlineAudience?.value || '',
+            purpose: pptOutlinePurpose?.value || '',
+            tone: pptOutlineTone?.value || '',
+            style: pptOutlineStyle?.value || ''
+          });
+        } catch (error) {
+          showToast(String(error?.userMessage || error?.message || error));
+          return null;
+        }
+      }
+
+      function pptOutlineOutputBaseName(outline) {
+        return sanitizePptOutlineBaseName(outline?.title || pptOutlineText('title') || 'ppt-outline');
+      }
+
+      async function getPptOutlineOutputDirectory(baseName) {
+        const root = await getOutputDir('PPT_Outline');
+        const folderBase = `${sanitizePptOutlineBaseName(baseName)}_ppt_outline`;
+        if (!isTauri) return pptImagesJoinPath(root, folderBase);
+        const { invoke } = await import('@tauri-apps/api/core');
+        for (let counter = 0; counter < 1000; counter++) {
+          const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
+          const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
+          if (!exists) return candidate;
+        }
+        return pptImagesJoinPath(root, `${folderBase}_${Date.now()}`);
+      }
+
+      function renderPptOutlineResult(result) {
+        if (!result) return;
+        pptOutlineLastResult = result;
+        if (pptOutlineEmpty) pptOutlineEmpty.hidden = true;
+        if (pptOutlineResult) pptOutlineResult.hidden = false;
+        if (pptOutlineSummary) {
+          pptOutlineSummary.innerHTML = `
+            <span>${escapeHtml(pptOutlineText('summary', { slides: result.slides.length, title: result.title }))}</span>
+            <strong>${escapeHtml(pptOutlineText('centralTakeaway'))}：${escapeHtml(result.narrative?.central_takeaway || pptOutlineText('missingInfo'))}</strong>
+          `;
+        }
+        if (pptOutlineMeta) {
+          const deckTypeLabel = pptOutlineDeckTypeLabel(result.deck_type || result.request?.deck_type || 'auto');
+          pptOutlineMeta.innerHTML = [
+            `<span class="ppt-outline-pill">${escapeHtml(pptOutlineText('deckType'))}：${escapeHtml(deckTypeLabel)}</span>`,
+            `<span class="ppt-outline-pill">${escapeHtml(pptOutlineText('qualityScore'))}：${escapeHtml(String(result.quality_check?.self_check?.score ?? 0))}/100</span>`
+          ].join('');
+        }
+        if (pptOutlineFactBank) {
+          const factBank = result.fact_bank || {};
+          const renderItems = (label, items) => `
+            <section class="ppt-outline-fact-group">
+              <strong>${escapeHtml(label)}</strong>
+              <div>${(Array.isArray(items) && items.length ? items : [pptOutlineText('missingInfo')]).map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>
+            </section>`;
+          pptOutlineFactBank.innerHTML = [
+            renderItems(pptOutlineText('factsKnown'), factBank.known_facts),
+            renderItems(pptOutlineText('factsEvidence'), factBank.evidence),
+            renderItems(pptOutlineText('factsMissing'), factBank.missing_facts)
+          ].join('');
+        }
+        if (pptOutlineQuality) {
+          const quality = result.quality_check || {};
+          const selfCheck = quality.self_check || {};
+          const passLabel = (result.request?.locale || getLang()) === 'en' ? 'PASS' : '通过';
+          const checkLabel = (result.request?.locale || getLang()) === 'en' ? 'CHECK' : '待检查';
+          pptOutlineQuality.innerHTML = `
+            <div class="ppt-outline-quality-score">${escapeHtml(pptOutlineText('qualityScore'))} ${escapeHtml(String(selfCheck.score ?? 0))}/100 ${selfCheck.passed ? `· ${passLabel}` : `· ${checkLabel}`}</div>
+            <div class="ppt-outline-quality-list">
+              <div><strong>${escapeHtml(pptOutlineText('qualityStrengths'))}</strong><span>${escapeHtml((selfCheck.strengths || []).join(' / ') || pptOutlineText('missingInfo'))}</span></div>
+              <div><strong>${escapeHtml(pptOutlineText('qualityIssues'))}</strong><span>${escapeHtml((selfCheck.issues || []).join(' / ') || pptOutlineText('missingInfo'))}</span></div>
+            </div>
+          `;
+        }
+        if (pptOutlineSlideList) {
+          pptOutlineSlideList.innerHTML = (result.slides || []).map(slide => `
+            <article class="ppt-outline-slide">
+              <div class="ppt-outline-slide-number">${escapeHtml(String(slide.page))}</div>
+              <div class="ppt-outline-slide-content">
+                <strong>${escapeHtml(slide.title || '')}</strong>
+                <p>${escapeHtml(slide.claim || (slide.body || []).join(' / '))}</p>
+                <em>${escapeHtml(slide.visual_suggestion || slide.type || '')}</em>
+                <div class="ppt-outline-slide-tags">
+                  <span>${escapeHtml(slide.role || slide.type || '')}</span>
+                  <span>${escapeHtml(slide.layout_intent?.kind || '')}</span>
+                  <span>${escapeHtml(slide.layout_intent?.density || '')}</span>
+                  ${slide.layout_intent?.visual_focus ? `<span>${escapeHtml(String(slide.layout_intent.visual_focus).slice(0, 40))}</span>` : ''}
+                </div>
+              </div>
+            </article>
+          `).join('');
+        }
+      }
+
+      async function exportPptOutlineResult(outline) {
+        const encoder = new TextEncoder();
+        const baseName = pptOutlineOutputBaseName(outline);
+        const outputDir = await getPptOutlineOutputDirectory(baseName);
+        const runId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const publicResult = {
+          tool: 'ppt.outline',
+          dry_run: false,
+          output_dir: outputDir,
+          run_id: runId,
+          generated_at: new Date().toISOString(),
+          outline,
+          outputs: [],
+          manifest_path: pptImagesJoinPath(outputDir, 'manifest.json')
+        };
+        const markdown = createPptOutlineMarkdown(outline);
+        const outlineJson = `${JSON.stringify(outline, null, 2)}\n`;
+        const manifest = {
+          ...createPptOutlineManifest(outline),
+          tool: publicResult.tool,
+          dry_run: false,
+          output_dir: outputDir,
+          run_id: runId,
+          generated_at: publicResult.generated_at
+        };
+        if (isTauri) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          for (const [fileName, bytes, kind] of [
+            ['outline.md', encoder.encode(markdown), 'markdown'],
+            ['outline.json', encoder.encode(outlineJson), 'json']
+          ]) {
+            const outputPath = await writeUniquePptImagesFile(invoke, outputDir, fileName, bytes);
+            publicResult.outputs.push({ path: outputPath, relative_path: fileName, kind, bytes: bytes.byteLength });
+          }
+          const manifestPath = await writeUniquePptImagesFile(invoke, outputDir, 'manifest.json', encoder.encode(`${JSON.stringify({
+            ...manifest,
+            outputs: publicResult.outputs
+          }, null, 2)}\n`));
+          publicResult.manifest_path = manifestPath;
+          pptOutlineLastOutputPath = outputDir;
+          return publicResult;
+        }
+        const zip = new JSZip();
+        zip.file('outline.md', markdown);
+        zip.file('outline.json', outlineJson);
+        publicResult.outputs = [
+          { path: `${outputDir}/outline.md`, relative_path: 'outline.md', kind: 'markdown', bytes: encoder.encode(markdown).byteLength },
+          { path: `${outputDir}/outline.json`, relative_path: 'outline.json', kind: 'json', bytes: encoder.encode(outlineJson).byteLength }
+        ];
+        zip.file('manifest.json', JSON.stringify({ ...manifest, outputs: publicResult.outputs }, null, 2));
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${baseName}_ppt_outline.zip`;
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        pptOutlineLastOutputPath = outputDir;
+        return publicResult;
+      }
+
+      function showPptOutlineSuccess(outputPath, result) {
+        if (pptOutlineSuccessMeta) pptOutlineSuccessMeta.textContent = pptOutlineText('successMeta');
+        if (pptOutlineSuccessSlides) pptOutlineSuccessSlides.textContent = `${result?.outline?.slides?.length || 0}`;
+        if (pptOutlineSuccessFiles) pptOutlineSuccessFiles.textContent = `${(result?.outputs?.length || 0) + 1}`;
+        if (pptOutlineSuccessPath) pptOutlineSuccessPath.textContent = displayFilesystemPath(outputPath);
+        pptOutlineSuccessOverlay?.classList.add('visible');
+      }
+
+      async function generatePptOutlineFromUi() {
+        if (pptOutlineBusy) return;
+        const request = collectPptOutlineRequest();
+        if (!request) return;
+        pptOutlineBusy = true;
+        if (pptOutlineGenerateBtn) pptOutlineGenerateBtn.disabled = true;
+        setPptAiPresetDisabled(pptOutlinePresetButtons, true);
+        pptOutlineController = new AbortController();
+        setPptOutlineProgress(10, pptOutlineText('validating'));
+        try {
+          if (!(localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key'))) {
+            throw new Error(pptOutlineText('needApiKey'));
+          }
+          const messages = buildPptOutlineMessages(request);
+          setPptOutlineProgress(38, pptOutlineText('generating'));
+          const content = await callDeepSeek(messages, pptOutlineController.signal, 8192);
+          const parsed = extractPptOutlineJson(content);
+          if (!parsed) throw new Error('AI provider did not return valid PPT outline JSON.');
+          const outline = normalizePptOutlineResult(parsed, request);
+          renderPptOutlineResult(outline);
+          setPptOutlineProgress(76, pptOutlineText('writing'));
+          const exported = await exportPptOutlineResult(outline);
+          setPptOutlineProgress(100, pptOutlineText('writing'));
+          showToast(pptOutlineText('generatedToast', { slides: outline.slides.length }));
+          showPptOutlineSuccess(exported.output_dir, exported);
+        } catch (error) {
+          console.error('PPT outline generation failed:', error);
+          showToast(pptAiGenerationErrorMessage(error, pptOutlineText));
+        } finally {
+          window.setTimeout(() => setPptOutlineProgress(0, pptOutlineText('processing'), false), 260);
+          pptOutlineBusy = false;
+          pptOutlineController = null;
+          if (pptOutlineGenerateBtn) pptOutlineGenerateBtn.disabled = false;
+          setPptAiPresetDisabled(pptOutlinePresetButtons, false);
+        }
+      }
+
+      pptOutlineBack?.addEventListener('click', closePptOutlineOverlay);
+      pptOutlineScrollArea?.addEventListener('scroll', updatePptOutlineScrollTop, { passive: true });
+      pptOutlineScrollTop?.addEventListener('click', () => {
+        pptOutlineScrollArea?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      pptOutlinePresetButtons.forEach(button => {
+        button.addEventListener('click', () => applyPptOutlinePreset(button.dataset.pptOutlinePreset));
+      });
+      pptOutlineGenerateBtn?.addEventListener('click', () => { void generatePptOutlineFromUi(); });
+      pptOutlineSuccessOk?.addEventListener('click', () => {
+        pptOutlineSuccessOverlay?.classList.remove('visible');
+      });
+      pptOutlineSuccessToDraft?.addEventListener('click', () => {
+        if (!pptOutlineLastResult) {
+          showToast(pptOutlineText('missingInfo'));
+          return;
+        }
+        if (importOutlineIntoPptDraft(pptOutlineLastResult, pptOutlineText('outlineImportedFromOutlinePage'))) {
+          pptOutlineSuccessOverlay?.classList.remove('visible');
+          openPptDraftOverlay();
+          showToast(pptDraftText('outlineImported', {
+            slides: pptDraftImportedOutline?.slides?.length || 0,
+            title: pptDraftImportedOutline?.title || pptDraftText('title')
+          }));
+        }
+      });
+      pptOutlineSuccessOpenFolder?.addEventListener('click', async () => {
+        if (!isTauri || !pptOutlineLastOutputPath) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: pptOutlineLastOutputPath });
+        } catch (error) {
+          console.error('Open PPT outline output folder failed:', error);
+          showToast(pptOutlineText('openFolderFailed'));
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="ppt-outline"]').forEach(item => item.addEventListener('click', openPptOutlineOverlay));
+
+      onLangChange(() => {
+        if (!pptOutlineOverlay?.classList.contains('visible')) return;
+        if (!pptOutlineLastResult) {
+          if (pptOutlineLocale) pptOutlineLocale.value = getLang() === 'en' ? 'en' : 'zh-CN';
+          return;
+        }
+        renderPptOutlineResult(pptOutlineLastResult);
+      });
+
+      // ===== PPT AI Draft / PPTX =====
+      const pptDraftOverlay = document.getElementById('pptDraftOverlay');
+      const pptDraftBack = document.getElementById('pptDraftBack');
+      const pptDraftPlasmaBg = document.getElementById('pptDraftPlasmaBg');
+      const pptDraftScrollArea = document.getElementById('pptDraftScrollArea');
+      const pptDraftScrollTop = document.getElementById('pptDraftScrollTop');
+      const pptDraftPrompt = document.getElementById('pptDraftPrompt');
+      const pptDraftSlideCount = document.getElementById('pptDraftSlideCount');
+      const pptDraftLocale = document.getElementById('pptDraftLocale');
+      const pptDraftDeckType = document.getElementById('pptDraftDeckType');
+      const pptDraftTheme = document.getElementById('pptDraftTheme');
+      const pptDraftAudience = document.getElementById('pptDraftAudience');
+      const pptDraftPurpose = document.getElementById('pptDraftPurpose');
+      const pptDraftTone = document.getElementById('pptDraftTone');
+      const pptDraftStyle = document.getElementById('pptDraftStyle');
+      const pptDraftOutlineImportBtn = document.getElementById('pptDraftOutlineImportBtn');
+      const pptDraftOutlineClearBtn = document.getElementById('pptDraftOutlineClearBtn');
+      const pptDraftOutlineFile = document.getElementById('pptDraftOutlineFile');
+      const pptDraftOutlineStatus = document.getElementById('pptDraftOutlineStatus');
+      const pptDraftGenerateBtn = document.getElementById('pptDraftGenerateBtn');
+      const pptDraftPresetButtons = Array.from(document.querySelectorAll('[data-ppt-draft-preset]'));
+      const pptDraftEmpty = document.getElementById('pptDraftEmpty');
+      const pptDraftResult = document.getElementById('pptDraftResult');
+      const pptDraftSummary = document.getElementById('pptDraftSummary');
+      const pptDraftSlideList = document.getElementById('pptDraftSlideList');
+      const pptDraftProcessMask = document.getElementById('pptDraftProcessMask');
+      const pptDraftProcessBarFill = document.getElementById('pptDraftProcessBarFill');
+      const pptDraftProcessText = document.getElementById('pptDraftProcessText');
+      const pptDraftSuccessOverlay = document.getElementById('pptDraftSuccessOverlay');
+      const pptDraftSuccessMeta = document.getElementById('pptDraftSuccessMeta');
+      const pptDraftSuccessSlides = document.getElementById('pptDraftSuccessSlides');
+      const pptDraftSuccessFile = document.getElementById('pptDraftSuccessFile');
+      const pptDraftSuccessPath = document.getElementById('pptDraftSuccessPath');
+      const pptDraftSuccessOpenFolder = document.getElementById('pptDraftSuccessOpenFolder');
+      const pptDraftSuccessOk = document.getElementById('pptDraftSuccessOk');
+      const pptDraftEditorOverlay = document.getElementById('pptDraftEditorOverlay');
+      const pptDraftEditorBack = document.getElementById('pptDraftEditorBack');
+      const pptDraftEditorPlasmaBg = document.getElementById('pptDraftEditorPlasmaBg');
+      const pptDraftEditorDeckTitle = document.getElementById('pptDraftEditorDeckTitle');
+      const pptDraftEditorExportBtn = document.getElementById('pptDraftEditorExportBtn');
+      const pptDraftEditorMoveUpBtn = document.getElementById('pptDraftEditorMoveUpBtn');
+      const pptDraftEditorMoveDownBtn = document.getElementById('pptDraftEditorMoveDownBtn');
+      const pptDraftEditorRestoreBtn = document.getElementById('pptDraftEditorRestoreBtn');
+      const pptDraftEditorStrip = document.getElementById('pptDraftEditorStrip');
+      const pptDraftEditorCanvas = document.getElementById('pptDraftEditorCanvas');
+      const pptDraftEditorCurrentPage = document.getElementById('pptDraftEditorCurrentPage');
+      const pptDraftEditorSlideTitle = document.getElementById('pptDraftEditorSlideTitle');
+      const pptDraftEditorClaim = document.getElementById('pptDraftEditorClaim');
+      const pptDraftEditorBullets = document.getElementById('pptDraftEditorBullets');
+      const pptDraftEditorVisual = document.getElementById('pptDraftEditorVisual');
+      const pptDraftEditorNote = document.getElementById('pptDraftEditorNote');
+      let pptDraftPlasmaInstance = null;
+      let pptDraftEditorPlasmaInstance = null;
+      const PPT_DRAFT_EDITOR_STATE_KEY = 'toolknit.ppt-draft-editor-state.v1';
+      let pptDraftBusy = false;
+      let pptDraftController = null;
+      let pptDraftLastResult = null;
+      let pptDraftLastOutputPath = '';
+      let pptDraftImportedOutline = null;
+      let pptDraftImportedOutlineSource = '';
+      let pptDraftLastPresetPrompt = '';
+      let pptDraftEditorOutline = null;
+      let pptDraftEditorOriginalOutline = null;
+      let pptDraftEditorOriginalTheme = 'minimal-mono';
+      let pptDraftEditorSourceSignature = '';
+      let pptDraftEditorTheme = 'minimal-mono';
+      let pptDraftEditorSelectedIndex = 0;
+      let pptDraftEditorExporting = false;
+      let pptDraftEditorAutosaveTimer = null;
+      let pptDraftEditorDragIndex = -1;
+      let pptDraftEditorDropTargetIndex = -1;
+
+      function pptDraftText(key, params) {
+        return t(`home.pptDraftPage.${key}`, params);
+      }
+
+      function updatePptDraftOutlineStatus(message, isReady = false) {
+        if (!pptDraftOutlineStatus) return;
+        pptDraftOutlineStatus.textContent = message || pptDraftText('outlineImportHint');
+        pptDraftOutlineStatus.dataset.ready = isReady ? 'true' : 'false';
+      }
+
+      function setPptDraftProgress(percent, message, visible = true) {
+        if (pptDraftProcessBarFill) pptDraftProcessBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        if (pptDraftProcessText) pptDraftProcessText.textContent = message || pptDraftText('processing');
+        if (pptDraftProcessMask) pptDraftProcessMask.classList.toggle('visible', Boolean(visible));
+      }
+
+      function updatePptDraftScrollTop() {
+        if (!pptDraftScrollArea || !pptDraftScrollTop) return;
+        pptDraftScrollTop.classList.toggle('visible', pptDraftScrollArea.scrollTop > 160);
+      }
+
+      function applyPptDraftPreset(key) {
+        if (pptDraftBusy) {
+          showToast(pptDraftText('processing'));
+          return;
+        }
+        const preset = getPptAiPreset(key);
+        if (!preset) return;
+        const currentPrompt = String(pptDraftPrompt?.value || '').trim();
+        const shouldReplacePrompt = !currentPrompt || currentPrompt === pptDraftLastPresetPrompt;
+        if (pptDraftPrompt && shouldReplacePrompt) {
+          pptDraftPrompt.value = preset.prompt;
+          pptDraftLastPresetPrompt = preset.prompt;
+        } else {
+          pptDraftLastPresetPrompt = '';
+        }
+        if (pptDraftSlideCount) pptDraftSlideCount.value = String(preset.slideCount);
+        if (pptDraftDeckType) pptDraftDeckType.value = preset.deckType;
+        if (pptDraftTheme) pptDraftTheme.value = preset.theme;
+        if (pptDraftAudience) pptDraftAudience.value = preset.audience;
+        if (pptDraftPurpose) pptDraftPurpose.value = preset.purpose;
+        if (pptDraftTone) pptDraftTone.value = preset.tone;
+        if (pptDraftStyle) pptDraftStyle.value = preset.style;
+        setPptAiPresetActive(pptDraftPresetButtons, 'pptDraftPreset', key);
+        showToast(pptDraftText(shouldReplacePrompt ? 'presetAppliedToast' : 'presetAppliedKeepPromptToast', { name: preset.name }));
+      }
+
+      function resetPptDraftState({ clearPrompt = false } = {}) {
+        pptDraftBusy = false;
+        pptDraftController?.abort();
+        pptDraftController = null;
+        pptDraftLastResult = null;
+        pptDraftLastOutputPath = '';
+        if (clearPrompt && pptDraftPrompt) {
+          pptDraftPrompt.value = '';
+          pptDraftLastPresetPrompt = '';
+          setPptAiPresetActive(pptDraftPresetButtons, 'pptDraftPreset', '');
+        }
+        if (clearPrompt) {
+          if (pptDraftAudience) pptDraftAudience.value = '';
+          if (pptDraftPurpose) pptDraftPurpose.value = '';
+          if (pptDraftTone) pptDraftTone.value = '';
+          if (pptDraftStyle) pptDraftStyle.value = '';
+          if (pptDraftSlideCount) pptDraftSlideCount.value = '8';
+          if (pptDraftDeckType) pptDraftDeckType.value = 'auto';
+          if (pptDraftTheme) pptDraftTheme.value = 'minimal-mono';
+        }
+        if (pptDraftLocale) pptDraftLocale.value = getLang() === 'en' ? 'en' : 'zh-CN';
+        if (pptDraftEmpty) pptDraftEmpty.hidden = false;
+        if (pptDraftResult) pptDraftResult.hidden = true;
+        if (pptDraftSummary) pptDraftSummary.innerHTML = '';
+        if (pptDraftSlideList) pptDraftSlideList.innerHTML = '';
+        if (pptDraftGenerateBtn) pptDraftGenerateBtn.disabled = false;
+        if (pptDraftOutlineImportBtn) pptDraftOutlineImportBtn.disabled = false;
+        if (pptDraftOutlineClearBtn) pptDraftOutlineClearBtn.disabled = !pptDraftImportedOutline;
+        setPptAiPresetDisabled(pptDraftPresetButtons, false);
+        pptDraftScrollTop?.classList.remove('visible');
+        setPptDraftProgress(0, pptDraftText('processing'), false);
+      }
+
+      function clearPptDraftImportedOutline() {
+        pptDraftImportedOutline = null;
+        pptDraftImportedOutlineSource = '';
+        if (pptDraftOutlineFile) pptDraftOutlineFile.value = '';
+        if (pptDraftOutlineImportBtn) pptDraftOutlineImportBtn.textContent = pptDraftText('outlineImportBtn');
+        if (pptDraftOutlineClearBtn) pptDraftOutlineClearBtn.disabled = true;
+        if (pptDraftOutlineImportBtn) pptDraftOutlineImportBtn.disabled = false;
+        updatePptDraftOutlineStatus(pptDraftText('outlineImportHint'), false);
+      }
+
+      function pptDraftFirstValue(...values) {
+        for (const value of values) {
+          const text = String(value ?? '').trim();
+          if (text) return text;
+        }
+        return '';
+      }
+
+      function pptDraftKnownTheme() {
+        return 'minimal-mono';
+      }
+
+      function pptDraftSelectHasValue(select, value) {
+        return Boolean(select && Array.from(select.options || []).some(option => option.value === value));
+      }
+
+      function pptDraftOutlineObject(value) {
+        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+      }
+
+      function pptDraftOutlineRequestSeed(payload = {}, fallback = {}) {
+        const draftRequest = pptDraftOutlineObject(payload?.draft_request);
+        const sourceRequest = pptDraftOutlineObject(payload?.request);
+        const design = pptDraftOutlineObject(payload?.design);
+        const prompt = pptDraftFirstValue(
+          draftRequest.prompt,
+          sourceRequest.prompt,
+          payload?.prompt,
+          payload?.title,
+          fallback.prompt
+        );
+        const audience = pptDraftFirstValue(draftRequest.audience, sourceRequest.audience, payload?.audience, fallback.audience);
+        const purpose = pptDraftFirstValue(draftRequest.purpose, sourceRequest.purpose, payload?.purpose, fallback.purpose);
+        const tone = pptDraftFirstValue(draftRequest.tone, sourceRequest.tone, fallback.tone);
+        const style = pptDraftFirstValue(draftRequest.style, sourceRequest.style, design.style, design.visual_system, fallback.style);
+        const inferredTheme = inferPptDraftTheme({
+          prompt,
+          audience,
+          purpose,
+          tone,
+          style,
+          theme_hint: pptDraftFirstValue(design.theme, design.color_hint, design.visual_system)
+        });
+        const theme = pptDraftKnownTheme(
+          pptDraftFirstValue(draftRequest.theme, sourceRequest.theme, design.theme, inferredTheme, fallback.theme),
+          'minimal-mono'
+        );
+        return {
+          prompt,
+          slide_count: Number(draftRequest.slide_count || sourceRequest.slide_count || payload?.slides?.length || fallback.slide_count || 8),
+          locale: pptDraftFirstValue(draftRequest.locale, sourceRequest.locale, fallback.locale, getLang() === 'en' ? 'en' : 'zh-CN'),
+          deck_type: pptDraftFirstValue(draftRequest.deck_type, sourceRequest.deck_type, payload?.deck_type, fallback.deck_type, 'auto'),
+          audience,
+          purpose,
+          tone,
+          style,
+          theme
+        };
+      }
+
+      function syncPptDraftImportedOutline(normalized, sourceLabel = '') {
+        pptDraftImportedOutline = normalized;
+        pptDraftImportedOutlineSource = sourceLabel;
+        const seed = pptDraftOutlineRequestSeed(normalized, {
+          prompt: pptDraftPrompt?.value || '',
+          theme: pptDraftTheme?.value || 'minimal-mono',
+          locale: pptDraftLocale?.value || (getLang() === 'en' ? 'en' : 'zh-CN'),
+          deck_type: pptDraftDeckType?.value || 'auto',
+          audience: pptDraftAudience?.value || '',
+          purpose: pptDraftPurpose?.value || '',
+          tone: pptDraftTone?.value || '',
+          style: pptDraftStyle?.value || ''
+        });
+        if (pptDraftPrompt && seed.prompt) pptDraftPrompt.value = seed.prompt;
+        if (pptDraftSlideCount && normalized?.slides?.length) {
+          pptDraftSlideCount.value = String(normalized.slides.length);
+        }
+        if (pptDraftDeckType) {
+          pptDraftDeckType.value = seed.deck_type || 'auto';
+        }
+        if (pptDraftTheme && pptDraftSelectHasValue(pptDraftTheme, seed.theme)) pptDraftTheme.value = seed.theme;
+        if (pptDraftLocale && seed.locale) pptDraftLocale.value = seed.locale;
+        if (pptDraftAudience) pptDraftAudience.value = seed.audience || '';
+        if (pptDraftPurpose) pptDraftPurpose.value = seed.purpose || '';
+        if (pptDraftTone) pptDraftTone.value = seed.tone || '';
+        if (pptDraftStyle) pptDraftStyle.value = seed.style || '';
+        if (pptDraftOutlineImportBtn) {
+          pptDraftOutlineImportBtn.textContent = pptDraftText('outlineImportBtnImported');
+        }
+        if (pptDraftOutlineClearBtn) pptDraftOutlineClearBtn.disabled = false;
+        const slides = normalized?.slides?.length || 0;
+        const label = normalized?.title || '';
+        const source = sourceLabel ? ` · ${sourceLabel}` : '';
+        updatePptDraftOutlineStatus(
+          pptDraftText('outlineImported', { slides, title: label || pptDraftText('title') }) + source,
+          true
+        );
+      }
+
+      function applyPptDraftOutlineDefaults(normalized) {
+        if (!normalized) return normalized;
+        if (pptDraftSlideCount && normalized?.slides?.length) {
+          pptDraftSlideCount.value = String(normalized.slides.length);
+        }
+        if (pptDraftDeckType) {
+          pptDraftDeckType.value = normalized.request?.deck_type || normalized.deck_type || 'auto';
+        }
+        return normalized;
+      }
+
+      async function readPptDraftOutlineFile(file) {
+        if (!file) throw new Error('ppt-draft-outline:missing-file');
+        const name = String(file.name || file.path || '').trim();
+        if (!/\.json$/i.test(name)) {
+          throw new Error('ppt-draft-outline:invalid-extension');
+        }
+        let text = '';
+        if (isTauri && file.path) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const rawBytes = await invoke('read_file_bytes_limited', {
+            path: file.path,
+            maxBytes: 4 * 1024 * 1024
+          });
+          text = new TextDecoder('utf-8').decode(normalizeDesktopBytes(rawBytes));
+        } else if (typeof file.text === 'function') {
+          text = await file.text();
+        } else {
+          throw new Error('ppt-draft-outline:unsupported-file');
+        }
+        const payload = JSON.parse(text);
+        const seed = pptDraftOutlineRequestSeed(payload, {
+          prompt: pptDraftPrompt?.value || '',
+          theme: pptDraftTheme?.value || 'minimal-mono',
+          locale: pptDraftLocale?.value || (getLang() === 'en' ? 'en' : 'zh-CN'),
+          deck_type: pptDraftDeckType?.value || 'auto',
+          audience: pptDraftAudience?.value || '',
+          purpose: pptDraftPurpose?.value || '',
+          tone: pptDraftTone?.value || '',
+          style: pptDraftStyle?.value || ''
+        });
+        const normalized = applyPptDraftOutlineDefaults(normalizePptDraftOutline(payload, {
+          ...seed
+        }));
+        return { normalized, name };
+      }
+
+      async function choosePptDraftOutlineFile() {
+        if (pptDraftBusy) return;
+        try {
+          if (isTauri) {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [{ name: 'JSON', extensions: ['json'] }],
+              title: getLang() === 'en' ? 'Import PPT outline.json' : '导入 PPT 大纲 outline.json'
+            });
+            if (typeof selected === 'string') {
+              const file = { path: selected, name: selected.split(/[\\/]/).pop() || selected };
+              const { normalized, name } = await readPptDraftOutlineFile(file);
+              syncPptDraftImportedOutline(normalized, name);
+            }
+            return;
+          }
+          pptDraftOutlineFile?.click();
+        } catch (error) {
+          console.error('Choose PPT outline failed:', error);
+          showToast(String(error?.userMessage || error?.message || error));
+        }
+      }
+
+      async function handlePptDraftOutlineFileInput(event) {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+        try {
+          const { normalized, name } = await readPptDraftOutlineFile(file);
+          syncPptDraftImportedOutline(normalized, name);
+        } catch (error) {
+          console.error('Load PPT outline failed:', error);
+          showToast(pptAiGenerationErrorMessage(error, pptDraftText));
+        } finally {
+          if (pptDraftOutlineFile) pptDraftOutlineFile.value = '';
+        }
+      }
+
+      function openPptDraftOverlay() {
+        if (!pptDraftOverlay) return;
+        pptDraftOverlay.classList.add('visible');
+        pptDraftOverlay.setAttribute('aria-hidden', 'false');
+        pptDraftGenerateBtn?.classList.add('visible');
+        pptDraftOutlineImportBtn?.classList.add('visible');
+        if (pptDraftScrollArea) pptDraftScrollArea.scrollTop = 0;
+        updatePptDraftScrollTop();
+        if (pptDraftLocale) pptDraftLocale.value = getLang() === 'en' ? 'en' : 'zh-CN';
+        if (pptDraftDeckType) pptDraftDeckType.value = pptDraftDeckType.value || 'auto';
+        if (pptDraftOutlineClearBtn) pptDraftOutlineClearBtn.disabled = !pptDraftImportedOutline;
+        updatePptDraftOutlineStatus(
+          pptDraftImportedOutline
+            ? `${pptDraftText('outlineImported', { slides: pptDraftImportedOutline.slides?.length || 0, title: pptDraftImportedOutline.title || pptDraftText('title') })}${pptDraftImportedOutlineSource ? ` · ${pptDraftImportedOutlineSource}` : ''}`
+            : pptDraftText('outlineImportHint'),
+          Boolean(pptDraftImportedOutline)
+        );
+        if (pptDraftPlasmaBg && !pptDraftPlasmaInstance) {
+          pptDraftPlasmaInstance = initStandardToolPlasma(pptDraftPlasmaBg);
+        }
+        window.setTimeout(() => pptDraftPrompt?.focus(), 80);
+      }
+
+      function closePptDraftOverlay() {
+        if (!pptDraftOverlay) return;
+        if (pptDraftBusy) {
+          showToast(pptDraftText('processing'));
+          return;
+        }
+        pptDraftOverlay.classList.remove('visible');
+        pptDraftOverlay.setAttribute('aria-hidden', 'true');
+        pptDraftPlasmaInstance = disposeStandardToolPlasma(pptDraftPlasmaInstance);
+        resetPptDraftState({ clearPrompt: false });
+      }
+
+      function collectPptDraftRequest() {
+        const prompt = String(pptDraftPrompt?.value || '').trim();
+        if (!prompt && !pptDraftImportedOutline) {
+          showToast(pptDraftText('promptRequired'));
+          pptDraftPrompt?.focus();
+          return null;
+        }
+        const audience = String(pptDraftAudience?.value || '').trim();
+        const purpose = String(pptDraftPurpose?.value || '').trim();
+        const tone = String(pptDraftTone?.value || '').trim();
+        const style = String(pptDraftStyle?.value || '').trim();
+        const slideCount = Number(pptDraftSlideCount?.value || 8);
+        if (!Number.isSafeInteger(slideCount) || slideCount < 3 || slideCount > 30) {
+          showToast(pptDraftText('slideCountInvalid'));
+          pptDraftSlideCount?.focus();
+          return null;
+        }
+        const theme = 'minimal-mono';
+        try {
+          return normalizePptDraftRequest({
+            prompt,
+            slide_count: slideCount,
+            locale: pptDraftLocale?.value || (getLang() === 'en' ? 'en' : 'zh-CN'),
+            deck_type: pptDraftDeckType?.value || 'auto',
+            theme,
+            audience,
+            purpose,
+            tone,
+            style
+          });
+        } catch (error) {
+          showToast(String(error?.userMessage || error?.message || error));
+          return null;
+        }
+      }
+
+      function pptDraftOutputBaseName(outline) {
+        return sanitizePptDraftBaseName(outline?.title || pptDraftText('title') || 'ppt-draft');
+      }
+
+      async function getPptDraftOutputDirectory(baseName) {
+        const root = await getOutputDir('PPT_Draft');
+        const folderBase = `${sanitizePptDraftBaseName(baseName)}_ppt_draft`;
+        if (!isTauri) return pptImagesJoinPath(root, folderBase);
+        const { invoke } = await import('@tauri-apps/api/core');
+        for (let counter = 0; counter < 1000; counter++) {
+          const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
+          const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
+          if (!exists) return candidate;
+        }
+        return pptImagesJoinPath(root, `${folderBase}_${Date.now()}`);
+      }
+
+      function pptDraftThemeLabel() {
+        return pptDraftText('themeMono');
+      }
+
+      function pptDraftRoleLabel(role) {
+        const value = String(role || 'content');
+        const labels = {
+          cover: { zh: '封面', en: 'Cover' },
+          agenda: { zh: '目录', en: 'Agenda' },
+          section: { zh: '章节', en: 'Section' },
+          content: { zh: '内容', en: 'Content' },
+          workflow: { zh: '流程', en: 'Workflow' },
+          roadmap: { zh: '路线图', en: 'Roadmap' },
+          process: { zh: '流程', en: 'Process' },
+          comparison: { zh: '对比', en: 'Comparison' },
+          closing: { zh: '结尾', en: 'Closing' }
+        };
+        const locale = getLang() === 'en' ? 'en' : 'zh';
+        return labels[value]?.[locale] || value;
+      }
+
+      function pptDraftLayoutKindLabel(kind) {
+        const value = String(kind || '');
+        const labels = {
+          'text-focus': { zh: '文本聚焦', en: 'Text focus' },
+          'visual-focus': { zh: '视觉聚焦', en: 'Visual focus' },
+          process: { zh: '流程型', en: 'Process' },
+          timeline: { zh: '时间线', en: 'Timeline' },
+          comparison: { zh: '对比型', en: 'Comparison' },
+          split: { zh: '左右分栏', en: 'Split' },
+          gallery: { zh: '图集型', en: 'Gallery' },
+          closing: { zh: '收束页', en: 'Closing' }
+        };
+        const locale = getLang() === 'en' ? 'en' : 'zh';
+        return labels[value]?.[locale] || value;
+      }
+
+      function pptDraftPreviewLabel(key) {
+        const zh = getLang() !== 'en';
+        const labels = {
+          preview: { zh: '视觉预览', en: 'Visual preview' },
+          editable: { zh: '可编辑 PPTX', en: 'Editable PPTX' },
+          localBuild: { zh: '本地生成', en: 'Local build' },
+          deckType: { zh: '类型', en: 'Type' },
+          theme: { zh: '风格', en: 'Theme' },
+          slides: { zh: '页数', en: 'Slides' },
+          takeaway: { zh: '核心结论', en: 'Takeaway' },
+          visual: { zh: '视觉建议', en: 'Visual idea' },
+          replaceImage: { zh: '替换为你的图片 / 截图', en: 'Replace with your image' },
+          imageSlot: { zh: '图像占位', en: 'Image slot' },
+          before: { zh: '现状 / 问题', en: 'Before' },
+          after: { zh: '方案 / 结果', en: 'After' },
+          draftNote: { zh: '预览为草稿版式示意，导出的 PPTX 可继续编辑。', en: 'Preview shows the draft layout; exported PPTX remains editable.' },
+          generated: { zh: 'Generated by ToolKnit', en: 'Generated by ToolKnit' },
+          fallbackBullet: { zh: '待补充更多素材与细节', en: 'Add more material and detail' }
+        };
+        return labels[key]?.[zh ? 'zh' : 'en'] || key;
+      }
+
+      function pptDraftInline(value, fallback = '', maxChars = 240) {
+        const text = String(value || '')
+          .replace(/\u00A0/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return (text || fallback || '').slice(0, maxChars);
+      }
+
+      function pptDraftPreviewCopy(outline) {
+        try {
+          return resolvePptDraftSubjectCopy(outline || {});
+        } catch {
+          const deckType = pptOutlineDeckTypeLabel(outline?.deck_type || outline?.request?.deck_type || 'auto');
+          return {
+            profile: 'generic',
+            coverEyebrow: 'PRESENTATION / EDITABLE DRAFT',
+            coverMetaItems: [deckType, pptDraftPreviewLabel('editable')],
+            generatedLabel: pptDraftPreviewLabel('generated'),
+            coverImageLabel: pptDraftPreviewLabel('replaceImage'),
+            comparisonLeftLabel: pptDraftPreviewLabel('before'),
+            comparisonRightLabel: pptDraftPreviewLabel('after')
+          };
+        }
+      }
+
+      function pptDraftPreviewTitleParts(outline, fallbackTitle) {
+        const copy = pptDraftPreviewCopy(outline);
+        const coverTitle = pptDraftInline(outline?.title || fallbackTitle, fallbackTitle, 140);
+        const splitTitle = coverTitle.split(/[:：]/).map(part => part.trim()).filter(Boolean);
+        if (splitTitle.length > 1) {
+          return {
+            brand: pptDraftInline(splitTitle[0], coverTitle, 34),
+            main: pptDraftInline(splitTitle.slice(1).join('：'), coverTitle, 80)
+          };
+        }
+        if (copy.profile === 'interior') {
+          const match = coverTitle.match(/^(.{2,18}?(?:装饰|设计|空间|家居|建筑|软装|硬装))[\s·｜|:：-]*(.+)$/);
+          if (match && match[2]) return { brand: pptDraftInline(match[1], '空间案例', 34), main: pptDraftInline(match[2], coverTitle, 80) };
+          return { brand: '空间案例', main: coverTitle };
+        }
+        if (copy.profile === 'business') return { brand: '商业简报', main: coverTitle };
+        if (copy.profile === 'party-government') return { brand: '专题会议', main: coverTitle };
+        if (copy.profile === 'literary-biography') return { brand: '人物介绍', main: coverTitle };
+        if (copy.profile === 'education') return { brand: '课程讲义', main: coverTitle };
+        if (copy.profile === 'tech-product') return { brand: '产品方案', main: coverTitle };
+        if (copy.profile === 'toolknit' && /toolknit/i.test(coverTitle)) return { brand: 'ToolKnit Desktop', main: coverTitle };
+        return { brand: 'PPTX 草稿', main: coverTitle };
+      }
+
+      function pptDraftPreviewThemeClass(theme) {
+        const normalized = String(theme || 'minimal-mono').toLowerCase();
+        if (normalized === 'minimal-light') return 'theme-minimal-light';
+        if (normalized === 'minimal-mono') return 'theme-minimal-mono';
+        if (normalized === 'tech-blue') return 'theme-tech-blue';
+        return 'theme-minimal-dark';
+      }
+
+      function pptDraftPreviewThemeStyle(theme, outline) {
+        let tokens = null;
+        try {
+          tokens = resolvePptDraftThemeTokens(theme || outline?.request?.theme || 'minimal-mono', outline || {});
+        } catch {
+          tokens = null;
+        }
+        if (!tokens) return '';
+        const varMap = {
+          '--pd-bg': tokens.background,
+          '--pd-panel': tokens.panel,
+          '--pd-panel-alt': tokens.panelAlt,
+          '--pd-text': tokens.text,
+          '--pd-muted': tokens.muted,
+          '--pd-accent': tokens.accent,
+          '--pd-accent-soft': tokens.accentSoft,
+          '--pd-warm': tokens.warm,
+          '--pd-line': tokens.line,
+          '--pd-grid': tokens.grid,
+          '--pd-surface': tokens.surface
+        };
+        return Object.entries(varMap)
+          .filter(([, value]) => value)
+          .map(([key, value]) => `${key}: #${String(value).replace(/^#/, '').slice(0, 6)};`)
+          .join(' ');
+      }
+
+      function pptDraftPreviewBullets(slide, maxItems = 3) {
+        const body = Array.isArray(slide?.body) ? slide.body : [];
+        const bullets = body
+          .map(item => pptDraftInline(item, '', 92))
+          .filter(Boolean)
+          .slice(0, maxItems);
+        if (bullets.length) return bullets;
+        const claim = pptDraftInline(slide?.claim, '', 92);
+        return claim ? [claim] : [pptDraftPreviewLabel('fallbackBullet')];
+      }
+
+      function pptDraftPreviewVariant(slide, index, total) {
+        const role = String(slide?.role || slide?.type || '').toLowerCase();
+        const layout = slide?.layout_intent && typeof slide.layout_intent === 'object' ? slide.layout_intent : {};
+        const kind = String(layout.kind || layout.layout || slide?.type || '').toLowerCase();
+        const focus = String(layout.visual_focus || layout.visualFocus || slide?.visual_suggestion || '').toLowerCase();
+        if (role === 'cover' || index === 0) return 'cover';
+        if (role === 'closing' || index === total - 1) return 'closing';
+        if (role === 'comparison' || kind === 'comparison' || /对比|before|after|compare/.test(focus)) return 'comparison';
+        if (['workflow', 'roadmap', 'process'].includes(role) || ['process', 'timeline', 'roadmap'].includes(kind)) return 'process';
+        if (['matrix', 'gallery'].includes(kind) || /矩阵|分类|工具墙|gallery|matrix/.test(focus)) return 'gallery';
+        if (['visual-focus', 'image-text'].includes(kind) || /截图|图像|图片|screenshot|image|visual/.test(focus)) return 'visual';
+        return 'standard';
+      }
+
+      function pptDraftPreviewBulletList(items, className = 'ppt-draft-canvas-bullets') {
+        return `<ul class="${className}">${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+      }
+
+      function pptDraftPreviewTopline(slide, index, total, outline) {
+        const copy = pptDraftPreviewCopy(outline);
+        const role = pptDraftRoleLabel(slide?.role || slide?.type || 'content');
+        const kind = pptDraftLayoutKindLabel(slide?.layout_intent?.kind || slide?.layout_intent?.layout || slide?.type || '');
+        const brand = pptDraftInline(outline?.title, copy.footerFallback || 'PPTX', 42);
+        const semanticRole = String(slide?.role || slide?.type || '').toLowerCase();
+        if (index === 0 || semanticRole === 'cover' || semanticRole === 'title') {
+          return `
+          <div class="ppt-draft-canvas-footer ppt-draft-cover-footer">
+            <span>${escapeHtml(brand)}</span>
+            <span class="ppt-draft-canvas-page">${String(index + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}</span>
+          </div>
+        `;
+        }
+        return `
+          <div class="ppt-draft-canvas-topline">
+            <span>${escapeHtml(role)}${kind ? ` / ${escapeHtml(kind)}` : ''}</span>
+            <span class="ppt-draft-canvas-page">${String(index + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}</span>
+          </div>
+          <div class="ppt-draft-canvas-footer">
+            <span>${escapeHtml(brand)}</span>
+            <span>${escapeHtml(copy.generatedLabel || pptDraftPreviewLabel('generated'))}</span>
+          </div>
+        `;
+      }
+
+      function pptDraftPreviewVisualSlot(slide, variant = 'standard', outline = null, theme = null) {
+        const copy = pptDraftPreviewCopy(outline);
+        const layout = slide?.layout_intent && typeof slide.layout_intent === 'object' ? slide.layout_intent : {};
+        const fallback = variant === 'cover' ? copy.coverImageLabel : pptDraftPreviewLabel('replaceImage');
+        const visual = pptDraftInline(layout.visual_focus || layout.visualFocus || slide?.visual_suggestion, fallback, 120);
+        const isPortrait = /portrait|9:16|竖屏|手机|短视频|mobile/i.test(`${layout.media_format || ''} ${visual} ${variant}`);
+        const format = isPortrait || variant === 'cover' ? 'portrait' : 'landscape';
+        const themeTokens = resolvePptDraftThemeTokens(theme || outline?.request?.theme || outline?.draft_request?.theme || 'minimal-mono', outline || {});
+        const svg = placeholderSvg(themeTokens, visual, format);
+        return `
+          <div class="ppt-draft-visual-slot is-svg${isPortrait || variant === 'cover' ? ' is-portrait' : ''}" title="${escapeAttr(visual)}">
+            <img class="ppt-draft-visual-slot-image" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}" alt="${escapeAttr(visual)}" draggable="false">
+          </div>
+        `;
+      }
+
+      function pptDraftPreviewCanvas(slide, index, total, outline, theme) {
+        const variant = pptDraftPreviewVariant(slide, index, total);
+        const title = pptDraftInline(slide?.title, `Slide ${index + 1}`, 120);
+        const claim = pptDraftInline(slide?.claim, '', 150);
+        const bullets = pptDraftPreviewBullets(slide, variant === 'gallery' ? 4 : 3);
+        const themeClass = pptDraftPreviewThemeClass(theme);
+        const themeStyle = pptDraftPreviewThemeStyle(theme, outline);
+        let body = '';
+
+        if (variant === 'cover') {
+          const copy = pptDraftPreviewCopy(outline);
+          const titleParts = pptDraftPreviewTitleParts(outline, title);
+          const coverBrand = titleParts.brand;
+          const coverMain = titleParts.main;
+          const coverSubtitle = pptDraftInline(outline?.subtitle || outline?.narrative?.central_takeaway || outline?.purpose || claim, '', 120);
+          const metaItems = (Array.isArray(copy.coverMetaItems) ? copy.coverMetaItems : []).filter(Boolean);
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              <div class="ppt-draft-cover-copy">
+                <span class="ppt-draft-cover-eyebrow">${escapeHtml(copy.coverEyebrow || 'PRESENTATION / EDITABLE DRAFT')}</span>
+                <strong class="ppt-draft-cover-brand">${escapeHtml(coverBrand)}</strong>
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(coverMain)}</h3>
+                ${coverSubtitle ? `<p class="ppt-draft-canvas-claim">${escapeHtml(coverSubtitle)}</p>` : ''}
+                <i class="ppt-draft-cover-rule"></i>
+                <div class="ppt-draft-cover-meta">
+                  ${metaItems.map(item => `<span>${escapeHtml(item)}</span>`).join('')}
+                </div>
+                ${outline?.audience ? `<small class="ppt-draft-cover-audience">${escapeHtml(pptDraftInline(outline.audience, '', 80))}</small>` : ''}
+              </div>
+              ${pptDraftPreviewVisualSlot(slide, variant, outline, theme)}
+            </div>
+          `;
+        } else if (variant === 'closing') {
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              <div class="ppt-draft-cover-copy">
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(title)}</h3>
+                ${claim ? `<p class="ppt-draft-canvas-claim">${escapeHtml(claim)}</p>` : ''}
+                <div class="ppt-draft-canvas-panel ppt-draft-closing-actions">
+                  ${pptDraftPreviewBulletList(bullets)}
+                </div>
+              </div>
+              ${pptDraftPreviewVisualSlot(slide, variant, outline, theme)}
+            </div>
+          `;
+        } else if (variant === 'comparison') {
+          const copy = pptDraftPreviewCopy(outline);
+          const midpoint = Math.max(1, Math.ceil(bullets.length / 2));
+          const left = bullets.slice(0, midpoint);
+          const right = bullets.slice(midpoint);
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              <div class="ppt-draft-comparison-title">
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(title)}</h3>
+                ${claim ? `<p class="ppt-draft-canvas-claim">${escapeHtml(claim)}</p>` : ''}
+              </div>
+              <div class="ppt-draft-comparison-grid">
+                <div class="ppt-draft-mini-panel">
+                  <strong>${escapeHtml(copy.comparisonLeftLabel || pptDraftPreviewLabel('before'))}</strong>
+                  ${pptDraftPreviewBulletList(left.length ? left : bullets.slice(0, 1))}
+                </div>
+                <div class="ppt-draft-mini-panel">
+                  <strong>${escapeHtml(copy.comparisonRightLabel || pptDraftPreviewLabel('after'))}</strong>
+                  ${pptDraftPreviewBulletList(right.length ? right : bullets.slice(0, 1))}
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (variant === 'process') {
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              <div class="ppt-draft-process-title">
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(title)}</h3>
+                ${claim ? `<p class="ppt-draft-canvas-claim">${escapeHtml(claim)}</p>` : ''}
+              </div>
+              <div class="ppt-draft-process-steps">
+                ${bullets.slice(0, 4).map((item, stepIndex) => `
+                  <div class="ppt-draft-process-step">
+                    <span>${String(stepIndex + 1).padStart(2, '0')}</span>
+                    <strong>${escapeHtml(item)}</strong>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } else if (variant === 'gallery') {
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              <div class="ppt-draft-standard-copy">
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(title)}</h3>
+                ${claim ? `<p class="ppt-draft-canvas-claim">${escapeHtml(claim)}</p>` : ''}
+              </div>
+              <div class="ppt-draft-gallery-grid">
+                ${bullets.slice(0, 4).map((item) => `
+                  <div class="ppt-draft-gallery-cell">
+                    <i></i>
+                    <span>${escapeHtml(item)}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } else if (variant === 'visual') {
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              ${pptDraftPreviewVisualSlot(slide, variant, outline, theme)}
+              <div class="ppt-draft-standard-copy">
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(title)}</h3>
+                ${claim ? `<p class="ppt-draft-canvas-claim">${escapeHtml(claim)}</p>` : ''}
+                <div class="ppt-draft-canvas-panel">${pptDraftPreviewBulletList(bullets)}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          body = `
+            <div class="ppt-draft-canvas-layout">
+              <div class="ppt-draft-standard-copy">
+                <h3 class="ppt-draft-canvas-title">${escapeHtml(title)}</h3>
+                ${claim ? `<p class="ppt-draft-canvas-claim">${escapeHtml(claim)}</p>` : ''}
+                <div class="ppt-draft-canvas-panel">${pptDraftPreviewBulletList(bullets)}</div>
+              </div>
+              ${pptDraftPreviewVisualSlot(slide, variant, outline, theme)}
+            </div>
+          `;
+        }
+
+        return `
+          <div class="ppt-draft-slide-canvas ${themeClass} layout-${variant}" style="${escapeAttr(themeStyle)}">
+            ${pptDraftPreviewTopline(slide, index, total, outline)}
+            ${body}
+          </div>
+        `;
+      }
+
+      function pptDraftSlidePreviewHtml(slide, index, total, outline, theme) {
+        const title = pptDraftInline(slide?.title, `Slide ${index + 1}`, 120);
+        const role = pptDraftRoleLabel(slide?.role || slide?.type || 'content');
+        const kind = pptDraftLayoutKindLabel(slide?.layout_intent?.kind || slide?.layout_intent?.layout || slide?.type || '');
+        const density = pptDraftInline(slide?.layout_intent?.density, '', 18);
+        const focus = pptDraftInline(slide?.layout_intent?.visual_focus || slide?.layout_intent?.visualFocus || slide?.visual_suggestion, pptDraftPreviewLabel('replaceImage'), 180);
+        const tags = [role, kind, density].filter(Boolean);
+        return `
+          <article class="ppt-draft-slide-card" role="button" tabindex="0" data-ppt-draft-slide-index="${escapeAttr(String(index))}" title="${escapeAttr(pptDraftText('editorOpenHint'))}">
+            <div class="ppt-draft-slide-head">
+              <div class="ppt-draft-slide-number">${escapeHtml(String(slide?.page || index + 1))}</div>
+              <div class="ppt-draft-slide-head-main">
+                <strong title="${escapeAttr(title)}">${escapeHtml(title)}</strong>
+                <span>${escapeHtml(tags.join(' · '))}</span>
+              </div>
+            </div>
+            ${pptDraftPreviewCanvas(slide, index, total, outline, theme)}
+            <div class="ppt-draft-slide-foot">
+              <div class="ppt-draft-visual-note">
+                <strong>${escapeHtml(pptDraftPreviewLabel('visual'))}</strong>
+                <span title="${escapeAttr(focus)}">${escapeHtml(focus)}</span>
+              </div>
+              <div class="ppt-draft-slide-tags">
+                ${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}
+              </div>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderPptDraftResult(result) {
+        if (!result?.outline) return;
+        pptDraftLastResult = result;
+        const outline = result.outline;
+        const slides = Array.isArray(outline.slides) ? outline.slides : [];
+        const theme = result.theme || outline.request?.theme || 'minimal-mono';
+        if (pptDraftEmpty) pptDraftEmpty.hidden = true;
+        if (pptDraftResult) pptDraftResult.hidden = false;
+        if (pptDraftSummary) {
+          const deckTypeLabel = pptOutlineDeckTypeLabel(outline.deck_type || result.request?.deck_type || 'auto');
+          pptDraftSummary.innerHTML = `
+            <div class="ppt-draft-summary-main">
+              <span class="ppt-draft-summary-eyebrow">${escapeHtml(pptDraftPreviewLabel('preview'))}</span>
+              <strong class="ppt-draft-summary-title">${escapeHtml(outline.title || pptDraftText('title'))}</strong>
+              <p class="ppt-draft-summary-takeaway">
+                ${escapeHtml(pptDraftPreviewLabel('takeaway'))}：${escapeHtml(outline.narrative?.central_takeaway || pptDraftPreviewLabel('draftNote'))}
+              </p>
+            </div>
+            <div class="ppt-draft-summary-side">
+              <span class="ppt-outline-pill">${escapeHtml(pptDraftPreviewLabel('slides'))}：${escapeHtml(String(slides.length))}</span>
+              <span class="ppt-outline-pill">${escapeHtml(pptDraftPreviewLabel('theme'))}：${escapeHtml(pptDraftThemeLabel(theme))}</span>
+              <span class="ppt-outline-pill">${escapeHtml(pptDraftPreviewLabel('deckType'))}：${escapeHtml(deckTypeLabel)}</span>
+            </div>
+          `;
+        }
+        if (pptDraftSlideList) {
+          pptDraftSlideList.innerHTML = slides
+            .map((slide, index) => pptDraftSlidePreviewHtml(slide, index, slides.length, outline, theme))
+            .join('');
+        }
+      }
+
+      function clonePptDraftOutline(outline) {
+        try {
+          return JSON.parse(JSON.stringify(outline || {}));
+        } catch {
+          return null;
+        }
+      }
+
+      function pptDraftEditorSignature(outline = pptDraftEditorOutline, theme = pptDraftEditorTheme) {
+        const payload = JSON.stringify({
+          outline: outline || null,
+          theme: String(theme || '')
+        });
+        let hash = 0x811c9dc5;
+        for (let index = 0; index < payload.length; index += 1) {
+          hash ^= payload.charCodeAt(index);
+          hash = Math.imul(hash, 0x01000193) >>> 0;
+        }
+        return `ppt-draft:${hash.toString(16).padStart(8, '0')}`;
+      }
+
+      function clearPptDraftEditorDropTarget() {
+        if (!pptDraftEditorStrip) return;
+        pptDraftEditorStrip.querySelectorAll('.ppt-draft-editor-thumb.drop-target').forEach(item => item.classList.remove('drop-target'));
+        pptDraftEditorDropTargetIndex = -1;
+      }
+
+      function updatePptDraftEditorActionState() {
+        const slides = pptDraftEditorSlides();
+        const canMoveUp = pptDraftEditorSelectedIndex > 0 && slides.length > 1;
+        const canMoveDown = pptDraftEditorSelectedIndex >= 0 && pptDraftEditorSelectedIndex < slides.length - 1;
+        if (pptDraftEditorMoveUpBtn) pptDraftEditorMoveUpBtn.disabled = !canMoveUp;
+        if (pptDraftEditorMoveDownBtn) pptDraftEditorMoveDownBtn.disabled = !canMoveDown;
+        if (pptDraftEditorRestoreBtn) pptDraftEditorRestoreBtn.disabled = !pptDraftEditorOriginalOutline || !slides.length;
+      }
+
+      function readPptDraftEditorState() {
+        try {
+          const state = JSON.parse(localStorage.getItem(PPT_DRAFT_EDITOR_STATE_KEY) || 'null');
+          if (!state || typeof state !== 'object') return null;
+          return state;
+        } catch {
+          return null;
+        }
+      }
+
+      function writePptDraftEditorState() {
+        if (!pptDraftEditorOutline) return;
+        try {
+          localStorage.setItem(PPT_DRAFT_EDITOR_STATE_KEY, JSON.stringify({
+            signature: pptDraftEditorSourceSignature || pptDraftEditorSignature(),
+            outline: pptDraftEditorOutline,
+            theme: pptDraftEditorTheme,
+            selectedIndex: pptDraftEditorSelectedIndex,
+            savedAt: new Date().toISOString()
+          }));
+        } catch {}
+      }
+
+      function clearPptDraftEditorState() {
+        try {
+          localStorage.removeItem(PPT_DRAFT_EDITOR_STATE_KEY);
+        } catch {}
+      }
+
+      function schedulePptDraftEditorStateSave() {
+        if (pptDraftEditorAutosaveTimer) {
+          window.clearTimeout(pptDraftEditorAutosaveTimer);
+        }
+        pptDraftEditorAutosaveTimer = window.setTimeout(() => {
+          pptDraftEditorAutosaveTimer = null;
+          writePptDraftEditorState();
+        }, 180);
+      }
+
+      function pptDraftEditorSlides() {
+        return Array.isArray(pptDraftEditorOutline?.slides) ? pptDraftEditorOutline.slides : [];
+      }
+
+      function clampPptDraftEditorIndex(index) {
+        const slides = pptDraftEditorSlides();
+        if (!slides.length) return 0;
+        const value = Number(index);
+        if (!Number.isFinite(value)) return 0;
+        return Math.max(0, Math.min(slides.length - 1, Math.trunc(value)));
+      }
+
+      function syncPptDraftEditorFormToSlide() {
+        const slides = pptDraftEditorSlides();
+        const slide = slides[pptDraftEditorSelectedIndex];
+        if (!slide) return;
+        const title = pptDraftInline(pptDraftEditorSlideTitle?.value, slide.title || `Slide ${pptDraftEditorSelectedIndex + 1}`, 120);
+        const claim = pptDraftInline(pptDraftEditorClaim?.value, '', 180);
+        const bullets = String(pptDraftEditorBullets?.value || '')
+          .split(/\r?\n/)
+          .map(item => pptDraftInline(item.replace(/^[•\-\d.\s]+/, ''), '', 120))
+          .filter(Boolean)
+          .slice(0, 5);
+        const visual = pptDraftInline(pptDraftEditorVisual?.value, '', 180);
+        const note = pptDraftInline(pptDraftEditorNote?.value, '', 240);
+        slide.title = title;
+        slide.claim = claim;
+        slide.body = bullets.length ? bullets : [pptDraftPreviewLabel('fallbackBullet')];
+        slide.visual_suggestion = visual;
+        if (!slide.layout_intent || typeof slide.layout_intent !== 'object' || Array.isArray(slide.layout_intent)) {
+          slide.layout_intent = {};
+        }
+        if (visual) slide.layout_intent.visual_focus = visual;
+        slide.speaker_note = note;
+      }
+
+      function applyPptDraftEditorSavedState() {
+        const saved = readPptDraftEditorState();
+        if (!saved || !saved.outline) return;
+        if (saved.signature !== pptDraftEditorSourceSignature) return;
+        const restored = clonePptDraftOutline(saved.outline);
+        if (!restored) return;
+        pptDraftEditorOutline = restored;
+        pptDraftEditorTheme = saved.theme || pptDraftEditorTheme;
+        pptDraftEditorSelectedIndex = clampPptDraftEditorIndex(saved.selectedIndex);
+      }
+
+      function renderPptDraftEditorNavigation() {
+        const slides = pptDraftEditorSlides();
+        if (pptDraftEditorDeckTitle) pptDraftEditorDeckTitle.textContent = pptDraftEditorOutline?.title || '';
+        if (pptDraftEditorStrip) {
+          pptDraftEditorStrip.innerHTML = slides.map((slide, index) => `
+            <button class="ppt-draft-editor-thumb${index === pptDraftEditorSelectedIndex ? ' active' : ''}" type="button" draggable="true" data-ppt-draft-editor-index="${escapeAttr(String(index))}">
+              <span class="ppt-draft-editor-thumb-num">${escapeHtml(String(index + 1).padStart(2, '0'))}</span>
+              <span class="ppt-draft-editor-thumb-title">${escapeHtml(pptDraftInline(slide.title, `Slide ${index + 1}`, 80))}</span>
+            </button>
+          `).join('');
+          window.requestAnimationFrame(() => {
+            const active = pptDraftEditorStrip.querySelector(`[data-ppt-draft-editor-index="${pptDraftEditorSelectedIndex}"]`);
+            active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          });
+        }
+        updatePptDraftEditorActionState();
+      }
+
+      function renderPptDraftEditorPreview() {
+        const slides = pptDraftEditorSlides();
+        const slide = slides[pptDraftEditorSelectedIndex];
+        if (!slide) {
+          if (pptDraftEditorCanvas) pptDraftEditorCanvas.innerHTML = '';
+          if (pptDraftEditorCurrentPage) pptDraftEditorCurrentPage.textContent = '';
+          return;
+        }
+        if (pptDraftEditorCurrentPage) {
+          pptDraftEditorCurrentPage.textContent = pptDraftText('editorPage', {
+            page: String(pptDraftEditorSelectedIndex + 1),
+            total: String(slides.length)
+          });
+        }
+        if (pptDraftEditorCanvas) {
+          pptDraftEditorCanvas.innerHTML = pptDraftPreviewCanvas(slide, pptDraftEditorSelectedIndex, slides.length, pptDraftEditorOutline, pptDraftEditorTheme);
+        }
+      }
+
+      function loadPptDraftEditorForm() {
+        const slide = pptDraftEditorSlides()[pptDraftEditorSelectedIndex];
+        if (!slide) return;
+        if (pptDraftEditorSlideTitle) pptDraftEditorSlideTitle.value = slide.title || '';
+        if (pptDraftEditorClaim) pptDraftEditorClaim.value = slide.claim || '';
+        if (pptDraftEditorBullets) pptDraftEditorBullets.value = (Array.isArray(slide.body) ? slide.body : []).join('\n');
+        if (pptDraftEditorVisual) pptDraftEditorVisual.value = slide.visual_suggestion || slide.layout_intent?.visual_focus || '';
+        if (pptDraftEditorNote) pptDraftEditorNote.value = slide.speaker_note || '';
+      }
+
+      function renderPptDraftEditor() {
+        renderPptDraftEditorNavigation();
+        renderPptDraftEditorPreview();
+        loadPptDraftEditorForm();
+        schedulePptDraftEditorStateSave();
+        updatePptDraftEditorActionState();
+      }
+
+      function movePptDraftEditorSlideToIndex(targetIndex) {
+        syncPptDraftEditorFormToSlide();
+        const slides = pptDraftEditorSlides();
+        if (slides.length < 2) return;
+        const from = pptDraftEditorSelectedIndex;
+        const to = Math.max(0, Math.min(slides.length - 1, Math.trunc(Number(targetIndex))));
+        if (to === from || !Number.isFinite(to)) return;
+        const [moved] = slides.splice(from, 1);
+        const insertionIndex = to;
+        slides.splice(insertionIndex, 0, moved);
+        pptDraftEditorSelectedIndex = insertionIndex;
+        renderPptDraftEditor();
+        schedulePptDraftEditorStateSave();
+      }
+
+      function movePptDraftEditorSlide(direction) {
+        movePptDraftEditorSlideToIndex(pptDraftEditorSelectedIndex + direction);
+      }
+
+      function restorePptDraftEditorOriginal() {
+        if (!pptDraftEditorOriginalOutline) {
+          showToast(pptDraftText('editorNeedDraft'));
+          return;
+        }
+        const restored = clonePptDraftOutline(pptDraftEditorOriginalOutline);
+        if (!restored) return;
+        syncPptDraftEditorFormToSlide();
+        pptDraftEditorOutline = restored;
+        pptDraftEditorTheme = pptDraftEditorOriginalTheme || pptDraftEditorTheme;
+        pptDraftEditorSelectedIndex = clampPptDraftEditorIndex(pptDraftEditorSelectedIndex);
+        renderPptDraftEditor();
+        schedulePptDraftEditorStateSave();
+        showToast(pptDraftText('editorRestoredToast'));
+      }
+
+      function openPptDraftEditor(index = 0) {
+        if (!pptDraftLastResult?.outline) {
+          showToast(pptDraftText('editorNeedDraft'));
+          return;
+        }
+        pptDraftEditorOriginalOutline = clonePptDraftOutline(pptDraftLastResult.outline);
+        if (!pptDraftEditorOriginalOutline) {
+          showToast(pptDraftText('invalidAiResponse'));
+          return;
+        }
+        pptDraftEditorOriginalTheme = pptDraftLastResult.theme || pptDraftEditorOriginalOutline.request?.theme || 'minimal-mono';
+        pptDraftEditorSourceSignature = pptDraftEditorSignature(pptDraftEditorOriginalOutline, pptDraftEditorOriginalTheme);
+        pptDraftEditorOutline = clonePptDraftOutline(pptDraftEditorOriginalOutline);
+        pptDraftEditorTheme = pptDraftEditorOriginalTheme;
+        pptDraftEditorSelectedIndex = clampPptDraftEditorIndex(index);
+        applyPptDraftEditorSavedState();
+        pptDraftEditorOverlay?.classList.add('visible');
+        pptDraftEditorOverlay?.setAttribute('aria-hidden', 'false');
+        if (pptDraftEditorPlasmaBg && !pptDraftEditorPlasmaInstance) {
+          pptDraftEditorPlasmaInstance = initStandardToolPlasma(pptDraftEditorPlasmaBg);
+        }
+        renderPptDraftEditor();
+      }
+
+      function closePptDraftEditor({ force = false } = {}) {
+        if (!pptDraftEditorOverlay) return;
+        if (pptDraftEditorExporting && !force) {
+          showToast(pptDraftText('editorExporting'));
+          return;
+        }
+        if (pptDraftEditorAutosaveTimer) {
+          window.clearTimeout(pptDraftEditorAutosaveTimer);
+          pptDraftEditorAutosaveTimer = null;
+        }
+        if (pptDraftEditorOutline) {
+          writePptDraftEditorState();
+        }
+        pptDraftEditorOverlay.classList.remove('visible');
+        pptDraftEditorOverlay.setAttribute('aria-hidden', 'true');
+        pptDraftEditorPlasmaInstance = disposeStandardToolPlasma(pptDraftEditorPlasmaInstance);
+      }
+
+      function selectPptDraftEditorSlide(index) {
+        syncPptDraftEditorFormToSlide();
+        pptDraftEditorSelectedIndex = clampPptDraftEditorIndex(index);
+        renderPptDraftEditor();
+        schedulePptDraftEditorStateSave();
+      }
+
+      function updatePptDraftEditorCurrentSlide() {
+        syncPptDraftEditorFormToSlide();
+        renderPptDraftEditorNavigation();
+        renderPptDraftEditorPreview();
+        schedulePptDraftEditorStateSave();
+      }
+
+      async function exportPptDraftEditorResult() {
+        if (pptDraftEditorExporting) return;
+        if (!pptDraftEditorOutline) {
+          showToast(pptDraftText('editorNeedDraft'));
+          return;
+        }
+        syncPptDraftEditorFormToSlide();
+        pptDraftEditorExporting = true;
+        const originalLabel = pptDraftEditorExportBtn?.textContent || '';
+        if (pptDraftEditorExportBtn) {
+          pptDraftEditorExportBtn.disabled = true;
+          pptDraftEditorExportBtn.textContent = pptDraftText('editorExporting');
+        }
+        try {
+          const draft = await buildPptDraftPptx(pptDraftEditorOutline, {
+            theme: pptDraftEditorTheme,
+            request: {
+              ...(pptDraftEditorOutline.request || {}),
+              theme: pptDraftEditorTheme
+            }
+          });
+          renderPptDraftResult(draft);
+          const exported = await exportPptDraftResult(draft);
+          showToast(pptDraftText('editorExportedToast', { slides: draft.outline.slides.length }));
+          closePptDraftEditor({ force: true });
+          writePptDraftEditorState();
+          showPptDraftSuccess(exported.output_dir, exported);
+        } catch (error) {
+          console.error('Export edited PPT draft failed:', error);
+          showToast(pptAiGenerationErrorMessage(error, pptDraftText));
+        } finally {
+          pptDraftEditorExporting = false;
+          if (pptDraftEditorExportBtn) {
+            pptDraftEditorExportBtn.disabled = false;
+            pptDraftEditorExportBtn.textContent = originalLabel || pptDraftText('editorExport');
+          }
+        }
+      }
+
+      async function exportPptDraftResult(draft) {
+        const encoder = new TextEncoder();
+        const baseName = pptDraftOutputBaseName(draft.outline);
+        const outputDir = await getPptDraftOutputDirectory(baseName);
+        const pptxFile = `${baseName}.pptx`;
+        const runId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const markdown = createPptDraftMarkdown(draft.outline);
+        const outlineJson = `${JSON.stringify(draft.outline, null, 2)}\n`;
+        const publicResult = {
+          tool: 'ppt.draft',
+          dry_run: false,
+          output_dir: outputDir,
+          output_file: pptxFile,
+          output_path: pptImagesJoinPath(outputDir, pptxFile),
+          run_id: runId,
+          generated_at: new Date().toISOString(),
+          theme: draft.theme,
+          outline: draft.outline,
+          outputs: [],
+          manifest_path: pptImagesJoinPath(outputDir, 'manifest.json')
+        };
+        if (isTauri) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          for (const [fileName, bytes, kind] of [
+            [pptxFile, draft.bytes, 'pptx'],
+            ['outline.json', encoder.encode(outlineJson), 'json'],
+            ['outline.md', encoder.encode(markdown), 'markdown']
+          ]) {
+            const outputPath = await writeUniquePptImagesFile(invoke, outputDir, fileName, bytes);
+            publicResult.outputs.push({ path: outputPath, relative_path: fileName, kind, bytes: bytes.byteLength });
+            if (kind === 'pptx') publicResult.output_path = outputPath;
+          }
+          const manifest = {
+            ...createPptDraftManifest({
+              outline: draft.outline,
+              theme: draft.theme,
+              outputFile: pptxFile,
+              outputBytes: draft.bytes.byteLength,
+              outputs: publicResult.outputs
+            }),
+            tool: publicResult.tool,
+            dry_run: false,
+            output_dir: outputDir,
+            run_id: runId,
+            generated_at: publicResult.generated_at,
+            provider: { model: 'desktop-configured-provider' }
+          };
+          const manifestPath = await writeUniquePptImagesFile(invoke, outputDir, 'manifest.json', encoder.encode(`${JSON.stringify(manifest, null, 2)}\n`));
+          publicResult.manifest_path = manifestPath;
+          pptDraftLastOutputPath = outputDir;
+          return publicResult;
+        }
+        const zip = new JSZip();
+        zip.file(pptxFile, draft.bytes);
+        zip.file('outline.json', outlineJson);
+        zip.file('outline.md', markdown);
+        publicResult.outputs = [
+          { path: `${outputDir}/${pptxFile}`, relative_path: pptxFile, kind: 'pptx', bytes: draft.bytes.byteLength },
+          { path: `${outputDir}/outline.json`, relative_path: 'outline.json', kind: 'json', bytes: encoder.encode(outlineJson).byteLength },
+          { path: `${outputDir}/outline.md`, relative_path: 'outline.md', kind: 'markdown', bytes: encoder.encode(markdown).byteLength }
+        ];
+        zip.file('manifest.json', JSON.stringify({
+          ...createPptDraftManifest({
+            outline: draft.outline,
+            theme: draft.theme,
+            outputFile: pptxFile,
+            outputBytes: draft.bytes.byteLength,
+            outputs: publicResult.outputs
+          }),
+          tool: publicResult.tool,
+          dry_run: false,
+          output_dir: outputDir,
+          run_id: runId,
+          generated_at: publicResult.generated_at
+        }, null, 2));
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${baseName}_ppt_draft.zip`;
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        pptDraftLastOutputPath = outputDir;
+        return publicResult;
+      }
+
+      function showPptDraftSuccess(outputPath, result) {
+        if (pptDraftSuccessMeta) pptDraftSuccessMeta.textContent = pptDraftText('successMeta');
+        if (pptDraftSuccessSlides) pptDraftSuccessSlides.textContent = `${result?.outline?.slides?.length || 0}`;
+        if (pptDraftSuccessFile) pptDraftSuccessFile.textContent = result?.output_file || '';
+        if (pptDraftSuccessPath) pptDraftSuccessPath.textContent = displayFilesystemPath(outputPath);
+        pptDraftSuccessOverlay?.classList.add('visible');
+      }
+
+      function importOutlineIntoPptDraft(outline, sourceLabel = '') {
+        if (!outline) return false;
+        try {
+          const seed = pptDraftOutlineRequestSeed(outline, {
+            prompt: pptDraftPrompt?.value || '',
+            theme: pptDraftTheme?.value || 'minimal-mono',
+            locale: pptDraftLocale?.value || (getLang() === 'en' ? 'en' : 'zh-CN'),
+            deck_type: pptDraftDeckType?.value || 'auto',
+            audience: pptDraftAudience?.value || '',
+            purpose: pptDraftPurpose?.value || '',
+            tone: pptDraftTone?.value || '',
+            style: pptDraftStyle?.value || ''
+          });
+          const normalized = applyPptDraftOutlineDefaults(normalizePptDraftOutline(outline, {
+            ...seed
+          }));
+          syncPptDraftImportedOutline(normalized, sourceLabel || normalized.title || '');
+          return true;
+        } catch (error) {
+          console.error('Import outline into PPT draft failed:', error);
+          showToast(String(error?.userMessage || error?.message || error));
+          return false;
+        }
+      }
+
+      async function generatePptDraftFromUi() {
+        if (pptDraftBusy) return;
+        const request = collectPptDraftRequest();
+        if (!request) return;
+        pptDraftBusy = true;
+        if (pptDraftGenerateBtn) pptDraftGenerateBtn.disabled = true;
+        if (pptDraftOutlineImportBtn) pptDraftOutlineImportBtn.disabled = true;
+        if (pptDraftOutlineClearBtn) pptDraftOutlineClearBtn.disabled = true;
+        setPptAiPresetDisabled(pptDraftPresetButtons, true);
+        pptDraftController = new AbortController();
+        setPptDraftProgress(10, pptDraftImportedOutline ? pptDraftText('loadingOutline') : pptDraftText('validating'));
+        try {
+          let outline;
+          if (pptDraftImportedOutline) {
+            outline = normalizePptDraftOutline(pptDraftImportedOutline, {
+              ...request,
+              prompt: request.prompt || pptDraftImportedOutline.request?.prompt || pptDraftImportedOutline.title || ''
+            });
+            setPptDraftProgress(34, pptDraftText('building'));
+          } else {
+            if (!(localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key'))) {
+              throw new Error(pptDraftText('needApiKey'));
+            }
+            const messages = buildPptOutlineMessages({
+              ...request,
+              style: [request.style, `PPTX 草稿风格：${pptDraftThemeLabel(request.theme)}`].filter(Boolean).join('\n')
+            });
+            setPptDraftProgress(34, pptDraftText('generating'));
+            const content = await callDeepSeek(messages, pptDraftController.signal, 8192);
+            const parsed = extractPptOutlineJson(content);
+            if (!parsed) throw new Error('AI provider did not return valid PPT outline JSON.');
+            outline = normalizePptOutlineResult(parsed, request);
+            setPptDraftProgress(62, pptDraftText('building'));
+          }
+          const effectiveTheme = outline.request?.theme || request.theme;
+          const draftRequest = { ...request, theme: effectiveTheme };
+          const draft = await buildPptDraftPptx(outline, { theme: effectiveTheme, request: draftRequest });
+          renderPptDraftResult(draft);
+          setPptDraftProgress(82, pptDraftText('writing'));
+          const exported = await exportPptDraftResult(draft);
+          setPptDraftProgress(100, pptDraftText('writing'));
+          showToast(pptDraftText('generatedToast', { slides: draft.outline.slides.length }));
+          showPptDraftSuccess(exported.output_dir, exported);
+        } catch (error) {
+          console.error('PPT draft generation failed:', error);
+          showToast(pptAiGenerationErrorMessage(error, pptDraftText));
+        } finally {
+          window.setTimeout(() => setPptDraftProgress(0, pptDraftText('processing'), false), 260);
+          pptDraftBusy = false;
+          pptDraftController = null;
+          if (pptDraftGenerateBtn) pptDraftGenerateBtn.disabled = false;
+          if (pptDraftOutlineImportBtn) pptDraftOutlineImportBtn.disabled = false;
+          if (pptDraftOutlineClearBtn) pptDraftOutlineClearBtn.disabled = !pptDraftImportedOutline;
+          setPptAiPresetDisabled(pptDraftPresetButtons, false);
+        }
+      }
+
+      pptDraftBack?.addEventListener('click', closePptDraftOverlay);
+      pptDraftScrollArea?.addEventListener('scroll', updatePptDraftScrollTop, { passive: true });
+      pptDraftScrollTop?.addEventListener('click', () => {
+        pptDraftScrollArea?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      pptDraftPresetButtons.forEach(button => {
+        button.addEventListener('click', () => applyPptDraftPreset(button.dataset.pptDraftPreset));
+      });
+      pptDraftGenerateBtn?.addEventListener('click', () => { void generatePptDraftFromUi(); });
+      pptDraftOutlineImportBtn?.addEventListener('click', () => { void choosePptDraftOutlineFile(); });
+      pptDraftOutlineClearBtn?.addEventListener('click', () => clearPptDraftImportedOutline());
+      pptDraftOutlineFile?.addEventListener('change', (event) => { void handlePptDraftOutlineFileInput(event); });
+      pptDraftSlideList?.addEventListener('click', (event) => {
+        const card = event.target?.closest?.('.ppt-draft-slide-card');
+        if (!card || !pptDraftSlideList.contains(card)) return;
+        openPptDraftEditor(card.dataset.pptDraftSlideIndex);
+      });
+      pptDraftSlideList?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const card = event.target?.closest?.('.ppt-draft-slide-card');
+        if (!card || !pptDraftSlideList.contains(card)) return;
+        event.preventDefault();
+        openPptDraftEditor(card.dataset.pptDraftSlideIndex);
+      });
+      pptDraftEditorMoveUpBtn?.addEventListener('click', () => movePptDraftEditorSlide(-1));
+      pptDraftEditorMoveDownBtn?.addEventListener('click', () => movePptDraftEditorSlide(1));
+      pptDraftEditorRestoreBtn?.addEventListener('click', () => restorePptDraftEditorOriginal());
+      pptDraftEditorBack?.addEventListener('click', () => closePptDraftEditor());
+      pptDraftEditorStrip?.addEventListener('click', (event) => {
+        const item = event.target?.closest?.('[data-ppt-draft-editor-index]');
+        if (!item || !pptDraftEditorStrip.contains(item)) return;
+        selectPptDraftEditorSlide(item.dataset.pptDraftEditorIndex);
+      });
+      pptDraftEditorStrip?.addEventListener('dragstart', (event) => {
+        const item = event.target?.closest?.('[data-ppt-draft-editor-index]');
+        if (!item || !pptDraftEditorStrip.contains(item)) return;
+        pptDraftEditorDragIndex = Number(item.dataset.pptDraftEditorIndex);
+        if (pptDraftEditorDragIndex !== pptDraftEditorSelectedIndex) {
+          pptDraftEditorDragIndex = -1;
+          return;
+        }
+        clearPptDraftEditorDropTarget();
+        item.classList.add('dragging');
+        event.dataTransfer?.setData('text/plain', String(pptDraftEditorDragIndex));
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      });
+      pptDraftEditorStrip?.addEventListener('dragend', (event) => {
+        const item = event.target?.closest?.('[data-ppt-draft-editor-index]');
+        if (item) item.classList.remove('dragging');
+        pptDraftEditorDragIndex = -1;
+        clearPptDraftEditorDropTarget();
+      });
+      pptDraftEditorStrip?.addEventListener('dragover', (event) => {
+        const item = event.target?.closest?.('[data-ppt-draft-editor-index]');
+        if (!item || !pptDraftEditorStrip.contains(item)) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        const targetIndex = Number(item.dataset.pptDraftEditorIndex);
+        if (Number.isFinite(targetIndex) && targetIndex !== pptDraftEditorDropTargetIndex) {
+          clearPptDraftEditorDropTarget();
+          item.classList.add('drop-target');
+          pptDraftEditorDropTargetIndex = targetIndex;
+        }
+      });
+      pptDraftEditorStrip?.addEventListener('drop', (event) => {
+        const item = event.target?.closest?.('[data-ppt-draft-editor-index]');
+        if (!item || !pptDraftEditorStrip.contains(item)) return;
+        event.preventDefault();
+        const from = Number(event.dataTransfer?.getData('text/plain') || pptDraftEditorDragIndex);
+        const to = Number(item.dataset.pptDraftEditorIndex);
+        clearPptDraftEditorDropTarget();
+        if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return;
+        movePptDraftEditorSlideToIndex(to);
+      });
+      [pptDraftEditorSlideTitle, pptDraftEditorClaim, pptDraftEditorBullets, pptDraftEditorVisual, pptDraftEditorNote]
+        .forEach(input => input?.addEventListener('input', updatePptDraftEditorCurrentSlide));
+      pptDraftEditorExportBtn?.addEventListener('click', () => { void exportPptDraftEditorResult(); });
+      document.addEventListener('keydown', (event) => {
+        if (!pptDraftEditorOverlay?.classList.contains('visible')) return;
+        const targetTag = String(event.target?.tagName || '').toLowerCase();
+        const editingField = event.target?.isContentEditable || targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select';
+        if (!editingField) {
+          if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+            event.preventDefault();
+            event.stopPropagation();
+            selectPptDraftEditorSlide(pptDraftEditorSelectedIndex - 1);
+            return;
+          }
+          if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+            event.preventDefault();
+            event.stopPropagation();
+            selectPptDraftEditorSlide(pptDraftEditorSelectedIndex + 1);
+            return;
+          }
+          if (event.key === 'Home') {
+            event.preventDefault();
+            event.stopPropagation();
+            selectPptDraftEditorSlide(0);
+            return;
+          }
+          if (event.key === 'End') {
+            event.preventDefault();
+            event.stopPropagation();
+            selectPptDraftEditorSlide(pptDraftEditorSlides().length - 1);
+            return;
+          }
+        }
+        if (event.key === 'Escape') {
+          closePptDraftEditor();
+        }
+      });
+      pptDraftSuccessOk?.addEventListener('click', () => {
+        pptDraftSuccessOverlay?.classList.remove('visible');
+      });
+      pptDraftSuccessOpenFolder?.addEventListener('click', async () => {
+        if (!isTauri || !pptDraftLastOutputPath) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_path', { path: pptDraftLastOutputPath });
+        } catch (error) {
+          console.error('Open PPT draft output folder failed:', error);
+          showToast(pptDraftText('openFolderFailed'));
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="ppt-draft"]').forEach(item => item.addEventListener('click', openPptDraftOverlay));
+
+      onLangChange(() => {
+        if (!pptDraftOverlay?.classList.contains('visible')) return;
+        if (!pptDraftLastResult) {
+          if (pptDraftLocale) pptDraftLocale.value = getLang() === 'en' ? 'en' : 'zh-CN';
+          return;
+        }
+        renderPptDraftResult(pptDraftLastResult);
+        if (pptDraftEditorOverlay?.classList.contains('visible')) {
+          renderPptDraftEditor();
         }
       });
 
@@ -3768,6 +9550,12 @@
         return largeFileCleanupCandidates.reduce((sum, item) => sum + (Number(item.size_bytes) || 0), 0);
       }
 
+      function largeFileCleanupSelectedBytes() {
+        return largeFileCleanupCandidates.reduce((sum, item) => (
+          largeFileCleanupSelectedPaths.has(item.path) ? sum + (Number(item.size_bytes) || 0) : sum
+        ), 0);
+      }
+
       function largeFileCleanupAnalyzeCount() {
         return largeFileCleanupCandidates.filter(item => item.ai_decision || item.aiDecision).length;
       }
@@ -3802,6 +9590,25 @@
           largeFileCleanupSizeSortCloseTimer = null;
         }
         largeFileCleanupSizeSort?.classList.add('is-open');
+        largeFileCleanupSizeSortMenu?.classList.add('is-open');
+        if (largeFileCleanupSizeSortMenu && largeFileCleanupSizeSortTrigger) {
+          const triggerRect = largeFileCleanupSizeSortTrigger.getBoundingClientRect();
+          const menuWidth = largeFileCleanupSizeSortMenu.offsetWidth;
+          const menuHeight = largeFileCleanupSizeSortMenu.offsetHeight;
+          const padding = 10;
+          let left = triggerRect.right - menuWidth;
+          left = Math.min(left, window.innerWidth - menuWidth - padding);
+          left = Math.max(padding, left);
+          const belowTop = triggerRect.bottom + 8;
+          const aboveTop = triggerRect.top - menuHeight - 8;
+          let top = belowTop;
+          if (belowTop + menuHeight > window.innerHeight - padding) {
+            top = aboveTop;
+          }
+          top = Math.max(padding, Math.min(top, window.innerHeight - menuHeight - padding));
+          largeFileCleanupSizeSortMenu.style.left = `${left}px`;
+          largeFileCleanupSizeSortMenu.style.top = `${top}px`;
+        }
         syncLargeFileCleanupSizeSortUi();
       }
 
@@ -3809,6 +9616,7 @@
         if (largeFileCleanupSizeSortCloseTimer) clearTimeout(largeFileCleanupSizeSortCloseTimer);
         largeFileCleanupSizeSortCloseTimer = setTimeout(() => {
           largeFileCleanupSizeSort?.classList.remove('is-open');
+          largeFileCleanupSizeSortMenu?.classList.remove('is-open');
           syncLargeFileCleanupSizeSortUi();
           largeFileCleanupSizeSortCloseTimer = null;
         }, Math.max(0, delay));
@@ -3895,8 +9703,8 @@
         const folderText = largeFileCleanupRootPath || t('home.cleanupLargeFilesPage.folderPlaceholder');
         const statusText = extraText || largeFileCleanupSummaryStatus || '';
         const labelMap = getLang() === 'zh'
-          ? { folder: '目录', driveSpace: '盘空间', files: '候选', size: '合计', selected: '已选', skipped: '保护目录', analyzed: 'AI' }
-          : { folder: 'Folder', driveSpace: 'Drive', files: 'Candidates', size: 'Total', selected: 'Selected', skipped: 'Protected', analyzed: 'AI' };
+          ? { folder: '目录', driveSpace: '盘空间', files: '候选', size: '合计', selected: '已选', selectedSize: '已选大小', skipped: '保护目录', analyzed: 'AI' }
+          : { folder: 'Folder', driveSpace: 'Drive', files: 'Candidates', size: 'Total', selected: 'Selected', selectedSize: 'Selected size', skipped: 'Protected', analyzed: 'AI' };
         const driveSpaceText = isLargeFileCleanupDriveRoot(largeFileCleanupRootPath) ? largeFileCleanupDriveSpaceText() : '';
         const chips = [
           { key: 'folder', label: folderText, strong: labelMap.folder },
@@ -3905,7 +9713,8 @@
           { key: 'size', label: t('home.cleanupLargeFilesPage.summarySize', { size: formatFileSize(largeFileCleanupTotalBytes()) }), strong: labelMap.size },
           { key: 'selected', label: `${largeFileCleanupSelectedCount()} / ${largeFileCleanupCandidates.length}`, strong: labelMap.selected },
           { key: 'skipped', label: t('home.cleanupLargeFilesPage.summarySkipped', { count: largeFileCleanupSkippedDirs }), strong: labelMap.skipped },
-          { key: 'analyzed', label: t('home.cleanupLargeFilesPage.summaryAnalyzed', { count: largeFileCleanupAnalyzeCount() }), strong: labelMap.analyzed }
+          { key: 'analyzed', label: t('home.cleanupLargeFilesPage.summaryAnalyzed', { count: largeFileCleanupAnalyzeCount() }), strong: labelMap.analyzed },
+          { key: 'selected-size', label: formatFileSize(largeFileCleanupSelectedBytes()), strong: labelMap.selectedSize }
         ];
         const statusChip = statusText ? `<span class="cleanup-large-files-summary-item cleanup-large-files-summary-status"><strong>${escapeHtml(statusText)}</strong></span>` : '';
         largeFileCleanupSummary.innerHTML = `${statusChip}${chips.map(({ key, label, strong }) => `<span class="cleanup-large-files-summary-item" data-kind="${escapeAttr(key)}"><strong>${escapeHtml(strong)}</strong><span>${escapeHtml(label)}</span></span>`).join('')}`;
@@ -4073,7 +9882,7 @@
         if (!largeFileCleanupCandidates.length) {
           const row = document.createElement('tr');
           const cell = document.createElement('td');
-          cell.colSpan = 8;
+          cell.colSpan = 7;
           cell.className = 'cleanup-large-files-summary-empty';
           cell.textContent = largeFileCleanupBusy
             ? t('home.cleanupLargeFilesPage.scanning')
@@ -4087,11 +9896,11 @@
 
         for (const candidate of largeFileCleanupSortedCandidates()) {
           const selected = largeFileCleanupSelectedPaths.has(candidate.path);
-          const row = document.createElement('tr');
-          row.dataset.path = candidate.path;
-          if (selected) row.classList.add('is-selected');
           const reasonDisplay = largeFileCleanupReasonDisplay(candidate);
-          row.innerHTML = `
+          const mainRow = document.createElement('tr');
+          mainRow.dataset.path = candidate.path;
+          if (selected) mainRow.classList.add('is-selected');
+          mainRow.innerHTML = `
             <td><input class="cleanup-large-files-check" type="checkbox" data-path="${escapeAttr(candidate.path)}"${selected ? ' checked' : ''}></td>
             <td>
               <span class="cleanup-large-files-item-main">${escapeHtml(candidate.name)}</span>
@@ -4102,11 +9911,19 @@
             <td>${escapeHtml(largeFileCleanupFormatDate(candidate.modified_at))}</td>
             <td>${escapeHtml(candidate.folder_hint || '--')}</td>
             <td><span class="cleanup-large-files-risk cleanup-large-files-risk-${escapeHtml(candidate.risk || 'medium')}">${escapeHtml(candidate.risk || 'medium')}</span></td>
-            <td class="cleanup-large-files-reason">
+          `;
+          largeFileCleanupTableBody.appendChild(mainRow);
+
+          const reasonRow = document.createElement('tr');
+          reasonRow.dataset.path = candidate.path;
+          reasonRow.className = 'cleanup-large-files-reason-row';
+          if (selected) reasonRow.classList.add('is-selected');
+          reasonRow.innerHTML = `
+            <td colspan="7" class="cleanup-large-files-reason">
               <div class="cleanup-large-files-reason-preview" data-full-reason="${escapeAttr(reasonDisplay.text)}">${reasonDisplay.html}</div>
             </td>
           `;
-          largeFileCleanupTableBody.appendChild(row);
+          largeFileCleanupTableBody.appendChild(reasonRow);
         }
 
         largeFileCleanupTableBody.querySelectorAll('.cleanup-large-files-check').forEach(checkbox => {
@@ -4117,18 +9934,13 @@
             else largeFileCleanupSelectedPaths.delete(path);
             const row = checkbox.closest('tr');
             row?.classList.toggle('is-selected', checkbox.checked);
+            const reasonRow = row?.nextElementSibling;
+            if (reasonRow?.classList.contains('cleanup-large-files-reason-row')) {
+              reasonRow.classList.toggle('is-selected', checkbox.checked);
+            }
             largeFileCleanupSyncSelectionUi();
             largeFileCleanupUpdateSummary();
           });
-        });
-        largeFileCleanupTableBody.querySelectorAll('.cleanup-large-files-reason-preview').forEach(preview => {
-          preview.addEventListener('mouseenter', () => {
-            const fullText = preview.dataset.fullReason || '';
-            const isTruncated = preview.scrollHeight > preview.clientHeight + 2
-              || Array.from(preview.querySelectorAll('.cleanup-large-files-reason-line')).some(line => line.scrollWidth > line.clientWidth + 2);
-            if (isTruncated || fullText.length > 72) showLargeFileCleanupReasonToast(fullText);
-          });
-          preview.addEventListener('mouseleave', () => closeLargeFileCleanupHoverToast(900));
         });
         largeFileCleanupTableBody.querySelectorAll('tr[data-path]').forEach(row => {
           row.addEventListener('contextmenu', event => {
@@ -4650,10 +10462,22 @@
       largeFileCleanupDriveRootCancel?.addEventListener('click', () => closeLargeFileCleanupDriveRootOverlay(false));
       largeFileCleanupDriveRootConfirm?.addEventListener('click', () => closeLargeFileCleanupDriveRootOverlay(true));
       largeFileCleanupDriveRootOverlay?.querySelector('.ffmpeg-overlay-bg')?.addEventListener('click', () => closeLargeFileCleanupDriveRootOverlay(false));
+      if (largeFileCleanupSizeSortMenu && largeFileCleanupSizeSortMenu.parentElement !== document.body) {
+        document.body.appendChild(largeFileCleanupSizeSortMenu);
+      }
       largeFileCleanupSizeSort?.addEventListener('mouseenter', () => {
         openLargeFileCleanupSizeSortMenu();
       });
       largeFileCleanupSizeSort?.addEventListener('mouseleave', () => {
+        closeLargeFileCleanupSizeSortMenu(420);
+      });
+      largeFileCleanupSizeSortMenu?.addEventListener('mouseenter', () => {
+        if (largeFileCleanupSizeSortCloseTimer) {
+          clearTimeout(largeFileCleanupSizeSortCloseTimer);
+          largeFileCleanupSizeSortCloseTimer = null;
+        }
+      });
+      largeFileCleanupSizeSortMenu?.addEventListener('mouseleave', () => {
         closeLargeFileCleanupSizeSortMenu(420);
       });
       largeFileCleanupSizeSortTrigger?.addEventListener('click', event => {
@@ -4672,6 +10496,7 @@
       });
       document.addEventListener('click', event => {
         if (largeFileCleanupContextMenu?.contains(event.target)) return;
+        if (largeFileCleanupSizeSortMenu?.contains(event.target)) return;
         if (largeFileCleanupSizeSort?.contains(event.target)) return;
         closeLargeFileCleanupSizeSortMenu(0);
         hideLargeFileCleanupContextMenu();
@@ -4704,6 +10529,290 @@
         largeFileCleanupRenderTable();
         syncLargeFileCleanupSizeSortUi();
         largeFileCleanupRenderAiCard();
+      });
+
+      // --- C-drive (system) cleanup ---
+      const cDriveCleanupOverlay = document.getElementById('cDriveCleanupOverlay');
+      const cDriveCleanupPlasmaBg = document.getElementById('cDriveCleanupPlasmaBg');
+      const cDriveCleanupBack = document.getElementById('cDriveCleanupBack');
+      const cDriveCleanupOptions = cDriveCleanupOverlay ? Array.from(cDriveCleanupOverlay.querySelectorAll('.c-drive-cleanup-option')) : [];
+      const cDriveCleanupExplain = document.getElementById('cDriveCleanupExplain');
+      const cDriveCleanupFooterBtn = document.getElementById('cDriveCleanupConfirmBtn');
+      const cDriveCleanupAdminMask = document.getElementById('cDriveCleanupAdminMask');
+      const cDriveCleanupAdminRelaunch = document.getElementById('cDriveCleanupAdminRelaunch');
+      const cDriveCleanupConfirmMask = document.getElementById('cDriveCleanupConfirmMask');
+      const cDriveCleanupConfirmTier = document.getElementById('cDriveCleanupConfirmTier');
+      const cDriveCleanupConfirmList = document.getElementById('cDriveCleanupConfirmList');
+      const cDriveCleanupConfirmConsequences = document.getElementById('cDriveCleanupConfirmConsequences');
+      const cDriveCleanupConfirmRun = document.getElementById('cDriveCleanupConfirmRun');
+      const cDriveCleanupConfirmCancel = document.getElementById('cDriveCleanupConfirmCancel');
+
+      let cDriveCleanupPlasmaInstance = null;
+      let cDriveCleanupSelectedTier = 'low';
+      let cDriveCleanupScanData = null;
+      let cDriveCleanupScanRunId = 0;
+      let cDriveCleanupRunning = false;
+      let cDriveCleanupCountdownTimer = null;
+
+      const CDRIVE_TIER_CONFIG = {
+        low: {
+          riskKey: 'home.cDriveCleanupPage.tierLow',
+          nameKey: 'home.cDriveCleanupPage.tierLowName',
+          titleKey: 'home.cDriveCleanupPage.explainLowTitle',
+          bodyKey: 'home.cDriveCleanupPage.explainLowBody',
+          itemsKey: 'home.cDriveCleanupPage.explainLowItems',
+          warnKey: null
+        },
+        medium: {
+          riskKey: 'home.cDriveCleanupPage.tierMedium',
+          nameKey: 'home.cDriveCleanupPage.tierMediumName',
+          titleKey: 'home.cDriveCleanupPage.explainMediumTitle',
+          bodyKey: 'home.cDriveCleanupPage.explainMediumBody',
+          itemsKey: 'home.cDriveCleanupPage.explainMediumItems',
+          warnKey: null
+        },
+        high: {
+          riskKey: 'home.cDriveCleanupPage.tierHigh',
+          nameKey: 'home.cDriveCleanupPage.tierHighName',
+          titleKey: 'home.cDriveCleanupPage.explainHighTitle',
+          bodyKey: 'home.cDriveCleanupPage.explainHighBody',
+          itemsKey: 'home.cDriveCleanupPage.explainHighItems',
+          warnKey: 'home.cDriveCleanupPage.explainHighWarn'
+        }
+      };
+
+      async function cDriveCleanupInvoke(name, args) {
+        if (!isTauri) throw new Error('desktop-only');
+        const { invoke } = await import('@tauri-apps/api/core');
+        return args === undefined ? invoke(name) : invoke(name, args);
+      }
+
+      function cDriveCleanupTierSummary(tier) {
+        if (!cDriveCleanupScanData || !Array.isArray(cDriveCleanupScanData.tiers)) return null;
+        return cDriveCleanupScanData.tiers.find(item => item.tier === tier) || null;
+      }
+
+      function cDriveCleanupSplitItems(text) {
+        return String(text || '').split(/[、,，]/).map(item => item.trim()).filter(Boolean);
+      }
+
+      function cDriveCleanupRenderSizes() {
+        cDriveCleanupOptions.forEach(button => {
+          const summary = cDriveCleanupTierSummary(button.dataset.tier);
+          const sizeEl = button.querySelector('.c-drive-cleanup-option-size');
+          if (!sizeEl) return;
+          if (summary) {
+            button.classList.add('is-scanned');
+            sizeEl.innerHTML = `<b>${escapeHtml(t('home.cDriveCleanupPage.estimate', { size: formatFileSize(summary.bytes || 0) }))}</b>`;
+          } else {
+            button.classList.remove('is-scanned');
+            sizeEl.innerHTML = `<i class="c-drive-cleanup-spinner" aria-hidden="true"></i><span>${escapeHtml(t('home.cDriveCleanupPage.scanning'))}</span>`;
+          }
+        });
+      }
+
+      function cDriveCleanupRenderExplain() {
+        if (!cDriveCleanupExplain) return;
+        const config = CDRIVE_TIER_CONFIG[cDriveCleanupSelectedTier] || CDRIVE_TIER_CONFIG.low;
+        const items = cDriveCleanupSplitItems(t(config.itemsKey));
+        const chips = items.map(item => `<span class="c-drive-cleanup-explain-item">${escapeHtml(item)}</span>`).join('');
+        const warn = config.warnKey
+          ? `<div class="c-drive-cleanup-explain-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span>${escapeHtml(t(config.warnKey))}</span></div>`
+          : '';
+        cDriveCleanupExplain.innerHTML = `
+          <div class="c-drive-cleanup-explain-head">
+            <span class="c-drive-cleanup-option-risk c-drive-cleanup-risk-${cDriveCleanupSelectedTier}">${escapeHtml(t(config.riskKey))}</span>
+            <h2 class="c-drive-cleanup-explain-title">${escapeHtml(t(config.titleKey))}</h2>
+          </div>
+          <p class="c-drive-cleanup-explain-body">${escapeHtml(t(config.bodyKey))}</p>
+          <div class="c-drive-cleanup-explain-items">${chips}</div>
+          ${warn}`;
+      }
+
+      function cDriveCleanupSelect(tier) {
+        cDriveCleanupSelectedTier = tier;
+        cDriveCleanupOptions.forEach(button => {
+          const active = button.dataset.tier === tier;
+          button.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+        cDriveCleanupRenderExplain();
+        if (cDriveCleanupFooterBtn) {
+          cDriveCleanupFooterBtn.disabled = cDriveCleanupRunning || !cDriveCleanupTierSummary(tier);
+        }
+      }
+
+      function cDriveCleanupShowAdminMask() {
+        cDriveCleanupAdminMask?.classList.add('visible');
+        cDriveCleanupAdminMask?.setAttribute('aria-hidden', 'false');
+      }
+
+      function cDriveCleanupClearCountdown() {
+        if (cDriveCleanupCountdownTimer) {
+          clearTimeout(cDriveCleanupCountdownTimer);
+          cDriveCleanupCountdownTimer = null;
+        }
+      }
+
+      function cDriveCleanupCloseConfirm() {
+        cDriveCleanupClearCountdown();
+        if (cDriveCleanupConfirmRun) {
+          cDriveCleanupConfirmRun.disabled = true;
+          cDriveCleanupConfirmRun.textContent = t('home.cDriveCleanupPage.confirmCountdown', { n: 5 });
+        }
+        cDriveCleanupConfirmMask?.classList.remove('visible');
+        cDriveCleanupConfirmMask?.setAttribute('aria-hidden', 'true');
+      }
+
+      function cDriveCleanupStartCountdown() {
+        cDriveCleanupClearCountdown();
+        let remaining = 5;
+        const update = () => {
+          if (remaining <= 0) {
+            if (cDriveCleanupConfirmRun) {
+              cDriveCleanupConfirmRun.disabled = false;
+              cDriveCleanupConfirmRun.textContent = t('home.cDriveCleanupPage.confirmReady');
+            }
+            cDriveCleanupCountdownTimer = null;
+            return;
+          }
+          if (cDriveCleanupConfirmRun) {
+            cDriveCleanupConfirmRun.disabled = true;
+            cDriveCleanupConfirmRun.textContent = t('home.cDriveCleanupPage.confirmCountdown', { n: remaining });
+          }
+          remaining -= 1;
+          cDriveCleanupCountdownTimer = setTimeout(update, 1000);
+        };
+        update();
+      }
+
+      function cDriveCleanupOpenConfirm() {
+        const config = CDRIVE_TIER_CONFIG[cDriveCleanupSelectedTier] || CDRIVE_TIER_CONFIG.low;
+        const items = cDriveCleanupSplitItems(t(config.itemsKey));
+        if (cDriveCleanupConfirmTier) cDriveCleanupConfirmTier.textContent = t(config.nameKey);
+        if (cDriveCleanupConfirmList) {
+          cDriveCleanupConfirmList.innerHTML = items.map(item => `<span>${escapeHtml(item)}</span>`).join('');
+        }
+        if (cDriveCleanupConfirmConsequences) {
+          if (config.warnKey) {
+            cDriveCleanupConfirmConsequences.textContent = t(config.warnKey);
+            cDriveCleanupConfirmConsequences.hidden = false;
+          } else {
+            cDriveCleanupConfirmConsequences.hidden = true;
+          }
+        }
+        cDriveCleanupConfirmMask?.classList.add('visible');
+        cDriveCleanupConfirmMask?.setAttribute('aria-hidden', 'false');
+        cDriveCleanupStartCountdown();
+      }
+
+      async function cDriveCleanupStartScan() {
+        const runId = ++cDriveCleanupScanRunId;
+        cDriveCleanupScanData = null;
+        cDriveCleanupRenderSizes();
+        if (cDriveCleanupFooterBtn) cDriveCleanupFooterBtn.disabled = true;
+        try {
+          const data = await cDriveCleanupInvoke('system_cleanup_scan');
+          if (runId !== cDriveCleanupScanRunId) return;
+          cDriveCleanupScanData = data || null;
+          if (data && data.is_admin === false) {
+            cDriveCleanupShowAdminMask();
+            return;
+          }
+          cDriveCleanupRenderSizes();
+          cDriveCleanupSelect(cDriveCleanupSelectedTier);
+        } catch (error) {
+          console.error('C-drive cleanup scan failed:', error);
+          window.showToast?.(t('home.cDriveCleanupPage.scanFailed'));
+        }
+      }
+
+      async function cDriveCleanupRunSelected() {
+        if (cDriveCleanupRunning) return;
+        const tier = cDriveCleanupSelectedTier;
+        cDriveCleanupRunning = true;
+        if (cDriveCleanupFooterBtn) cDriveCleanupFooterBtn.disabled = true;
+        if (cDriveCleanupConfirmRun) {
+          cDriveCleanupConfirmRun.disabled = true;
+          cDriveCleanupConfirmRun.textContent = t('home.cDriveCleanupPage.cleaning');
+        }
+        try {
+          const result = await cDriveCleanupInvoke('system_cleanup_run', { tier });
+          cDriveCleanupCloseConfirm();
+          window.showToast?.(t('home.cDriveCleanupPage.cleaningDone', { size: formatFileSize(result?.freed_bytes || 0) }));
+          await cDriveCleanupStartScan();
+        } catch (error) {
+          console.error('C-drive cleanup run failed:', error);
+          cDriveCleanupCloseConfirm();
+          window.showToast?.(error?.message || t('home.cDriveCleanupPage.cleaningFailed'));
+        } finally {
+          cDriveCleanupRunning = false;
+          if (cDriveCleanupFooterBtn) {
+            cDriveCleanupFooterBtn.disabled = !cDriveCleanupTierSummary(cDriveCleanupSelectedTier);
+          }
+        }
+      }
+
+      function cDriveCleanupOpen() {
+        if (!cDriveCleanupOverlay) return;
+        cDriveCleanupOverlay.classList.add('visible');
+        cDriveCleanupOverlay.setAttribute('aria-hidden', 'false');
+        if (cDriveCleanupPlasmaBg && !cDriveCleanupPlasmaInstance) {
+          cDriveCleanupPlasmaInstance = initStandardToolPlasma(cDriveCleanupPlasmaBg);
+        }
+        cDriveCleanupSelectedTier = 'low';
+        cDriveCleanupSelect('low');
+        cDriveCleanupStartScan();
+      }
+
+      function cDriveCleanupClose() {
+        if (cDriveCleanupRunning) {
+          window.showToast?.(getLang() === 'zh' ? '正在清理，请稍后再关闭。' : 'Please wait until cleanup finishes.');
+          return;
+        }
+        cDriveCleanupCloseConfirm();
+        cDriveCleanupAdminMask?.classList.remove('visible');
+        cDriveCleanupAdminMask?.setAttribute('aria-hidden', 'true');
+        if (!cDriveCleanupOverlay) return;
+        cDriveCleanupOverlay.classList.remove('visible');
+        cDriveCleanupOverlay.setAttribute('aria-hidden', 'true');
+        if (cDriveCleanupPlasmaInstance) {
+          cDriveCleanupPlasmaInstance();
+          cDriveCleanupPlasmaInstance = null;
+        }
+      }
+
+      cDriveCleanupBack?.addEventListener('click', cDriveCleanupClose);
+      cDriveCleanupOptions.forEach(button => {
+        button.addEventListener('click', () => cDriveCleanupSelect(button.dataset.tier));
+      });
+      cDriveCleanupFooterBtn?.addEventListener('click', cDriveCleanupOpenConfirm);
+      cDriveCleanupConfirmCancel?.addEventListener('click', cDriveCleanupCloseConfirm);
+      cDriveCleanupConfirmRun?.addEventListener('click', cDriveCleanupRunSelected);
+      cDriveCleanupAdminRelaunch?.addEventListener('click', async () => {
+        try {
+          await cDriveCleanupInvoke('system_cleanup_relaunch_as_admin');
+        } catch (error) {
+          console.error('Relaunch as admin failed:', error);
+          window.showToast?.(error?.message || t('home.cDriveCleanupPage.adminRelaunchFailed'));
+        }
+      });
+      document.querySelectorAll('.audio-list-item[data-tool="c-drive-cleanup"]').forEach(item => {
+        item.addEventListener('click', cDriveCleanupOpen);
+        item.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            cDriveCleanupOpen();
+          }
+        });
+      });
+
+      onLangChange(() => {
+        if (!cDriveCleanupOverlay?.classList.contains('visible')) return;
+        cDriveCleanupRenderSizes();
+        cDriveCleanupRenderExplain();
+        if (cDriveCleanupConfirmMask?.classList.contains('visible') && cDriveCleanupConfirmRun?.disabled) {
+          cDriveCleanupStartCountdown();
+        }
       });
 
       // Click on audio-list-item with data-tool="convert" to open the convert page
@@ -4785,8 +10894,12 @@
         selectedAudioFiles.forEach((file, index) => {
           const item = document.createElement('div');
           item.className = 'audio-convert-file-item';
+          item.dataset.index = index;
+          const sizeText = Number(file.size) > 0 ? formatFileSize(file.size) : '';
           item.innerHTML = `
+            <span class="audio-convert-file-index">${index + 1}</span>
             <span class="audio-convert-file-name">${escapeHtml(file.name)}</span>
+            ${sizeText ? `<span class="audio-convert-file-size">${escapeHtml(sizeText)}</span>` : ''}
             <button class="audio-convert-file-remove" data-index="${index}" aria-label="remove">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
@@ -6478,7 +12591,16 @@
         selectedVideoFiles.forEach((file, index) => {
           const item = document.createElement('div');
           item.className = 'audio-convert-file-item';
-          item.innerHTML = `<span class="audio-convert-file-name">${escapeHtml(file.name)}</span><button class="audio-convert-file-remove" data-index="${index}" aria-label="remove"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>`;
+          item.dataset.index = index;
+          const sizeText = Number(file.size) > 0 ? formatFileSize(file.size) : '';
+          item.innerHTML = `
+            <span class="audio-convert-file-index">${index + 1}</span>
+            <span class="audio-convert-file-name">${escapeHtml(file.name)}</span>
+            ${sizeText ? `<span class="audio-convert-file-size">${escapeHtml(sizeText)}</span>` : ''}
+            <button class="audio-convert-file-remove" data-index="${index}" aria-label="remove">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          `;
           videoConvertFiles.appendChild(item);
         });
         videoConvertFiles.querySelectorAll('.audio-convert-file-remove').forEach(btn => {
@@ -6715,6 +12837,7 @@
       const imageStitchQueue = document.getElementById('imageStitchQueue');
       const imageStitchQueueEmpty = document.getElementById('imageStitchQueueEmpty');
       const imageStitchPreview = document.getElementById('imageStitchPreview');
+      const imageStitchPreviewViewport = document.getElementById('imageStitchPreviewViewport');
       const imageStitchPreviewEmpty = document.getElementById('imageStitchPreviewEmpty');
       const imageStitchCount = document.getElementById('imageStitchCount');
       const imageStitchEstimate = document.getElementById('imageStitchEstimate');
@@ -6756,12 +12879,6 @@
         imageStitchPlasmaInstance = disposeStandardToolPlasma(imageStitchPlasmaInstance);
       }
 
-      function imageStitchBackgroundRgba() {
-        const color = document.getElementById('imageStitchBackground')?.value || '#ffffff';
-        const alpha = Math.round(Number(document.getElementById('imageStitchBackgroundAlpha')?.value || 100) * 255 / 100);
-        return `${color}${alpha.toString(16).padStart(2, '0')}`.toUpperCase();
-      }
-
       function imageStitchSettings() {
         return normalizeImageStitchRequest({
           mode: imageStitchMode,
@@ -6770,7 +12887,7 @@
           scale_percent: Number(document.getElementById('imageStitchScale')?.value),
           format: imageStitchFormat,
           jpeg_quality: Number(document.getElementById('imageStitchQuality')?.value || 92),
-          background_rgba: imageStitchBackgroundRgba()
+          background_rgba: '#FFFFFFFF'
         });
       }
 
@@ -6870,18 +12987,21 @@
         imageStitchPreviewEmpty.hidden = Boolean(layout);
         if (!layout) {
           imageStitchPreview.innerHTML = '';
+          imageStitchPreviewViewport?.classList.remove('is-horizontal');
           if (imageStitchFiles.length < 2) imageStitchEstimate.textContent = '-- × --';
           return;
         }
         imageStitchEstimate.textContent = `${layout.width.toLocaleString()} × ${layout.height.toLocaleString()} px`;
         imageStitchPreview.className = `image-stitch-preview-composition ${layout.mode}`;
+        imageStitchPreviewViewport?.classList.toggle('is-horizontal', layout.mode === 'horizontal');
         imageStitchPreview.style.background = layout.background_rgba;
         const previewAxis = layout.mode === 'vertical' ? 440 : 320;
         const fixedAxis = layout.mode === 'vertical' ? layout.width : layout.height;
         imageStitchPreview.style.gap = `${Math.max(0, layout.spacing_px * previewAxis / fixedAxis)}px`;
         imageStitchPreview.innerHTML = layout.items.map((item, index) => {
           const ratio = `${item.target_width} / ${item.target_height}`;
-          return `<div class="image-stitch-preview-item" style="aspect-ratio:${ratio}" title="${escapeHtml(item.name)}"><img src="${item.thumbnail_data_url}" alt=""></div>`;
+          const previewUrl = item.preview_data_url || item.previewDataUrl || item.thumbnail_data_url || item.thumbnailDataUrl || '';
+          return `<div class="image-stitch-preview-item" style="aspect-ratio:${ratio}" title="${escapeHtml(item.name)}"><img src="${previewUrl}" alt=""></div>`;
         }).join('');
       }
 
@@ -6959,7 +13079,8 @@
             name: item.name,
             width: item.width,
             height: item.height,
-            thumbnail_data_url: item.thumbnail_data_url || item.thumbnailDataUrl
+            thumbnail_data_url: item.thumbnail_data_url || item.thumbnailDataUrl,
+            preview_data_url: item.preview_data_url || item.previewDataUrl || item.thumbnail_data_url || item.thumbnailDataUrl
           })));
           if (!fitImageStitchScaleToSafeLayout(true)) {
             imageStitchFiles.splice(imageStitchFiles.length - inspected.length, inspected.length);
@@ -7130,9 +13251,8 @@
         imageStitchQualityWrap.hidden = imageStitchFormat !== 'jpg';
         renderImageStitchQueue();
       });
-      ['imageStitchSpacing', 'imageStitchScale', 'imageStitchBackground', 'imageStitchBackgroundAlpha', 'imageStitchQuality', 'imageStitchOutputName'].forEach((id) => {
+      ['imageStitchSpacing', 'imageStitchScale', 'imageStitchQuality', 'imageStitchOutputName'].forEach((id) => {
         document.getElementById(id)?.addEventListener('input', () => {
-          if (id === 'imageStitchBackgroundAlpha') document.getElementById('imageStitchBackgroundAlphaValue').textContent = `${document.getElementById(id).value}%`;
           renderImageStitchQueue();
         });
         document.getElementById(id)?.addEventListener('change', (event) => {
@@ -8165,12 +14285,17 @@
       const bpmResultNumber = document.getElementById('bpmResultNumber');
       const bpmTimelineTrack = document.getElementById('bpmTimelineTrack');
       const bpmResultHint = document.getElementById('bpmResultHint');
+      const bpmConfidenceValue = document.getElementById('bpmConfidenceValue');
+      const bpmKeyValue = document.getElementById('bpmKeyValue');
+      const bpmCandidateList = document.getElementById('bpmCandidateList');
       const bpmReanalyzeBtn = document.getElementById('bpmReanalyzeBtn');
       const bpmProcessMask = document.getElementById('bpmProcessMask');
       const bpmProcessBarFill = document.getElementById('bpmProcessBarFill');
       const bpmProcessText = document.getElementById('bpmProcessText');
       const bpmDropZone = document.getElementById('bpmDropZone');
       const bpmPlasmaBg = document.getElementById('bpmPlasmaBg');
+      const bpmAnalysisEmpty = document.getElementById('bpmAnalysisEmpty');
+      const bpmDemoStatusText = document.getElementById('bpmDemoStatusText');
       let bpmPlasmaInstance = null;
       let bpmAudioContext = null;
       let bpmAnalyzing = false;
@@ -8211,6 +14336,17 @@
 
       function startBpmRun() {
         if (bpmAnalyzing) return null;
+        disposeBpmDemoPlayback({ clearBuffer: true, closeContext: true });
+        if (bpmDemoOverlay) bpmDemoOverlay.classList.remove('visible');
+        if (bpmDemoBpmNumber) bpmDemoBpmNumber.textContent = '--';
+        if (bpmDemoPlayBtn) {
+          bpmDemoPlayBtn.disabled = true;
+          bpmDemoPlayBtn.style.display = 'inline-flex';
+        }
+        if (bpmDemoStopBtn) bpmDemoStopBtn.style.display = 'none';
+        if (bpmDemoStatusText) {
+          bpmDemoStatusText.textContent = t('home.bpmDetect.demoWorkspaceHint');
+        }
         bpmAnalyzing = true;
         lastAnalyzedAudioBuffer = null;
         return ++bpmAnalysisRunId;
@@ -8245,6 +14381,7 @@
         // Reset to initial state
         bpmDetectHeroTop.style.display = '';
         bpmResult.classList.remove('visible');
+        if (bpmAnalysisEmpty) bpmAnalysisEmpty.style.display = '';
         // Init plasma bg
         if (bpmPlasmaBg && !bpmPlasmaInstance) {
           bpmPlasmaInstance = initStandardToolPlasma(bpmPlasmaBg);
@@ -8255,8 +14392,7 @@
         invalidateBpmRun();
         bpmDetectOverlay.classList.remove('visible');
         bpmResult.classList.remove('visible');
-        // Stop BPM demo if playing
-        if (bpmDemoState.isPlaying) closeBpmDemo();
+        closeBpmDemo();
         // Destroy plasma instance to free GPU/CPU
         if (bpmPlasmaInstance) {
           bpmPlasmaInstance();
@@ -8325,7 +14461,7 @@
         if (!isCurrentBpmRun(runId)) return;
         let resultDeliveryScheduled = false;
 
-        bpmDetectHeroTop.style.display = 'none';
+        bpmDetectHeroTop.style.display = '';
         bpmProcessMask.classList.add('visible');
         bpmProcessBarFill.style.width = '0%';
 
@@ -8349,10 +14485,17 @@
           if (!isCurrentBpmRun(runId)) return;
           assertBpmAudioBuffer(audioBuffer);
 
-          const { analyzeFullBuffer } = await import('realtime-bpm-analyzer');
           const analysisBuffer = createBpmAnalysisBuffer(audioBuffer);
+          const analysisPcm = analysisBuffer.getChannelData(0);
+          const localBpmAnalysis = analyzeBpmPcm(analysisPcm, analysisBuffer.sampleRate);
+          const keyAnalysis = analyzeAudioKeyPcm(analysisPcm, analysisBuffer.sampleRate);
+          const musicTempoModule = await import('music-tempo');
+          const MusicTempoCtor = musicTempoModule.default || musicTempoModule;
+          const beatrootAnalysis = analyzeMusicTempoPcm(analysisPcm, analysisBuffer.sampleRate, MusicTempoCtor);
+          const { analyzeFullBuffer } = await import('realtime-bpm-analyzer');
           const tempos = await analyzeFullBuffer(analysisBuffer);
           if (!isCurrentBpmRun(runId)) return;
+          const fusedBpmAnalysis = fuseBpmAnalyses({ realtimeTempos: tempos, pcmAnalysis: localBpmAnalysis, beatrootAnalysis });
 
           clearBpmProgress();
           bpmProcessBarFill.style.width = '100%';
@@ -8362,7 +14505,7 @@
             if (!isCurrentBpmRun(runId)) return;
             try {
               bpmProcessMask.classList.remove('visible');
-              showBpmResult(tempos?.length ? tempos : null, audioBuffer);
+              showBpmResult({ bpmAnalysis: fusedBpmAnalysis, keyAnalysis }, audioBuffer);
             } catch (error) {
               showBpmError(error, runId);
             } finally {
@@ -8426,24 +14569,88 @@
         }
       }
 
-      function showBpmResult(tempos, audioBuffer) {
+      function setBpmDemoTempo(bpm) {
+        const value = Math.round(Number(bpm));
+        if (!Number.isFinite(value) || value <= 0) return;
+        bpmResultNumber.textContent = value;
+        bpmDemoState.bpm = value;
+        bpmDemoBpmNumber.textContent = value;
+        if (bpmDemoStatusText) {
+          bpmDemoStatusText.textContent = t('home.bpmDetect.demoWorkspaceReady', { bpm: value });
+        }
+      }
+
+      function renderBpmCandidateButtons(bpmAnalysis, activeBpm) {
+        if (!bpmCandidateList) return;
+        bpmCandidateList.innerHTML = '';
+        const unique = [];
+        for (const candidate of Array.isArray(bpmAnalysis?.candidates) ? bpmAnalysis.candidates : []) {
+          const bpm = Math.round(Number(candidate.bpm));
+          if (!Number.isFinite(bpm) || unique.some(item => Math.abs(item.bpm - bpm) <= 1)) continue;
+          unique.push({ bpm, confidence: Number(candidate.confidence) || 0, sources: candidate.sources || [] });
+          if (unique.length >= 5) break;
+        }
+        if (!unique.some(item => item.bpm === activeBpm)) unique.unshift({ bpm: activeBpm, confidence: bpmAnalysis?.confidence || 0, sources: ['selected'] });
+        for (const candidate of unique.slice(0, 5)) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'bpm-candidate-chip';
+          if (candidate.bpm === activeBpm) button.classList.add('active');
+          button.dataset.bpm = String(candidate.bpm);
+          button.innerHTML = `<span>${candidate.bpm}</span><em>BPM</em>`;
+          button.title = getLang() === 'zh' ? `切换到 ${candidate.bpm} BPM 试听` : `Switch demo to ${candidate.bpm} BPM`;
+          button.addEventListener('click', () => {
+            setBpmDemoTempo(candidate.bpm);
+            bpmCandidateList.querySelectorAll('.bpm-candidate-chip').forEach(item => item.classList.toggle('active', item === button));
+            if (bpmResultHint) {
+              bpmResultHint.textContent = t('home.bpmDetect.candidateSelectedHint', { bpm: candidate.bpm });
+              bpmResultHint.classList.add('visible');
+            }
+          });
+          bpmCandidateList.appendChild(button);
+        }
+      }
+
+      function showBpmResult(analysis, audioBuffer) {
+        disposeBpmDemoPlayback({ clearBuffer: true, closeContext: true });
         lastAnalyzedAudioBuffer = audioBuffer;
-        const candidates = normalizeBpmCandidates(tempos);
-        if (candidates.length === 0) {
+        const bpmAnalysis = analysis?.bpmAnalysis;
+        const keyAnalysis = analysis?.keyAnalysis;
+        if (!bpmAnalysis || bpmAnalysis.bpm === null) {
           bpmResult.classList.add('visible');
           bpmResultNumber.textContent = '?';
           bpmTimelineTrack.innerHTML = '';
           bpmResultHint.textContent = t('home.bpmDetect.noBeatDetected');
           bpmResultHint.classList.add('visible');
+          if (bpmConfidenceValue) bpmConfidenceValue.textContent = '--';
+          if (bpmKeyValue) bpmKeyValue.textContent = '--';
+          if (bpmCandidateList) bpmCandidateList.innerHTML = '';
+          if (bpmAnalysisEmpty) bpmAnalysisEmpty.style.display = 'none';
+          bpmDemoBpmNumber.textContent = '--';
+          bpmDemoPlayBtn.disabled = true;
+          if (bpmDemoStatusText) {
+            bpmDemoStatusText.textContent = t('home.bpmDetect.demoUnavailable');
+          }
           return;
         }
 
-        const topTempo = candidates[0];
-        const bpm = Math.round(topTempo.tempo);
+        const bpm = Math.round(bpmAnalysis.bpm);
+        const confidence = Number.isFinite(bpmAnalysis.confidence)
+          ? Math.round(Math.max(0, Math.min(1, bpmAnalysis.confidence)) * 100)
+          : null;
+        const keyLabel = keyAnalysis?.key
+          ? `${keyAnalysis.key}${Number.isFinite(keyAnalysis.confidence) ? ` · ${Math.round(keyAnalysis.confidence * 100)}%` : ''}`
+          : t('home.bpmDetect.keyUnknown');
 
         // Show result card
         bpmResult.classList.add('visible');
         bpmResultNumber.textContent = bpm;
+        if (bpmConfidenceValue) bpmConfidenceValue.textContent = confidence === null ? '--' : `${confidence}%`;
+        if (bpmKeyValue) bpmKeyValue.textContent = keyLabel;
+        renderBpmCandidateButtons(bpmAnalysis, bpm);
+        if (bpmAnalysisEmpty) {
+          bpmAnalysisEmpty.style.display = 'none';
+        }
 
         // Generate timeline bars from actual audio data
         bpmTimelineTrack.innerHTML = '';
@@ -8480,14 +14687,40 @@
         } else if (bpm > 160) {
           bpmResultHint.textContent = t('home.bpmDetect.halfTimeHint', { bpm: Math.round(bpm / 2) });
           bpmResultHint.classList.add('visible');
+        } else if (Array.isArray(bpmAnalysis.candidates) && bpmAnalysis.candidates.length > 1) {
+          const alternate = bpmAnalysis.candidates.find(candidate => Math.abs(candidate.bpm - bpm) >= 2);
+          if (alternate) {
+            bpmResultHint.textContent = t('home.bpmDetect.alternateHint', { bpm: alternate.bpm });
+            bpmResultHint.classList.add('visible');
+          }
         }
+
+        if (bpmDemoOverlay) {
+          bpmDemoOverlay.classList.add('visible');
+        }
+        bpmDemoState.bpm = bpm;
+        bpmDemoState.audioBuffer = audioBuffer;
+        bpmDemoPlayBtn.style.display = 'inline-flex';
+        bpmDemoStopBtn.style.display = 'none';
+        if (bpmDemoStatusText) {
+          bpmDemoStatusText.textContent = t('home.bpmDetect.demoWorkspaceReady', { bpm });
+        }
+        bpmDemoBpmNumber.textContent = bpm;
+        bpmDemoPlayBtn.disabled = false;
       }
 
       function resetBpmResult() {
+        closeBpmDemo();
         bpmResult.classList.remove('visible');
         bpmDetectHeroTop.style.display = '';
         bpmTimelineTrack.innerHTML = '';
         bpmResultHint.classList.remove('visible');
+        if (bpmCandidateList) bpmCandidateList.innerHTML = '';
+        if (bpmConfidenceValue) bpmConfidenceValue.textContent = '--';
+        if (bpmKeyValue) bpmKeyValue.textContent = '--';
+        if (bpmAnalysisEmpty) {
+          bpmAnalysisEmpty.style.display = '';
+        }
       }
 
       async function selectBpmAudioFile() {
@@ -8602,7 +14835,6 @@
       const bpmDemoStopBtn = document.getElementById('bpmDemoStopBtn');
       const bpmDemoAudioVolume = document.getElementById('bpmDemoAudioVolume');
       const bpmDemoBeatVolume = document.getElementById('bpmDemoBeatVolume');
-      const bpmDemoBeatBtn = document.getElementById('bpmDemoBeatBtn');
 
       let bpmDemoState = {
         bpm: 128,
@@ -8614,19 +14846,90 @@
         beatGainNode: null,
         beatIntervalId: null,
         beatTimeoutId: null,
+        beatVisualTimeoutId: null,
         audioStartTime: 0
       };
 
+      function setBpmDemoIdleButtons() {
+        if (bpmDemoPlayBtn) bpmDemoPlayBtn.style.display = 'inline-flex';
+        if (bpmDemoStopBtn) bpmDemoStopBtn.style.display = 'none';
+      }
+
+      function disposeBpmDemoPlayback({ clearBuffer = false, closeContext = false } = {}) {
+        bpmDemoState.isPlaying = false;
+
+        if (bpmDemoState.beatTimeoutId) {
+          clearTimeout(bpmDemoState.beatTimeoutId);
+          bpmDemoState.beatTimeoutId = null;
+        }
+        if (bpmDemoState.beatIntervalId) {
+          clearInterval(bpmDemoState.beatIntervalId);
+          bpmDemoState.beatIntervalId = null;
+        }
+        if (bpmDemoState.beatVisualTimeoutId) {
+          clearTimeout(bpmDemoState.beatVisualTimeoutId);
+          bpmDemoState.beatVisualTimeoutId = null;
+        }
+
+        if (bpmDemoState.audioSource) {
+          try { bpmDemoState.audioSource.stop(); } catch(e) {}
+          try { bpmDemoState.audioSource.disconnect(); } catch(e) {}
+          bpmDemoState.audioSource = null;
+        }
+        if (bpmDemoState.audioGainNode) {
+          try { bpmDemoState.audioGainNode.disconnect(); } catch(e) {}
+          bpmDemoState.audioGainNode = null;
+        }
+        if (bpmDemoState.beatGainNode) {
+          try { bpmDemoState.beatGainNode.disconnect(); } catch(e) {}
+          bpmDemoState.beatGainNode = null;
+        }
+
+        if (bpmDemoBeatIndicator) {
+          bpmDemoBeatIndicator.classList.remove('beat-active');
+        }
+        setBpmDemoIdleButtons();
+        bpmDemoState.audioStartTime = 0;
+        if (clearBuffer) bpmDemoState.audioBuffer = null;
+
+        if (closeContext && bpmDemoState.audioContext) {
+          const context = bpmDemoState.audioContext;
+          bpmDemoState.audioContext = null;
+          if (typeof context.close === 'function' && context.state !== 'closed') {
+            context.close().catch(() => {});
+          }
+        }
+      }
+
       function openBpmDemo(bpm, audioBuffer) {
+        disposeBpmDemoPlayback({ clearBuffer: true, closeContext: true });
         bpmDemoState.bpm = bpm;
         bpmDemoState.audioBuffer = audioBuffer;
         bpmDemoBpmNumber.textContent = bpm;
+        bpmDemoPlayBtn.disabled = false;
+        bpmDemoPlayBtn.style.display = 'inline-flex';
+        bpmDemoStopBtn.style.display = 'none';
+        if (bpmDemoStatusText) {
+          bpmDemoStatusText.textContent = t('home.bpmDetect.demoWorkspaceActive', { bpm });
+        }
         bpmDemoOverlay.classList.add('visible');
+        if (bpmAnalysisEmpty) {
+          bpmAnalysisEmpty.style.display = 'none';
+        }
       }
 
       function closeBpmDemo() {
-        stopBpmDemo();
+        disposeBpmDemoPlayback({ clearBuffer: true, closeContext: true });
         bpmDemoOverlay.classList.remove('visible');
+        bpmDemoBpmNumber.textContent = '--';
+        bpmDemoPlayBtn.disabled = true;
+        setBpmDemoIdleButtons();
+        if (bpmDemoStatusText) {
+          bpmDemoStatusText.textContent = t('home.bpmDetect.demoWorkspaceHint');
+        }
+        if (bpmAnalysisEmpty && !bpmResult.classList.contains('visible')) {
+          bpmAnalysisEmpty.style.display = '';
+        }
       }
 
       if (bpmDemoClose) {
@@ -8635,6 +14938,8 @@
 
       function startBpmDemo() {
         if (bpmDemoState.isPlaying) return;
+        if (!bpmDemoState.audioBuffer) return;
+        disposeBpmDemoPlayback({ clearBuffer: false, closeContext: false });
         bpmDemoState.isPlaying = true;
         bpmDemoPlayBtn.style.display = 'none';
         bpmDemoStopBtn.style.display = 'inline-flex';
@@ -8644,7 +14949,7 @@
           bpmDemoState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (bpmDemoState.audioContext.state === 'suspended') {
-          bpmDemoState.audioContext.resume();
+          bpmDemoState.audioContext.resume().catch(() => {});
         }
         const ctx = bpmDemoState.audioContext;
         const now = ctx.currentTime;
@@ -8693,8 +14998,9 @@
 
           // Visual indicator
           bpmDemoBeatIndicator.classList.add('beat-active');
-          setTimeout(() => {
+          bpmDemoState.beatVisualTimeoutId = setTimeout(() => {
             bpmDemoBeatIndicator.classList.remove('beat-active');
+            bpmDemoState.beatVisualTimeoutId = null;
           }, 80);
 
           beatCount++;
@@ -8705,22 +15011,7 @@
       }
 
       function stopBpmDemo() {
-        if (!bpmDemoState.isPlaying) return;
-        bpmDemoState.isPlaying = false;
-        bpmDemoPlayBtn.style.display = 'inline-flex';
-        bpmDemoStopBtn.style.display = 'none';
-
-        if (bpmDemoState.beatTimeoutId) {
-          clearTimeout(bpmDemoState.beatTimeoutId);
-          bpmDemoState.beatTimeoutId = null;
-        }
-
-        if (bpmDemoState.audioSource) {
-          try { bpmDemoState.audioSource.stop(); } catch(e) {}
-          bpmDemoState.audioSource = null;
-        }
-
-        bpmDemoBeatIndicator.classList.remove('beat-active');
+        disposeBpmDemoPlayback({ clearBuffer: false, closeContext: false });
       }
 
       if (bpmDemoPlayBtn) {
@@ -8745,14 +15036,6 @@
           if (bpmDemoState.beatGainNode && bpmDemoState.audioContext) {
             const vol = parseInt(bpmDemoBeatVolume.value) / 100;
             bpmDemoState.beatGainNode.gain.setValueAtTime(vol, bpmDemoState.audioContext.currentTime);
-          }
-        });
-      }
-
-      if (bpmDemoBeatBtn) {
-        bpmDemoBeatBtn.addEventListener('click', () => {
-          if (lastAnalyzedAudioBuffer) {
-            openBpmDemo(parseInt(bpmResultNumber.textContent), lastAnalyzedAudioBuffer);
           }
         });
       }
@@ -8804,6 +15087,7 @@
       let audioClipPlasmaInstance = null;
       let clipLoadId = 0;
       let clipExportRunId = 0;
+      let clipRedrawRafId = 0;
 
       let clipState = {
         audioBuffer: null,
@@ -8845,7 +15129,18 @@
           }[error.code];
           if (key) return t(`home.audioClip.${key}`);
         }
-        const code = typeof error === 'string' ? error : error?.message || '';
+        const code = String(typeof error === 'string' ? error : error?.message || '').toLowerCase();
+        const backendCodeMap = {
+          'audio-clip:invalid-input': 'invalidInput',
+          'audio-clip:input-too-large': 'inputTooLarge',
+          'audio-clip:audio-too-long': 'audioTooLong',
+          'audio-clip:invalid-selection': 'invalidSelection',
+          'audio-clip:cancelled': 'cancelled',
+          'audio-clip:output-path': 'outputPathError',
+          'audio-clip:failed': 'exportError'
+        };
+        const matchedCode = Object.keys(backendCodeMap).find(key => code.includes(key));
+        if (matchedCode) return t(`home.audioClip.${backendCodeMap[matchedCode]}`);
         if (code.includes('cancelled')) return t('home.audioClip.cancelled');
         return t('home.audioClip.exportError');
       }
@@ -8874,6 +15169,13 @@
         return `${m}:${s.toString().padStart(2, '0')}`;
       }
 
+      function setAudioClipPlayIcon(isPlaying) {
+        if (!audioClipPlayBtn) return;
+        audioClipPlayBtn.innerHTML = isPlaying
+          ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
+      }
+
       function openAudioClipOverlay() {
         audioClipOverlay.classList.add('visible');
         audioClipHeroTop.style.display = '';
@@ -8898,12 +15200,14 @@
         }
       }
 
-      function resetClipState() {
-        clipLoadId += 1;
-        invalidateClipExport();
-        clipState.isLoading = false;
+      function clearClipLoadedState() {
         stopClipPlayback();
+        if (clipRedrawRafId) {
+          cancelAnimationFrame(clipRedrawRafId);
+          clipRedrawRafId = 0;
+        }
         clipState.audioBuffer = null;
+        clipState.audioSource = null;
         clipState.currentTime = 0;
         clipState.duration = 0;
         clipState.filePath = null;
@@ -8912,20 +15216,42 @@
         clipState.selStart = 0;
         clipState.selEnd = 0;
         clipState.hasSelection = false;
-        audioClipFileInfo.classList.remove('visible');
-        audioClipWaveformWrap.classList.remove('visible');
-        audioClipControls.classList.remove('visible');
-        audioClipSelectionInfo.classList.remove('visible');
-        audioClipExportBtn.classList.remove('visible');
-        audioClipSelection.style.display = 'none';
-        audioClipPlayhead.style.display = 'none';
-        audioClipHandleStart.style.display = 'none';
-        audioClipHandleEnd.style.display = 'none';
-        audioClipHandleStart.classList.remove('active');
-        audioClipHandleEnd.classList.remove('active');
-        audioClipHeroTop.style.display = '';
-        audioClipSuccessOverlay.classList.remove('visible');
+        clipState.activeHandle = null;
+        if (audioClipFileInfo) audioClipFileInfo.classList.remove('visible');
+        if (audioClipFileName) audioClipFileName.textContent = '--';
+        if (audioClipFileDuration) audioClipFileDuration.textContent = '--';
+        if (audioClipWaveformWrap) audioClipWaveformWrap.classList.remove('visible');
+        if (audioClipControls) audioClipControls.classList.remove('visible');
+        if (audioClipSelectionInfo) audioClipSelectionInfo.classList.remove('visible');
+        if (audioClipExportBtn) audioClipExportBtn.classList.remove('visible');
+        if (audioClipOverlay) audioClipOverlay.classList.remove('has-file', 'drag-over');
+        if (audioClipDropZone) audioClipDropZone.classList.remove('visible');
+        if (audioClipSelection) {
+          audioClipSelection.style.display = 'none';
+          audioClipSelection.style.width = '0px';
+        }
+        if (audioClipPlayhead) audioClipPlayhead.style.display = 'none';
+        if (audioClipHandleStart) audioClipHandleStart.style.display = 'none';
+        if (audioClipHandleEnd) audioClipHandleEnd.style.display = 'none';
+        if (audioClipHandleStart) audioClipHandleStart.classList.remove('active');
+        if (audioClipHandleEnd) audioClipHandleEnd.classList.remove('active');
+        if (audioClipHeroTop) audioClipHeroTop.style.display = '';
+        if (audioClipSuccessOverlay) audioClipSuccessOverlay.classList.remove('visible');
+        if (audioClipCurrentTime) audioClipCurrentTime.textContent = '0:00';
+        if (audioClipTotalTime) audioClipTotalTime.textContent = '0:00';
+        if (audioClipTimeStart) audioClipTimeStart.textContent = '0:00';
+        if (audioClipTimeEnd) audioClipTimeEnd.textContent = '0:00';
+        if (audioClipSelStart) audioClipSelStart.textContent = '0:00';
+        if (audioClipSelEnd) audioClipSelEnd.textContent = '0:00';
+        if (audioClipSelDuration) audioClipSelDuration.textContent = '0:00';
         setActiveHandle(null);
+      }
+
+      function resetClipState() {
+        clipLoadId += 1;
+        invalidateClipExport();
+        clipState.isLoading = false;
+        clearClipLoadedState();
       }
 
       if (audioClipBack) {
@@ -8982,7 +15308,7 @@
         if (clipState.isLoading || clipState.isExporting) return;
         const loadId = ++clipLoadId;
         clipState.isLoading = true;
-        stopClipPlayback();
+        clearClipLoadedState();
 
         // Show loading mask
         audioClipProcessBarFill.style.width = '30%';
@@ -9033,7 +15359,7 @@
             clipState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
           }
           if (clipState.audioContext.state === 'suspended') {
-            clipState.audioContext.resume();
+            await clipState.audioContext.resume();
           }
           const audioBuffer = await clipState.audioContext.decodeAudioData(arrayBuffer);
           if (!isCurrentClipLoad(loadId)) return;
@@ -9052,7 +15378,9 @@
 
           // Update UI
           audioClipHeroTop.style.display = 'none';
+          audioClipOverlay.classList.add('has-file');
           audioClipFileInfo.classList.add('visible');
+          audioClipFileName.textContent = fileName || '--';
           audioClipFileDuration.textContent = formatTime(duration);
           audioClipWaveformWrap.classList.add('visible');
           audioClipControls.classList.add('visible');
@@ -9070,11 +15398,7 @@
           audioClipProcessBarFill.style.width = '100%';
 
           // Draw waveform (deferred to ensure canvas has dimensions after CSS transition)
-          requestAnimationFrame(() => {
-            drawWaveform();
-            updateSelectionOverlay();
-            updatePlayhead();
-          });
+          scheduleAudioClipRedraw();
 
           if (window.lucide) window.lucide.createIcons();
         } catch (error) {
@@ -9103,48 +15427,69 @@
         const width = rect.width;
         const height = rect.height;
         const buffer = clipState.audioBuffer;
-        const channelData = buffer.getChannelData(0);
-        const samplesPerPixel = Math.max(1, Math.floor(channelData.length / width));
+        const channelCount = Math.max(1, Math.min(buffer.numberOfChannels || 1, 2));
+        const channels = Array.from({ length: channelCount }, (_, index) => buffer.getChannelData(index));
+        const samplesPerPixel = Math.max(1, Math.floor(buffer.length / width));
 
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = 'rgba(74, 222, 128, 0.5)';
-        ctx.strokeStyle = 'rgba(74, 222, 128, 0.8)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
         ctx.lineWidth = 1;
 
         const midY = height / 2;
+        ctx.beginPath();
+        ctx.moveTo(0, midY);
+        ctx.lineTo(width, midY);
+        ctx.stroke();
 
         for (let x = 0; x < width; x++) {
           let min = 1.0;
           let max = -1.0;
           const start = x * samplesPerPixel;
-          const end = Math.min(start + samplesPerPixel, channelData.length);
-          const sampleStep = Math.max(1, Math.ceil((end - start) / 2048));
+          const end = Math.min(start + samplesPerPixel, buffer.length);
+          const sampleStep = Math.max(1, Math.ceil((end - start) / 1024));
           for (let i = start; i < end; i += sampleStep) {
-            const v = channelData[i];
-            if (v < min) min = v;
-            if (v > max) max = v;
+            for (const channelData of channels) {
+              const v = channelData[i] || 0;
+              if (v < min) min = v;
+              if (v > max) max = v;
+            }
           }
           const yMin = midY + min * midY * 0.9;
           const yMax = midY + max * midY * 0.9;
-          ctx.fillRect(x, yMin, 1, Math.max(1, yMax - yMin));
+          ctx.fillRect(x, yMin, 1, Math.max(2, yMax - yMin));
         }
       }
 
-      const CLIP_PAD = 16;
-
-      function timeToX(time) {
-        if (!clipState.duration) return CLIP_PAD;
-        const rect = audioClipCanvas.getBoundingClientRect();
-        const trackWidth = Math.max(1, rect.width - CLIP_PAD * 2);
-        return CLIP_PAD + (time / clipState.duration) * trackWidth;
+      function getClipTrackMetrics() {
+        const canvasRect = audioClipCanvas.getBoundingClientRect();
+        const wrapRect = audioClipWaveformWrap.getBoundingClientRect();
+        const left = Math.max(0, canvasRect.left - wrapRect.left);
+        const width = Math.max(1, canvasRect.width);
+        return { left, width, canvasLeft: canvasRect.left };
       }
 
-      function xToTime(x) {
-        const rect = audioClipCanvas.getBoundingClientRect();
-        const trackWidth = Math.max(1, rect.width - CLIP_PAD * 2);
-        const adjustedX = x - CLIP_PAD;
-        const ratio = Math.max(0, Math.min(1, adjustedX / trackWidth));
+      function timeToX(time) {
+        const { left, width } = getClipTrackMetrics();
+        if (!clipState.duration) return left;
+        return left + (time / clipState.duration) * width;
+      }
+
+      function clientXToClipTime(clientX) {
+        const { canvasLeft, width } = getClipTrackMetrics();
+        const ratio = Math.max(0, Math.min(1, (clientX - canvasLeft) / width));
         return ratio * clipState.duration;
+      }
+
+      function scheduleAudioClipRedraw() {
+        if (!clipState.audioBuffer || !audioClipWaveformWrap.classList.contains('visible')) return;
+        if (clipRedrawRafId) cancelAnimationFrame(clipRedrawRafId);
+        clipRedrawRafId = requestAnimationFrame(() => {
+          clipRedrawRafId = 0;
+          drawWaveform();
+          updateSelectionOverlay();
+          updatePlayhead();
+        });
       }
 
       function setActiveHandle(handle) {
@@ -9202,7 +15547,7 @@
         if (!clipState.audioBuffer || clipState.isPlaying) return;
         clipState.isPlaying = true;
         const ctx = clipState.audioContext;
-        if (ctx.state === 'suspended') ctx.resume();
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
         const selStart = clipState.hasSelection ? clipState.selStart : 0;
         const selEnd = clipState.hasSelection ? clipState.selEnd : clipState.duration;
@@ -9254,7 +15599,7 @@
         clipState.currentTime = startOffset;
         playSegment(startOffset);
 
-        audioClipPlayBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+        setAudioClipPlayIcon(true);
       }
 
       function stopClipPlayback() {
@@ -9266,10 +15611,8 @@
           cancelAnimationFrame(clipState.rafId);
           clipState.rafId = null;
         }
-        if (clipState.isPlaying) {
-          clipState.isPlaying = false;
-          audioClipPlayBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>';
-        }
+        clipState.isPlaying = false;
+        setAudioClipPlayIcon(false);
       }
 
       function togglePlayPause() {
@@ -9328,14 +15671,13 @@
         });
       }
 
-      // Handle-based selection: drag start/end handles to select region
-      // Canvas click only moves playhead (no selection drag on waveform)
+      // Handle-based selection: drag start/end handles to select region.
+      // Canvas pointer only moves playhead, keeping clip selection intentional.
       if (audioClipCanvas) {
-        audioClipCanvas.addEventListener('mousedown', (e) => {
+        audioClipCanvas.addEventListener('pointerdown', (e) => {
           if (!clipState.audioBuffer) return;
-          const rect = audioClipCanvas.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const time = xToTime(x);
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          const time = clientXToClipTime(e.clientX);
           stopClipPlayback();
           clipState.currentTime = time;
           setActiveHandle(null);
@@ -9343,58 +15685,45 @@
         });
       }
 
-      // Start handle drag
-      if (audioClipHandleStart) {
-        audioClipHandleStart.addEventListener('mousedown', (e) => {
-          if (!clipState.audioBuffer) return;
-          e.preventDefault();
-          e.stopPropagation();
-          setActiveHandle('start');
-          stopClipPlayback();
+      function beginAudioClipHandleDrag(event, handle) {
+        if (!clipState.audioBuffer) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setActiveHandle(handle);
+        stopClipPlayback();
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        document.body.classList.add('audio-clip-pointer-dragging');
 
-          function onMove(ev) {
-            const rect = audioClipCanvas.getBoundingClientRect();
-            const x = ev.clientX - rect.left;
-            const time = xToTime(x);
+        function onMove(ev) {
+          const time = clientXToClipTime(ev.clientX);
+          if (handle === 'start') {
             clipState.selStart = Math.max(0, Math.min(clipState.selEnd - 0.1, time));
             clipState.currentTime = clipState.selStart;
-            updatePlayhead();
-            updateSelectionOverlay();
-          }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
-      }
-
-      // End handle drag
-      if (audioClipHandleEnd) {
-        audioClipHandleEnd.addEventListener('mousedown', (e) => {
-          if (!clipState.audioBuffer) return;
-          e.preventDefault();
-          e.stopPropagation();
-          setActiveHandle('end');
-          stopClipPlayback();
-
-          function onMove(ev) {
-            const rect = audioClipCanvas.getBoundingClientRect();
-            const x = ev.clientX - rect.left;
-            const time = xToTime(x);
+          } else {
             clipState.selEnd = Math.min(clipState.duration, Math.max(clipState.selStart + 0.1, time));
             clipState.currentTime = clipState.selEnd;
-            updatePlayhead();
-            updateSelectionOverlay();
           }
-          function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-          }
-          document.addEventListener('mousemove', onMove);
-          document.addEventListener('mouseup', onUp);
-        });
+          updatePlayhead();
+          updateSelectionOverlay();
+        }
+        function onUp() {
+          document.body.classList.remove('audio-clip-pointer-dragging');
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          document.removeEventListener('pointercancel', onUp);
+        }
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onUp);
+      }
+
+      if (audioClipHandleStart) {
+        audioClipHandleStart.addEventListener('pointerdown', event => beginAudioClipHandleDrag(event, 'start'));
+      }
+
+      if (audioClipHandleEnd) {
+        audioClipHandleEnd.addEventListener('pointerdown', event => beginAudioClipHandleDrag(event, 'end'));
       }
 
       // Export clip
@@ -9490,13 +15819,7 @@
       if (audioClipSuccessOpenFolder) {
         audioClipSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && clipState.outputPath) {
-            try {
-              const { invoke } = await import('@tauri-apps/api/core');
-              const folder = clipState.outputPath.replace(/[/\\][^/\\]+$/, '');
-              await invoke('open_path', { path: folder });
-            } catch (e) {
-              console.error('Open folder error:', e);
-            }
+            await openOutputFolder(outputParentFolder(clipState.outputPath));
           }
         });
       }
@@ -9553,13 +15876,8 @@
 
       // Redraw waveform on window resize
       window.addEventListener('resize', () => {
-        if (clipState.audioBuffer && audioClipWaveformWrap.classList.contains('visible')) {
-          setTimeout(() => {
-            drawWaveform();
-            updateSelectionOverlay();
-            updatePlayhead();
-          }, 100);
-        }
+        scheduleAudioClipRedraw();
+        syncWindowFrameAfterLayoutChange();
       });
 
       // ===== Audio Extract Tool =====
@@ -10074,7 +16392,7 @@
 
       if (feedbackCta) {
         feedbackCta.addEventListener('click', () => {
-          void openExternalUrl('https://github.com/ZihangDong/toolknit-desktop');
+          openFeedbackDrawer();
         });
       }
 
@@ -10103,19 +16421,43 @@
           if (!feedbackForm.checkValidity()) return;
 
           const payload = {
-            title: feedbackTitle ? feedbackTitle.value.trim() : '',
-            content: feedbackContent ? feedbackContent.value.trim() : ''
+            title: feedbackTitle ? feedbackTitle.value.trim().slice(0, 160) : '',
+            content: feedbackContent ? feedbackContent.value.trim().slice(0, 6000) : ''
           };
           const nameVal = feedbackName ? feedbackName.value.trim() : '';
-          const emailVal = feedbackEmail ? feedbackEmail.value.trim() : '';
+          const githubVal = feedbackEmail ? feedbackEmail.value.trim() : '';
           if (nameVal) payload.name = nameVal;
-          if (emailVal) payload.email = emailVal;
+          if (githubVal) payload.github = githubVal;
 
           if (feedbackFormSubmit) feedbackFormSubmit.disabled = true;
 
           try {
-            const msg = getLang() === 'zh' ? '此功能在开源版中已移除' : 'This feature has been removed in the open-source version.';
-            window.showToast(msg);
+            const isChinese = getLang() === 'zh';
+            const issueBody = [
+              isChinese ? '## 问题或建议' : '## Issue or suggestion',
+              '',
+              payload.content,
+              '',
+              isChinese ? '## 提交信息' : '## Reporter details',
+              '',
+              `- ${isChinese ? 'ToolKnit 版本' : 'ToolKnit version'}: 2.0.0`,
+              payload.name ? `- ${isChinese ? '称呼' : 'Name'}: ${payload.name}` : '',
+              payload.github ? `- GitHub: ${payload.github}` : '',
+              '',
+              isChinese
+                ? '> 此页面由 ToolKnit 桌面端生成。提交前可继续补充复现步骤、截图和示例文件。'
+                : '> This draft was generated by ToolKnit Desktop. Add reproduction steps, screenshots, or sample files before submitting.'
+            ].filter(Boolean).join('\n');
+            const issueUrl = new URL(`https://github.com/${GITHUB_REPOSITORY}/issues/new`);
+            issueUrl.searchParams.set('title', payload.title);
+            issueUrl.searchParams.set('body', issueBody);
+            await openExternalUrl(issueUrl.toString());
+            closeFeedbackDrawer();
+            resetFeedbackForm();
+            window.showToast(t('home.feedbackPage.submitSuccess'));
+          } catch (error) {
+            console.error('Unable to open feedback issue draft:', error);
+            window.showToast(t('home.feedbackPage.submitError'));
           } finally {
             if (feedbackFormSubmit) feedbackFormSubmit.disabled = false;
           }
@@ -10563,6 +16905,13 @@
         };
       }
       window.showToast = showToast;
+      window.alert = message => {
+        try {
+          showToast(message);
+        } catch (error) {
+          console.error('Toast fallback failed:', error);
+        }
+      };
 
       const HOME_LINKS = {
         website: 'https://toolknit.com',
@@ -10588,30 +16937,63 @@
       }
 
       document.querySelectorAll('[data-home-link]').forEach(link => {
-        link.addEventListener('click', () => {
+        link.addEventListener('click', event => {
           const url = HOME_LINKS[link.dataset.homeLink];
-          if (url) openExternalUrl(url);
+          if (url) {
+            event.preventDefault();
+            void openExternalUrl(url);
+          }
         });
       });
 
-      const homeSupportAuthor = document.getElementById('homeSupportAuthor');
+      document.getElementById('homeLatestUpdates')?.addEventListener('click', () => openHelpOverlay('update'));
+      document.getElementById('homeAboutAuthor')?.addEventListener('click', () => openExternalUrl('https://github.com/ZihangDong'));
+
       const donationOverlay = document.getElementById('donationOverlay');
+      const donationDialog = donationOverlay?.querySelector('.donation-dialog');
+      const donationScroll = donationOverlay?.querySelector('.donation-scroll');
+      let donationReturnFocus = null;
 
       function openDonationOverlay() {
         if (!donationOverlay) return;
+        if (donationOverlay.classList.contains('visible')) return;
+        donationReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         donationOverlay.classList.add('visible');
         donationOverlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('donation-open');
+        window.requestAnimationFrame(() => {
+          if (donationScroll) donationScroll.scrollTop = 0;
+          donationDialog?.focus({ preventScroll: true });
+        });
       }
 
       function closeDonationOverlay() {
         if (!donationOverlay) return;
         donationOverlay.classList.remove('visible');
         donationOverlay.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('donation-open');
+        if (donationReturnFocus?.isConnected) donationReturnFocus.focus({ preventScroll: true });
+        donationReturnFocus = null;
       }
 
-      homeSupportAuthor?.addEventListener('click', openDonationOverlay);
       donationOverlay?.querySelectorAll('[data-donation-close]').forEach(button => {
         button.addEventListener('click', closeDonationOverlay);
+      });
+      donationOverlay?.querySelectorAll('[data-donation-link]').forEach(button => {
+        button.addEventListener('click', () => {
+          const links = {
+            changelog: 'https://toolknit.com/changelog.html',
+            github: 'https://github.com/ZihangDong/toolknit-desktop'
+          };
+          const url = links[button.dataset.donationLink];
+          if (url) void openExternalUrl(url);
+        });
+      });
+      donationOverlay?.querySelector('[data-donation-top]')?.addEventListener('click', () => {
+        donationScroll?.scrollTo({
+          top: 0,
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+        });
       });
       document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && donationOverlay?.classList.contains('visible')) {
@@ -10625,8 +17007,8 @@
       const GITHUB_LOCAL_CONTRIBUTORS_URL = new URL('contributors.json', document.baseURI).href;
       const GITHUB_FIXED_ACTIVITY_POINTS = '0,62 248,62 280,8';
       // A shipped snapshot prevents a blank metric on first launch without a network connection.
-      const DEFAULT_GITHUB_STAR_COUNT = 216;
-      const DEFAULT_DONATION_TOTAL = 80.88;
+      const DEFAULT_GITHUB_STAR_COUNT = 435;
+      const DEFAULT_DONATION_TOTAL = 83.88;
       const GITHUB_REQUEST_TIMEOUT_MS = 8_000;
 
       async function fetchGithubJson(url, options = {}) {
@@ -10666,6 +17048,8 @@
           if (!cached || typeof cached !== 'object' || !cached.data) return null;
           return {
             stars: normalizeGithubStarCount(cached.data.stars) ?? DEFAULT_GITHUB_STAR_COUNT,
+            forks: normalizeGithubStarCount(cached.data.forks) ?? null,
+            issues: normalizeGithubStarCount(cached.data.issues) ?? null,
             donationTotal: Number.isFinite(Number(cached.data.donationTotal))
               ? Math.max(0, Number(cached.data.donationTotal))
               : DEFAULT_DONATION_TOTAL
@@ -10686,18 +17070,33 @@
       function renderGithubActivity(data, { repoSynced = false, donationsSynced = false } = {}) {
         const status = document.getElementById('githubActivityStatus');
         const starCount = document.getElementById('githubStarCount');
+        const stars = document.getElementById('githubStars');
+        const forks = document.getElementById('githubForks');
+        const issues = document.getElementById('githubIssues');
+        const donationGithubStars = document.getElementById('donationGithubStars');
+        const starStat = document.getElementById('githubStars')?.closest('.github-stat');
         const donationTotal = document.getElementById('githubDonationTotal');
         const chartLine = document.getElementById('githubActivityLine');
-        if (!status || !starCount || !donationTotal || !chartLine) return;
 
-        starCount.textContent = data?.stars === null || data?.stars === undefined ? '--' : String(data.stars);
-        donationTotal.textContent = formatDonationTotal(Number(data?.donationTotal));
-        chartLine.setAttribute('points', GITHUB_FIXED_ACTIVITY_POINTS);
-        status.textContent = repoSynced && donationsSynced
-          ? 'Star 与贡献名单已同步'
-          : repoSynced
-            ? 'Star 已同步，贡献名单使用本地数据'
-            : '离线显示最近可用数据';
+        const starsValue = data?.stars === null || data?.stars === undefined ? '--' : String(data.stars);
+        const forksValue = data?.forks === null || data?.forks === undefined ? '--' : String(data.forks);
+        const issuesValue = data?.issues === null || data?.issues === undefined ? '--' : String(data.issues);
+
+        if (starCount) starCount.textContent = starsValue;
+        if (stars) stars.textContent = starsValue;
+        if (forks) forks.textContent = forksValue;
+        if (issues) issues.textContent = issuesValue;
+        if (donationGithubStars) donationGithubStars.textContent = starsValue === '--' ? '400+' : `${starsValue}+`;
+        starStat?.classList.toggle('is-synced', Boolean(repoSynced && Number.isFinite(Number(data?.stars))));
+        if (donationTotal) donationTotal.textContent = formatDonationTotal(Number(data?.donationTotal));
+        if (chartLine) chartLine.setAttribute('points', GITHUB_FIXED_ACTIVITY_POINTS);
+        if (status) {
+          status.textContent = repoSynced && donationsSynced
+            ? 'Star 与贡献名单已同步'
+            : repoSynced
+              ? 'Star 已同步，贡献名单使用本地数据'
+              : '离线显示最近可用数据';
+        }
       }
 
       async function loadDonationTotal() {
@@ -10725,6 +17124,8 @@
         const cached = getCachedGithubStats();
         renderGithubActivity(cached || {
           stars: DEFAULT_GITHUB_STAR_COUNT,
+          forks: null,
+          issues: null,
           donationTotal: DEFAULT_DONATION_TOTAL
         });
 
@@ -10740,6 +17141,12 @@
           stars: repoSynced
             ? normalizeGithubStarCount(repoResult.value?.stargazers_count)
             : cached?.stars ?? DEFAULT_GITHUB_STAR_COUNT,
+          forks: repoSynced
+            ? normalizeGithubStarCount(repoResult.value?.forks_count)
+            : cached?.forks ?? null,
+          issues: repoSynced
+            ? normalizeGithubStarCount(repoResult.value?.open_issues_count)
+            : cached?.issues ?? null,
           donationTotal: donationsAvailable
             ? donationResult.value.total
             : cached?.donationTotal ?? DEFAULT_DONATION_TOTAL
@@ -10751,6 +17158,154 @@
       }
 
       loadGithubActivity();
+
+      const homeScrollContainer = document.querySelector('.main-content');
+      const homeToolSearch = document.getElementById('homeToolSearch');
+      const homeToolGrid = document.getElementById('homeToolGrid');
+      const backToTop = document.getElementById('backToTop');
+      const homeCategoryChips = Array.from(document.querySelectorAll('[data-home-category]'));
+      let activeHomeCategory = 'all';
+      let homeScrollUiRaf = 0;
+
+      function getHomeCategoryGroup(sectionCategory) {
+        switch (sectionCategory) {
+          case 'audio':
+          case 'video':
+            return 'media';
+          case 'calculator':
+            return 'calc';
+          case 'cleanup':
+            return 'clean';
+          default:
+            return sectionCategory || '';
+        }
+      }
+
+      function getHomeCategoryLabel(sectionCategory) {
+        switch (sectionCategory) {
+          case 'pdf': return 'PDF / LOCAL';
+          case 'ppt': return 'PPT / STUDIO';
+          case 'image': return 'IMAGE / LOCAL';
+          case 'audio': return 'AUDIO / LOCAL';
+          case 'video': return 'VIDEO / LOCAL';
+          case 'text': return 'TEXT / UTILITY';
+          case 'calculator': return 'CALC / UTILITY';
+          case 'creative': return 'CREATIVE / UTILITY';
+          case 'ai': return 'AI / FORGE';
+          case 'hardware': return 'HARDWARE / READONLY';
+          case 'cleanup': return 'CLEAN / AI';
+          default: return String(sectionCategory || '').toUpperCase();
+        }
+      }
+
+      function collectHomeTools() {
+        return Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
+          .filter(item => item.dataset.availability !== 'planned')
+          .map(item => {
+            const sectionCategory = item.closest('.content-section')?.dataset.category || '';
+            const title = item.querySelector('.audio-list-title')?.textContent?.trim() || item.dataset.tool || '';
+            const desc = item.querySelector('.audio-list-desc')?.textContent?.trim()
+              || item.querySelector('.audio-list-meta')?.textContent?.trim()
+              || '';
+            const tag = item.querySelector('.audio-tag')?.textContent?.trim() || getHomeCategoryLabel(sectionCategory);
+            const iconHtml = item.querySelector('.audio-list-icon')?.innerHTML || '';
+            return {
+              toolId: item.dataset.tool || '',
+              name: title,
+              desc,
+              tag,
+              iconHtml,
+              category: sectionCategory,
+              homeCategory: getHomeCategoryGroup(sectionCategory),
+              searchable: `${title} ${desc} ${tag} ${sectionCategory}`.toLowerCase()
+            };
+          });
+      }
+
+      function syncHomeBackToTop() {
+        if (!backToTop || !homeScrollContainer) return;
+        backToTop.classList.toggle('is-visible', homeScrollContainer.scrollTop > 320);
+      }
+
+      function scrollHomeToExplorer() {
+        const toolExplorer = document.querySelector('.tool-explorer');
+        if (!homeScrollContainer || !toolExplorer) return;
+        homeScrollContainer.scrollTo({
+          top: Math.max(0, toolExplorer.offsetTop - 44),
+          behavior: 'smooth'
+        });
+      }
+
+      function renderHomeTools() {
+        if (!homeToolSearch || !homeToolGrid) return;
+        const query = homeToolSearch.value.trim().toLowerCase();
+        const visibleTools = collectHomeTools().filter(tool => {
+          const matchesCategory = activeHomeCategory === 'all' || tool.homeCategory === activeHomeCategory;
+          return matchesCategory && (!query || tool.searchable.includes(query));
+        });
+
+        if (!visibleTools.length) {
+          homeToolGrid.innerHTML = '<div class="tool-result-empty">没有找到匹配的工具</div>';
+          if (typeof createIcons === 'function') createIcons({ icons });
+          return;
+        }
+
+        homeToolGrid.innerHTML = visibleTools.map(tool => `
+          <button class="tool-result-card" type="button" data-home-tool="${escapeHtml(tool.toolId)}">
+            <span class="tool-result-top">
+              <span class="tool-result-icon">${tool.iconHtml || '<i data-lucide="sparkles"></i>'}</span>
+              <span class="tool-result-tag">${escapeHtml(tool.tag)}</span>
+            </span>
+            <span>
+              <span class="tool-result-name">${escapeHtml(tool.name)}</span>
+              <span class="tool-result-desc">${escapeHtml(tool.desc)}</span>
+            </span>
+          </button>
+        `).join('');
+
+        if (typeof createIcons === 'function') createIcons({ icons });
+        homeToolGrid.querySelectorAll('[data-home-tool]').forEach(card => {
+          const tool = visibleTools.find(item => item.toolId === card.dataset.homeTool);
+          card.addEventListener('click', () => launchToolFromHome(card.dataset.homeTool));
+          card.addEventListener('contextmenu', event => {
+            event.preventDefault();
+            if (!tool) return;
+            favoriteToolFromInfo(tool);
+            card.classList.toggle('is-favorited', isFavorited(tool.toolId));
+          });
+        });
+      }
+
+      document.querySelectorAll('[data-open-tools]').forEach(button => {
+        button.addEventListener('click', scrollHomeToExplorer);
+      });
+      document.querySelectorAll('[data-open-support]').forEach(button => {
+        button.addEventListener('click', openDonationOverlay);
+      });
+
+      homeCategoryChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+          activeHomeCategory = chip.dataset.homeCategory || 'all';
+          homeCategoryChips.forEach(item => item.classList.toggle('is-active', item === chip));
+          renderHomeTools();
+        });
+      });
+
+      homeToolSearch?.addEventListener('input', renderHomeTools);
+      homeScrollContainer?.addEventListener('scroll', () => {
+        markHomeV2Scrolling();
+        if (homeScrollUiRaf) return;
+        homeScrollUiRaf = window.requestAnimationFrame(() => {
+          homeScrollUiRaf = 0;
+          syncHomeBackToTop();
+        });
+      }, { passive: true });
+      backToTop?.addEventListener('click', () => {
+        homeScrollContainer?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      syncHomeBackToTop();
+      renderHomeTools();
+      onLangChange(renderHomeTools);
 
       // ===== PDF Merger =====
       const pdfMergeOverlay = document.getElementById('pdfMergeOverlay');
@@ -11423,7 +17978,18 @@
       }
 
       // ===== PDF To Image =====
-      initPdfToImageTool({
+      const pdfToImageTool = initPdfToImageTool({
+        isTauri,
+        t,
+        onLangChange,
+        pdfWorkerUrl,
+        getOutputDir,
+        displayFilesystemPath,
+        initStandardToolPlasma,
+        disposeStandardToolPlasma
+      });
+      // ===== PDF Editor =====
+      const pdfEditorTool = initPdfEditorTool({
         isTauri,
         t,
         onLangChange,
@@ -13381,20 +19947,48 @@
             pdfDoc = await loadingTask.promise;
             const totalPages = pdfDoc.numPages;
 
-            const RENDER_SCALE = 2.5;
+            const BASE_RENDER_SCALE = 2.5;
             const pagePlan = [];
+            let totalPageArea = 0;
+            let maxDimensionScale = Number.POSITIVE_INFINITY;
+
             for (let pi = 1; pi <= totalPages; pi++) {
               const page = await pdfDoc.getPage(pi);
               const outputViewport = page.getViewport({ scale: 1 });
-              const renderViewport = page.getViewport({ scale: RENDER_SCALE });
+              const outputWidth = outputViewport.width;
+              const outputHeight = outputViewport.height;
+              totalPageArea += outputWidth * outputHeight;
+              if (outputWidth > 0 && outputHeight > 0) {
+                maxDimensionScale = Math.min(maxDimensionScale, enhanceCore.PDF_ENHANCE_LIMITS.maxRenderDimension / Math.max(outputWidth, outputHeight));
+              }
               pagePlan.push({
-                outputWidth: outputViewport.width,
-                outputHeight: outputViewport.height,
-                renderWidth: renderViewport.width,
-                renderHeight: renderViewport.height
+                outputWidth,
+                outputHeight
               });
               try { page.cleanup(); } catch (_) {}
             }
+
+            let renderScale = BASE_RENDER_SCALE;
+            if (totalPageArea > 0) {
+              const softBudgetScale = Math.sqrt(enhanceCore.PDF_ENHANCE_LIMITS.maxTotalRenderPixels / totalPageArea);
+              renderScale = Math.min(renderScale, softBudgetScale);
+            }
+            renderScale = Math.min(renderScale, maxDimensionScale);
+            if (!Number.isFinite(renderScale) || renderScale <= 0) {
+              renderScale = BASE_RENDER_SCALE;
+            }
+            if (renderScale < BASE_RENDER_SCALE) {
+              window.showToast?.(getLang() === 'zh'
+                ? '检测到大文档，已自动降低渲染倍率并继续处理。'
+                : 'Large document detected; rendering scale was lowered automatically and processing continues.');
+            }
+
+            pagePlan.forEach(plan => {
+              plan.renderScale = renderScale;
+              plan.renderWidth = plan.outputWidth * renderScale;
+              plan.renderHeight = plan.outputHeight * renderScale;
+            });
+
             enhanceCore.assertPdfEnhancePagePlan(pagePlan);
 
             if (pdfEnhanceProcessText) pdfEnhanceProcessText.textContent = `${t('home.pdfEnhance.processing')} (0/${totalPages})`;
@@ -13404,7 +19998,7 @@
             for (let pi = 1; pi <= totalPages; pi++) {
               const page = await pdfDoc.getPage(pi);
               const plan = pagePlan[pi - 1];
-              const renderViewport = page.getViewport({ scale: RENDER_SCALE });
+              const renderViewport = page.getViewport({ scale: plan.renderScale || renderScale });
               const canvas = document.createElement('canvas');
               const ctx = canvas.getContext('2d', { willReadFrequently: true });
               if (!ctx) throw new Error('pdf-enhance:enhancement-failed');
@@ -13554,6 +20148,14 @@
       const aiPolishOverlay = document.getElementById('aiPolishOverlay');
       const aiPolishBg = document.getElementById('aiPolishBg');
       const aiPolishBack = document.getElementById('aiPolishBack');
+      const aiPolishDropZone = document.getElementById('aiPolishDropZone');
+      const aiPolishDropCard = document.getElementById('aiPolishDropCard');
+      const aiPolishCta = document.getElementById('aiPolishCta');
+      const aiPolishSelectFileBtn = document.getElementById('aiPolishSelectFileBtn');
+      const aiPolishFileInput = document.getElementById('aiPolishFileInput');
+      const aiPolishFileInfo = document.getElementById('aiPolishFileInfo');
+      const aiPolishFileName = document.getElementById('aiPolishFileName');
+      const aiPolishFileMeta = document.getElementById('aiPolishFileMeta');
       const aiPolishStartBtn = document.getElementById('aiPolishStartBtn');
       const aiPolishInput = document.getElementById('aiPolishInput');
       const aiPolishRightEmpty = document.getElementById('aiPolishRightEmpty');
@@ -13573,6 +20175,9 @@
       let aiPolishRequestController = null;
       let aiPolishRequestTimeoutId = null;
       let aiPolishRequestId = 0;
+      let aiPolishReadRunId = 0;
+      let aiPolishFocusTimer = null;
+      let aiPolishSource = { type: 'manual', name: '', bytes: 0, kind: '' };
 
       const AI_POLISH_REQUEST_TIMEOUT_MS = 90_000;
 
@@ -13759,6 +20364,115 @@
         }
       }
 
+      function aiPolishText(key, params) {
+        return t(`home.aiPolish.${key}`, params);
+      }
+
+      function updateAiPolishSource(source = {}) {
+        aiPolishSource = { type: 'manual', name: '', bytes: 0, kind: '', ...source };
+        const isManual = aiPolishSource.type === 'manual';
+        if (aiPolishFileInfo) aiPolishFileInfo.classList.toggle('has-file', !isManual);
+        if (aiPolishFileName) aiPolishFileName.textContent = isManual ? aiPolishText('manualInput') : aiPolishSource.name;
+        if (aiPolishFileMeta) {
+          aiPolishFileMeta.textContent = isManual
+            ? aiPolishText('manualMeta')
+            : aiPolishText('fileMeta', {
+                type: aiPolishSource.kind || aiPolishText('document'),
+                size: formatFileSize(aiPolishSource.bytes || 0)
+              });
+        }
+      }
+
+      function updateAiPolishStartButton() {
+        if (!aiPolishStartBtn) return;
+        const btnLabel = aiPolishStartBtn.querySelector('span');
+        const btnIcon = aiPolishStartBtn.querySelector('i[data-lucide]');
+        if (aiPolishResultMode) {
+          aiPolishStartBtn.classList.remove('disabled');
+          if (btnLabel) btnLabel.textContent = aiPolishText('clearResult');
+          if (btnIcon) btnIcon.setAttribute('data-lucide', 'rotate-ccw');
+        } else {
+          const hasText = Boolean(aiPolishInput?.value?.trim());
+          aiPolishStartBtn.classList.toggle('disabled', !hasText);
+          if (btnLabel) btnLabel.textContent = aiPolishText('cta');
+          if (btnIcon) btnIcon.setAttribute('data-lucide', 'sparkles');
+        }
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function resetAiPolishOutputState() {
+        if (aiPolishRightEmpty) aiPolishRightEmpty.style.display = '';
+        if (aiPolishDirections) aiPolishDirections.style.display = 'none';
+        if (aiPolishComparison) aiPolishComparison.style.display = 'none';
+        if (aiPolishDrawer) aiPolishDrawer.classList.remove('processing');
+        aiPolishResultMode = false;
+        aiPolishDirectionsData = [];
+        aiPolishOriginalContent = '';
+        updateAiPolishStartButton();
+      }
+
+      function getAiPolishDocumentErrorMessage(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        if (message.includes('unsupported-file')) return aiPolishText('unsupportedFile');
+        if (message.includes('file-too-large')) return aiPolishText('fileTooLarge', { max: Math.round(TEXT_STATS_LIMITS.maxDocumentBytes / 1024 / 1024) });
+        if (message.includes('too-many-pages')) return aiPolishText('tooManyPdfPages', { max: TEXT_STATS_LIMITS.maxPdfPages });
+        if (message.includes('empty-document')) return aiPolishText('emptyDocument');
+        if (message.includes('invalid-docx')) return aiPolishText('invalidDocx');
+        if (message.includes('decode-failed')) return aiPolishText('decodeFailed');
+        return aiPolishText('readFailed');
+      }
+
+      async function loadAiPolishDocument(file) {
+        if (!file) return;
+        const runId = ++aiPolishReadRunId;
+        cancelAiPolishRequest();
+        hideAiPolishMask();
+        aiPolishOverlay?.classList.add('is-reading-file');
+        try {
+          const result = await readTextStatsDocument(file);
+          if (runId !== aiPolishReadRunId || !aiPolishOverlay?.classList.contains('visible')) return;
+          let text = result.text || '';
+          if (text.length > AI_POLISH_LIMITS.maxInputChars) {
+            text = text.slice(0, AI_POLISH_LIMITS.maxInputChars);
+            window.showToast?.(aiPolishText('documentTrimmed', { max: AI_POLISH_LIMITS.maxInputChars }));
+          }
+          if (aiPolishInput) {
+            aiPolishInput.value = text;
+            aiPolishInput.focus();
+          }
+          updateAiPolishSource({ type: 'file', name: result.name, bytes: result.bytes, kind: result.kind });
+          resetAiPolishOutputState();
+          window.showToast?.(aiPolishText('fileLoaded', { name: result.name }));
+        } catch (error) {
+          console.error('AI polish document read failed:', error);
+          window.showToast?.(getAiPolishDocumentErrorMessage(error));
+        } finally {
+          if (runId === aiPolishReadRunId) aiPolishOverlay?.classList.remove('is-reading-file');
+          if (aiPolishFileInput) aiPolishFileInput.value = '';
+        }
+      }
+
+      async function chooseAiPolishDocument() {
+        if (aiPolishOverlay?.classList.contains('is-reading-file')) return;
+        if (isTauri) {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [
+                { name: 'Documents', extensions: ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'docx', 'pdf'] }
+              ]
+            });
+            if (selected) await loadAiPolishDocument({ path: selected, name: String(selected).split(/[/\\]/).pop() });
+          } catch (error) {
+            console.error('AI polish file picker failed:', error);
+            window.showToast?.(aiPolishText('readFailed'));
+          }
+          return;
+        }
+        aiPolishFileInput?.click();
+      }
+
       function openAiPolishOverlay() {
         if (!aiPolishOverlay) return;
         aiPolishOverlay.classList.add('visible');
@@ -13766,12 +20480,21 @@
         if (aiPolishBg && !aiPolishPlasmaInstance) {
           aiPolishPlasmaInstance = initStandardToolPlasma(aiPolishBg);
         }
+        if (aiPolishFocusTimer !== null) clearTimeout(aiPolishFocusTimer);
+        aiPolishFocusTimer = setTimeout(() => {
+          aiPolishFocusTimer = null;
+          if (aiPolishOverlay?.classList.contains('visible')) aiPolishInput?.focus();
+        }, 300);
       }
 
       function closeAiPolishOverlay() {
         if (!aiPolishOverlay) return;
         aiPolishOverlay.classList.remove('visible');
         resetAiPolishState();
+        if (aiPolishFocusTimer !== null) {
+          clearTimeout(aiPolishFocusTimer);
+          aiPolishFocusTimer = null;
+        }
         aiPolishPlasmaInstance = disposeStandardToolPlasma(aiPolishPlasmaInstance);
       }
 
@@ -13779,25 +20502,12 @@
         cancelAiPolishRequest();
         hideAiPolishMask();
         if (aiPolishInput) aiPolishInput.value = '';
-        if (aiPolishRightEmpty) aiPolishRightEmpty.style.display = '';
-        if (aiPolishDirections) aiPolishDirections.style.display = 'none';
-        if (aiPolishComparison) aiPolishComparison.style.display = 'none';
-        if (aiPolishDrawer) {
-          aiPolishDrawer.classList.remove('processing');
-        }
-        if (aiPolishStartBtn) {
-          aiPolishStartBtn.classList.add('disabled');
-          const btnLabel = aiPolishStartBtn.querySelector('span');
-          if (btnLabel) btnLabel.textContent = t('home.aiPolish.cta');
-          const btnIcon = aiPolishStartBtn.querySelector('i[data-lucide]');
-          if (btnIcon) {
-            btnIcon.setAttribute('data-lucide', 'sparkles');
-            if (window.lucide) window.lucide.createIcons();
-          }
-        }
-        aiPolishResultMode = false;
-        aiPolishDirectionsData = [];
-        aiPolishOriginalContent = '';
+        if (aiPolishFileInput) aiPolishFileInput.value = '';
+        aiPolishOverlay?.classList.remove('is-reading-file', 'drag-over');
+        aiPolishDropZone?.classList.remove('visible');
+        aiPolishDropCard?.classList.remove('is-dragging');
+        updateAiPolishSource({ type: 'manual' });
+        resetAiPolishOutputState();
       }
 
       function showAiPolishDrawer() {
@@ -13991,6 +20701,16 @@
         aiPolishBack.addEventListener('click', closeAiPolishOverlay);
       }
 
+      [aiPolishCta, aiPolishSelectFileBtn].forEach(button => {
+        if (button) button.addEventListener('click', chooseAiPolishDocument);
+      });
+      if (aiPolishFileInput) {
+        aiPolishFileInput.addEventListener('change', event => {
+          const file = event.target.files?.[0];
+          if (file) loadAiPolishDocument(file);
+        });
+      }
+
       document.querySelectorAll('.audio-list-item[data-tool="ai-polish"]').forEach(item => {
         item.addEventListener('click', () => openToolWithAiCheck(openAiPolishOverlay));
         item.addEventListener('keydown', (e) => {
@@ -14004,7 +20724,7 @@
       if (aiPolishStartBtn) {
         aiPolishStartBtn.addEventListener('click', () => {
           if (aiPolishResultMode) {
-            resetAiPolishState();
+            resetAiPolishOutputState();
             return;
           }
           const text = aiPolishInput?.value?.trim();
@@ -14015,8 +20735,15 @@
 
       if (aiPolishInput) {
         aiPolishInput.addEventListener('input', () => {
+          if (aiPolishInput.value.length > AI_POLISH_LIMITS.maxInputChars) {
+            aiPolishInput.value = aiPolishInput.value.slice(0, AI_POLISH_LIMITS.maxInputChars);
+            window.showToast?.(aiPolishText('inputTooLong', { max: AI_POLISH_LIMITS.maxInputChars }));
+          }
           const hasText = aiPolishInput.value.trim().length > 0;
-          if (aiPolishDirectionsData.length > 0 && !aiPolishRequestController && !aiPolishResultMode) {
+          updateAiPolishSource({ type: 'manual' });
+          if (aiPolishResultMode && !aiPolishRequestController) {
+            resetAiPolishOutputState();
+          } else if (aiPolishDirectionsData.length > 0 && !aiPolishRequestController && !aiPolishResultMode) {
             // Directions describe the previous input. Do not let a user apply
             // them after they have edited the source text.
             aiPolishDirectionsData = [];
@@ -14037,6 +20764,7 @@
           if (!text) return;
           try {
             await copyAiPolishText(text);
+            window.showToast?.(aiPolishText('copied'));
             aiPolishCopyBtn.classList.add('copied');
             const icon = aiPolishCopyBtn.querySelector('i[data-lucide]');
             if (icon) icon.setAttribute('data-lucide', 'check');
@@ -14047,7 +20775,7 @@
               if (window.lucide) window.lucide.createIcons();
             }, 2000);
           } catch {
-            alert(t('home.aiPolish.copyFailed'));
+            window.showToast?.(aiPolishText('copyFailed'));
           }
         });
       }
@@ -14060,14 +20788,76 @@
           aiPolishDirectionsData = [];
         });
       }
+
+      const handleAiPolishDragEnter = () => {
+        if (!aiPolishOverlay?.classList.contains('visible')) return;
+        aiPolishOverlay.classList.add('drag-over');
+        aiPolishDropZone?.classList.add('visible');
+        aiPolishDropCard?.classList.add('is-dragging');
+      };
+      const handleAiPolishDragLeave = () => {
+        aiPolishOverlay?.classList.remove('drag-over');
+        aiPolishDropZone?.classList.remove('visible');
+        aiPolishDropCard?.classList.remove('is-dragging');
+      };
+
+      if (isTauri && aiPolishOverlay) {
+        (async () => {
+          try {
+            const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+            const webview = getCurrentWebview();
+            await webview.onDragDropEvent((event) => {
+              if (!aiPolishOverlay.classList.contains('visible')) return;
+              const payload = event.payload;
+              if (payload.type === 'enter' || payload.type === 'over') {
+                handleAiPolishDragEnter();
+              } else if (payload.type === 'leave') {
+                handleAiPolishDragLeave();
+              } else if (payload.type === 'drop') {
+                handleAiPolishDragLeave();
+                const path = payload.paths?.[0];
+                if (path) loadAiPolishDocument({ path, name: String(path).split(/[/\\]/).pop() });
+              }
+            });
+          } catch (error) {
+            console.error('AI polish drag registration failed:', error);
+          }
+        })();
+      }
+
+      if (aiPolishOverlay && !isTauri) {
+        aiPolishOverlay.addEventListener('dragover', event => {
+          event.preventDefault();
+          handleAiPolishDragEnter();
+        });
+        aiPolishOverlay.addEventListener('dragleave', event => {
+          if (event.relatedTarget && aiPolishOverlay.contains(event.relatedTarget)) return;
+          handleAiPolishDragLeave();
+        });
+        aiPolishOverlay.addEventListener('drop', event => {
+          event.preventDefault();
+          handleAiPolishDragLeave();
+          const file = event.dataTransfer?.files?.[0];
+          if (file) loadAiPolishDocument(file);
+        });
+      }
       // ===== End AI Polish Tool =====
 
       // ===== AI Translate Tool =====
       const aiTranslateOverlay = document.getElementById('aiTranslateOverlay');
       const aiTranslateBg = document.getElementById('aiTranslateBg');
       const aiTranslateBack = document.getElementById('aiTranslateBack');
+      const aiTranslateDropZone = document.getElementById('aiTranslateDropZone');
+      const aiTranslateDropCard = document.getElementById('aiTranslateDropCard');
+      const aiTranslateCta = document.getElementById('aiTranslateCta');
+      const aiTranslateSelectFileBtn = document.getElementById('aiTranslateSelectFileBtn');
+      const aiTranslateFileInput = document.getElementById('aiTranslateFileInput');
+      const aiTranslateFileInfo = document.getElementById('aiTranslateFileInfo');
+      const aiTranslateFileName = document.getElementById('aiTranslateFileName');
+      const aiTranslateFileMeta = document.getElementById('aiTranslateFileMeta');
       const aiTranslateStartBtn = document.getElementById('aiTranslateStartBtn');
       const aiTranslateInput = document.getElementById('aiTranslateInput');
+      const aiTranslateOriginalPreview = document.getElementById('aiTranslateOriginalPreview');
       const aiTranslateRightEmpty = document.getElementById('aiTranslateRightEmpty');
       const aiTranslateDrawer = document.getElementById('aiTranslateDrawer');
       const aiTranslateLangSelect = document.getElementById('aiTranslateLangSelect');
@@ -14084,6 +20874,10 @@
       let aiTranslateRequestController = null;
       let aiTranslateRequestTimeoutId = null;
       let aiTranslateRequestId = 0;
+      let aiTranslateReadRunId = 0;
+      let aiTranslateFocusTimer = null;
+      let aiTranslateSource = { type: 'manual', name: '', bytes: 0, kind: '' };
+      let aiTranslatePairsData = [];
 
       const AI_TRANSLATE_REQUEST_TIMEOUT_MS = 90_000;
 
@@ -14126,6 +20920,117 @@
         return detectAiTranslateSourceLanguage(text);
       }
 
+      function aiTranslateText(key, params) {
+        return t(`home.aiTranslate.${key}`, params);
+      }
+
+      function updateAiTranslateSource(source = {}) {
+        aiTranslateSource = { type: 'manual', name: '', bytes: 0, kind: '', ...source };
+        const isManual = aiTranslateSource.type === 'manual';
+        if (aiTranslateFileInfo) aiTranslateFileInfo.classList.toggle('has-file', !isManual);
+        if (aiTranslateFileName) aiTranslateFileName.textContent = isManual ? aiTranslateText('manualInput') : aiTranslateSource.name;
+        if (aiTranslateFileMeta) {
+          aiTranslateFileMeta.textContent = isManual
+            ? aiTranslateText('manualMeta')
+            : aiTranslateText('fileMeta', {
+                type: aiTranslateSource.kind || aiTranslateText('document'),
+                size: formatFileSize(aiTranslateSource.bytes || 0)
+              });
+        }
+      }
+
+      function updateAiTranslateStartButton() {
+        if (!aiTranslateStartBtn) return;
+        const btnLabel = aiTranslateStartBtn.querySelector('span');
+        const btnIcon = aiTranslateStartBtn.querySelector('i[data-lucide]');
+        if (aiTranslateResultMode) {
+          aiTranslateStartBtn.classList.remove('disabled');
+          if (btnLabel) btnLabel.textContent = aiTranslateText('clearResult');
+          if (btnIcon) btnIcon.setAttribute('data-lucide', 'rotate-ccw');
+        } else {
+          const hasText = Boolean(aiTranslateInput?.value?.trim());
+          aiTranslateStartBtn.classList.toggle('disabled', !hasText);
+          if (btnLabel) btnLabel.textContent = aiTranslateText('cta');
+          if (btnIcon) btnIcon.setAttribute('data-lucide', 'languages');
+        }
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function resetAiTranslateOutputState() {
+        restoreAiTranslateInput();
+        if (aiTranslateRightEmpty) aiTranslateRightEmpty.style.display = '';
+        if (aiTranslateLangSelect) aiTranslateLangSelect.style.display = 'none';
+        if (aiTranslateComparison) aiTranslateComparison.style.display = 'none';
+        if (aiTranslateResult) aiTranslateResult.innerHTML = '';
+        if (aiTranslateDrawer) aiTranslateDrawer.classList.remove('processing');
+        aiTranslateResultMode = false;
+        aiTranslateOriginalContent = '';
+        aiTranslatePairsData = [];
+        updateAiTranslateStartButton();
+      }
+
+      function getAiTranslateDocumentErrorMessage(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        if (message.includes('unsupported-file')) return aiTranslateText('unsupportedFile');
+        if (message.includes('file-too-large')) return aiTranslateText('fileTooLarge', { max: Math.round(TEXT_STATS_LIMITS.maxDocumentBytes / 1024 / 1024) });
+        if (message.includes('too-many-pages')) return aiTranslateText('tooManyPdfPages', { max: TEXT_STATS_LIMITS.maxPdfPages });
+        if (message.includes('empty-document')) return aiTranslateText('emptyDocument');
+        if (message.includes('invalid-docx')) return aiTranslateText('invalidDocx');
+        if (message.includes('decode-failed')) return aiTranslateText('decodeFailed');
+        return aiTranslateText('readFailed');
+      }
+
+      async function loadAiTranslateDocument(file) {
+        if (!file) return;
+        const runId = ++aiTranslateReadRunId;
+        cancelAiTranslateRequest();
+        hideAiTranslateMask();
+        aiTranslateOverlay?.classList.add('is-reading-file');
+        try {
+          const result = await readTextStatsDocument(file);
+          if (runId !== aiTranslateReadRunId || !aiTranslateOverlay?.classList.contains('visible')) return;
+          let text = result.text || '';
+          if (text.length > AI_TRANSLATE_LIMITS.maxInputChars) {
+            text = text.slice(0, AI_TRANSLATE_LIMITS.maxInputChars);
+            window.showToast?.(aiTranslateText('documentTrimmed', { max: AI_TRANSLATE_LIMITS.maxInputChars }));
+          }
+          if (aiTranslateInput) {
+            aiTranslateInput.value = text;
+            aiTranslateInput.focus();
+          }
+          updateAiTranslateSource({ type: 'file', name: result.name, bytes: result.bytes, kind: result.kind });
+          resetAiTranslateOutputState();
+          window.showToast?.(aiTranslateText('fileLoaded', { name: result.name }));
+        } catch (error) {
+          console.error('AI translate document read failed:', error);
+          window.showToast?.(getAiTranslateDocumentErrorMessage(error));
+        } finally {
+          if (runId === aiTranslateReadRunId) aiTranslateOverlay?.classList.remove('is-reading-file');
+          if (aiTranslateFileInput) aiTranslateFileInput.value = '';
+        }
+      }
+
+      async function chooseAiTranslateDocument() {
+        if (aiTranslateOverlay?.classList.contains('is-reading-file')) return;
+        if (isTauri) {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [
+                { name: 'Documents', extensions: ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'docx', 'pdf'] }
+              ]
+            });
+            if (selected) await loadAiTranslateDocument({ path: selected, name: String(selected).split(/[/\\]/).pop() });
+          } catch (error) {
+            console.error('AI translate file picker failed:', error);
+            window.showToast?.(aiTranslateText('readFailed'));
+          }
+          return;
+        }
+        aiTranslateFileInput?.click();
+      }
+
       function openAiTranslateOverlay() {
         if (!aiTranslateOverlay) return;
         aiTranslateOverlay.classList.add('visible');
@@ -14133,6 +21038,11 @@
         if (aiTranslateBg && !aiTranslatePlasmaInstance) {
           aiTranslatePlasmaInstance = initStandardToolPlasma(aiTranslateBg);
         }
+        if (aiTranslateFocusTimer !== null) clearTimeout(aiTranslateFocusTimer);
+        aiTranslateFocusTimer = setTimeout(() => {
+          aiTranslateFocusTimer = null;
+          if (aiTranslateOverlay?.classList.contains('visible')) aiTranslateInput?.focus();
+        }, 300);
       }
 
       function closeAiTranslateOverlay() {
@@ -14140,6 +21050,10 @@
         aiTranslateOverlay.classList.remove('visible');
         restoreAiTranslateInput();
         resetAiTranslateState();
+        if (aiTranslateFocusTimer !== null) {
+          clearTimeout(aiTranslateFocusTimer);
+          aiTranslateFocusTimer = null;
+        }
         aiTranslatePlasmaInstance = disposeStandardToolPlasma(aiTranslatePlasmaInstance);
       }
 
@@ -14147,22 +21061,12 @@
         cancelAiTranslateRequest();
         hideAiTranslateMask();
         if (aiTranslateInput) aiTranslateInput.value = '';
-        if (aiTranslateRightEmpty) aiTranslateRightEmpty.style.display = '';
-        if (aiTranslateLangSelect) aiTranslateLangSelect.style.display = 'none';
-        if (aiTranslateComparison) aiTranslateComparison.style.display = 'none';
-        if (aiTranslateDrawer) aiTranslateDrawer.classList.remove('processing');
-        if (aiTranslateStartBtn) {
-          aiTranslateStartBtn.classList.add('disabled');
-          const btnLabel = aiTranslateStartBtn.querySelector('span');
-          if (btnLabel) btnLabel.textContent = t('home.aiTranslate.cta');
-          const btnIcon = aiTranslateStartBtn.querySelector('i[data-lucide]');
-          if (btnIcon) {
-            btnIcon.setAttribute('data-lucide', 'languages');
-            if (window.lucide) window.lucide.createIcons();
-          }
-        }
-        aiTranslateResultMode = false;
-        aiTranslateOriginalContent = '';
+        if (aiTranslateFileInput) aiTranslateFileInput.value = '';
+        aiTranslateOverlay?.classList.remove('is-reading-file', 'drag-over');
+        aiTranslateDropZone?.classList.remove('visible');
+        aiTranslateDropCard?.classList.remove('is-dragging');
+        updateAiTranslateSource({ type: 'manual' });
+        resetAiTranslateOutputState();
       }
 
       function showAiTranslateMask(text) {
@@ -14239,22 +21143,14 @@
             throw new AiTranslateError('invalid_result', 'AI returned invalid translation JSON.');
           }
           const pairs = normalizeAiTranslatePairs(parsed);
+          aiTranslatePairsData = pairs;
 
           // Render highlighted sentences on both sides
           renderAiTranslateResult(pairs, aiTranslateOriginalContent);
 
           // Change start button to "清理结果"
           aiTranslateResultMode = true;
-          if (aiTranslateStartBtn) {
-            aiTranslateStartBtn.classList.remove('disabled');
-            const btnLabel = aiTranslateStartBtn.querySelector('span');
-            if (btnLabel) btnLabel.textContent = t('home.aiTranslate.clearResult');
-            const btnIcon = aiTranslateStartBtn.querySelector('i[data-lucide]');
-            if (btnIcon) {
-              btnIcon.setAttribute('data-lucide', 'rotate-ccw');
-              if (window.lucide) window.lucide.createIcons();
-            }
-          }
+          updateAiTranslateStartButton();
         } catch (e) {
           if (requestId !== aiTranslateRequestId) return;
           console.error('[AI Translate] Error:', e);
@@ -14277,6 +21173,8 @@
 
       function renderAiTranslateResult(pairs, sourceText) {
         // Render right side (translated) with highlighted sentences
+        if (aiTranslateRightEmpty) aiTranslateRightEmpty.style.display = 'none';
+        if (aiTranslateLangSelect) aiTranslateLangSelect.style.display = 'none';
         if (aiTranslateComparison) aiTranslateComparison.style.display = '';
         if (aiTranslateResult) {
           aiTranslateResult.innerHTML = '';
@@ -14291,40 +21189,32 @@
         }
 
         // Render left side (original) with matching highlight colors
-        if (aiTranslateInput) {
-          const leftPanel = aiTranslateInput.closest('.ai-polish-left-panel');
-          if (leftPanel) {
-            let highlightDiv = leftPanel.querySelector('.ai-translate-highlight');
-            if (!highlightDiv) {
-              highlightDiv = document.createElement('div');
-              highlightDiv.className = 'ai-polish-polished ai-translate-highlight';
-              highlightDiv.style.display = 'block';
-              leftPanel.appendChild(highlightDiv);
-            }
-            highlightDiv.innerHTML = '';
-            const sourcePairs = aiTranslateOriginalsMatch(sourceText, pairs)
-              ? pairs
-              : [{ original: sourceText, translated: '' }];
-            sourcePairs.forEach(pair => {
-              const span = document.createElement('span');
-              span.className = 'ai-translate-sentence';
-              span.textContent = pair.original || '';
-              span.title = t('home.aiTranslate.clickToCopy');
-              span.addEventListener('click', () => copySentenceText(span, pair.original || ''));
-              highlightDiv.appendChild(span);
-            });
-            aiTranslateInput.style.display = 'none';
-          }
+        if (aiTranslateInput && aiTranslateOriginalPreview) {
+          aiTranslateOriginalPreview.innerHTML = '';
+          const sourcePairs = aiTranslateOriginalsMatch(sourceText, pairs)
+            ? pairs
+            : [{ original: sourceText, translated: '' }];
+          sourcePairs.forEach(pair => {
+            const span = document.createElement('span');
+            span.className = 'ai-translate-sentence';
+            span.textContent = pair.original || '';
+            span.title = t('home.aiTranslate.clickToCopy');
+            span.addEventListener('click', () => copySentenceText(span, pair.original || ''));
+            aiTranslateOriginalPreview.appendChild(span);
+          });
+          aiTranslateInput.style.display = 'none';
+          aiTranslateOriginalPreview.style.display = '';
         }
       }
 
       function copySentenceText(el, text) {
         if (!text) return;
         copyAiTranslateText(text).then(() => {
+          window.showToast?.(aiTranslateText('copied'));
           el.classList.add('copied-flash');
           setTimeout(() => el.classList.remove('copied-flash'), 600);
         }).catch(() => {
-          alert(t('home.aiTranslate.copyFailed'));
+          window.showToast?.(aiTranslateText('copyFailed'));
         });
       }
 
@@ -14351,15 +21241,26 @@
       function restoreAiTranslateInput() {
         if (aiTranslateInput) {
           aiTranslateInput.style.display = '';
-          const leftPanel = aiTranslateInput.closest('.ai-polish-left-panel');
-          const highlightDiv = leftPanel?.querySelector('.ai-translate-highlight');
-          if (highlightDiv) highlightDiv.remove();
+        }
+        if (aiTranslateOriginalPreview) {
+          aiTranslateOriginalPreview.innerHTML = '';
+          aiTranslateOriginalPreview.style.display = 'none';
         }
       }
 
       // Event listeners
       if (aiTranslateBack) {
         aiTranslateBack.addEventListener('click', closeAiTranslateOverlay);
+      }
+
+      [aiTranslateCta, aiTranslateSelectFileBtn].forEach(button => {
+        if (button) button.addEventListener('click', chooseAiTranslateDocument);
+      });
+      if (aiTranslateFileInput) {
+        aiTranslateFileInput.addEventListener('change', event => {
+          const file = event.target.files?.[0];
+          if (file) loadAiTranslateDocument(file);
+        });
       }
 
       document.querySelectorAll('.audio-list-item[data-tool="ai-translate"]').forEach(item => {
@@ -14375,8 +21276,7 @@
       if (aiTranslateStartBtn) {
         aiTranslateStartBtn.addEventListener('click', () => {
           if (aiTranslateResultMode) {
-            resetAiTranslateState();
-            restoreAiTranslateInput();
+            resetAiTranslateOutputState();
             return;
           }
           const text = aiTranslateInput?.value?.trim();
@@ -14392,8 +21292,15 @@
 
       if (aiTranslateInput) {
         aiTranslateInput.addEventListener('input', () => {
+          if (aiTranslateInput.value.length > AI_TRANSLATE_LIMITS.maxInputChars) {
+            aiTranslateInput.value = aiTranslateInput.value.slice(0, AI_TRANSLATE_LIMITS.maxInputChars);
+            window.showToast?.(aiTranslateText('inputTooLong', { max: AI_TRANSLATE_LIMITS.maxInputChars }));
+          }
           const hasText = aiTranslateInput.value.trim().length > 0;
-          if (aiTranslateOriginalContent && aiTranslateInput.value.trim() !== aiTranslateOriginalContent) {
+          updateAiTranslateSource({ type: 'manual' });
+          if (aiTranslateResultMode && !aiTranslateRequestController) {
+            resetAiTranslateOutputState();
+          } else if (aiTranslateOriginalContent && aiTranslateInput.value.trim() !== aiTranslateOriginalContent) {
             aiTranslateOriginalContent = '';
             if (aiTranslateLangSelect) aiTranslateLangSelect.style.display = 'none';
             if (aiTranslateRightEmpty) aiTranslateRightEmpty.style.display = '';
@@ -14412,6 +21319,7 @@
           if (!text) return;
           try {
             await copyAiTranslateText(text);
+            window.showToast?.(aiTranslateText('copied'));
             aiTranslateCopyBtn.classList.add('copied');
             const icon = aiTranslateCopyBtn.querySelector('i[data-lucide]');
             if (icon) icon.setAttribute('data-lucide', 'check');
@@ -14422,7 +21330,7 @@
               if (window.lucide) window.lucide.createIcons();
             }, 2000);
           } catch {
-            alert(t('home.aiTranslate.copyFailed'));
+            window.showToast?.(aiTranslateText('copyFailed'));
           }
         });
       }
@@ -14432,6 +21340,59 @@
         aiTranslateCancelBtn.addEventListener('click', () => {
           if (aiTranslateLangSelect) aiTranslateLangSelect.style.display = 'none';
           if (aiTranslateRightEmpty) aiTranslateRightEmpty.style.display = '';
+        });
+      }
+
+      const handleAiTranslateDragEnter = () => {
+        if (!aiTranslateOverlay?.classList.contains('visible')) return;
+        aiTranslateOverlay.classList.add('drag-over');
+        aiTranslateDropZone?.classList.add('visible');
+        aiTranslateDropCard?.classList.add('is-dragging');
+      };
+      const handleAiTranslateDragLeave = () => {
+        aiTranslateOverlay?.classList.remove('drag-over');
+        aiTranslateDropZone?.classList.remove('visible');
+        aiTranslateDropCard?.classList.remove('is-dragging');
+      };
+
+      if (isTauri && aiTranslateOverlay) {
+        (async () => {
+          try {
+            const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+            const webview = getCurrentWebview();
+            await webview.onDragDropEvent((event) => {
+              if (!aiTranslateOverlay.classList.contains('visible')) return;
+              const payload = event.payload;
+              if (payload.type === 'enter' || payload.type === 'over') {
+                handleAiTranslateDragEnter();
+              } else if (payload.type === 'leave') {
+                handleAiTranslateDragLeave();
+              } else if (payload.type === 'drop') {
+                handleAiTranslateDragLeave();
+                const path = payload.paths?.[0];
+                if (path) loadAiTranslateDocument({ path, name: String(path).split(/[/\\]/).pop() });
+              }
+            });
+          } catch (error) {
+            console.error('AI translate drag registration failed:', error);
+          }
+        })();
+      }
+
+      if (aiTranslateOverlay && !isTauri) {
+        aiTranslateOverlay.addEventListener('dragover', event => {
+          event.preventDefault();
+          handleAiTranslateDragEnter();
+        });
+        aiTranslateOverlay.addEventListener('dragleave', event => {
+          if (event.relatedTarget && aiTranslateOverlay.contains(event.relatedTarget)) return;
+          handleAiTranslateDragLeave();
+        });
+        aiTranslateOverlay.addEventListener('drop', event => {
+          event.preventDefault();
+          handleAiTranslateDragLeave();
+          const file = event.dataTransfer?.files?.[0];
+          if (file) loadAiTranslateDocument(file);
         });
       }
       // ===== End AI Translate Tool =====
@@ -14447,6 +21408,9 @@
       const aiDocThumbScroll = document.getElementById('aiDocThumbScroll');
       const aiDocCanvasToolbar = document.getElementById('aiDocCanvasToolbar');
       const aiDocExportBtn = document.getElementById('aiDocExportBtn');
+      const aiDocOpenEditorBtn = document.getElementById('aiDocOpenEditorBtn');
+      const aiDocPreviewMeta = document.getElementById('aiDocPreviewMeta');
+      const aiDocInputCounter = document.getElementById('aiDocInputCounter');
       const aiDocMask = document.getElementById('aiDocMask');
       const aiDocMaskText = document.getElementById('aiDocMaskText');
       const aiDocEditOverlay = document.getElementById('aiDocEditOverlay');
@@ -14529,6 +21493,17 @@
         return true;
       }
 
+      function updateAiDocInputState() {
+        const length = aiDocChatInput?.value?.length || 0;
+        if (aiDocInputCounter) aiDocInputCounter.textContent = `${length} / ${AI_DOC_LIMITS.maxPromptChars}`;
+        if (aiDocChatSend) aiDocChatSend.disabled = !aiDocChatInput?.value?.trim();
+      }
+
+      function setAiDocPreviewMeta(textKey, params = {}) {
+        if (!aiDocPreviewMeta) return;
+        aiDocPreviewMeta.textContent = t(textKey, params);
+      }
+
       function appendAiDocHistory(role, content) {
         const compact = compactAiDocHistoryMessage(content);
         if (!compact) return;
@@ -14539,7 +21514,7 @@
       const AI_DOC_PRESET_PROMPTS = [
         { labelKey: 'home.aiDoc.chipRent', prompt: `生成一份可直接签署的一页个人租房合同 PDF。请模拟合理示例信息：出租方、承租方、房屋地址、建筑面积、租赁期限、月租金、押金、付款方式、物业/水电责任等。版式要求：A4 黑白商务合同风格，标题居中，基础信息用 2-4 列表格行整合，合同条款分为“租赁标的、费用支付、维修与使用、违约责任、提前解除、其他约定”，每段文字克制但完整。末尾预留出租方、承租方签字线和日期。所有内容都要是可编辑图层，避免图片占位。` },
         { labelKey: 'home.aiDoc.chipResign', prompt: `生成一份正式离职报告 PDF，用于员工提交给直属领导和 HR。请模拟合理信息：姓名、部门、岗位、入职日期、拟离职日期、交接截止时间、交接联系人。内容结构：标题、申请信息表、离职原因说明、感谢与交接承诺、交接事项清单、审批/签字区域。语气正式、真诚、不情绪化。版式要求一页 A4 公文风，黑白灰高级排版，信息紧凑清晰，所有文字和表格行后续都可编辑。` },
-        { labelKey: 'home.aiDoc.chipMeeting', prompt: `生成一份一页项目周会会议纪要 PDF。请模拟一个“ToolKnit v1.3 发布前排查会”的真实场景数据：会议时间、地点、主持人、参会人、版本目标、已完成事项、遗留风险、负责人和截止日期。文档结构：会议概况、核心结论、问题清单、待办表格、下次会议安排。待办表格至少 5 行，包含事项、负责人、优先级、截止时间、验收标准。版式要像专业团队内部纪要，重点结论用强调块，所有模块可编辑。` },
+        { labelKey: 'home.aiDoc.chipMeeting', prompt: `生成一份一页项目周会会议纪要 PDF。请模拟一个“ToolKnit v2.0 发布前排查会”的真实场景数据：会议时间、地点、主持人、参会人、版本目标、已完成事项、遗留风险、负责人和截止日期。文档结构：会议概况、核心结论、问题清单、待办表格、下次会议安排。待办表格至少 5 行，包含事项、负责人、优先级、截止时间、验收标准。版式要像专业团队内部纪要，重点结论用强调块，所有模块可编辑。` },
         { labelKey: 'home.aiDoc.chipPrd', prompt: `生成一份 2 页产品需求文档 PRD，主题是“AI 大文件清理工具”。请模拟完整业务资料：目标用户、使用场景、核心痛点、功能范围、非目标、用户流程、交互细节、风险控制、数据字段、验收标准。必须体现：本地扫描、AI 只分析文件元数据、用户最终确认、默认移入回收站、失败项可定位处理。版式使用 A4 专业产品文档风格，章节清晰，表格用于功能清单和验收标准，重点信息用灰阶强调块，不要图片占位。` },
         { labelKey: 'home.aiDoc.chipBusiness', prompt: `生成一份 3 页商业计划书 PDF，项目名“ToolKnit Desktop”。请模拟合理数据：目标用户规模、工具数量、Star 增长、用户反馈、捐赠金额、版本节奏和未来路线。结构包括：项目概述、市场痛点、解决方案、核心优势、用户增长、商业模式、竞品差异、阶段规划、风险与对策。风格要适合放到路演或 GitHub 项目介绍中，黑白高级商务排版，关键数字用强调区或表格呈现，所有内容可编辑，不要图片占位。` },
         { labelKey: 'home.aiDoc.chipResume', prompt: `生成一份 1-2 页现代中文简历 PDF，岗位方向为“前端 / AI 工具产品开发”。请模拟一位 3 年经验候选人的合理信息：基础信息、求职意向、技能栈、工作经历、项目经历、开源项目、教育背景和自我评价。项目经历重点写“桌面效率工具、AI 文档生成、CLI/Agent 接入、本地文件处理”。版式要干净、强层次、适合投递，时间线清晰，技能和项目成果用表格/列表组织，所有文字可编辑。` }
@@ -14813,7 +21788,8 @@
           addAiDocPromptChips();
         }
         if (aiDocChatInput) aiDocChatInput.value = '';
-        if (aiDocChatSend) aiDocChatSend.disabled = true;
+        updateAiDocInputState();
+        setAiDocPreviewMeta('home.aiDoc.previewWaiting');
         if (aiDocCanvasEmpty) aiDocCanvasEmpty.style.display = '';
         if (aiDocThumbScroll) {
           aiDocThumbScroll.style.display = 'none';
@@ -14942,12 +21918,15 @@
 3. **文字适量**：正文 region 的 text 应是完整、清晰的段落（通常 20-80 字），不要只写一两个词，也不要超过实际页面承载能力
 4. **页数服从需求**：用户明确指定页数时必须严格遵从；不得为了填满页面、凑页数或重复内容而增加页面
 5. **合理分区**：使用足够的 region 组织内容，但不要把一句话、一个字段或一个表格单元格拆成多个无意义的 region
+6. **事实边界清晰**：不得编造日期、版本号、编号、测试结果、验收结论、发布状态、兼容性结论或来源引用；用户未提供的事实字段写“待确认”，不要推断成确定结论
+7. **模拟数据要标明语境**：只有用户明确要求“模拟/示例/演示/虚构数据”时，才允许生成合理的样例数据；否则缺失信息必须保留为“待确认”
 
 ## 专业版式原则
 - 采用现代黑白商务报告风格：强标题、清晰章节、克制的灰阶信息块，不使用装饰性符号堆砌
+- 文档要像经过设计，而不是普通长文：适当混合正文、紧凑表格、一个关键 emphasis、一个必要 note，让层次更丰富
 - 元数据（时间、地点、人员、编号）优先合并成 2-4 列的 table-row，不要逐字段生成独立正文
 - 待办、计划、对比和责任清单必须使用 table-row，每一行用“ | ”分隔列，列顺序保持一致
-- 重要结论使用 emphasis，补充说明和下次安排使用 note；普通内容不要滥用强调样式
+- 重要结论使用 emphasis，每页最多一个；补充说明、风险前提、使用提示用 note；普通内容不要滥用强调样式
 - title 下可使用一条简短 subtitle，但不要生成页眉和页脚，ToolKnit 会自动完成页面装饰和准确页码
 
 ## A4 画布规格
@@ -14969,11 +21948,9 @@
 9. **signature**：fontSize 13-14, 签字线
 10. **date**：fontSize 13-14
 11. **divider**：h=2, text="", 视觉分隔
-12. **page-header**：居中, fontSize 9, y=30, h=18, 灰色
-13. **page-footer**：居中, fontSize 9, y=1085, h=18, 灰色
-14. **table-row**：fontSize 12-14, text用" | "分隔 2-4 列，相邻行列数必须一致
-15. **note**（注释/提示）：左对齐, fontSize 11.5-13, x=76, w=662, 用于补充说明
-16. **emphasis**（强调段落）：左对齐, fontSize 13-15, bold=true, 用于重要结论摘要
+12. **table-row**：fontSize 12-14, text用" | "分隔 2-4 列，相邻行列数必须一致
+13. **note**（注释/提示）：左对齐, fontSize 11.5-13, x=76, w=662, 用于补充说明
+14. **emphasis**（强调段落）：左对齐, fontSize 13-15, bold=true, 用于重要结论摘要
 
 ## 布局计算公式
 - 正文字号 14px，行高约 22px
@@ -15102,7 +22079,7 @@
         } finally {
           if (finishAiDocRequest(requestId)) {
             hideAiDocMask();
-            aiDocChatSend.disabled = !aiDocChatInput?.value?.trim();
+            updateAiDocInputState();
           }
         }
       }
@@ -15113,6 +22090,7 @@
         if (aiDocCanvasEmpty) aiDocCanvasEmpty.style.display = 'none';
         aiDocThumbScroll.style.display = '';
         if (aiDocCanvasToolbar) aiDocCanvasToolbar.style.display = '';
+        setAiDocPreviewMeta('home.aiDoc.previewReady', { count: data.pages.length });
         aiDocThumbScroll.innerHTML = '';
 
         data.pages.forEach((page, pageIdx) => {
@@ -16232,7 +23210,7 @@
           if (aiDocChatInput && prompt) {
             aiDocChatInput.value = prompt;
             aiDocChatInput.focus();
-            aiDocChatInput.dispatchEvent(new Event('input'));
+            aiDocChatInput.dispatchEvent(new Event('input', { bubbles: true }));
           }
         });
       }
@@ -16244,20 +23222,22 @@
             handleAiDocSend();
           }
         });
-        aiDocChatInput.addEventListener('input', () => {
-          aiDocChatSend.disabled = !aiDocChatInput.value.trim();
-        });
+        aiDocChatInput.addEventListener('input', updateAiDocInputState);
       }
 
       if (aiDocExportBtn) {
         aiDocExportBtn.addEventListener('click', exportAiDocPdf);
       }
 
+      if (aiDocOpenEditorBtn) {
+        aiDocOpenEditorBtn.addEventListener('click', openAiDocEditOverlay);
+      }
+
       const aiDocResetBtn = document.getElementById('aiDocResetBtn');
       if (aiDocResetBtn) {
         aiDocResetBtn.addEventListener('click', () => {
           resetAiDocState();
-          aiDocChatSend.disabled = true;
+          updateAiDocInputState();
         });
       }
 
@@ -16391,7 +23371,7 @@
 
       const AI_TABLE_PRESET_PROMPTS = [
         { labelKey: 'home.aiTable.presetSales', prompt: `生成一份 2026 年 Q2 新媒体投放复盘表，请模拟合理但真实感强的数据。字段包含：月份、平台、投放预算、曝光量、点击量、CTR、CPC、线索数、成交数、成交金额、ROI、主要问题、优化建议。请至少生成 18 行数据，覆盖抖音、小红书、B站、微信公众号、知乎、搜索广告等平台；突出 ROI 低于 1.2 的项目。请生成 2 个图表：1）各平台成交金额柱状图；2）按月份 ROI 趋势图。标题和摘要要适合老板汇报，最终适合导出 Excel、PNG 和 PDF。` },
-        { labelKey: 'home.aiTable.presetSchedule', prompt: `生成一份“ToolKnit v1.3 发布排期表”，请模拟详细项目数据。字段包含：模块、任务名称、负责人、开始日期、结束日期、当前状态、优先级、完成度、风险说明、验收标准。至少 14 行，覆盖 AI 文档、AI 表格、视频转 GIF、硬件工具、清理工具、帮助中心、打包发布等模块。状态包含未开始、进行中、待验证、已完成。请生成 1 个进度分布图和 1 个模块风险对比图，表格要适合项目复盘和 Agent 后续按任务修改。` },
+        { labelKey: 'home.aiTable.presetSchedule', prompt: `生成一份“ToolKnit v2.0 发布排期表”，请模拟详细项目数据。字段包含：模块、任务名称、负责人、开始日期、结束日期、当前状态、优先级、完成度、风险说明、验收标准。至少 14 行，覆盖 AI 文档、AI 表格、视频转 GIF、硬件工具、清理工具、帮助中心、打包发布等模块。状态包含未开始、进行中、待验证、已完成。请生成 1 个进度分布图和 1 个模块风险对比图，表格要适合项目复盘和 Agent 后续按任务修改。` },
         { labelKey: 'home.aiTable.presetCompare', prompt: `生成一份 2026 年轻量办公笔记本选型对比表，请模拟 8 款产品数据。字段包含：品牌型号、CPU、内存、硬盘、屏幕、重量、续航、接口、参考价、适合人群、优势、短板、综合评分。数据要看起来合理，不要空泛。请生成 2 个图表：1）价格与综合评分对比柱状图；2）不同品牌平均续航对比图。表格摘要要给出“最值得买、性能优先、轻薄优先、预算优先”的建议。` },
         { labelKey: 'home.aiTable.presetPerformance', prompt: `生成一份研发团队月度绩效复盘表，请模拟 12 名员工的合理数据。字段包含：姓名、岗位、负责模块、需求完成数、Bug 修复数、代码评审数、准时率、协作评分、质量评分、综合得分、绩效等级、主管建议。请让数据有差异和层次，不要每个人都很平均。生成 2 个图表：1）绩效等级分布图；2）各岗位平均综合得分对比图。摘要要指出高绩效特征、风险成员和下月提升建议，适合导出给管理层。` },
       ];
@@ -16551,8 +23531,11 @@
 ## 对话规则
 1. 信息不完整时追问（最多 2 轮），返回 {"ready": false, "question": "你的问题"}
 2. 信息完整时返回完整 JSON，不要任何 markdown 代码块或解释文字
-3. 数据要真实合理，不要用占位符
-4. 如果用户要求图表，必须包含 charts 字段`;
+3. 数据要真实合理，不要用占位符；用户明确要求模拟、示例、演示数据时，可以生成有业务逻辑的假数据，但标题或摘要应体现“模拟/示例”语境
+4. 不得编造用户未提供的真实事实、版本、日期、测试通过、验收完成、上线状态或来源引用；缺失事实写“待确认”
+5. 图表必须基于 number 类型列；没有数值列时不要生成 charts；饼图只使用一个数值列
+6. 如果用户要求图表，必须包含 charts 字段
+7. 优先生成能直接用于复盘、汇报、排期、预算、清单、对比、统计的结构：列名清晰、行数据有差异、有层次，不要每行都机械平均`;
 
           const content = await callDeepSeek([
             { role: 'system', content: systemPrompt },
@@ -17646,31 +24629,478 @@
       const colorExtractorUploadZone = document.getElementById('colorExtractorUploadZone');
       const colorExtractorFileInput = document.getElementById('colorExtractorFileInput');
       const colorExtractorResult = document.getElementById('colorExtractorResult');
+      const colorExtractorDrawerHandle = document.getElementById('colorExtractorDrawerHandle');
       const colorExtractorCircles = document.getElementById('colorExtractorCircles');
       const colorExtractorImagePreview = document.getElementById('colorExtractorImagePreview');
       const colorExtractorImage = document.getElementById('colorExtractorImage');
+      const colorExtractorDrawerImage = document.getElementById('colorExtractorDrawerImage');
       const colorExtractorCirclesView = document.getElementById('colorExtractorCirclesView');
       const colorExtractorReselectBtn = document.getElementById('colorExtractorReselectBtn');
       const colorExtractorFill = document.getElementById('colorExtractorFill');
       const colorExtractorDetailView = document.getElementById('colorExtractorDetailView');
       const colorExtractorDetailCols = document.getElementById('colorExtractorDetailCols');
       const colorExtractorBackDetailBtn = document.getElementById('colorExtractorBackDetailBtn');
+      const colorExtractorImageModeBtn = document.getElementById('colorExtractorImageModeBtn');
+      const colorExtractorScreenModeBtn = document.getElementById('colorExtractorScreenModeBtn');
+      const colorExtractorImageMode = document.getElementById('colorExtractorImageMode');
+      const colorExtractorScreenMode = document.getElementById('colorExtractorScreenMode');
+      const colorExtractorScreenStartBtn = document.getElementById('colorExtractorScreenStartBtn');
+      const colorExtractorStatus = document.getElementById('colorExtractorStatus');
+      const colorExtractorScreenResult = document.getElementById('colorExtractorScreenResult');
+      const colorExtractorScreenSwatch = document.getElementById('colorExtractorScreenSwatch');
+      const colorExtractorScreenHex = document.getElementById('colorExtractorScreenHex');
+      const colorExtractorScreenRgb = document.getElementById('colorExtractorScreenRgb');
+      const colorExtractorScreenCopyBtn = document.getElementById('colorExtractorScreenCopyBtn');
+      const colorExtractorPaletteEmpty = document.getElementById('colorExtractorPaletteEmpty');
+      const colorExtractorPaletteGrid = document.getElementById('colorExtractorPaletteGrid');
+      const colorExtractorImageName = document.getElementById('colorExtractorImageName');
+      const colorExtractorImageMeta = document.getElementById('colorExtractorImageMeta');
+      const colorExtractorReplaceBtn = document.getElementById('colorExtractorReplaceBtn');
+      const colorExtractorDetailSwatch = document.getElementById('colorExtractorDetailSwatch');
+      const colorExtractorDetailHex = document.getElementById('colorExtractorDetailHex');
+      const colorExtractorDetailRgb = document.getElementById('colorExtractorDetailRgb');
+      const colorExtractorDetailHsl = document.getElementById('colorExtractorDetailHsl');
+      const colorExtractorDetailHint = document.getElementById('colorExtractorDetailHint');
+
+      const screenPickerOverlay = document.getElementById('screenPickerOverlay');
+      const screenPickerCanvas = document.getElementById('screenPickerCanvas');
+      const screenPickerCrosshair = screenPickerOverlay?.querySelector('.screen-picker-crosshair');
+      const screenPickerReadoutSwatch = document.getElementById('screenPickerReadoutSwatch');
+      const screenPickerReadoutHex = document.getElementById('screenPickerReadoutHex');
+      const screenPickerReadoutRgb = document.getElementById('screenPickerReadoutRgb');
+      const screenPickerLocked = document.getElementById('screenPickerLocked');
+      const screenPickerFinishBtn = document.getElementById('screenPickerFinishBtn');
 
       let colorExtractorPlasmaInstance = null;
       let colorExtractorCurrentImg = null;
       let colorExtractorColors = [];
       let colorExtractorRequestId = 0;
       let colorExtractorPreviewUrl = null;
+      let colorExtractorDrawerClosing = false;
+      let colorExtractorDrawerDrag = null;
+      let colorExtractorMode = 'image';
+      let screenPickerUnlisten = null;
+      let screenPickerListening = false;
+      let screenPickerWindowTimer = null;
+      let screenPickerWindowRaf = null;
+      let screenPickerWindowBounds = null;
+      let screenPickerLatestSample = null;
+      let screenPickerWindowLocked = false;
+      let screenPickerOpenUnlisten = null;
+      let colorExtractorSelectedIndex = -1;
+      let screenPickerUnlistens = [];
+      const COLOR_EXTRACTOR_FILL_MS = 480;
+      const COLOR_EXTRACTOR_DETAIL_FADE_MS = 220;
+      const COLOR_EXTRACTOR_FILL_START_DELAY_MS = 24;
+      const COLOR_EXTRACTOR_DRAWER_CLOSE_MS = 280;
+
+      function updateColorExtractorStatus(text) {
+        if (colorExtractorStatus) colorExtractorStatus.textContent = text;
+      }
+
+      function hslFromRgb(r, g, b) {
+        const rn = r / 255;
+        const gn = g / 255;
+        const bn = b / 255;
+        const max = Math.max(rn, gn, bn);
+        const min = Math.min(rn, gn, bn);
+        const lightness = (max + min) / 2;
+        if (max === min) return { h: 0, s: 0, l: Math.round(lightness * 100) };
+        const delta = max - min;
+        const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+        let hue;
+        if (max === rn) hue = ((gn - bn) / delta + (gn < bn ? 6 : 0)) / 6;
+        else if (max === gn) hue = ((bn - rn) / delta + 2) / 6;
+        else hue = ((rn - gn) / delta + 4) / 6;
+        return { h: Math.round(hue * 360), s: Math.round(saturation * 100), l: Math.round(lightness * 100) };
+      }
+
+      function colorFromScreenSample(sample) {
+        const hex = String(sample?.hex || '').match(/^#[0-9a-fA-F]{6}$/)?.[0]?.toUpperCase() || '#000000';
+        const rgbMatch = String(sample?.rgb || '').match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+        const r = rgbMatch ? Math.max(0, Math.min(255, Number(rgbMatch[1]))) : 0;
+        const g = rgbMatch ? Math.max(0, Math.min(255, Number(rgbMatch[2]))) : 0;
+        const b = rgbMatch ? Math.max(0, Math.min(255, Number(rgbMatch[3]))) : 0;
+        return { hex, rgb: { r, g, b }, hsl: hslFromRgb(r, g, b) };
+      }
+
+      function resetScreenColorResult() {
+        if (colorExtractorScreenResult) colorExtractorScreenResult.hidden = true;
+        if (colorExtractorScreenSwatch) colorExtractorScreenSwatch.style.removeProperty('background-color');
+        if (colorExtractorScreenHex) colorExtractorScreenHex.textContent = '#000000';
+        if (colorExtractorScreenRgb) colorExtractorScreenRgb.textContent = 'rgb(0, 0, 0)';
+      }
+
+      function renderColorExtractorDetail(color) {
+        const has = Boolean(color);
+        if (colorExtractorDetailSwatch) colorExtractorDetailSwatch.style.backgroundColor = has ? color.hex : 'rgba(255,255,255,0.04)';
+        if (colorExtractorDetailHex) colorExtractorDetailHex.textContent = has ? color.hex : '—';
+        if (colorExtractorDetailRgb) colorExtractorDetailRgb.textContent = has ? `rgb(${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b})` : '—';
+        if (colorExtractorDetailHsl) colorExtractorDetailHsl.textContent = has ? `hsl(${color.hsl.h}, ${color.hsl.s}%, ${color.hsl.l}%)` : '—';
+        if (colorExtractorDetailHint) colorExtractorDetailHint.hidden = has;
+      }
+
+      function selectColor(index) {
+        const color = colorExtractorColors[index];
+        if (!color) return;
+        colorExtractorSelectedIndex = index;
+        colorExtractorPaletteGrid?.querySelectorAll('.color-extractor-palette-card').forEach(card => {
+          card.classList.toggle('is-selected', Number(card.dataset.colorIndex) === index);
+        });
+        renderColorExtractorDetail(color);
+      }
+
+      function addScreenColor(color) {
+        const existing = colorExtractorColors.findIndex(item => item.hex === color.hex);
+        if (existing >= 0) {
+          colorExtractorSelectedIndex = existing;
+        } else {
+          colorExtractorColors.unshift(color);
+          colorExtractorSelectedIndex = 0;
+        }
+        renderColorExtractorPalette();
+        renderColorExtractorDetail(colorExtractorColors[colorExtractorSelectedIndex]);
+      }
+
+      function extractPaletteFromImage(img) {
+        if (!img?.naturalWidth || !img?.naturalHeight) return;
+        const canvas = document.createElement('canvas');
+        const maxDim = 200;
+        const scale = Math.min(maxDim / img.naturalWidth, maxDim / img.naturalHeight, 1);
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        let data;
+        try {
+          data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        } catch (error) {
+          console.error('[Color Extractor] Pixel read error:', error);
+          showToast(t('home.colorExtractor.extractFailed'));
+          return;
+        }
+        const colors = paletteFromRgba(data, 9);
+        if (!colors.length) {
+          showToast(t('home.colorExtractor.extractFailed'));
+          return;
+        }
+        colorExtractorColors = colors;
+        colorExtractorSelectedIndex = 0;
+        renderColorExtractorPalette();
+        renderColorExtractorDetail(colors[0]);
+        updateColorExtractorStatus(getLang() === 'zh' ? `已提取 ${colors.length} 种颜色` : `${colors.length} colors extracted`);
+      }
 
       function releaseColorExtractorPreviewUrl() {
         if (colorExtractorPreviewUrl) URL.revokeObjectURL(colorExtractorPreviewUrl);
         colorExtractorPreviewUrl = null;
       }
 
+      function setColorExtractorMode(mode = 'image') {
+        colorExtractorMode = mode === 'screen' ? 'screen' : 'image';
+        const isScreen = colorExtractorMode === 'screen';
+        colorExtractorImageModeBtn?.classList.toggle('is-active', !isScreen);
+        colorExtractorScreenModeBtn?.classList.toggle('is-active', isScreen);
+        colorExtractorImageModeBtn?.setAttribute('aria-selected', String(!isScreen));
+        colorExtractorScreenModeBtn?.setAttribute('aria-selected', String(isScreen));
+        if (colorExtractorImageMode) colorExtractorImageMode.hidden = isScreen;
+        if (colorExtractorScreenMode) colorExtractorScreenMode.hidden = !isScreen;
+        updateColorExtractorStatus(isScreen
+          ? t('home.colorExtractor.screenMode')
+          : (colorExtractorColors.length
+            ? (getLang() === 'zh' ? '已提取配色' : 'Palette ready')
+            : t('home.colorExtractor.waiting')));
+      }
+
+      function renderScreenColorResult(sample) {
+        const color = colorFromScreenSample(sample);
+        if (colorExtractorScreenSwatch) colorExtractorScreenSwatch.style.backgroundColor = color.hex;
+        if (colorExtractorScreenHex) colorExtractorScreenHex.textContent = color.hex;
+        if (colorExtractorScreenRgb) colorExtractorScreenRgb.textContent = `rgb(${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b})`;
+        if (colorExtractorScreenResult) colorExtractorScreenResult.hidden = false;
+        addScreenColor(color);
+        updateColorExtractorStatus(t('home.colorExtractor.screenPicked'));
+      }
+
+      function openColorExtractorForShortcutResult(sample) {
+        if (!colorExtractorOverlay) return;
+        // A global shortcut can fire from the home screen or another tool.
+        // Bring the color extractor page to the front and switch it to screen
+        // mode before rendering the sampled color so the result is visible.
+        if (!colorExtractorOverlay.classList.contains('visible')) {
+          colorExtractorOverlay.classList.add('visible');
+          resetColorExtractorState();
+          if (colorExtractorBg && !colorExtractorPlasmaInstance) {
+            colorExtractorPlasmaInstance = initStandardToolPlasma(colorExtractorBg);
+          }
+        }
+        setColorExtractorMode('screen');
+        renderScreenColorResult(sample);
+      }
+
+      async function listenForScreenColorResults() {
+        if (!isTauri || isScreenPickerWindow || screenPickerListening) return;
+        screenPickerListening = true;
+        try {
+          const { listen } = await import('@tauri-apps/api/event');
+          screenPickerUnlistens.push(await listen('screen-color-picked', event => {
+            openColorExtractorForShortcutResult(event?.payload);
+          }));
+          screenPickerUnlistens.push(await listen('screen-picker-ready', () => {
+            updateColorExtractorStatus(t('home.colorExtractor.screenReady'));
+            if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
+          }));
+          screenPickerUnlistens.push(await listen('screen-picker-cancelled', () => {
+            updateColorExtractorStatus(getLang() === 'zh' ? '已取消取色' : 'Sampling cancelled');
+            if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
+          }));
+          screenPickerUnlistens.push(await listen('screen-picker-closed', () => {
+            if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
+          }));
+        } catch (error) {
+          screenPickerListening = false;
+          console.error('[Color Extractor] Cannot listen for screen color:', error);
+        }
+      }
+
+      async function openNativeScreenPicker() {
+        if (!isTauri) {
+          if (typeof window.EyeDropper === 'function') {
+            try {
+              const result = await new window.EyeDropper().open();
+              const hex = String(result?.sRGBHex || '').toUpperCase();
+              const value = hex.match(/^#[0-9A-F]{6}$/) ? hex : '#000000';
+              const numeric = [1, 3, 5].map(index => parseInt(value.slice(index, index + 2), 16));
+              renderScreenColorResult({ hex: value, rgb: `rgb(${numeric[0]}, ${numeric[1]}, ${numeric[2]})` });
+              return;
+            } catch (error) {
+              if (error?.name !== 'AbortError') showToast('浏览器暂不支持屏幕取色。');
+              return;
+            }
+          }
+          showToast('桌面屏幕取色仅支持桌面版。');
+          return;
+        }
+        if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = true;
+        updateColorExtractorStatus(getLang() === 'zh' ? '正在启动取色器…' : 'Starting picker…');
+        try {
+          await listenForScreenColorResults();
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_screen_color_picker');
+          // The overlay window emits `screen-picker-ready` when it is ready.
+          // Keep a fallback so the UI is never left permanently on "starting…"
+          // even if that handshake is delayed or lost.
+          window.setTimeout(() => {
+            if (colorExtractorScreenStartBtn?.disabled) {
+              updateColorExtractorStatus(getLang() === 'zh' ? '取色器已就绪' : 'Picker ready');
+            }
+          }, 1200);
+        } catch (error) {
+          console.error('[Color Extractor] Cannot open native screen picker:', error);
+          if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
+          updateColorExtractorStatus(getLang() === 'zh' ? '取色器启动失败' : 'Picker failed to start');
+          showToast(error?.toString?.() || '屏幕取色器启动失败。');
+        }
+      }
+
+      async function closeNativeScreenPicker() {
+        if (!isTauri) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('close_screen_color_picker');
+        } catch (error) {
+          console.warn('[Color Extractor] Cannot close native screen picker:', error);
+        }
+      }
+
+      function screenPickerClamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function drawScreenPickerSample(sample) {
+        if (!screenPickerCanvas || !sample?.pixels?.length) return;
+        const gridWidth = Number(sample.width) || 21;
+        const gridHeight = Number(sample.height) || 21;
+        const ctx = screenPickerCanvas.getContext('2d');
+        if (!ctx) return;
+        const canvasSize = 252;
+        if (screenPickerCanvas.width !== canvasSize || screenPickerCanvas.height !== canvasSize) {
+          screenPickerCanvas.width = canvasSize;
+          screenPickerCanvas.height = canvasSize;
+        }
+        ctx.clearRect(0, 0, canvasSize, canvasSize);
+        ctx.imageSmoothingEnabled = false;
+        const cellW = canvasSize / gridWidth;
+        const cellH = canvasSize / gridHeight;
+        for (let row = 0; row < gridHeight; row++) {
+          for (let col = 0; col < gridWidth; col++) {
+            const offset = (row * gridWidth + col) * 3;
+            const r = Number(sample.pixels[offset]) || 0;
+            const g = Number(sample.pixels[offset + 1]) || 0;
+            const b = Number(sample.pixels[offset + 2]) || 0;
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            ctx.fillRect(Math.floor(col * cellW), Math.floor(row * cellH), Math.ceil(cellW) + 1, Math.ceil(cellH) + 1);
+          }
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,.13)';
+        ctx.lineWidth = 1;
+        for (let i = 1; i < gridWidth; i++) {
+          const x = Math.round(i * cellW) + 0.5;
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasSize); ctx.stroke();
+        }
+        for (let i = 1; i < gridHeight; i++) {
+          const y = Math.round(i * cellH) + 0.5;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasSize, y); ctx.stroke();
+        }
+      }
+
+      function positionScreenPickerLens(sample) {
+        if (!screenPickerCanvas || !sample || !screenPickerWindowBounds) return;
+        const viewportWidth = window.innerWidth || screenPickerWindowBounds.width;
+        const viewportHeight = window.innerHeight || screenPickerWindowBounds.height;
+        const scaleX = viewportWidth / Math.max(1, Number(screenPickerWindowBounds.width) || viewportWidth);
+        const scaleY = viewportHeight / Math.max(1, Number(screenPickerWindowBounds.height) || viewportHeight);
+        const localX = (Number(sample.x) - Number(screenPickerWindowBounds.x)) * scaleX;
+        const localY = (Number(sample.y) - Number(screenPickerWindowBounds.y)) * scaleY;
+        const lensSize = 252;
+        const left = screenPickerClamp(localX + 34, 16, Math.max(16, viewportWidth - lensSize - 16));
+        const top = screenPickerClamp(localY - lensSize - 46, 16, Math.max(16, viewportHeight - lensSize - 16));
+        screenPickerCanvas.style.left = `${left}px`;
+        screenPickerCanvas.style.top = `${top}px`;
+        if (screenPickerCrosshair) {
+          screenPickerCrosshair.style.left = `${left}px`;
+          screenPickerCrosshair.style.top = `${top}px`;
+        }
+        const readout = screenPickerOverlay?.querySelector('.screen-picker-readout');
+        if (readout) {
+          readout.style.left = `${left}px`;
+          readout.style.top = `${screenPickerClamp(top + lensSize + 12, 16, Math.max(16, viewportHeight - 76))}px`;
+        }
+      }
+
+      async function emitScreenPickerEvent(name, payload) {
+        try {
+          const { emitTo } = await import('@tauri-apps/api/event');
+          await emitTo('main', name, payload);
+        } catch (error) {
+          console.error('[Color Extractor] Cannot emit screen picker event:', error);
+        }
+      }
+
+      function stopScreenPickerSampling() {
+        if (screenPickerWindowTimer !== null) {
+          clearTimeout(screenPickerWindowTimer);
+          screenPickerWindowTimer = null;
+        }
+        if (screenPickerWindowRaf !== null) {
+          cancelAnimationFrame(screenPickerWindowRaf);
+          screenPickerWindowRaf = null;
+        }
+      }
+
+      async function runScreenPickerSample() {
+        if (!isScreenPickerWindow || screenPickerWindowLocked) return;
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const sample = await invoke('screen_color_sample');
+          if (screenPickerWindowLocked) return;
+          screenPickerLatestSample = sample;
+          drawScreenPickerSample(sample);
+          positionScreenPickerLens(sample);
+          const hex = String(sample?.hex || '#000000').toUpperCase();
+          const rgb = String(sample?.rgb || 'rgb(0, 0, 0)');
+          if (screenPickerReadoutSwatch) screenPickerReadoutSwatch.style.backgroundColor = hex;
+          if (screenPickerReadoutHex) screenPickerReadoutHex.textContent = hex;
+          if (screenPickerReadoutRgb) screenPickerReadoutRgb.textContent = rgb;
+        } catch (error) {
+          console.warn('[Color Extractor] Screen pixel sample failed:', error);
+        }
+        if (!screenPickerWindowLocked) {
+          screenPickerWindowTimer = setTimeout(() => {
+            screenPickerWindowRaf = requestAnimationFrame(() => {
+              screenPickerWindowRaf = null;
+              void runScreenPickerSample();
+            });
+          }, 30);
+        }
+      }
+
+      async function closeScreenPickerWindow(eventName = 'screen-picker-closed') {
+        stopScreenPickerSampling();
+        screenPickerWindowLocked = false;
+        screenPickerLatestSample = null;
+        if (screenPickerLocked) screenPickerLocked.hidden = true;
+        await emitScreenPickerEvent(eventName);
+        await closeNativeScreenPicker();
+      }
+
+      function restartScreenPickerSampling(bounds = null) {
+        if (!isScreenPickerWindow) return;
+        if (bounds && typeof bounds === 'object') screenPickerWindowBounds = bounds;
+        stopScreenPickerSampling();
+        screenPickerWindowLocked = false;
+        screenPickerLatestSample = null;
+        if (screenPickerLocked) screenPickerLocked.hidden = true;
+        void emitScreenPickerEvent('screen-picker-ready');
+        void runScreenPickerSample();
+      }
+
+      function initScreenPickerWindow() {
+        if (window.__toolknitScreenPickerBootstrapped) return;
+        if (!isScreenPickerWindow || !screenPickerOverlay) return;
+        window.__toolknitScreenPickerBootstrapped = true;
+        document.documentElement.dataset.screenPicker = '1';
+        screenPickerOverlay.classList.add('visible');
+        screenPickerOverlay.addEventListener('click', async event => {
+          if (event.target.closest('#screenPickerFinishBtn')) return;
+          if (screenPickerWindowLocked || !screenPickerLatestSample) return;
+          screenPickerWindowLocked = true;
+          stopScreenPickerSampling();
+          if (screenPickerLocked) screenPickerLocked.hidden = false;
+          const sample = screenPickerLatestSample;
+          await emitScreenPickerEvent('screen-color-picked', sample);
+          try { await copyColorExtractorText(sample.hex); } catch {}
+        });
+        screenPickerFinishBtn?.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          void closeScreenPickerWindow('screen-picker-closed');
+        });
+        window.addEventListener('keydown', event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            void closeScreenPickerWindow('screen-picker-cancelled');
+          }
+        }, { capture: true });
+        (async () => {
+          try {
+            const [{ invoke }, { listen }] = await Promise.all([
+              import('@tauri-apps/api/core'),
+              import('@tauri-apps/api/event')
+            ]);
+            screenPickerOpenUnlisten = await listen('screen-picker-opened', event => {
+              restartScreenPickerSampling(event?.payload);
+            });
+            screenPickerWindowBounds = await invoke('screen_picker_bounds');
+          } catch (error) {
+            console.warn('[Color Extractor] Cannot read virtual desktop bounds:', error);
+          }
+          restartScreenPickerSampling(screenPickerWindowBounds);
+        })();
+        // A focus/visibility change is a fallback for older desktop builds
+        // that do not emit the reopen event when reusing the overlay window.
+        window.addEventListener('focus', () => restartScreenPickerSampling(), { passive: true });
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') restartScreenPickerSampling();
+        }, { passive: true });
+      }
+
       function openColorExtractorOverlay() {
         if (!colorExtractorOverlay) return;
         colorExtractorOverlay.classList.add('visible');
         resetColorExtractorState();
+        setColorExtractorMode('image');
         if (colorExtractorBg && !colorExtractorPlasmaInstance) {
           colorExtractorPlasmaInstance = initStandardToolPlasma(colorExtractorBg);
         }
@@ -17679,27 +25109,43 @@
         if (!colorExtractorOverlay) return;
         colorExtractorOverlay.classList.remove('visible');
         resetColorExtractorState();
+        void closeNativeScreenPicker();
         colorExtractorPlasmaInstance = disposeStandardToolPlasma(colorExtractorPlasmaInstance);
       }
       function resetColorExtractorState() {
         colorExtractorRequestId += 1;
-        // Clear any pending animation timers
-        colorExtractorAnimationTimers.forEach(timer => clearTimeout(timer));
-        colorExtractorAnimationTimers = [];
-        colorExtractorIsAnimating = false;
-        
         colorExtractorCurrentImg = null;
         colorExtractorColors = [];
+        colorExtractorSelectedIndex = -1;
+        setColorExtractorMode('image');
         if (colorExtractorUploadZone) {
-          colorExtractorUploadZone.style.display = '';
+          colorExtractorUploadZone.hidden = false;
           colorExtractorUploadZone.classList.remove('dragover');
         }
         if (colorExtractorFileInput) colorExtractorFileInput.value = '';
-        if (colorExtractorImagePreview) colorExtractorImagePreview.style.display = 'none';
-        if (colorExtractorImage) colorExtractorImage.src = '';
+        if (colorExtractorImagePreview) colorExtractorImagePreview.hidden = true;
+        if (colorExtractorImage) colorExtractorImage.removeAttribute('src');
+        if (colorExtractorImageName) colorExtractorImageName.textContent = '';
+        if (colorExtractorImageMeta) colorExtractorImageMeta.textContent = '';
         releaseColorExtractorPreviewUrl();
-        if (colorExtractorResult) colorExtractorResult.classList.remove('visible');
-        if (colorExtractorCircles) colorExtractorCircles.innerHTML = '';
+        resetScreenColorResult();
+        renderColorExtractorPalette();
+        renderColorExtractorDetail(null);
+      }
+
+      function closeColorExtractorDrawer() {
+        if (!colorExtractorResult || colorExtractorDrawerClosing) return;
+        if (!colorExtractorResult.classList.contains('visible')) {
+          resetColorExtractorState();
+          return;
+        }
+        colorExtractorAnimationTimers.forEach(timer => clearTimeout(timer));
+        colorExtractorAnimationTimers = [];
+        colorExtractorIsAnimating = false;
+        colorExtractorDrawerClosing = true;
+        colorExtractorDrawerDrag = null;
+        if (colorExtractorDetailView) colorExtractorDetailView.classList.remove('visible');
+        if (colorExtractorDetailCols) colorExtractorDetailCols.innerHTML = '';
         if (colorExtractorCirclesView) colorExtractorCirclesView.classList.remove('hidden');
         if (colorExtractorFill) {
           colorExtractorFill.classList.remove('expanded');
@@ -17708,8 +25154,72 @@
           colorExtractorFill.style.removeProperty('--fill-y');
           colorExtractorFill.style.removeProperty('--fill-scale');
         }
-        if (colorExtractorDetailView) colorExtractorDetailView.classList.remove('visible');
-        if (colorExtractorDetailCols) colorExtractorDetailCols.innerHTML = '';
+        colorExtractorResult.classList.remove('is-dragging');
+        colorExtractorResult.style.transition = `transform ${COLOR_EXTRACTOR_DRAWER_CLOSE_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease`;
+        colorExtractorResult.style.transform = 'translateY(100%)';
+        colorExtractorResult.style.opacity = '0';
+        colorExtractorResult.style.pointerEvents = 'none';
+        colorExtractorResult.classList.remove('visible');
+        const timer = setTimeout(() => {
+          resetColorExtractorState();
+        }, COLOR_EXTRACTOR_DRAWER_CLOSE_MS + 40);
+        colorExtractorAnimationTimers.push(timer);
+      }
+
+      function restoreColorExtractorDrawerFromDrag() {
+        if (!colorExtractorResult) return;
+        colorExtractorResult.classList.remove('is-dragging');
+        colorExtractorResult.style.transition = 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease';
+        colorExtractorResult.style.transform = 'translateY(0)';
+        colorExtractorResult.style.opacity = '1';
+        const timer = setTimeout(() => {
+          if (!colorExtractorResult.classList.contains('visible')) return;
+          colorExtractorResult.style.removeProperty('transform');
+          colorExtractorResult.style.removeProperty('opacity');
+          colorExtractorResult.style.removeProperty('transition');
+        }, 260);
+        colorExtractorAnimationTimers.push(timer);
+      }
+
+      function beginColorExtractorDrawerDrag(event) {
+        if (!colorExtractorResult?.classList.contains('visible') || colorExtractorDrawerClosing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        colorExtractorDrawerDrag = {
+          pointerId: event.pointerId,
+          startY: event.clientY,
+          lastY: event.clientY,
+          startedAt: performance.now(),
+          moved: false
+        };
+        colorExtractorResult.classList.add('is-dragging');
+        colorExtractorResult.style.transition = 'none';
+        colorExtractorDrawerHandle?.setPointerCapture?.(event.pointerId);
+      }
+
+      function moveColorExtractorDrawerDrag(event) {
+        if (!colorExtractorDrawerDrag || event.pointerId !== colorExtractorDrawerDrag.pointerId || !colorExtractorResult) return;
+        event.preventDefault();
+        const deltaY = Math.max(0, event.clientY - colorExtractorDrawerDrag.startY);
+        colorExtractorDrawerDrag.lastY = event.clientY;
+        colorExtractorDrawerDrag.moved = colorExtractorDrawerDrag.moved || deltaY > 3;
+        colorExtractorResult.style.transform = `translateY(${deltaY}px)`;
+        colorExtractorResult.style.opacity = String(Math.max(0.58, 1 - deltaY / 520));
+      }
+
+      function finishColorExtractorDrawerDrag(event) {
+        if (!colorExtractorDrawerDrag || event.pointerId !== colorExtractorDrawerDrag.pointerId) return;
+        event.preventDefault();
+        const deltaY = Math.max(0, event.clientY - colorExtractorDrawerDrag.startY);
+        const elapsed = Math.max(1, performance.now() - colorExtractorDrawerDrag.startedAt);
+        const velocity = deltaY / elapsed;
+        colorExtractorDrawerHandle?.releasePointerCapture?.(event.pointerId);
+        colorExtractorDrawerDrag = null;
+        if (deltaY >= 86 || velocity > 0.65) {
+          closeColorExtractorDrawer();
+        } else {
+          restoreColorExtractorDrawerFromDrag();
+        }
       }
 
       // Color conversion helpers
@@ -17734,6 +25244,45 @@
           h /= 6;
         }
         return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+      }
+
+      function copyColorExtractorText(text) {
+        return new Promise((resolve, reject) => {
+          const fallbackCopy = () => {
+            let handled = false;
+            const onCopy = (event) => {
+              if (!event.clipboardData) return;
+              event.clipboardData.setData('text/plain', text);
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              handled = true;
+            };
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.position = 'fixed';
+              ta.style.left = '-9999px';
+              ta.style.top = '0';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.addEventListener('copy', onCopy, { capture: true, once: true });
+              const copied = document.execCommand?.('copy');
+              document.removeEventListener('copy', onCopy, { capture: true });
+              document.body.removeChild(ta);
+              if (copied || handled) resolve();
+              else reject(new Error('clipboard-unavailable'));
+            } catch (error) {
+              document.removeEventListener('copy', onCopy, { capture: true });
+              reject(error);
+            }
+          };
+          if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(text).then(resolve).catch(fallbackCopy);
+          } else {
+            fallbackCopy();
+          }
+        });
       }
 
       // K-means color quantization
@@ -17833,21 +25382,24 @@
         const useLoadedImage = (img, imageUrl) => {
           if (requestId !== colorExtractorRequestId) {
             URL.revokeObjectURL(imageUrl);
+            if (colorExtractorPreviewUrl === imageUrl) colorExtractorPreviewUrl = null;
             return;
           }
           try {
             assertColorExtractorDimensions(img.naturalWidth, img.naturalHeight);
           } catch (error) {
+            URL.revokeObjectURL(imageUrl);
+            if (colorExtractorPreviewUrl === imageUrl) colorExtractorPreviewUrl = null;
             showToast(t('home.colorExtractor.dimensionsTooLarge'));
             return;
           }
           colorExtractorCurrentImg = img;
-          if (colorExtractorUploadZone) colorExtractorUploadZone.style.display = 'none';
-          if (colorExtractorImagePreview && colorExtractorImage) {
-            colorExtractorImage.src = imageUrl;
-            colorExtractorImagePreview.style.display = '';
-          }
-          doExtractColors();
+          if (colorExtractorUploadZone) colorExtractorUploadZone.hidden = true;
+          if (colorExtractorImage) colorExtractorImage.src = imageUrl;
+          if (colorExtractorImagePreview) colorExtractorImagePreview.hidden = false;
+          if (colorExtractorImageName) colorExtractorImageName.textContent = file.name || (getLang() === 'zh' ? '图片' : 'Image');
+          if (colorExtractorImageMeta) colorExtractorImageMeta.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+          extractPaletteFromImage(img);
         };
         const loadImage = (blob) => {
           const imageUrl = URL.createObjectURL(blob);
@@ -17855,6 +25407,7 @@
           img.onload = () => useLoadedImage(img, imageUrl);
           img.onerror = () => {
             URL.revokeObjectURL(imageUrl);
+            if (colorExtractorPreviewUrl === imageUrl) colorExtractorPreviewUrl = null;
             if (requestId === colorExtractorRequestId) showToast(t('home.colorExtractor.extractFailed'));
           };
           colorExtractorPreviewUrl = imageUrl;
@@ -17896,27 +25449,54 @@
         }
       }
 
-      function doExtractColors() {
-        if (!colorExtractorCurrentImg) return;
-        const num = 9; // 9 colors for 3x3 grid
-        const colors = extractColors(colorExtractorCurrentImg, num);
-        if (colors.length === 0) {
-          console.warn('[Color Extractor] No colors extracted');
-          // Show user feedback
-          if (colorExtractorResult) {
-            colorExtractorResult.classList.remove('visible');
-          }
-          if (colorExtractorUploadZone) {
-            colorExtractorUploadZone.style.display = '';
-          }
-          showToast(t('home.colorExtractor.extractFailed'));
+      function renderColorExtractorPalette() {
+        if (!colorExtractorPaletteEmpty || !colorExtractorPaletteGrid) return;
+        const hasColors = colorExtractorColors.length > 0;
+        colorExtractorPaletteEmpty.hidden = hasColors;
+        colorExtractorPaletteGrid.hidden = !hasColors;
+        if (!hasColors) {
+          colorExtractorPaletteGrid.innerHTML = '';
           return;
         }
-        colorExtractorColors = colors;
-        renderColorCircles(colors);
+        colorExtractorPaletteGrid.innerHTML = colorExtractorColors.map((color, index) => {
+          const rgb = `rgb(${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b})`;
+          const share = color.percentage === undefined ? '' : `${Math.round(color.percentage)}%`;
+          const cardTitle = getLang() === 'zh' ? `查看 ${color.hex}` : `View ${color.hex}`;
+          const selectedClass = index === colorExtractorSelectedIndex ? ' is-selected' : '';
+          return `<div role="button" tabindex="0" class="color-extractor-palette-card${selectedClass}" data-color-index="${index}" title="${cardTitle}">
+            <span class="color-extractor-palette-swatch" style="background-color:${color.hex}"></span>
+            <span class="color-extractor-palette-copy"><strong>${color.hex}</strong><small>${rgb}</small></span>
+            <span class="color-extractor-palette-share">${share}</span>
+          </div>`;
+        }).join('');
+        colorExtractorPaletteGrid.querySelectorAll('.color-extractor-palette-card').forEach(card => {
+          const index = Number(card.dataset.colorIndex);
+          const swatch = card.querySelector('.color-extractor-palette-swatch');
+          if (swatch && colorExtractorColors[index]) {
+            swatch.style.backgroundColor = colorExtractorColors[index].hex;
+          }
+          card.addEventListener('click', () => selectColor(index));
+          card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              selectColor(index);
+            }
+          });
+          card.addEventListener('contextmenu', async event => {
+            event.preventDefault();
+            const color = colorExtractorColors[index];
+            if (!color) return;
+            try {
+              await copyColorExtractorText(color.hex);
+              showToast(t('home.colorExtractor.copySuccess'));
+            } catch {
+              showToast(t('home.colorExtractor.copyFailed'));
+            }
+          });
+        });
       }
 
-      function renderColorCircles(colors) {
+      function renderColorCircles(colors, openDrawer = true) {
         if (!colorExtractorCircles) return;
         colorExtractorCircles.innerHTML = '';
         const top5 = colors.slice(0, 5);
@@ -17936,23 +25516,38 @@
           const hexLabel = document.createElement('span');
           hexLabel.className = 'color-extractor-circle-hex';
           hexLabel.textContent = hex;
-          hexLabel.addEventListener('click', () => {
-            expandColorToDetail(color, circle);
+          hexLabel.title = getLang() === 'zh' ? '点击复制 HEX' : 'Click to copy HEX';
+          hexLabel.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            try {
+              await copyColorExtractorText(hex);
+              hexLabel.classList.remove('copied');
+              void hexLabel.offsetWidth;
+              hexLabel.classList.add('copied');
+              showToast(t('home.colorExtractor.copySuccess'));
+            } catch (error) {
+              console.error('[Color Extractor] Copy failed:', error);
+              showToast(t('home.colorExtractor.copyFailed'));
+            }
           });
 
           item.appendChild(circle);
           item.appendChild(hexLabel);
           colorExtractorCircles.appendChild(item);
         });
-        if (colorExtractorResult) {
+        if (colorExtractorResult && openDrawer) {
           requestAnimationFrame(() => {
+            colorExtractorResult.style.removeProperty('transform');
+            colorExtractorResult.style.removeProperty('opacity');
+            colorExtractorResult.style.removeProperty('transition');
+            colorExtractorResult.style.removeProperty('pointer-events');
             colorExtractorResult.classList.add('visible');
           });
         }
       }
 
       function resetColorExtractor() {
-        resetColorExtractorState();
+        closeColorExtractorDrawer();
       }
 
       function expandColorToDetail(color, circleEl) {
@@ -18005,7 +25600,7 @@
         colorExtractorFill.classList.remove('expanded');
         // Force reflow to ensure the browser registers the initial scale state
         void colorExtractorFill.offsetWidth;
-        // Start fill animation after list starts hiding (50ms delay)
+        // Start fill animation after list starts hiding.
         const timer1 = setTimeout(() => {
           colorExtractorFill.classList.add('expanded');
           // Clean up will-change after animation completes
@@ -18014,14 +25609,14 @@
             colorExtractorFill.removeEventListener('transitionend', cleanupWillChange);
           };
           colorExtractorFill.addEventListener('transitionend', cleanupWillChange);
-        }, 50);
+        }, COLOR_EXTRACTOR_FILL_START_DELAY_MS);
         colorExtractorAnimationTimers.push(timer1);
 
-        // After fill animation (1.2s + 50ms start delay = 1250ms), show detail view
+        // After fill animation, show detail view quickly.
         const timer2 = setTimeout(() => {
           renderDetailView(hex, rgbStr, hslStr, color);
           colorExtractorIsAnimating = false;
-        }, 1250);
+        }, COLOR_EXTRACTOR_FILL_START_DELAY_MS + COLOR_EXTRACTOR_FILL_MS + 60);
         colorExtractorAnimationTimers.push(timer2);
       }
 
@@ -18046,40 +25641,17 @@
         codes.forEach((code) => {
           const col = document.createElement('div');
           col.className = 'color-extractor-detail-col';
+          col.setAttribute('role', 'button');
+          col.setAttribute('tabindex', '0');
+          col.title = getLang() === 'zh' ? `点击复制 ${code.label}` : `Click to copy ${code.label}`;
 
           const codeEl = document.createElement('div');
           codeEl.className = 'color-extractor-detail-col-code';
           codeEl.style.color = textColor;
           codeEl.textContent = code.value;
-          codeEl.addEventListener('click', async () => {
-            const copyToClipboard = (text) => {
-              return new Promise((resolve, reject) => {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                  navigator.clipboard.writeText(text).then(resolve).catch(() => {
-                    fallbackCopy(text, resolve, reject);
-                  });
-                } else {
-                  fallbackCopy(text, resolve, reject);
-                }
-              });
-            };
-            const fallbackCopy = (text, resolve, reject) => {
-              try {
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                resolve();
-              } catch (e) {
-                reject(e);
-              }
-            };
+          const copyDetailCode = async () => {
             try {
-              await copyToClipboard(code.value);
+              await copyColorExtractorText(code.value);
               codeEl.classList.remove('copied');
               void codeEl.offsetWidth;
               codeEl.classList.add('copied');
@@ -18088,6 +25660,12 @@
               console.error('[Color Extractor] Copy failed:', e);
               showToast(t('home.colorExtractor.copyFailed'));
             }
+          };
+          col.addEventListener('click', copyDetailCode);
+          col.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            copyDetailCode();
           });
 
           const labelEl = document.createElement('div');
@@ -18104,24 +25682,51 @@
       }
 
       function collapseDetailToCircles() {
+        if (colorExtractorIsAnimating) return;
+        colorExtractorIsAnimating = true;
         if (colorExtractorDetailView) colorExtractorDetailView.classList.remove('visible');
         if (colorExtractorDetailCols) colorExtractorDetailCols.innerHTML = '';
-        // After detail fades (0.4s), shrink fill, then show circles
+        // After detail fades, shrink fill, then show circles.
         const timer1 = setTimeout(() => {
           if (colorExtractorFill) colorExtractorFill.classList.remove('expanded');
-          // After fill shrinks (1.2s), show circles with animation
+          // After fill shrinks, show circles with animation.
           const timer2 = setTimeout(() => {
             if (colorExtractorCirclesView) colorExtractorCirclesView.classList.remove('hidden');
-          }, 1200);
+            colorExtractorIsAnimating = false;
+          }, COLOR_EXTRACTOR_FILL_MS + 80);
           colorExtractorAnimationTimers.push(timer2);
-        }, 400);
+        }, COLOR_EXTRACTOR_DETAIL_FADE_MS);
         colorExtractorAnimationTimers.push(timer1);
       }
 
       // Event listeners
       if (colorExtractorBack) colorExtractorBack.addEventListener('click', closeColorExtractorOverlay);
-      if (colorExtractorReselectBtn) colorExtractorReselectBtn.addEventListener('click', resetColorExtractor);
-      if (colorExtractorBackDetailBtn) colorExtractorBackDetailBtn.addEventListener('click', collapseDetailToCircles);
+      colorExtractorImageModeBtn?.addEventListener('click', () => setColorExtractorMode('image'));
+      colorExtractorScreenModeBtn?.addEventListener('click', () => setColorExtractorMode('screen'));
+      colorExtractorScreenStartBtn?.addEventListener('click', () => { void openNativeScreenPicker(); });
+      colorExtractorScreenCopyBtn?.addEventListener('click', async () => {
+        const value = colorExtractorScreenHex?.textContent || '';
+        try {
+          await copyColorExtractorText(value);
+          showToast(t('home.colorExtractor.copySuccess'));
+        } catch {
+          showToast(t('home.colorExtractor.copyFailed'));
+        }
+      });
+      colorExtractorReplaceBtn?.addEventListener('click', () => colorExtractorFileInput?.click());
+      document.querySelectorAll('.color-extractor-v2-detail-code').forEach(button => {
+        button.addEventListener('click', async () => {
+          const value = button.querySelector('strong')?.textContent?.trim();
+          if (!value || value === '—') return;
+          try {
+            await copyColorExtractorText(value);
+            showToast(t('home.colorExtractor.copySuccess'));
+          } catch {
+            showToast(t('home.colorExtractor.copyFailed'));
+          }
+        });
+      });
+      if (!isScreenPickerWindow) void listenForScreenColorResults();
 
       if (colorExtractorUploadZone) {
         colorExtractorUploadZone.addEventListener('click', () => colorExtractorFileInput?.click());
@@ -18145,9 +25750,42 @@
         colorExtractorUploadZone.addEventListener('drop', (e) => {
           e.preventDefault();
           colorExtractorUploadZone.classList.remove('dragover');
+          dragCounter = 0;
           const file = e.dataTransfer?.files?.[0];
           if (file) handleColorExtractorFile(file);
         });
+      }
+
+      if (isTauri && colorExtractorOverlay) {
+        (async () => {
+          const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+          const webview = getCurrentWebview();
+          await webview.onDragDropEvent((event) => {
+            if (!colorExtractorOverlay.classList.contains('visible')) return;
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+              colorExtractorUploadZone?.classList.add('dragover');
+            } else if (payload.type === 'leave') {
+              colorExtractorUploadZone?.classList.remove('dragover');
+            } else if (payload.type === 'drop') {
+              colorExtractorUploadZone?.classList.remove('dragover');
+              const paths = payload.paths || [];
+              const imagePath = paths.find(path => /\.(png|jpe?g|webp)$/i.test(path));
+              if (!imagePath) {
+                showToast(t('home.colorExtractor.unsupportedFormat'));
+                return;
+              }
+              handleColorExtractorFile({
+                name: imagePath.split(/[\\/]/).pop() || imagePath,
+                path: imagePath,
+                size: 0,
+                type: /\.(png)$/i.test(imagePath)
+                  ? 'image/png'
+                  : (/\.(webp)$/i.test(imagePath) ? 'image/webp' : 'image/jpeg')
+              });
+            }
+          });
+        })().catch(error => console.error('Cannot register color extractor drag and drop:', error));
       }
 
       if (colorExtractorFileInput) {
@@ -18158,6 +25796,9 @@
       }
 
       // ===== End Color Extractor Tool =====
+
+      // The full-screen picker is bootstrapped by bootstrapScreenPickerOverlay()
+      // (scheduled earlier), which owns the drag-to-pick interaction now.
 
       // Tool list entry
       document.querySelectorAll('.audio-list-item[data-tool="color-extractor"]').forEach(item => {
@@ -18238,9 +25879,18 @@
       const textStatsOverlay = document.getElementById('textStatsOverlay');
       const textStatsBack = document.getElementById('textStatsBack');
       const textStatsBg = document.getElementById('textStatsBg');
+      const textStatsDropZone = document.getElementById('textStatsDropZone');
+      const textStatsDropCard = document.getElementById('textStatsDropCard');
+      const textStatsCta = document.getElementById('textStatsCta');
+      const textStatsSelectFileBtn = document.getElementById('textStatsSelectFileBtn');
+      const textStatsFileInput = document.getElementById('textStatsFileInput');
+      const textStatsFileInfo = document.getElementById('textStatsFileInfo');
+      const textStatsFileName = document.getElementById('textStatsFileName');
+      const textStatsFileMeta = document.getElementById('textStatsFileMeta');
       const textStatsInput = document.getElementById('textStatsInput');
       const textStatsClearBtn = document.getElementById('textStatsClearBtn');
       const textStatsCopyBtn = document.getElementById('textStatsCopyBtn');
+      const textStatsExportMdBtn = document.getElementById('textStatsExportMdBtn');
       const textStatsChars = document.getElementById('textStatsChars');
       const textStatsCharsNoSpace = document.getElementById('textStatsCharsNoSpace');
       const textStatsSpaces = document.getElementById('textStatsSpaces');
@@ -18258,13 +25908,48 @@
       const textStatsLongestLine = document.getElementById('textStatsLongestLine');
       const textStatsAvgLineLength = document.getElementById('textStatsAvgLineLength');
       const textStatsReadingTime = document.getElementById('textStatsReadingTime');
+      const textStatsNumbers = document.getElementById('textStatsNumbers');
+      const textStatsNonEmptyLines = document.getElementById('textStatsNonEmptyLines');
+      const textStatsUniqueWords = document.getElementById('textStatsUniqueWords');
+      const textStatsRepeatedWords = document.getElementById('textStatsRepeatedWords');
+      const textStatsAvgWordLength = document.getElementById('textStatsAvgWordLength');
+      const textStatsAvgSentenceLength = document.getElementById('textStatsAvgSentenceLength');
+      const textStatsSpeakingTime = document.getElementById('textStatsSpeakingTime');
+      const textStatsLexicalDensity = document.getElementById('textStatsLexicalDensity');
       let textStatsPlasmaInstance = null;
       let textStatsFrameId = null;
       let textStatsDebounceTimer = null;
       let textStatsFocusTimer = null;
+      let textStatsReadRunId = 0;
+      let textStatsSource = { type: 'manual', name: '', bytes: 0, kind: '' };
 
       function calcTextStats(text) {
         return calculateTextStats(text);
+      }
+
+      function textStatsText(key, params) {
+        return t(`home.textStats.${key}`, params);
+      }
+
+      function formatTextStatsNumber(value, suffix = '') {
+        const numeric = Number(value);
+        const text = Number.isFinite(numeric) ? numeric.toLocaleString() : '0';
+        return `${text}${suffix}`;
+      }
+
+      function updateTextStatsSource(source = { type: 'manual' }) {
+        textStatsSource = { type: 'manual', name: '', bytes: 0, kind: '', ...source };
+        const isManual = textStatsSource.type === 'manual';
+        if (textStatsFileInfo) textStatsFileInfo.classList.toggle('has-file', !isManual);
+        if (textStatsFileName) textStatsFileName.textContent = isManual ? textStatsText('manualInput') : textStatsSource.name;
+        if (textStatsFileMeta) {
+          textStatsFileMeta.textContent = isManual
+            ? textStatsText('manualMeta')
+            : textStatsText('fileMeta', {
+                type: textStatsSource.kind || textStatsText('document'),
+                size: formatFileSize(textStatsSource.bytes || 0)
+              });
+        }
       }
 
       function updateTextStats() {
@@ -18272,23 +25957,31 @@
         const text = textStatsInput.value;
         const stats = calcTextStats(text);
         const isEmpty = text.trim() === '';
-        if (textStatsChars) textStatsChars.textContent = stats.chars;
-        if (textStatsCharsNoSpace) textStatsCharsNoSpace.textContent = stats.charsNoSpace;
-        if (textStatsSpaces) textStatsSpaces.textContent = stats.spaces;
-        if (textStatsWords) textStatsWords.textContent = stats.words;
-        if (textStatsEnglishWords) textStatsEnglishWords.textContent = stats.englishWords;
-        if (textStatsLines) textStatsLines.textContent = stats.lines;
-        if (textStatsParagraphs) textStatsParagraphs.textContent = stats.paragraphs;
-        if (textStatsSentences) textStatsSentences.textContent = stats.sentences;
-        if (textStatsChineseChars) textStatsChineseChars.textContent = stats.chineseChars;
-        if (textStatsLetters) textStatsLetters.textContent = stats.letters;
-        if (textStatsUppercase) textStatsUppercase.textContent = stats.uppercase;
-        if (textStatsLowercase) textStatsLowercase.textContent = stats.lowercase;
-        if (textStatsDigits) textStatsDigits.textContent = stats.digits;
-        if (textStatsPunctuation) textStatsPunctuation.textContent = stats.punctuation;
-        if (textStatsLongestLine) textStatsLongestLine.textContent = stats.longestLine;
-        if (textStatsAvgLineLength) textStatsAvgLineLength.textContent = isEmpty ? 0 : stats.avgLineLength;
-        if (textStatsReadingTime) textStatsReadingTime.textContent = isEmpty ? 0 : stats.readingTime;
+        if (textStatsChars) textStatsChars.textContent = formatTextStatsNumber(stats.chars);
+        if (textStatsCharsNoSpace) textStatsCharsNoSpace.textContent = formatTextStatsNumber(stats.charsNoSpace);
+        if (textStatsSpaces) textStatsSpaces.textContent = formatTextStatsNumber(stats.spaces);
+        if (textStatsWords) textStatsWords.textContent = formatTextStatsNumber(stats.words);
+        if (textStatsEnglishWords) textStatsEnglishWords.textContent = formatTextStatsNumber(stats.englishWords);
+        if (textStatsLines) textStatsLines.textContent = formatTextStatsNumber(stats.lines);
+        if (textStatsParagraphs) textStatsParagraphs.textContent = formatTextStatsNumber(stats.paragraphs);
+        if (textStatsSentences) textStatsSentences.textContent = formatTextStatsNumber(stats.sentences);
+        if (textStatsChineseChars) textStatsChineseChars.textContent = formatTextStatsNumber(stats.chineseChars);
+        if (textStatsLetters) textStatsLetters.textContent = formatTextStatsNumber(stats.letters);
+        if (textStatsUppercase) textStatsUppercase.textContent = formatTextStatsNumber(stats.uppercase);
+        if (textStatsLowercase) textStatsLowercase.textContent = formatTextStatsNumber(stats.lowercase);
+        if (textStatsDigits) textStatsDigits.textContent = formatTextStatsNumber(stats.digits);
+        if (textStatsNumbers) textStatsNumbers.textContent = formatTextStatsNumber(stats.numbers);
+        if (textStatsPunctuation) textStatsPunctuation.textContent = formatTextStatsNumber(stats.punctuation);
+        if (textStatsLongestLine) textStatsLongestLine.textContent = formatTextStatsNumber(stats.longestLine);
+        if (textStatsAvgLineLength) textStatsAvgLineLength.textContent = formatTextStatsNumber(isEmpty ? 0 : stats.avgLineLength);
+        if (textStatsNonEmptyLines) textStatsNonEmptyLines.textContent = formatTextStatsNumber(stats.nonEmptyLines);
+        if (textStatsUniqueWords) textStatsUniqueWords.textContent = formatTextStatsNumber(stats.uniqueWords);
+        if (textStatsRepeatedWords) textStatsRepeatedWords.textContent = formatTextStatsNumber(stats.repeatedWords);
+        if (textStatsAvgWordLength) textStatsAvgWordLength.textContent = isEmpty ? '0' : String(stats.avgWordLength);
+        if (textStatsAvgSentenceLength) textStatsAvgSentenceLength.textContent = isEmpty ? '0' : String(stats.avgSentenceLength);
+        if (textStatsReadingTime) textStatsReadingTime.textContent = formatTextStatsNumber(isEmpty ? 0 : stats.readingTime);
+        if (textStatsSpeakingTime) textStatsSpeakingTime.textContent = formatTextStatsNumber(isEmpty ? 0 : stats.speakingTime);
+        if (textStatsLexicalDensity) textStatsLexicalDensity.textContent = `${isEmpty ? 0 : stats.lexicalDensity}%`;
       }
 
       function scheduleTextStatsUpdate() {
@@ -18313,6 +26006,7 @@
       function openTextStatsOverlay() {
         if (!textStatsOverlay) return;
         textStatsOverlay.classList.add('visible');
+        updateTextStatsSource(textStatsSource);
         updateTextStats();
         if (textStatsBg && !textStatsPlasmaInstance) {
           textStatsPlasmaInstance = initStandardToolPlasma(textStatsBg);
@@ -18342,43 +26036,377 @@
         if (textStatsPlasmaInstance) { textStatsPlasmaInstance(); textStatsPlasmaInstance = null; }
       }
 
+      function textStatsSupportedName(name) {
+        return /\.(txt|md|markdown|csv|tsv|json|html|htm|docx|pdf)$/i.test(String(name || ''));
+      }
+
+      function textStatsDocumentKind(name) {
+        const ext = String(name || '').split('.').pop()?.toLowerCase() || '';
+        if (ext === 'docx') return 'DOCX';
+        if (ext === 'pdf') return 'PDF';
+        if (['md', 'markdown'].includes(ext)) return 'Markdown';
+        if (['html', 'htm'].includes(ext)) return 'HTML';
+        if (['csv', 'tsv'].includes(ext)) return ext.toUpperCase();
+        if (ext === 'json') return 'JSON';
+        return 'TEXT';
+      }
+
+      function decodeTextStatsBytes(bytes) {
+        const data = normalizeDesktopBytes(bytes);
+        if (data.byteLength > TEXT_STATS_LIMITS.maxDocumentBytes) {
+          throw new Error('text-stats:file-too-large');
+        }
+        const decoders = [
+          () => new TextDecoder('utf-8', { fatal: true }).decode(data),
+          () => new TextDecoder('gb18030').decode(data),
+          () => new TextDecoder('utf-8').decode(data)
+        ];
+        for (const decode of decoders) {
+          try {
+            return decode().replace(/^\uFEFF/, '');
+          } catch {}
+        }
+        throw new Error('text-stats:decode-failed');
+      }
+
+      function textStatsStripHtml(html) {
+        return String(html || '')
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/(p|div|section|article|li|h[1-6]|tr)>/gi, '\n')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'")
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
+
+      function textStatsExtractDocxTextFromXml(xml) {
+        return String(xml || '')
+          .replace(/<w:tab\/>/g, '\t')
+          .replace(/<w:br\/>/g, '\n')
+          .replace(/<\/w:p>/g, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
+
+      async function readTextStatsDocx(bytes) {
+        const zip = await JSZip.loadAsync(bytes);
+        const documentXml = await zip.file('word/document.xml')?.async('string');
+        if (!documentXml) throw new Error('text-stats:invalid-docx');
+        return textStatsExtractDocxTextFromXml(documentXml);
+      }
+
+      async function readTextStatsPdf(bytes) {
+        const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        const wasmUrl = new URL('assets/', document.baseURI).href;
+        const loadingTask = pdfjsLib.getDocument({ data: normalizeDesktopBytes(bytes).slice(), wasmUrl, useWasm: true });
+        try {
+          const pdf = await loadingTask.promise;
+          if (pdf.numPages > TEXT_STATS_LIMITS.maxPdfPages) {
+            throw new Error('text-stats:too-many-pages');
+          }
+          const pages = [];
+          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            const page = await pdf.getPage(pageNumber);
+            const content = await page.getTextContent();
+            pages.push(content.items.map(item => item.str || '').join(' ').trim());
+          }
+          return pages.join('\n\n').trim();
+        } finally {
+          loadingTask.destroy?.();
+        }
+      }
+
+      async function readTextStatsFileBytes(file) {
+        const name = String(file?.name || file?.path || '').trim();
+        if (!textStatsSupportedName(name)) throw new Error('text-stats:unsupported-file');
+        if (isTauri && file.path) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          return normalizeDesktopBytes(await invoke('read_file_bytes_limited', {
+            path: file.path,
+            maxBytes: TEXT_STATS_LIMITS.maxDocumentBytes
+          }));
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength > TEXT_STATS_LIMITS.maxDocumentBytes) throw new Error('text-stats:file-too-large');
+        return bytes;
+      }
+
+      async function readTextStatsDocument(file) {
+        const name = String(file?.name || file?.path || '').split(/[/\\]/).pop() || textStatsText('document');
+        const bytes = await readTextStatsFileBytes(file);
+        let text = '';
+        if (/\.docx$/i.test(name)) {
+          text = await readTextStatsDocx(bytes);
+        } else if (/\.pdf$/i.test(name)) {
+          text = await readTextStatsPdf(bytes);
+        } else {
+          text = decodeTextStatsBytes(bytes);
+          if (/\.(html|htm)$/i.test(name)) text = textStatsStripHtml(text);
+        }
+        if (!text.trim()) throw new Error('text-stats:empty-document');
+        if (text.length > TEXT_STATS_LIMITS.maxInputChars) {
+          text = text.slice(0, TEXT_STATS_LIMITS.maxInputChars);
+          window.showToast?.(textStatsText('documentTrimmed', { max: TEXT_STATS_LIMITS.maxInputChars }));
+        }
+        return { name, bytes: bytes.byteLength, text, kind: textStatsDocumentKind(name) };
+      }
+
+      function getTextStatsErrorMessage(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        if (message.includes('unsupported-file')) return textStatsText('unsupportedFile');
+        if (message.includes('file-too-large')) return textStatsText('fileTooLarge', { max: Math.round(TEXT_STATS_LIMITS.maxDocumentBytes / 1024 / 1024) });
+        if (message.includes('too-many-pages')) return textStatsText('tooManyPdfPages', { max: TEXT_STATS_LIMITS.maxPdfPages });
+        if (message.includes('empty-document')) return textStatsText('emptyDocument');
+        if (message.includes('invalid-docx')) return textStatsText('invalidDocx');
+        if (message.includes('decode-failed')) return textStatsText('decodeFailed');
+        return textStatsText('readFailed');
+      }
+
+      async function loadTextStatsDocument(file) {
+        if (!file) return;
+        const runId = ++textStatsReadRunId;
+        textStatsOverlay?.classList.add('is-reading-file');
+        try {
+          const result = await readTextStatsDocument(file);
+          if (runId !== textStatsReadRunId || !textStatsOverlay?.classList.contains('visible')) return;
+          if (textStatsInput) {
+            textStatsInput.value = result.text;
+            textStatsInput.focus();
+          }
+          updateTextStatsSource({ type: 'file', name: result.name, bytes: result.bytes, kind: result.kind });
+          updateTextStats();
+          window.showToast?.(textStatsText('fileLoaded', { name: result.name }));
+        } catch (error) {
+          console.error('Text stats document read failed:', error);
+          window.showToast?.(getTextStatsErrorMessage(error));
+        } finally {
+          if (runId === textStatsReadRunId) textStatsOverlay?.classList.remove('is-reading-file');
+          if (textStatsFileInput) textStatsFileInput.value = '';
+        }
+      }
+
+      async function chooseTextStatsDocument() {
+        if (textStatsOverlay?.classList.contains('is-reading-file')) return;
+        if (isTauri) {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [
+                { name: 'Documents', extensions: ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'docx', 'pdf'] }
+              ]
+            });
+            if (selected) await loadTextStatsDocument({ path: selected, name: String(selected).split(/[/\\]/).pop() });
+          } catch (error) {
+            console.error('Text stats file picker failed:', error);
+            window.showToast?.(textStatsText('readFailed'));
+          }
+          return;
+        }
+        textStatsFileInput?.click();
+      }
+
       if (textStatsBack) textStatsBack.addEventListener('click', closeTextStatsOverlay);
+      [textStatsCta, textStatsSelectFileBtn].forEach(button => {
+        if (button) button.addEventListener('click', chooseTextStatsDocument);
+      });
+      if (textStatsFileInput) {
+        textStatsFileInput.addEventListener('change', event => {
+          const file = event.target.files?.[0];
+          if (file) loadTextStatsDocument(file);
+        });
+      }
       if (textStatsInput) {
         textStatsInput.addEventListener('input', () => {
           if (textStatsInput.value.length > TEXT_STATS_LIMITS.maxInputChars) {
             textStatsInput.value = textStatsInput.value.slice(0, TEXT_STATS_LIMITS.maxInputChars);
             window.showToast(t('home.textStats.inputTooLong', { max: TEXT_STATS_LIMITS.maxInputChars }));
           }
+          updateTextStatsSource({ type: 'manual' });
           scheduleTextStatsUpdate();
         });
       }
       if (textStatsClearBtn) {
         textStatsClearBtn.addEventListener('click', () => {
-          if (textStatsInput) { textStatsInput.value = ''; textStatsInput.focus(); updateTextStats(); }
+          if (textStatsInput) {
+            textStatsInput.value = '';
+            textStatsInput.focus();
+            updateTextStatsSource({ type: 'manual' });
+            updateTextStats();
+          }
         });
       }
+      function textStatsLabels(isZh = getLang() === 'zh') {
+        return isZh ? {
+          chars: '总字符数', charsNoSpace: '不含空格字符', spaces: '空格数',
+          words: '单词总数', englishWords: '英文单词数', chineseChars: '中文字符',
+          letters: '英文字母', uppercase: '大写字母', lowercase: '小写字母',
+          digits: '数字字符', numbers: '数字片段', punctuation: '标点符号', lines: '行数',
+          paragraphs: '段落数', sentences: '句子数', longestLine: '最长行字符',
+          avgLineLength: '平均行长', nonEmptyLines: '有效行数', uniqueWords: '唯一词/字',
+          repeatedWords: '重复词/字', avgWordLength: '平均词长', avgSentenceLength: '平均句长',
+          readingTime: '预计阅读(分钟)', speakingTime: '预计朗读(分钟)', lexicalDensity: '词汇密度',
+          topWords: '英文高频词', topChineseChars: '中文高频字'
+        } : {
+          chars: 'Characters', charsNoSpace: 'Chars (no space)', spaces: 'Spaces',
+          words: 'Total Words', englishWords: 'English Words', chineseChars: 'Chinese Chars',
+          letters: 'Letters', uppercase: 'Uppercase', lowercase: 'Lowercase',
+          digits: 'Digit chars', numbers: 'Numbers', punctuation: 'Punctuation', lines: 'Lines',
+          paragraphs: 'Paragraphs', sentences: 'Sentences', longestLine: 'Longest Line',
+          avgLineLength: 'Avg Line Length', nonEmptyLines: 'Non-empty Lines', uniqueWords: 'Unique Words/Chars',
+          repeatedWords: 'Repeated Words/Chars', avgWordLength: 'Avg Word Length', avgSentenceLength: 'Avg Sentence Length',
+          readingTime: 'Reading (min)', speakingTime: 'Speaking (min)', lexicalDensity: 'Lexical Density',
+          topWords: 'Top English Words', topChineseChars: 'Top Chinese Chars'
+        };
+      }
+
+      function textStatsSourceLabel(isZh = getLang() === 'zh') {
+        return textStatsSource.type === 'file'
+          ? `${textStatsSource.name || (isZh ? '文档' : 'Document')} · ${textStatsSource.kind || textStatsText('document')}${textStatsSource.bytes ? ` · ${formatFileSize(textStatsSource.bytes)}` : ''}`
+          : (isZh ? '手动输入' : 'Manual input');
+      }
+
+      function formatTextStatsFrequencyMarkdown(items, emptyText) {
+        if (!items?.length) return `- ${emptyText}`;
+        return items.map((item, index) => `| ${index + 1} | ${String(item.text).replace(/\|/g, '\\|')} | ${item.count} |`).join('\n');
+      }
+
+      function createTextStatsMarkdown(stats, isEmpty = false) {
+        const isZh = getLang() === 'zh';
+        const labels = textStatsLabels(isZh);
+        const title = isZh ? '文本统计报告' : 'Text Statistics Report';
+        const sourceTitle = isZh ? '来源' : 'Source';
+        const generatedTitle = isZh ? '生成时间' : 'Generated At';
+        const overviewTitle = isZh ? '核心统计' : 'Overview';
+        const structureTitle = isZh ? '文本结构' : 'Structure';
+        const readingTitle = isZh ? '阅读与词汇' : 'Reading & Lexical';
+        const frequencyTitle = isZh ? '词频分析' : 'Frequency';
+        const noTopWords = textStatsText('noTopWords');
+        const noTopChineseChars = textStatsText('noTopChineseChars');
+        const now = new Date().toLocaleString(isZh ? 'zh-CN' : 'en-US');
+        const rows = (items) => items.map(([label, value]) => `| ${label} | ${value} |`).join('\n');
+        return [
+          `# ${title}`,
+          '',
+          `- ${sourceTitle}: ${textStatsSourceLabel(isZh)}`,
+          `- ${generatedTitle}: ${now}`,
+          '',
+          `## ${overviewTitle}`,
+          '',
+          '| 指标 | 数值 |',
+          '| --- | ---: |',
+          rows([
+            [labels.chars, stats.chars],
+            [labels.charsNoSpace, stats.charsNoSpace],
+            [labels.words, stats.words],
+            [labels.englishWords, stats.englishWords],
+            [labels.chineseChars, stats.chineseChars],
+            [labels.spaces, stats.spaces]
+          ]),
+          '',
+          `## ${structureTitle}`,
+          '',
+          '| 指标 | 数值 |',
+          '| --- | ---: |',
+          rows([
+            [labels.lines, stats.lines],
+            [labels.nonEmptyLines, stats.nonEmptyLines],
+            [labels.paragraphs, stats.paragraphs],
+            [labels.sentences, stats.sentences],
+            [labels.longestLine, stats.longestLine],
+            [labels.avgLineLength, isEmpty ? 0 : stats.avgLineLength]
+          ]),
+          '',
+          `## ${readingTitle}`,
+          '',
+          '| 指标 | 数值 |',
+          '| --- | ---: |',
+          rows([
+            [labels.uniqueWords, stats.uniqueWords],
+            [labels.repeatedWords, stats.repeatedWords],
+            [labels.avgWordLength, isEmpty ? 0 : stats.avgWordLength],
+            [labels.avgSentenceLength, isEmpty ? 0 : stats.avgSentenceLength],
+            [labels.readingTime, isEmpty ? 0 : stats.readingTime],
+            [labels.speakingTime, isEmpty ? 0 : stats.speakingTime],
+            [labels.lexicalDensity, `${isEmpty ? 0 : stats.lexicalDensity}%`]
+          ]),
+          '',
+          `## ${frequencyTitle}`,
+          '',
+          `### ${labels.topWords}`,
+          '',
+          stats.topWords?.length ? '| 排名 | 词 | 次数 |\n| ---: | --- | ---: |\n' + formatTextStatsFrequencyMarkdown(stats.topWords, noTopWords) : formatTextStatsFrequencyMarkdown(stats.topWords, noTopWords),
+          '',
+          `### ${labels.topChineseChars}`,
+          '',
+          stats.topChineseChars?.length ? '| 排名 | 字 | 次数 |\n| ---: | --- | ---: |\n' + formatTextStatsFrequencyMarkdown(stats.topChineseChars, noTopChineseChars) : formatTextStatsFrequencyMarkdown(stats.topChineseChars, noTopChineseChars),
+          ''
+        ].join('\n');
+      }
+
+      async function exportTextStatsMarkdown() {
+        if (!textStatsInput) return;
+        const text = textStatsInput.value;
+        const stats = calcTextStats(text);
+        const markdown = createTextStatsMarkdown(stats, text.trim() === '');
+        const safeBase = (textStatsSource.type === 'file' ? textStatsSource.name : 'text-stats')
+          .replace(/\.[^.]+$/, '')
+          .replace(/[<>:"/\\|?*\x00-\x1F]+/g, '-')
+          .replace(/\s+/g, '-')
+          .slice(0, 80) || 'text-stats';
+        const fileName = `${safeBase}-统计报告.md`;
+        try {
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const outputDir = await getOutputDir('Text_Stats');
+            const outputPath = await invoke('write_unique_file_bytes', {
+              directory: outputDir,
+              fileName,
+              bytes: Array.from(new TextEncoder().encode(markdown))
+            });
+            window.showToast?.(textStatsText('exportMdDone', { path: displayFilesystemPath(outputPath) }));
+          } else {
+            const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            window.showToast?.(textStatsText('exportMdDone'));
+          }
+        } catch (error) {
+          console.error('Text stats markdown export failed:', error);
+          window.showToast?.(textStatsText('exportMdFailed'));
+        }
+      }
+
       if (textStatsCopyBtn) {
         textStatsCopyBtn.addEventListener('click', () => {
           if (!textStatsInput) return;
           const stats = calcTextStats(textStatsInput.value);
           const isEmpty = textStatsInput.value.trim() === '';
           const isZh = getLang() === 'zh';
-          const labels = isZh ? {
-            chars: '总字符数', charsNoSpace: '不含空格字符', spaces: '空格数',
-            words: '单词总数', englishWords: '英文单词数', chineseChars: '中文字符',
-            letters: '英文字母', uppercase: '大写字母', lowercase: '小写字母',
-            digits: '数字', punctuation: '标点符号', lines: '行数',
-            paragraphs: '段落数', sentences: '句子数', longestLine: '最长行字符',
-            avgLineLength: '平均行长', readingTime: '预计阅读(分钟)'
-          } : {
-            chars: 'Characters', charsNoSpace: 'Chars (no space)', spaces: 'Spaces',
-            words: 'Total Words', englishWords: 'English Words', chineseChars: 'Chinese Chars',
-            letters: 'Letters', uppercase: 'Uppercase', lowercase: 'Lowercase',
-            digits: 'Digits', punctuation: 'Punctuation', lines: 'Lines',
-            paragraphs: 'Paragraphs', sentences: 'Sentences', longestLine: 'Longest Line',
-            avgLineLength: 'Avg Line Length', readingTime: 'Reading (min)'
-          };
+          const labels = textStatsLabels(isZh);
           const lines = [
+            (isZh ? '来源' : 'Source') + ': ' + textStatsSourceLabel(isZh),
             labels.chars + ': ' + stats.chars,
             labels.charsNoSpace + ': ' + stats.charsNoSpace,
             labels.spaces + ': ' + stats.spaces,
@@ -18389,13 +26417,21 @@
             labels.uppercase + ': ' + stats.uppercase,
             labels.lowercase + ': ' + stats.lowercase,
             labels.digits + ': ' + stats.digits,
+            labels.numbers + ': ' + stats.numbers,
             labels.punctuation + ': ' + stats.punctuation,
             labels.lines + ': ' + stats.lines,
+            labels.nonEmptyLines + ': ' + stats.nonEmptyLines,
             labels.paragraphs + ': ' + stats.paragraphs,
             labels.sentences + ': ' + stats.sentences,
             labels.longestLine + ': ' + stats.longestLine,
             labels.avgLineLength + ': ' + (isEmpty ? 0 : stats.avgLineLength),
-            labels.readingTime + ': ' + (isEmpty ? 0 : stats.readingTime)
+            labels.uniqueWords + ': ' + stats.uniqueWords,
+            labels.repeatedWords + ': ' + stats.repeatedWords,
+            labels.avgWordLength + ': ' + (isEmpty ? 0 : stats.avgWordLength),
+            labels.avgSentenceLength + ': ' + (isEmpty ? 0 : stats.avgSentenceLength),
+            labels.readingTime + ': ' + (isEmpty ? 0 : stats.readingTime),
+            labels.speakingTime + ': ' + (isEmpty ? 0 : stats.speakingTime),
+            labels.lexicalDensity + ': ' + (isEmpty ? 0 : stats.lexicalDensity) + '%'
           ];
           if (!navigator.clipboard?.writeText) {
             window.showToast(t('home.textStats.copyFailed'));
@@ -18406,6 +26442,60 @@
             textStatsCopyBtn.textContent = '✓';
             setTimeout(() => { textStatsCopyBtn.textContent = original; }, 1500);
           }).catch(() => window.showToast(t('home.textStats.copyFailed')));
+        });
+      }
+      if (textStatsExportMdBtn) textStatsExportMdBtn.addEventListener('click', exportTextStatsMarkdown);
+
+      const handleTextStatsDragEnter = () => {
+        if (!textStatsOverlay?.classList.contains('visible')) return;
+        textStatsOverlay.classList.add('drag-over');
+        textStatsDropZone?.classList.add('visible');
+        textStatsDropCard?.classList.add('is-dragging');
+      };
+      const handleTextStatsDragLeave = () => {
+        textStatsOverlay?.classList.remove('drag-over');
+        textStatsDropZone?.classList.remove('visible');
+        textStatsDropCard?.classList.remove('is-dragging');
+      };
+
+      if (isTauri && textStatsOverlay) {
+        (async () => {
+          try {
+            const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+            const webview = getCurrentWebview();
+            await webview.onDragDropEvent((event) => {
+              if (!textStatsOverlay.classList.contains('visible')) return;
+              const payload = event.payload;
+              if (payload.type === 'enter' || payload.type === 'over') {
+                handleTextStatsDragEnter();
+              } else if (payload.type === 'leave') {
+                handleTextStatsDragLeave();
+              } else if (payload.type === 'drop') {
+                handleTextStatsDragLeave();
+                const path = payload.paths?.[0];
+                if (path) loadTextStatsDocument({ path, name: String(path).split(/[/\\]/).pop() });
+              }
+            });
+          } catch (error) {
+            console.error('Text stats drag registration failed:', error);
+          }
+        })();
+      }
+
+      if (textStatsOverlay && !isTauri) {
+        textStatsOverlay.addEventListener('dragover', event => {
+          event.preventDefault();
+          handleTextStatsDragEnter();
+        });
+        textStatsOverlay.addEventListener('dragleave', event => {
+          if (event.relatedTarget && textStatsOverlay.contains(event.relatedTarget)) return;
+          handleTextStatsDragLeave();
+        });
+        textStatsOverlay.addEventListener('drop', event => {
+          event.preventDefault();
+          handleTextStatsDragLeave();
+          const file = event.dataTransfer?.files?.[0];
+          if (file) loadTextStatsDocument(file);
         });
       }
 
@@ -18421,6 +26511,14 @@
       const textFormatOverlay = document.getElementById('textFormatOverlay');
       const textFormatBack = document.getElementById('textFormatBack');
       const textFormatBg = document.getElementById('textFormatBg');
+      const textFormatDropZone = document.getElementById('textFormatDropZone');
+      const textFormatDropCard = document.getElementById('textFormatDropCard');
+      const textFormatCta = document.getElementById('textFormatCta');
+      const textFormatSelectFileBtn = document.getElementById('textFormatSelectFileBtn');
+      const textFormatFileInput = document.getElementById('textFormatFileInput');
+      const textFormatFileInfo = document.getElementById('textFormatFileInfo');
+      const textFormatFileName = document.getElementById('textFormatFileName');
+      const textFormatFileMeta = document.getElementById('textFormatFileMeta');
       const textFormatInput = document.getElementById('textFormatInput');
       const textFormatOutput = document.getElementById('textFormatOutput');
       const textFormatActions = document.getElementById('textFormatActions');
@@ -18429,14 +26527,91 @@
       const textFormatUseAsInputBtn = document.getElementById('textFormatUseAsInputBtn');
       let textFormatPlasmaInstance = null;
       let textFormatFocusTimer = null;
+      let textFormatReadRunId = 0;
+      let textFormatSource = { type: 'manual', name: '', bytes: 0, kind: '' };
 
       function executeFormat(action, text) {
         return executeTextFormat(action, text);
       }
 
+      function textFormatText(key, params) {
+        return t(`home.textFormat.${key}`, params);
+      }
+
+      function updateTextFormatSource(source = {}) {
+        textFormatSource = { type: 'manual', name: '', bytes: 0, kind: '', ...source };
+        const isManual = textFormatSource.type === 'manual';
+        if (textFormatFileInfo) textFormatFileInfo.classList.toggle('has-file', !isManual);
+        if (textFormatFileName) textFormatFileName.textContent = isManual ? textFormatText('manualInput') : textFormatSource.name;
+        if (textFormatFileMeta) {
+          textFormatFileMeta.textContent = isManual
+            ? textFormatText('manualMeta')
+            : textFormatText('fileMeta', {
+                type: textFormatSource.kind || textFormatText('document'),
+                size: formatFileSize(textFormatSource.bytes || 0)
+              });
+        }
+      }
+
+      function getTextFormatErrorMessage(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        if (message.includes('unsupported-file')) return textFormatText('unsupportedFile');
+        if (message.includes('file-too-large')) return textFormatText('fileTooLarge', { max: Math.round(TEXT_STATS_LIMITS.maxDocumentBytes / 1024 / 1024) });
+        if (message.includes('too-many-pages')) return textFormatText('tooManyPdfPages', { max: TEXT_STATS_LIMITS.maxPdfPages });
+        if (message.includes('empty-document')) return textFormatText('emptyDocument');
+        if (message.includes('invalid-docx')) return textFormatText('invalidDocx');
+        if (message.includes('decode-failed')) return textFormatText('decodeFailed');
+        return textFormatText('readFailed');
+      }
+
+      async function loadTextFormatDocument(file) {
+        if (!file) return;
+        const runId = ++textFormatReadRunId;
+        textFormatOverlay?.classList.add('is-reading-file');
+        try {
+          const result = await readTextStatsDocument(file);
+          if (runId !== textFormatReadRunId || !textFormatOverlay?.classList.contains('visible')) return;
+          if (textFormatInput) {
+            textFormatInput.value = result.text;
+            textFormatInput.focus();
+          }
+          if (textFormatOutput) textFormatOutput.value = '';
+          updateTextFormatSource({ type: 'file', name: result.name, bytes: result.bytes, kind: result.kind });
+          window.showToast?.(textFormatText('fileLoaded', { name: result.name }));
+        } catch (error) {
+          console.error('Text format document read failed:', error);
+          window.showToast?.(getTextFormatErrorMessage(error));
+        } finally {
+          if (runId === textFormatReadRunId) textFormatOverlay?.classList.remove('is-reading-file');
+          if (textFormatFileInput) textFormatFileInput.value = '';
+        }
+      }
+
+      async function chooseTextFormatDocument() {
+        if (textFormatOverlay?.classList.contains('is-reading-file')) return;
+        if (isTauri) {
+          try {
+            const { open } = await import('@tauri-apps/plugin-dialog');
+            const selected = await open({
+              multiple: false,
+              filters: [
+                { name: 'Documents', extensions: ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'html', 'htm', 'docx', 'pdf'] }
+              ]
+            });
+            if (selected) await loadTextFormatDocument({ path: selected, name: String(selected).split(/[/\\]/).pop() });
+          } catch (error) {
+            console.error('Text format file picker failed:', error);
+            window.showToast?.(textFormatText('readFailed'));
+          }
+          return;
+        }
+        textFormatFileInput?.click();
+      }
+
       function openTextFormatOverlay() {
         if (!textFormatOverlay) return;
         textFormatOverlay.classList.add('visible');
+        updateTextFormatSource(textFormatSource);
         if (textFormatBg && !textFormatPlasmaInstance) {
           textFormatPlasmaInstance = initStandardToolPlasma(textFormatBg);
         }
@@ -18458,6 +26633,15 @@
       }
 
       if (textFormatBack) textFormatBack.addEventListener('click', closeTextFormatOverlay);
+      [textFormatCta, textFormatSelectFileBtn].forEach(button => {
+        if (button) button.addEventListener('click', chooseTextFormatDocument);
+      });
+      if (textFormatFileInput) {
+        textFormatFileInput.addEventListener('change', event => {
+          const file = event.target.files?.[0];
+          if (file) loadTextFormatDocument(file);
+        });
+      }
       if (textFormatActions) {
         textFormatActions.addEventListener('click', (e) => {
           const btn = e.target.closest('[data-action]');
@@ -18486,6 +26670,7 @@
             textFormatInput.value = textFormatInput.value.slice(0, TEXT_FORMAT_LIMITS.maxInputChars);
             window.showToast(t('home.textFormat.inputTooLong', { max: TEXT_FORMAT_LIMITS.maxInputChars }));
           }
+          updateTextFormatSource({ type: 'manual' });
         });
       }
       if (textFormatCopyBtn) {
@@ -18506,6 +26691,7 @@
         textFormatClearBtn.addEventListener('click', () => {
           if (textFormatInput) textFormatInput.value = '';
           if (textFormatOutput) textFormatOutput.value = '';
+          updateTextFormatSource({ type: 'manual' });
           if (textFormatInput) textFormatInput.focus();
         });
       }
@@ -18518,7 +26704,60 @@
           }
           if (textFormatInput) textFormatInput.value = textFormatOutput.value;
           if (textFormatOutput) textFormatOutput.value = '';
+          updateTextFormatSource({ type: 'manual' });
           if (textFormatInput) textFormatInput.focus();
+        });
+      }
+
+      const handleTextFormatDragEnter = () => {
+        if (!textFormatOverlay?.classList.contains('visible')) return;
+        textFormatOverlay.classList.add('drag-over');
+        textFormatDropZone?.classList.add('visible');
+        textFormatDropCard?.classList.add('is-dragging');
+      };
+      const handleTextFormatDragLeave = () => {
+        textFormatOverlay?.classList.remove('drag-over');
+        textFormatDropZone?.classList.remove('visible');
+        textFormatDropCard?.classList.remove('is-dragging');
+      };
+
+      if (isTauri && textFormatOverlay) {
+        (async () => {
+          try {
+            const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+            const webview = getCurrentWebview();
+            await webview.onDragDropEvent((event) => {
+              if (!textFormatOverlay.classList.contains('visible')) return;
+              const payload = event.payload;
+              if (payload.type === 'enter' || payload.type === 'over') {
+                handleTextFormatDragEnter();
+              } else if (payload.type === 'leave') {
+                handleTextFormatDragLeave();
+              } else if (payload.type === 'drop') {
+                handleTextFormatDragLeave();
+                const path = payload.paths?.[0];
+                if (path) loadTextFormatDocument({ path, name: String(path).split(/[/\\]/).pop() });
+              }
+            });
+          } catch (error) {
+            console.error('Text format drag registration failed:', error);
+          }
+        })();
+      }
+      if (textFormatOverlay && !isTauri) {
+        textFormatOverlay.addEventListener('dragover', event => {
+          event.preventDefault();
+          handleTextFormatDragEnter();
+        });
+        textFormatOverlay.addEventListener('dragleave', event => {
+          if (event.relatedTarget && textFormatOverlay.contains(event.relatedTarget)) return;
+          handleTextFormatDragLeave();
+        });
+        textFormatOverlay.addEventListener('drop', event => {
+          event.preventDefault();
+          handleTextFormatDragLeave();
+          const file = event.dataTransfer?.files?.[0];
+          if (file) loadTextFormatDocument(file);
         });
       }
 
@@ -18576,32 +26815,78 @@
         backspaceCount: 0,
       };
 
-      const TYPING_TEST_WORDS = typingWordsData;
+      const TYPING_TEST_EXTRA_WORDS = {
+        en: {
+          easy: ['apple', 'cloud', 'smile', 'green', 'light', 'music', 'paper', 'chair', 'phone', 'fresh', 'clean', 'dream'],
+          medium: ['algorithm', 'database', 'clipboard', 'render', 'command', 'vector', 'payload', 'context', 'session', 'shortcut', 'timeline', 'routing'],
+          hard: ['interoperability', 'standardization', 'synchronization', 'abstraction', 'architecture', 'concurrency', 'maintainability', 'verification', 'distribution', 'resilience', 'customization', 'integration'],
+          master: ['async await', 'tree shaking', 'code review', 'hot reload', 'design system', 'source map', 'edge case', 'feature flag', 'memory leak', 'race condition', 'live preview', 'release candidate']
+        },
+        zh: {
+          easy: ['星光', '绿叶', '小溪', '风铃', '书页', '阳光', '蓝天', '白云', '微风', '清香', '细雨', '田野'],
+          medium: ['选择决定方向', '思考带来进步', '规划提高效率', '复盘促进成长', '耐心解决问题', '记录灵感很重要', '专注会带来结果', '沟通让合作更顺畅', '目标清晰才能前进', '经验需要不断积累', '每一次练习都算数', '认真打磨作品'],
+          hard: ['不忘初心方得始终', '行稳致远静待花开', '路虽远行则将至', '事虽难做则必成', '纸上得来终觉浅', '绝知此事要躬行', '博观而约取厚积而薄发', '天行健君子以自强不息', '地势坤君子以厚德载物', '少年辛苦终身事', '莫向光阴惰寸功', '学无止境知行合一'],
+          master: ['大鹏一日同风起扶摇直上九万里', '安得广厦千万间大庇天下寒士俱欢颜', '朱门酒肉臭路有冻死骨', '苟利国家生死以岂因祸福避趋之', '路漫漫其修远兮吾将上下而求索', '业精于勤荒于嬉行成于思毁于随', '少壮不努力老大徒伤悲', '青春须早为岂能长少年', '车到山前必有路', '船到桥头自然直', '功夫不负有心人', '只争朝夕不负韶华']
+        }
+      };
+      const TYPING_TEST_WORDS = {
+        en: {
+          easy: [...typingWordsData.en.easy, ...TYPING_TEST_EXTRA_WORDS.en.easy],
+          medium: [...typingWordsData.en.medium, ...TYPING_TEST_EXTRA_WORDS.en.medium],
+          hard: [...typingWordsData.en.hard, ...TYPING_TEST_EXTRA_WORDS.en.hard],
+          master: [...typingWordsData.en.master, ...TYPING_TEST_EXTRA_WORDS.en.master]
+        },
+        zh: {
+          easy: [...typingWordsData.zh.easy, ...TYPING_TEST_EXTRA_WORDS.zh.easy],
+          medium: [...typingWordsData.zh.medium, ...TYPING_TEST_EXTRA_WORDS.zh.medium],
+          hard: [...typingWordsData.zh.hard, ...TYPING_TEST_EXTRA_WORDS.zh.hard],
+          master: [...typingWordsData.zh.master, ...TYPING_TEST_EXTRA_WORDS.zh.master]
+        }
+      };
+      const TYPING_TEST_NOISE_RE = /[\s\u3000，。！？、；：\u201c\u201d\u2018\u2019（）【】《》…—·,.!?;:"'()\[\]{}]/g;
+
+      function normalizeTypingValue(text) {
+        return (text || '').replace(TYPING_TEST_NOISE_RE, '');
+      }
+
+      function sampleTypingWords(pool, count) {
+        const uniquePool = Array.from(new Set((pool || []).filter(Boolean)));
+        if (!uniquePool.length || count <= 0) return [];
+        const bag = [...uniquePool];
+        const result = [];
+        while (result.length < count) {
+          if (!bag.length) bag.push(...uniquePool);
+          const idx = Math.floor(Math.random() * bag.length);
+          result.push(bag.splice(idx, 1)[0]);
+        }
+        return result;
+      }
 
       function generateTypingText(lang, difficulty) {
         const pool = TYPING_TEST_WORDS[lang]?.[difficulty] || TYPING_TEST_WORDS.zh.easy;
-        const count = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 16 : 12;
-        let parts = [];
-        for (let i = 0; i < count; i++) {
-          parts.push(pool[Math.floor(Math.random() * pool.length)]);
-        }
-        if (lang === 'en') {
-          return parts.join(' ');
-        }
-        return parts.join('');
+        const count = difficulty === 'easy' ? 24 : difficulty === 'medium' ? 18 : difficulty === 'hard' ? 14 : 12;
+        const parts = sampleTypingWords(pool, count);
+        return parts.join(' ');
       }
 
       let typingAudioCtx = null;
       function getTypingAudioCtx() {
+        if (typingAudioCtx?.state === 'closed') typingAudioCtx = null;
         if (!typingAudioCtx) {
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           if (!AudioContext) return null;
           typingAudioCtx = new AudioContext();
         }
         if (typingAudioCtx.state === 'suspended') {
-          typingAudioCtx.resume();
+          typingAudioCtx.resume().catch(() => {});
         }
         return typingAudioCtx;
+      }
+
+      function disposeTypingAudioContext() {
+        const context = typingAudioCtx;
+        typingAudioCtx = null;
+        if (context && context.state !== 'closed') context.close().catch(() => {});
       }
 
       function playTypingSound() {
@@ -18614,11 +26899,15 @@
           osc.frequency.setValueAtTime(1200, ctx.currentTime);
           osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.06);
           gain.gain.setValueAtTime(0.08, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.06);
+           gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+           osc.connect(gain);
+           gain.connect(ctx.destination);
+           osc.addEventListener('ended', () => {
+             try { osc.disconnect(); } catch { /* already disconnected */ }
+             try { gain.disconnect(); } catch { /* already disconnected */ }
+           }, { once: true });
+           osc.start(ctx.currentTime);
+           osc.stop(ctx.currentTime + 0.06);
         } catch (e) {
           // Ignore audio errors
         }
@@ -18634,11 +26923,15 @@
           osc.frequency.setValueAtTime(300, ctx.currentTime);
           osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.1);
           gain.gain.setValueAtTime(0.08, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.1);
+           gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+           osc.connect(gain);
+           gain.connect(ctx.destination);
+           osc.addEventListener('ended', () => {
+             try { osc.disconnect(); } catch { /* already disconnected */ }
+             try { gain.disconnect(); } catch { /* already disconnected */ }
+           }, { once: true });
+           osc.start(ctx.currentTime);
+           osc.stop(ctx.currentTime + 0.1);
         } catch (e) {
           // Ignore audio errors
         }
@@ -18649,48 +26942,43 @@
         typingTestText.innerHTML = '';
         const target = typingTestState.targetText;
         const input = typingTestState.input;
-        const isPunctuation = (ch) => /[，。！？、；：\u201c\u201d\u2018\u2019（）【】《》…—·,.!?;:"'()\[\]{}]/.test(ch);
+        const normalizedTarget = normalizeTypingValue(target);
+        const normalizedInput = normalizeTypingValue(input);
+        typingTestText.classList.toggle('segmented-mode', true);
 
-        let tIdx = 0, iIdx = 0;
-        while (tIdx < target.length || iIdx < input.length) {
-          if (tIdx < target.length && isPunctuation(target[tIdx])) {
+        const segments = target.trim().split(/\s+/).filter(Boolean);
+        let cursor = 0;
+        let currentPlaced = false;
+        segments.forEach((segment) => {
+          const segmentSpan = document.createElement('span');
+          segmentSpan.className = 'typing-test-segment';
+          for (let i = 0; i < segment.length; i++) {
+            const ch = segment[i];
             const charSpan = document.createElement('span');
             charSpan.className = 'typing-test-char';
-            charSpan.textContent = target[tIdx];
-            typingTestText.appendChild(charSpan);
-            tIdx++;
-            continue;
-          }
-          if (iIdx < input.length && isPunctuation(input[iIdx])) {
-            iIdx++;
-            continue;
-          }
-          if (tIdx < target.length && iIdx < input.length) {
-            const charSpan = document.createElement('span');
-            charSpan.className = 'typing-test-char';
-            charSpan.textContent = target[tIdx];
-            if (input[iIdx] === target[tIdx]) {
-              charSpan.classList.add('correct');
-            } else {
-              charSpan.classList.add('wrong');
+            charSpan.textContent = ch;
+            if (normalizedInput[cursor] != null) {
+              charSpan.classList.add(normalizedInput[cursor] === normalizedTarget[cursor] ? 'correct' : 'wrong');
+            } else if (!currentPlaced && cursor === normalizedInput.length) {
+              charSpan.classList.add('current');
+              currentPlaced = true;
             }
-            typingTestText.appendChild(charSpan);
-            tIdx++;
-            iIdx++;
-          } else if (tIdx < target.length) {
-            const charSpan = document.createElement('span');
-            charSpan.className = 'typing-test-char';
-            charSpan.textContent = target[tIdx];
-            if (iIdx === input.length) charSpan.classList.add('current');
-            typingTestText.appendChild(charSpan);
-            tIdx++;
-          } else if (iIdx < input.length) {
+            segmentSpan.appendChild(charSpan);
+            cursor++;
+          }
+          typingTestText.appendChild(segmentSpan);
+        });
+
+        if (normalizedInput.length > normalizedTarget.length) {
+          const extraWrap = document.createElement('span');
+          extraWrap.className = 'typing-test-segment typing-test-extra-segment';
+          for (let i = normalizedTarget.length; i < normalizedInput.length; i++) {
             const extraSpan = document.createElement('span');
             extraSpan.className = 'typing-test-char extra';
-            extraSpan.textContent = input[iIdx];
-            typingTestText.appendChild(extraSpan);
-            iIdx++;
+            extraSpan.textContent = normalizedInput[i] || '';
+            extraWrap.appendChild(extraSpan);
           }
+          typingTestText.appendChild(extraWrap);
         }
       }
 
@@ -18735,7 +27023,7 @@
         const accuracy = totalChars > 0 ? Math.round((correctChars / totalChars) * 100) : 100;
         const rating = getTypingRating(wpm, typingTestState.lang);
         if (typingTestArea) typingTestArea.style.display = 'none';
-        if (typingTestResult) typingTestResult.style.display = 'block';
+        if (typingTestResult) typingTestResult.style.display = '';
         if (typingTestResultWpm) typingTestResultWpm.textContent = wpm;
         if (typingTestResultCpm) typingTestResultCpm.textContent = cpm;
         if (typingTestResultAccuracy) typingTestResultAccuracy.textContent = accuracy + '%';
@@ -18767,9 +27055,10 @@
         typingTestState.wrongCount = 0;
         typingTestState.totalCharCount = 0;
         typingTestState.backspaceCount = 0;
+        zhInputBuffer = '';
         if (typingTestSettings) typingTestSettings.style.display = 'none';
         if (typingTestResult) typingTestResult.style.display = 'none';
-        if (typingTestArea) typingTestArea.style.display = 'flex';
+        if (typingTestArea) typingTestArea.style.display = '';
         if (typingTestTime) {
           typingTestTime.textContent = typingTestState.duration;
           typingTestTime.classList.remove('warning');
@@ -18793,7 +27082,7 @@
         typingTestState.isFinished = false;
         if (typingTestArea) typingTestArea.style.display = 'none';
         if (typingTestResult) typingTestResult.style.display = 'none';
-        if (typingTestSettings) typingTestSettings.style.display = 'block';
+        if (typingTestSettings) typingTestSettings.style.display = '';
       }
 
       function openTypingTestOverlay() {
@@ -18815,6 +27104,7 @@
           typingTestTimer = null;
         }
         typingTestState.isRunning = false;
+        disposeTypingAudioContext();
         typingTestPlasmaInstance = disposeStandardToolPlasma(typingTestPlasmaInstance);
       }
 
@@ -18822,43 +27112,26 @@
         if (!typingTestInput || typingTestState.isFinished || typingTestComposing) return;
         const rawVal = typingTestState.lang === 'zh' ? zhInputBuffer : typingTestInput.value;
         const target = typingTestState.targetText;
-        const prevLen = typingTestState.input.length;
-
-        // 双指针比对：跳过标点，确保字符顺序一致
-        const isPunctuation = (ch) => /[，。！？、；：\u201c\u201d\u2018\u2019（）【】《》…—·,.!?;:"'()\[\]{}]/.test(ch);
-        let targetChars = target.split('');
-        let inputChars = rawVal.split('');
-        let tIdx = 0, iIdx = 0;
-        let correct = 0, wrong = 0;
-        let inputCharCount = 0;
-
-        while (tIdx < targetChars.length && iIdx < inputChars.length) {
-          while (tIdx < targetChars.length && isPunctuation(targetChars[tIdx])) tIdx++;
-          while (iIdx < inputChars.length && isPunctuation(inputChars[iIdx])) iIdx++;
-          if (tIdx < targetChars.length && iIdx < inputChars.length) {
-            inputCharCount++;
-            if (targetChars[tIdx] === inputChars[iIdx]) {
-              correct++;
-            } else {
-              wrong++;
-            }
-            tIdx++;
-            iIdx++;
+        const normalizedTarget = normalizeTypingValue(target);
+        const normalizedInput = normalizeTypingValue(rawVal);
+        const prevLen = normalizeTypingValue(typingTestState.input).length;
+        const targetChars = normalizedTarget.split('');
+        const inputChars = normalizedInput.split('');
+        const compareLen = Math.min(targetChars.length, inputChars.length);
+        let correct = 0;
+        for (let i = 0; i < compareLen; i++) {
+          if (targetChars[i] === inputChars[i]) {
+            correct++;
           }
         }
-        while (iIdx < inputChars.length) {
-          if (!isPunctuation(inputChars[iIdx])) {
-            wrong++;
-            inputCharCount++;
-          }
-          iIdx++;
-        }
+        const wrong = Math.max(inputChars.length - correct, 0);
+        const inputCharCount = inputChars.length;
 
         typingTestState.input = rawVal;
         typingTestState.correctCount = correct;
         typingTestState.wrongCount = wrong;
         typingTestState.totalCharCount = inputCharCount;
-        if (!typingTestState.isRunning && rawVal.length > 0) {
+        if (!typingTestState.isRunning && normalizedInput.length > 0) {
           typingTestState.isRunning = true;
           typingTestState.startTime = Date.now();
           typingTestTimer = setInterval(() => {
@@ -18871,20 +27144,18 @@
         }
         if (!typingTestState.isRunning) return;
 
-        if (rawVal.length > prevLen) {
-          const lastIdx = rawVal.length - 1;
-          const lastChar = rawVal[lastIdx];
-          if (!isPunctuation(lastChar)) {
-            if (lastChar === target[lastIdx]) {
-              playTypingSound();
-            } else {
-              playErrorSound();
-            }
+        if (normalizedInput.length > prevLen) {
+          const lastIdx = normalizedInput.length - 1;
+          const lastChar = normalizedInput[lastIdx];
+          if (lastChar === normalizedTarget[lastIdx]) {
+            playTypingSound();
+          } else {
+            playErrorSound();
           }
         }
         renderTypingText();
         updateTypingStats();
-        if (wrong === 0 && tIdx >= targetChars.length && rawVal.length > 0) {
+        if (wrong === 0 && normalizedInput.length >= normalizedTarget.length && normalizedInput.length > 0) {
           endTypingTest();
         }
       }
@@ -18904,7 +27175,15 @@
       if (typingTestInput) {
         typingTestInput.addEventListener('input', (e) => {
           if (e.isComposing || typingTestComposing) return;
-          if (typingTestState.lang === 'zh') return;
+          if (typingTestState.lang === 'zh') {
+            const cleanData = normalizeTypingValue(typingTestInput.value);
+            if (cleanData) {
+              zhInputBuffer += cleanData;
+            }
+            typingTestInput.value = '';
+            handleTypingInput();
+            return;
+          }
           handleTypingInput();
         });
         typingTestInput.addEventListener('keydown', (e) => {
@@ -18912,6 +27191,7 @@
           if (typingTestComposing) return;
           if (e.key === 'Backspace' && zhInputBuffer.length > 0) {
             zhInputBuffer = zhInputBuffer.slice(0, -1);
+            typingTestInput.value = '';
             handleTypingInput();
           }
         });
@@ -18919,11 +27199,9 @@
         typingTestInput.addEventListener('compositionend', (e) => {
           typingTestComposing = false;
           if (typingTestState.lang === 'zh') {
-            if (e.data) {
-              const cleanData = e.data.replace(/[，。！？、；：""''（）【】《》…—·,.!?;:"'()\[\]{}]/g, '');
-              if (cleanData) {
-                zhInputBuffer += cleanData;
-              }
+            const cleanData = normalizeTypingValue(e.data || typingTestInput.value);
+            if (cleanData) {
+              zhInputBuffer += cleanData;
             }
             typingTestInput.value = '';
             handleTypingInput();
@@ -20101,10 +28379,38 @@
       const passwordGenClearBtn = document.getElementById('passwordGenClearBtn');
       const passwordGenLengthSlider = document.getElementById('passwordGenLengthSlider');
       const passwordGenLengthValue = document.getElementById('passwordGenLengthValue');
+      const passwordGenStatTotal = document.getElementById('passwordGenStatTotal');
+      const passwordGenStatLetters = document.getElementById('passwordGenStatLetters');
+      const passwordGenStatNumbers = document.getElementById('passwordGenStatNumbers');
+      const passwordGenStatSymbols = document.getElementById('passwordGenStatSymbols');
 
       let passwordGenStrength = 'simple';
       let passwordGenPlasmaInstance = null;
       let passwordGenHistory = [];
+
+      function countPasswordComposition(password = '') {
+        let letters = 0;
+        let numbers = 0;
+        let symbols = 0;
+        Array.from(password).forEach(char => {
+          if (/[a-zA-Z]/.test(char)) {
+            letters += 1;
+          } else if (/[0-9]/.test(char)) {
+            numbers += 1;
+          } else {
+            symbols += 1;
+          }
+        });
+        return { total: password.length, letters, numbers, symbols };
+      }
+
+      function renderPasswordComposition(password = '') {
+        const composition = countPasswordComposition(password);
+        if (passwordGenStatTotal) passwordGenStatTotal.textContent = String(composition.total);
+        if (passwordGenStatLetters) passwordGenStatLetters.textContent = String(composition.letters);
+        if (passwordGenStatNumbers) passwordGenStatNumbers.textContent = String(composition.numbers);
+        if (passwordGenStatSymbols) passwordGenStatSymbols.textContent = String(composition.symbols);
+      }
 
       function clearPasswordSensitiveContent() {
         passwordGenHistory = [];
@@ -20117,6 +28423,7 @@
         if (passwordGenHistoryList) passwordGenHistoryList.replaceChildren();
         if (passwordGenResultEmpty) passwordGenResultEmpty.style.display = '';
         if (passwordGenResultContent) passwordGenResultContent.style.display = 'none';
+        renderPasswordComposition('');
       }
 
       function getPasswordOptions() {
@@ -20160,6 +28467,7 @@
           passwordGenStrengthFill.style.width = strengthInfo.percent + '%';
           passwordGenStrengthFill.style.background = strengthInfo.color;
         }
+        renderPasswordComposition(password);
 
         // Add to history
         passwordGenHistory.unshift(password);
@@ -21014,6 +29322,9 @@
       const pdfCompressDownloadAllBtn = document.getElementById('pdfCompressDownloadAllBtn');
       const pdfCompressSuccessOverlay = document.getElementById('pdfCompressSuccessOverlay');
       const pdfCompressSuccessMeta = document.getElementById('pdfCompressSuccessMeta');
+      const pdfCompressSuccessFileName = document.getElementById('pdfCompressSuccessFileName');
+      const pdfCompressSuccessOriginalSize = document.getElementById('pdfCompressSuccessOriginalSize');
+      const pdfCompressSuccessCompressedSize = document.getElementById('pdfCompressSuccessCompressedSize');
       const pdfCompressSuccessCount = document.getElementById('pdfCompressSuccessCount');
       const pdfCompressSuccessPath = document.getElementById('pdfCompressSuccessPath');
       const pdfCompressSuccessOk = document.getElementById('pdfCompressSuccessOk');
@@ -21283,8 +29594,8 @@
             pdfCompressProcessing = false;
 
             if (pdfCompressResults.length > 0) {
-              renderCompressResults();
-              if (pdfCompressDrawer) pdfCompressDrawer.classList.add('visible');
+              const successType = selectedPdfCompressFiles.length > 1 ? 'all' : 'single';
+              showPdfCompressSuccess(pdfCompressOutputDir || pdfCompressResults.find(result => result.outputPath)?.outputPath || '', successType);
             }
             if (pdfCompressResults.length > 0 && errors.length > 0) {
               alert(`${t('home.pdfCompress.partialFail')}:\n${errors.join('\n')}`);
@@ -21393,7 +29704,13 @@
       function showPdfCompressSuccess(savePath, type) {
         lastPdfCompressSavedPath = savePath;
         const count = pdfCompressResults.length;
+        const totalOriginalSize = pdfCompressResults.reduce((sum, result) => sum + (Number(result.originalSize) || 0), 0);
+        const totalCompressedSize = pdfCompressResults.reduce((sum, result) => sum + (Number(result.compressedSize) || 0), 0);
+        const firstName = pdfCompressResults[0]?.name || '';
         if (pdfCompressSuccessCount) pdfCompressSuccessCount.textContent = String(count);
+        if (pdfCompressSuccessFileName) pdfCompressSuccessFileName.textContent = count === 1 ? firstName : (firstName ? `${firstName} 等 ${count} 个文件` : `${count} 个文件`);
+        if (pdfCompressSuccessOriginalSize) pdfCompressSuccessOriginalSize.textContent = formatFileSize(totalOriginalSize);
+        if (pdfCompressSuccessCompressedSize) pdfCompressSuccessCompressedSize.textContent = formatFileSize(totalCompressedSize);
         if (pdfCompressSuccessPath) pdfCompressSuccessPath.textContent = displayFilesystemPath(savePath);
         if (type === 'all') {
           if (pdfCompressSuccessMeta) pdfCompressSuccessMeta.textContent = t('home.pdfCompress.successAllMeta', { count });
@@ -21412,7 +29729,8 @@
         pdfCompressSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfCompressSavedPath) {
             try {
-              await openOutputFolder(lastPdfCompressSavedPath);
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('open_path', { path: lastPdfCompressSavedPath });
             } catch (e) {
               console.error('[PDF Compress] Reveal error:', e);
             }
@@ -21425,7 +29743,9 @@
       const MAX_FAVORITES = 6;
       const toastEl = document.getElementById('favToast');
       const toastText = document.getElementById('favToastText');
+      const manageFavoritesBtn = document.getElementById('manageFavorites');
       let toastTimer = null;
+      let favoritesManageMode = false;
 
       function showFavoriteToast(msg) {
         if (!toastEl || !toastText) return;
@@ -21452,14 +29772,14 @@
         return getFavorites().some(f => f.tool === toolId);
       }
 
-      function addFavorite(toolId, name, iconHtml, category) {
+      function addFavorite(toolId, name, iconHtml, category, desc = '') {
         if (isFavorited(toolId)) return false;
         const favs = getFavorites();
         if (favs.length >= MAX_FAVORITES) {
           showFavoriteToast(t('home.favLimit'));
           return false;
         }
-        favs.push({ tool: toolId, name, iconHtml, category, ts: Date.now() });
+        favs.push({ tool: toolId, name, desc, iconHtml, category, ts: Date.now() });
         saveFavorites(favs);
         renderFavorites();
         return true;
@@ -21471,10 +29791,25 @@
         renderFavorites();
       }
 
+      function favoriteToolFromInfo(info) {
+        if (!info?.toolId) return false;
+        if (isFavorited(info.toolId)) {
+          showFavoriteToast(t('home.favAlready'));
+          return false;
+        }
+        if (addFavorite(info.toolId, info.name, info.iconHtml, info.category, info.desc)) {
+          showFavoriteToast(t('home.favAdded'));
+          return true;
+        }
+        return false;
+      }
+
       function getToolInfo(item) {
         const toolId = item.dataset.tool || '';
         const titleEl = item.querySelector('.audio-list-title');
         const name = titleEl ? titleEl.textContent : (item.dataset.tool || 'Tool');
+        const descEl = item.querySelector('.audio-list-desc');
+        const desc = descEl ? descEl.textContent : '';
         const iconEl = item.querySelector('.audio-list-icon');
         let iconHtml = '';
         if (iconEl) {
@@ -21482,7 +29817,7 @@
         }
         const section = item.closest('.content-section');
         const category = section ? section.dataset.category : '';
-        return { toolId, name, iconHtml, category };
+        return { toolId, name, desc, iconHtml, category };
       }
 
       function currentToolCategory(toolId, fallback = '') {
@@ -21499,6 +29834,7 @@
         return {
           toolId,
           name: record?.name || toolId || t('common.tool'),
+          desc: record?.desc || '',
           iconHtml: '',
           category: record?.category || ''
         };
@@ -21509,53 +29845,18 @@
 
         const candidates = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
           .filter(item => item.dataset.availability !== 'planned');
-        const defaults = candidates
-          .sort(() => Math.random() - 0.5)
+        const preferredIds = ['pdf-enhance', 'ppt-draft', 'video-gif', 'ai-doc', 'hardware-cpu-memory', 'pdf-merge'];
+        const preferred = preferredIds
+          .map(toolId => candidates.find(item => item.dataset.tool === toolId))
+          .filter(Boolean);
+        const defaults = [...preferred, ...candidates.filter(item => !preferred.includes(item))]
           .slice(0, MAX_FAVORITES)
           .map(item => {
             const info = getToolInfo(item);
-            return { tool: info.toolId, name: info.name, iconHtml: info.iconHtml, category: info.category, ts: Date.now() };
+            return { tool: info.toolId, name: info.name, desc: info.desc, iconHtml: info.iconHtml, category: info.category, ts: Date.now() };
           });
 
         if (defaults.length > 0) saveFavorites(defaults);
-      }
-
-      // Right-click on audio-list-item → direct toggle favorite
-      // Also track recent usage on click
-      const RECENT_KEY = 'toolknit_recent_tools';
-      const MAX_RECENT = 3;
-
-      // A home shortcut may briefly switch to a category solely to open its tool.
-      // Return only after that tool overlay has actually closed, so the category
-      // never flashes between the overlay and the home screen.
-      document.addEventListener('click', (event) => {
-        const backButton = event.target.closest('.settings-back');
-        if (!backButton || !navigatedFromHome) return;
-        const toolOverlay = backButton.closest('[id$="Overlay"]');
-        if (!toolOverlay) return;
-
-        queueMicrotask(() => {
-          if (!navigatedFromHome || toolOverlay.classList.contains('visible')) return;
-          clearHomeToolNavigation();
-          switchCategory('home');
-        });
-      });
-
-      function getRecent() {
-        try {
-          return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-        } catch { return []; }
-      }
-
-      function saveRecent(list) {
-        localStorage.setItem(RECENT_KEY, JSON.stringify(list));
-      }
-
-      function addRecent(toolId, name, iconHtml, category) {
-        let list = getRecent().filter(r => r.tool !== toolId);
-        list.unshift({ tool: toolId, name, iconHtml, category, ts: Date.now() });
-        list = list.slice(0, MAX_RECENT);
-        saveRecent(list);
       }
 
       document.querySelectorAll('.audio-list-item').forEach(item => {
@@ -21563,27 +29864,27 @@
           e.preventDefault();
           if (item.dataset.availability === 'planned') return;
           const info = getToolInfo(item);
-          if (isFavorited(info.toolId)) {
-            removeFavorite(info.toolId);
-            showFavoriteToast(t('home.favRemoved'));
-          } else if (addFavorite(info.toolId, info.name, info.iconHtml, info.category)) {
-            showFavoriteToast(t('home.favAdded'));
-          }
-        });
-        item.addEventListener('click', () => {
-          if (item.dataset.availability === 'planned') return;
-          const info = getToolInfo(item);
-          if (info.toolId) {
-            addRecent(info.toolId, info.name, info.iconHtml, info.category);
-            renderRecent();
-          }
+          favoriteToolFromInfo(info);
         });
       });
+
+      function syncFavoritesManageState() {
+        const container = document.getElementById('favoritesContent');
+        container?.classList.toggle('is-managing', favoritesManageMode);
+        manageFavoritesBtn?.classList.toggle('is-active', favoritesManageMode);
+        manageFavoritesBtn?.setAttribute('aria-pressed', String(favoritesManageMode));
+      }
+
+      function setFavoritesManageMode(enabled) {
+        favoritesManageMode = Boolean(enabled);
+        syncFavoritesManageState();
+      }
 
       // Render favorites card on home
       function renderFavorites() {
         const container = document.getElementById('favoritesContent');
         if (!container) return;
+        syncFavoritesManageState();
 
         const favs = getFavorites();
         if (favs.length === 0) {
@@ -21599,106 +29900,62 @@
 
         container.innerHTML = favs.map(f => {
           const info = resolveHomeToolInfo(f);
+          const removeLabel = t('home.favRemove');
           return `
-          <div class="fav-item" data-tool="${escapeHtml(info.toolId)}" data-category="${escapeHtml(info.category || '')}">
-            <div class="fav-icon">${info.iconHtml}</div>
-            <div class="fav-name">${escapeHtml(info.name)}</div>
-            <div class="fav-remove" data-tool="${escapeHtml(info.toolId)}">
+          <article class="favorite-item" role="button" tabindex="0" data-tool="${escapeHtml(info.toolId)}" data-category="${escapeHtml(info.category || '')}">
+            <span class="favorite-icon">${info.iconHtml}</span>
+            <span>
+              <span class="favorite-name">${escapeHtml(info.name)}</span>
+              <span class="favorite-desc">${escapeHtml(info.desc || '')}</span>
+              <span class="favorite-category">${escapeHtml(getHomeCategoryLabel(info.category))}</span>
+            </span>
+            <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
+            <button class="favorite-remove-btn" type="button" data-remove-favorite="${escapeHtml(info.toolId)}" aria-label="${escapeHtml(removeLabel)}" title="${escapeHtml(removeLabel)}">
               <i data-lucide="x"></i>
-            </div>
-          </div>
+            </button>
+          </article>
         `;
         }).join('');
 
         if (typeof createIcons === 'function') createIcons({ icons });
+        syncFavoritesManageState();
 
-        container.querySelectorAll('.fav-item').forEach(el => {
+        container.querySelectorAll('.favorite-item').forEach(el => {
           el.addEventListener('click', (e) => {
-            if (e.target.closest('.fav-remove')) return;
             const toolId = el.dataset.tool;
-            const category = el.dataset.category;
-            launchToolFromHome(toolId, category);
+            launchToolFromHome(toolId);
+          });
+          el.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            launchToolFromHome(el.dataset.tool);
           });
         });
 
-        container.querySelectorAll('.fav-remove').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeFavorite(btn.dataset.tool);
+        container.querySelectorAll('[data-remove-favorite]').forEach(button => {
+          button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const toolId = button.dataset.removeFavorite;
+            removeFavorite(toolId);
+            showFavoriteToast(t('home.favRemoved'));
+            document.querySelectorAll('[data-home-tool]').forEach(card => {
+              if (card.dataset.homeTool === toolId) card.classList.remove('is-favorited');
+            });
           });
         });
       }
 
-      // ===== Recommended Tools (random 3) =====
-      function renderRecommended() {
-        const container = document.getElementById('recommendedContent');
-        if (!container) return;
-        const allItems = Array.from(document.querySelectorAll('.content-section:not([data-category="home"]) .audio-list-item'))
-          .filter(item => item.dataset.availability !== 'planned');
-        if (allItems.length === 0) return;
-
-        // Pick 3 random items
-        const shuffled = allItems.sort(() => Math.random() - 0.5);
-        const picks = shuffled.slice(0, 3);
-
-        container.innerHTML = picks.map(item => {
-          const info = getToolInfo(item);
-          return `
-            <div class="rec-item" data-tool="${info.toolId}" data-category="${info.category || ''}">
-              <div class="rec-icon">${info.iconHtml || ''}</div>
-              <div class="rec-name">${info.name}</div>
-            </div>
-          `;
-        }).join('');
-
-        if (typeof createIcons === 'function') createIcons({ icons });
-
-        container.querySelectorAll('.rec-item').forEach(el => {
-          el.addEventListener('click', () => {
-            const toolId = el.dataset.tool;
-            const category = el.dataset.category;
-            launchToolFromHome(toolId, category, 1100);
-          });
-        });
-      }
-
-      // ===== Recently Used =====
-      function renderRecent() {
-        const container = document.getElementById('recentlyContent');
-        if (!container) return;
-        const recent = getRecent();
-        if (recent.length === 0) {
-          container.innerHTML = `<div class="placeholder-box" data-i18n="home.empty">${escapeHtml(t('home.empty'))}</div>`;
-          return;
-        }
-        container.innerHTML = recent.map(r => {
-          const info = resolveHomeToolInfo(r);
-          return `
-          <div class="rec-item" data-tool="${escapeHtml(info.toolId)}" data-category="${escapeHtml(info.category || '')}">
-            <div class="rec-icon">${info.iconHtml}</div>
-            <div class="rec-name">${escapeHtml(info.name)}</div>
-          </div>
-        `;
-        }).join('');
-        if (typeof createIcons === 'function') createIcons({ icons });
-        container.querySelectorAll('.rec-item').forEach(el => {
-          el.addEventListener('click', () => {
-            const toolId = el.dataset.tool;
-            const category = el.dataset.category;
-            launchToolFromHome(toolId, category, 1100);
-          });
-        });
-      }
+      manageFavoritesBtn?.addEventListener('click', () => {
+        setFavoritesManageMode(!favoritesManageMode);
+        if (!getFavorites().length) showFavoriteToast(t('home.favEmptyGuide'));
+      });
 
       // Initial render
       seedDefaultFavorites();
       renderFavorites();
-      renderRecommended();
-      renderRecent();
 
       // Re-render on language change
       onLangChange(() => {
         renderFavorites();
-        renderRecommended();
-        renderRecent();
       });

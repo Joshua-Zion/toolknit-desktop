@@ -1,6 +1,6 @@
 # ToolKnit CLI and IDE Agent
 
-ToolKnit Desktop and `@toolknit/cli` are separate v1.3 deliverables. The CLI runs file operations directly and never starts, drives, or depends on the desktop UI.
+ToolKnit Desktop and `@toolknit/cli` are separate v2.0 deliverables. The CLI runs file operations directly and never starts, drives, or depends on the desktop UI.
 
 ## Installation and checks
 
@@ -21,7 +21,7 @@ For a local release archive, install with npm's optional network checks disabled
 
 ```powershell
 npm pack .\cli
-npm install --global --no-audit --no-fund --prefer-offline .\toolknit-cli-1.3.0.tgz
+npm install --global --no-audit --no-fund --prefer-offline .\toolknit-cli-2.0.0.tgz
 ```
 
 ## Command help
@@ -39,7 +39,7 @@ toolknit help pdf to-image
 
 Each operation help describes its required parameters, optional parameters, examples, output behavior, and relevant safety constraints. This document contains the same contract for IDE and release integration.
 
-Inside this repository, maintainers can use `npm run cli -- doctor --json` (or replace `doctor --json` with any documented CLI command) to test the source tree directly.
+Inside this repository, maintainers can use `npm run --silent cli -- doctor --json` (or replace `doctor --json` with any documented CLI command) to test the source tree directly. `--silent` is required when a caller needs pure JSON because npm otherwise prefixes its own script header on stdout. `npm run test:cli` runs the package and MCP contract checks together.
 
 `doctor` reports both `qpdf.available` and `ffmpeg.available`. `qpdf` is required for decrypt/compress; FFmpeg is required for audio and video processing. A custom qpdf executable can be selected with `TOOLKNIT_QPDF_PATH`; `TOOLKNIT_FFMPEG_PATH` overrides the managed desktop runtime and system `PATH` when an explicit executable is required.
 
@@ -92,7 +92,7 @@ The MCP server uses newline-delimited JSON-RPC over stdio. It writes no diagnost
 }
 ```
 
-Local file tools do not need an AI credential. AI documents, AI tables, and transcription with `refine=true` require a real `DEEPSEEK_API_KEY` or `TOOLKNIT_AI_API_KEY` in the IDE's MCP environment/secret settings. Restart the IDE after setting it. Never leave explanatory placeholder text or place the key in an Agent message; the desktop application's stored credential is not shared with CLI/MCP.
+Local file tools and non-AI PPT tools do not need an AI credential. AI documents, AI tables, PPT text AI organization, AI PPT outline generation, AI PPT draft/PPTX generation, and transcription with `refine=true` require a real `DEEPSEEK_API_KEY` or `TOOLKNIT_AI_API_KEY` in the IDE's MCP environment/secret settings. Restart the IDE after setting it. Never leave explanatory placeholder text or place the key in an Agent message; the desktop application's stored credential is not shared with CLI/MCP.
 
 The current MCP tools are:
 
@@ -154,13 +154,13 @@ AI table publication is atomic across the export, editable project, preview, and
 
 ## Planned AI polish contract
 
-AI text polish is not registered as a CLI command or MCP tool in current v1.3. Its future interface will accept one bounded UTF-8 text input, an explicit style instruction, and a separately configured provider credential; it will return polished text only and never write a file by default. It will report `analyze` and `polish` phases, reject missing credentials, inputs above 12,000 UTF-16 code units, provider timeouts, malformed direction data, malformed text responses, and responses above 30,000 characters.
+AI text polish is not registered as a CLI command or MCP tool in current v2.0. Its future interface will accept one bounded UTF-8 text input, an explicit style instruction, and a separately configured provider credential; it will return polished text only and never write a file by default. It will report `analyze` and `polish` phases, reject missing credentials, inputs above 12,000 UTF-16 code units, provider timeouts, malformed direction data, malformed text responses, and responses above 30,000 characters.
 
 The desktop application may offer provider-suggested styles, but a future headless caller must supply the chosen style explicitly. It must not read the desktop application's local storage or expose provider error bodies, prompts, API keys, or text content in diagnostics.
 
 ## Planned AI translation contract
 
-AI translation is not registered as a CLI command or MCP tool in current v1.3. Its future interface will accept one bounded UTF-8 text input, an explicit target language, and a separately configured provider credential; it will return translated text plus optional aligned sentence pairs, without writing a file by default. It will report `translate` and `validate` phases, reject missing credentials, inputs above 12,000 UTF-16 code units, unknown target languages, provider timeouts, malformed responses, and responses above 60,000 characters.
+AI translation is not registered as a CLI command or MCP tool in current v2.0. Its future interface will accept one bounded UTF-8 text input, an explicit target language, and a separately configured provider credential; it will return translated text plus optional aligned sentence pairs, without writing a file by default. It will report `translate` and `validate` phases, reject missing credentials, inputs above 12,000 UTF-16 code units, unknown target languages, provider timeouts, malformed responses, and responses above 60,000 characters.
 
 A later headless implementation must treat the caller's original input as authoritative: model-supplied source sentence fields may be used only after equivalence validation and can never replace the supplied source. It must not infer a Latin-script source language as English, read desktop-local credentials, or include prompts, API keys, or provider error bodies in logs.
 
@@ -176,7 +176,7 @@ The source must be a non-symbolic regular file below 20 MB and 40 megapixels. Im
 
 ## Planned image conversion contract
 
-Image format conversion is being hardened for a later CLI/MCP release. It is **not** registered as a CLI command or MCP tool in the current v1.3 package, so an IDE Agent must not claim it is available yet.
+Image format conversion is being hardened for a later CLI/MCP release. It is **not** registered as a CLI command or MCP tool in the current v2.0 package, so an IDE Agent must not claim it is available yet.
 
 The future interface will accept one to 100 local JPG/JPEG, PNG, WebP, BMP, or GIF files, a validated target format, and one explicit output directory. It will reject non-regular files, files over 20 MB, images over 40 megapixels, unsupported target formats, duplicate inputs, concurrent conversion jobs, and failed writes. It will never overwrite an existing output and will report per-file success or failure, output paths, progress, cancellation, and a nonzero processing error when no file succeeds.
 
@@ -184,13 +184,13 @@ The current desktop encoder preserves image dimensions. JPEG output is RGB becau
 
 ## Planned image compression contract
 
-Image compression is also **not** registered as a CLI command or MCP tool in the current v1.3 package. The future interface will accept one to 100 local JPG/JPEG, PNG, or WebP files, a `high`, `medium`, or `low` quality policy, and one explicit output directory. It will apply the same 20 MB per-file and 40-megapixel limits as image conversion, run one conversion job at a time, and report each file's result without overwriting an existing output.
+Image compression is also **not** registered as a CLI command or MCP tool in the current v2.0 package. The future interface will accept one to 100 local JPG/JPEG, PNG, or WebP files, a `high`, `medium`, or `low` quality policy, and one explicit output directory. It will apply the same 20 MB per-file and 40-megapixel limits as image conversion, run one conversion job at a time, and report each file's result without overwriting an existing output.
 
 An output is published only when it is strictly smaller than its source. BMP and GIF are intentionally outside the contract: the bundled encoder cannot safely provide a smaller BMP, and GIF handling can discard animation frames. JPEG and PNG quality policies affect their encoders. WebP is explicitly lossless in the desktop implementation, so the selected quality policy has no effect on WebP files and clients must report it as lossless optimization rather than imply lossy quality control.
 
 ## Planned icon generator contract
 
-The icon generator is not registered as a CLI command or MCP tool in current v1.3. Its future interface will accept one local PNG/JPEG/WebP image and one explicit ZIP output path. It will reject non-regular files, input files above 20 MB, images above 20 megapixels, generated archives above 32 MB, canceled jobs, and unsafe or pre-existing output paths. A successful archive contains fixed-size PNG icons, `icon.ico`, `favicon.ico`, and an SVG wrapper; progress covers decoding, raster generation, archive creation, and atomic publication.
+The icon generator is not registered as a CLI command or MCP tool in current v2.0. Its future interface will accept one local PNG/JPEG/WebP image and one explicit ZIP output path. It will reject non-regular files, input files above 20 MB, images above 20 megapixels, generated archives above 32 MB, canceled jobs, and unsafe or pre-existing output paths. A successful archive contains fixed-size PNG icons, `icon.ico`, `favicon.ico`, and an SVG wrapper; progress covers decoding, raster generation, archive creation, and atomic publication.
 
 It intentionally excludes BMP and GIF sources because static icon output cannot preserve GIF animation and these formats do not provide a useful, deterministic headless contract. It must never reuse a desktop-local provider key or depend on the desktop application being visible.
 
@@ -234,7 +234,7 @@ Inputs above 1,000,000 UTF-16 code units, files above the corresponding UTF-8 si
 
 ## Planned text formatting contract
 
-Text formatting is not registered as a CLI command or MCP tool in current v1.3. Its future interface will accept one explicit UTF-8 text file or UTF-8 standard input, one declared action, and one explicit UTF-8 output file. It will reject binary or undecodable input, input and output over 1,000,000 UTF-16 code units, more than 100,000 lines for line-oriented actions, unknown actions, unsafe paths, same-path writes, and unapproved output overwrites. Output is written to a temporary file and atomically published only after transformation succeeds.
+Text formatting is not registered as a CLI command or MCP tool in current v2.0. Its future interface will accept one explicit UTF-8 text file or UTF-8 standard input, one declared action, and one explicit UTF-8 output file. It will reject binary or undecodable input, input and output over 1,000,000 UTF-16 code units, more than 100,000 lines for line-oriented actions, unknown actions, unsafe paths, same-path writes, and unapproved output overwrites. Output is written to a temporary file and atomically published only after transformation succeeds.
 
 The action set is `uppercase`, `lowercase`, `titlecase`, `capitalize`, `trim-spaces`, `trim-lines`, `remove-empty-lines`, `remove-duplicate-lines`, `sort-asc`, `sort-desc`, `add-line-numbers`, `remove-line-numbers`, `reverse-lines`, `reverse-text`, `to-half-width`, and `to-full-width`. Sorting uses the fixed `zh-Hans-u-co-pinyin` collator with numeric comparison. `remove-line-numbers` only removes an initial sequence of at least two consecutive line numbers beginning at 1, preventing an ordinary year or numeric heading from being silently deleted. A headless caller must receive structured progress and errors without echoing text content into logs.
 

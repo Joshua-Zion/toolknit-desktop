@@ -1,5 +1,8 @@
 export const TEXT_STATS_LIMITS = Object.freeze({
-  maxInputChars: 1_000_000
+  maxInputChars: 1_000_000,
+  maxDocumentBytes: 64 * 1024 * 1024,
+  maxPdfPages: 300,
+  maxTopItems: 8
 });
 
 const LINE_BREAK = /\r\n?|\n/;
@@ -7,6 +10,8 @@ const HAN_CHARACTER = /\p{Script=Han}/u;
 const WHITESPACE = /\s/u;
 const SENTENCE_PUNCTUATION = new Set(['。', '！', '？', '.', '!']);
 const PUNCTUATION = new Set(['，', '。', '！', '？', '、', '；', '：', '“', '”', '‘', '’', '（', '）', '【', '】', '《', '》', '…', '—', '·', ',', '.', '!', '?', ';', ':', '"', "'", '(', ')', '[', ']', '{', '}']);
+const ENGLISH_WORD_PATTERN = /[A-Za-z]+(?:['’-][A-Za-z]+)*/g;
+const NUMBER_PATTERN = /[0-9]+(?:[.,][0-9]+)*/g;
 
 function assertTextStatsInput(text) {
   if (typeof text !== 'string') throw new TypeError('Text statistics input must be a string.');
@@ -22,7 +27,9 @@ export function calculateTextStats(text) {
       chars: 0, charsNoSpace: 0, spaces: 0, words: 0, englishWords: 0,
       lines: 0, paragraphs: 0, sentences: 0, chineseChars: 0, letters: 0,
       uppercase: 0, lowercase: 0, digits: 0, punctuation: 0, longestLine: 0,
-      avgLineLength: 0, readingTime: 0
+      avgLineLength: 0, readingTime: 0, speakingTime: 0, nonEmptyLines: 0,
+      numbers: 0, uniqueWords: 0, repeatedWords: 0, avgWordLength: 0,
+      avgSentenceLength: 0, lexicalDensity: 0, topWords: [], topChineseChars: []
     };
   }
 
@@ -42,13 +49,18 @@ export function calculateTextStats(text) {
   let lineChars = 0;
   let previousWasCarriageReturn = false;
   let sentenceHasContent = false;
+  const englishFrequency = new Map();
+  const chineseFrequency = new Map();
 
   for (const character of text) {
     chars += 1;
     const isWhitespace = WHITESPACE.test(character);
     if (!isWhitespace) charsNoSpace += 1;
     if (character === ' ') spaces += 1;
-    if (HAN_CHARACTER.test(character)) chineseChars += 1;
+    if (HAN_CHARACTER.test(character)) {
+      chineseChars += 1;
+      chineseFrequency.set(character, (chineseFrequency.get(character) || 0) + 1);
+    }
     const code = character.charCodeAt(0);
     if (code >= 65 && code <= 90) {
       letters += 1;
@@ -95,12 +107,20 @@ export function calculateTextStats(text) {
 
   // Count English word runs without allocating an array proportional to the input size.
   let englishWords = 0;
-  for (const _match of text.matchAll(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g)) englishWords += 1;
+  for (const match of text.matchAll(ENGLISH_WORD_PATTERN)) {
+    englishWords += 1;
+    const normalized = match[0].toLowerCase();
+    englishFrequency.set(normalized, (englishFrequency.get(normalized) || 0) + 1);
+  }
+  let numbers = 0;
+  for (const _match of text.matchAll(NUMBER_PATTERN)) numbers += 1;
   const words = chineseChars + englishWords;
   let paragraphs = 0;
+  let nonEmptyLines = 0;
   let inParagraph = false;
   for (const line of text.split(LINE_BREAK)) {
     if (line.trim()) {
+      nonEmptyLines += 1;
       if (!inParagraph) paragraphs += 1;
       inParagraph = true;
     } else {
@@ -109,11 +129,31 @@ export function calculateTextStats(text) {
   }
   const avgLineLength = lines > 0 ? Math.round(lineChars / lines) : 0;
   const readingTime = words > 0 ? Math.max(1, Math.ceil(words / 300)) : 0;
+  const speakingTime = words > 0 ? Math.max(1, Math.ceil(words / 180)) : 0;
+  const uniqueWords = englishFrequency.size + chineseFrequency.size;
+  let repeatedWords = 0;
+  for (const count of englishFrequency.values()) if (count > 1) repeatedWords += 1;
+  for (const count of chineseFrequency.values()) if (count > 1) repeatedWords += 1;
+  const avgWordLength = englishWords > 0 ? Math.round((letters / englishWords) * 10) / 10 : 0;
+  const avgSentenceLength = sentences > 0 ? Math.round((words / sentences) * 10) / 10 : 0;
+  const lexicalDensity = words > 0 ? Math.round((uniqueWords / words) * 100) : 0;
+  const frequencySorter = (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]);
+  const topWords = Array.from(englishFrequency.entries())
+    .filter(([word]) => word.length > 1)
+    .sort(frequencySorter)
+    .slice(0, TEXT_STATS_LIMITS.maxTopItems)
+    .map(([word, count]) => ({ text: word, count }));
+  const topChineseChars = Array.from(chineseFrequency.entries())
+    .sort(frequencySorter)
+    .slice(0, TEXT_STATS_LIMITS.maxTopItems)
+    .map(([character, count]) => ({ text: character, count }));
 
   return {
     chars, charsNoSpace, spaces, words, englishWords, lines, paragraphs,
     sentences, chineseChars, letters, uppercase, lowercase, digits, punctuation,
     longestLine,
-    avgLineLength, readingTime
+    avgLineLength, readingTime, speakingTime, nonEmptyLines, numbers,
+    uniqueWords, repeatedWords, avgWordLength, avgSentenceLength, lexicalDensity,
+    topWords, topChineseChars
   };
 }
