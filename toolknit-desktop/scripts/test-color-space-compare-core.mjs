@@ -398,6 +398,8 @@ const [html, main, styles, zh, en] = await Promise.all([
 
 assert.match(html, /data-tool="color-space-compare"/, 'Creative tools must list Color Space Compare.');
 assert.match(html, /id="colorSpaceCompareOverlay"[\s\S]*?data-role="sliders"/, 'The native overlay markup is required.');
+assert.match(html, /id="colorSpaceCompareContent"/, 'The content container must avoid the modal Workspace ID convention.');
+assert.doesNotMatch(html, /id="colorSpaceCompareWorkspace"/, 'The content must not be made inert by the global Workspace modal selector.');
 assert.match(html, /color-space-compare-knowledge[\s\S]*?knowledge\.gamutBody/, 'The in-page knowledge guide is required.');
 assert.doesNotMatch(html, /<iframe[^>]+color-space-compare/i, 'The tool must not regress to an isolated iframe.');
 assert.match(main, /initColorSpaceCompareTool\(colorSpaceCompareOverlay\)/, 'The UI lifecycle must be initialized.');
