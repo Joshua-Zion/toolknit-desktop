@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 import {
   COLOR_SPACE_SLIDER_CONFIG,
   LAB_D65_WHITE_POINT,
@@ -401,6 +402,61 @@ assert.match(html, /color-space-compare-knowledge[\s\S]*?knowledge\.gamutBody/, 
 assert.doesNotMatch(html, /<iframe[^>]+color-space-compare/i, 'The tool must not regress to an isolated iframe.');
 assert.match(main, /initColorSpaceCompareTool\(colorSpaceCompareOverlay\)/, 'The UI lifecycle must be initialized.');
 assert.match(main, /data-tool="color-space-compare"[\s\S]*?openColorSpaceCompareOverlay/, 'The tool entry must open the overlay.');
+const lifecycleSource = main.match(/\/\/ ===== Color Space Compare Tool =====[\s\S]*?\/\/ ===== End Color Space Compare Tool =====/)?.[0] || '';
+assert.match(lifecycleSource, /colorSpaceCompareBack\?\.addEventListener\('click', closeColorSpaceCompareOverlay\)/, 'The back button must close the overlay.');
+assert.doesNotMatch(lifecycleSource, /\bnavigatedFromHome\b|\bclearHomeToolNavigation\b/, 'The lifecycle must not call removed pre-2.0 navigation helpers.');
+
+const overlayClasses = new Set(['visible']);
+const overlayAttributes = new Map([['aria-hidden', 'false']]);
+const backHandlers = new Map();
+const overlayHandlers = new Map();
+let closeCalls = 0;
+const overlayStub = {
+  classList: {
+    add: value => overlayClasses.add(value),
+    remove: value => overlayClasses.delete(value),
+  },
+  setAttribute: (name, value) => overlayAttributes.set(name, value),
+  removeAttribute: name => overlayAttributes.delete(name),
+  addEventListener: (name, handler) => overlayHandlers.set(name, handler),
+  querySelectorAll: () => [],
+};
+const backStub = {
+  addEventListener: (name, handler) => backHandlers.set(name, handler),
+  focus: () => {},
+};
+runInNewContext(lifecycleSource, {
+  document: {
+    activeElement: null,
+    getElementById: id => id === 'colorSpaceCompareOverlay'
+      ? overlayStub
+      : id === 'colorSpaceCompareBack'
+        ? backStub
+        : null,
+    querySelectorAll: () => [],
+  },
+  HTMLElement: class HTMLElement {},
+  initColorSpaceCompareTool: () => ({
+    open: () => {},
+    close: () => { closeCalls += 1; },
+  }),
+  initStandardToolPlasma: () => null,
+  disposeStandardToolPlasma: () => null,
+  requestAnimationFrame: callback => callback(),
+});
+assert.equal(typeof backHandlers.get('click'), 'function', 'The back click handler must be registered.');
+assert.doesNotThrow(() => backHandlers.get('click')(), 'The back button must close without a runtime error.');
+assert.equal(overlayClasses.has('visible'), false, 'The back button must hide the overlay.');
+assert.equal(overlayAttributes.get('aria-hidden'), 'true', 'The back button must update aria-hidden.');
+assert.equal(overlayAttributes.has('inert'), true, 'The back button must restore inert state.');
+overlayClasses.add('visible');
+overlayAttributes.delete('inert');
+assert.doesNotThrow(
+  () => overlayHandlers.get('keydown')({ key: 'Escape', defaultPrevented: false }),
+  'Escape must close without a runtime error.'
+);
+assert.equal(overlayClasses.has('visible'), false, 'Escape must hide the overlay.');
+assert.equal(closeCalls, 2, 'Back and Escape must both dispose the color tool lifecycle.');
 assert.match(styles, /\.color-space-compare-sliders\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/, 'The desktop two-column controls layout is required.');
 for (const [locale, dictionary] of [['Chinese', zh], ['English', en]]) {
   assert.equal(typeof dictionary.home?.colorSpaceCompare?.title, 'string', `${locale} tool copy is missing.`);

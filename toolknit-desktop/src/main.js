@@ -25831,14 +25831,16 @@
 
       function closeColorSpaceCompareOverlay() {
         if (!colorSpaceCompareOverlay) return;
-        const returnFocus = navigatedFromHome ? null : colorSpaceCompareTrigger;
+        const returnFocus = colorSpaceCompareTrigger;
         colorSpaceCompareTool.close();
         colorSpaceCompareOverlay.classList.remove('visible');
         colorSpaceCompareOverlay.setAttribute('aria-hidden', 'true');
         colorSpaceCompareOverlay.setAttribute('inert', '');
         colorSpaceComparePlasmaInstance = disposeStandardToolPlasma(colorSpaceComparePlasmaInstance);
         colorSpaceCompareTrigger = null;
-        if (returnFocus?.isConnected) requestAnimationFrame(() => returnFocus.focus());
+        if (returnFocus?.isConnected && returnFocus.getClientRects().length > 0) {
+          requestAnimationFrame(() => returnFocus.focus());
+        }
       }
 
       colorSpaceCompareBack?.addEventListener('click', closeColorSpaceCompareOverlay);
@@ -25863,12 +25865,7 @@
           return;
         }
         if (event.key !== 'Escape' || event.defaultPrevented) return;
-        const shouldReturnHome = navigatedFromHome;
         closeColorSpaceCompareOverlay();
-        if (shouldReturnHome) {
-          clearHomeToolNavigation();
-          switchCategory('home');
-        }
       });
       document.querySelectorAll('.audio-list-item[data-tool="color-space-compare"]').forEach(item => {
         item.addEventListener('click', () => openColorSpaceCompareOverlay(item));
