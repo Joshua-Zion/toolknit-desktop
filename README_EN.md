@@ -59,7 +59,7 @@ The same local file can be previewed in the desktop app, batch-processed by the 
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>50</h3><strong>Desktop tools</strong></td>
+    <td align="center"><h3>51</h3><strong>Desktop tools</strong></td>
     <td align="center"><h3>11</h3><strong>Categories</strong></td>
     <td align="center"><h3>46</h3><strong>MCP capabilities</strong></td>
     <td align="center"><h3>3</h3><strong>Ways to work</strong></td>
@@ -95,7 +95,7 @@ The same local file can be previewed in the desktop app, batch-processed by the 
 
 ## Complete tool catalog
 
-The 11 desktop categories below contain all 50 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
+The 11 desktop categories below contain all 51 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF tools · 9</h3></td></tr>
@@ -114,12 +114,12 @@ Supports drag sorting, page-by-page preview, page selection, rotation, text repl
 Supports page rendering, page selection, PNG/JPG/WebP output, duplicate asset filtering, title/body/notes extraction, Markdown/TXT/JSON export, media cleanup, and structured outlines plus editable PPTX drafts generated from a brief and source material. The PPT rendering runtime is downloaded on demand.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">Image tools · 5</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">Image tools · 4</h3></td></tr>
 </table>
 
-`Image Format Converter` · `Image Compressor` · `Long Image Stitcher` · `Icon Generator` · `Color Extractor`
+`Image Format Converter` · `Image Compressor` · `Long Image Stitcher` · `Icon Generator`
 
-Supports JPG, PNG, WebP, BMP, GIF, and SVG conversion; batch compression; horizontal, vertical, or seamless stitching of images and PDF pages; multi-size PNG, ICO, and SVG icon generation with ZIP output; and HEX, RGB, HSL, and palette-share reporting.
+Supports JPG, PNG, WebP, BMP, GIF, and SVG conversion; batch compression; horizontal, vertical, or seamless stitching of images and PDF pages; and multi-size PNG, ICO, and SVG icon generation with ZIP output.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">Audio tools · 4</h3></td></tr>
@@ -154,20 +154,20 @@ After downloading a Whisper model locally, the app can transcribe Chinese and En
 Covers health estimates, Unix timestamp conversion, mortgage payments, simple/compound interest, and secure random password generation for quick desktop calculations.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20Lab-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color Lab" /></td><td align="right" style="border:0;"><h3 align="right">Creative tools · 2</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20Lab-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color Lab" /></td><td align="right" style="border:0;"><h3 align="right">Creative tools · 3</h3></td></tr>
 </table>
 
-`Typing Test` · `Color Space Compare`
+`Color Extractor` · `Color Space Compare` · `Typing Test`
 
-Provides Chinese and English typing practice, plus live conversion, gamut checks, and value copying across OKLCH, OKLab, D65 Lab/LCh, RGB, HSL, HSV, and approximate CMYK. Color extraction is counted under Image tools so the same capability is not duplicated in the catalog.
+Provides image and live screen color picking, Chinese and English typing practice, plus live conversion, gamut checks, and value copying across OKLCH, OKLab, D65 Lab/LCh, RGB, HSL, HSV, and approximate CMYK.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">Cleanup tools · 1</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">Cleanup tools · 2</h3></td></tr>
 </table>
 
-`AI Large File Cleanup`
+`AI Large File Cleanup` · `C Drive Cleanup`
 
-Scans large files locally, then lets local rules and optional AI analyze only filenames, sizes, modification times, and directory clues. Every deletion is confirmed item by item and sent to the Recycle Bin; file contents are not read or uploaded.
+AI Large File Cleanup scans candidates locally, then lets local rules and optional AI analyze only filenames, sizes, modification times, and directory clues before confirmed items move to the Recycle Bin. C Drive Cleanup scans and clears system caches and temporary space at low, medium, or high levels with explicit confirmation before execution.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI Workbench · 4</h3></td></tr>
@@ -254,6 +254,12 @@ ToolKnit 2.0 combines a lightweight desktop container with local file engines. T
 </p>
 
 <p align="center"><sub>2.0 workbench home preview · The final release screenshot will be kept in sync with the official version.</sub></p>
+
+<p align="center"><strong>Color Space Compare · actual 1400 × 900 running page</strong></p>
+
+<p align="center">
+  <img src="assets/readme/color-space-compare.png" alt="ToolKnit Desktop Color Space Compare running page" width="100%" />
+</p>
 
 <p align="center"><strong>ToolKnit.com web version · ready to use</strong></p>
 <a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>

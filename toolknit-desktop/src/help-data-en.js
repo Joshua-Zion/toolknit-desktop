@@ -3,19 +3,19 @@ export const HELP_CONTENT_EN = {
     title: 'Overview',
     html: `<div class="help-doc">
       <h2>ToolKnit Overview</h2>
-      <p>ToolKnit 2.0 is a <strong>local-first</strong> Windows toolbox with 49 desktop tools across 11 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, cleanup, and hardware work is performed locally by default.</p>
+      <p>ToolKnit 2.0 is a <strong>local-first</strong> Windows toolbox with 51 desktop tools across 11 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, cleanup, and hardware work is performed locally by default.</p>
 
       <h3>Tool Categories</h3>
       <div class="help-tool-grid">
         <div class="help-tool-card"><div class="help-tool-card-name">PDF Tools</div><div class="help-tool-card-desc">Merge, split, export images, rotate, encrypt, decrypt, compress, enhance, edit</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">PPT Tools</div><div class="help-tool-card-desc">PDF/image export, asset and text extraction, compression, AI outlines and monochrome drafts</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">Image Tools</div><div class="help-tool-card-desc">Conversion, compression, stitching, icon generation, image and screen color picking</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Image Tools</div><div class="help-tool-card-desc">Conversion, compression, stitching, icon generation</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Audio Tools</div><div class="help-tool-card-desc">Format conversion, BPM detection, clipping, video audio extraction</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Video Tools</div><div class="help-tool-card-desc">Format conversion, full-resolution frame export, GIF clips up to 30 seconds</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Text Tools</div><div class="help-tool-card-desc">Audio/video transcription, text statistics, text formatting</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Calculator</div><div class="help-tool-card-desc">Body fat, timestamp, mortgage, interest, password generation</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">Creative Tools</div><div class="help-tool-card-desc">Color extraction, typing test</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">Cleanup Tools</div><div class="help-tool-card-desc">Large-file scanning, AI metadata suggestions, Recycle Bin cleanup</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Creative Tools</div><div class="help-tool-card-desc">Color extraction, color-space comparison, typing test</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Cleanup Tools</div><div class="help-tool-card-desc">AI large-file cleanup, C Drive cache cleanup</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Hardware Tools</div><div class="help-tool-card-desc">Read-only system, CPU, memory, GPU, board, disk, network, and sensor info</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">AI Tools</div><div class="help-tool-card-desc">AI polish, translate, editable documents, editable tables</div></div>
       </div>

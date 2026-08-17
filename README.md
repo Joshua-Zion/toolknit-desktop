@@ -58,7 +58,7 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>50</h3><strong>桌面工具</strong></td>
+    <td align="center"><h3>51</h3><strong>桌面工具</strong></td>
     <td align="center"><h3>11</h3><strong>功能分类</strong></td>
     <td align="center"><h3>46</h3><strong>MCP 能力</strong></td>
     <td align="center"><h3>3</h3><strong>工作方式</strong></td>
@@ -94,7 +94,7 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 
 ## 完整功能目录
 
-下面按桌面端的 11 个分类列出全部 50 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
+下面按桌面端的 11 个分类列出全部 51 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF 文档工具 · 9 项</h3></td></tr>
@@ -113,12 +113,12 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 支持逐页渲染、页码选择、PNG/JPG/WebP 输出、素材去重、标题正文备注提取、Markdown/TXT/JSON 导出、媒体清理，以及从主题和资料生成结构化大纲与可编辑 PPTX 草稿。PPT 渲染运行时按需下载。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 5 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 4 项</h3></td></tr>
 </table>
 
-`图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器` · `配色提取器`
+`图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器`
 
-支持 JPG、PNG、WebP、BMP、GIF、SVG 互转，批量压缩，横向 / 纵向 / 无缝拼接图片或 PDF 页面，生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP，以及输出 HEX、RGB、HSL 主色和色卡比例。
+支持 JPG、PNG、WebP、BMP、GIF、SVG 互转，批量压缩，横向 / 纵向 / 无缝拼接图片或 PDF 页面，以及生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">音频工具 · 4 项</h3></td></tr>
@@ -153,20 +153,20 @@ Whisper 模型下载到本机后，可离线识别中英文音频和视频并输
 覆盖健康估算、Unix 时间戳转换、房贷月供、单利 / 复利计算和安全随机密码生成，适合在桌面端随手完成小型计算。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20Lab-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color Lab" /></td><td align="right" style="border:0;"><h3 align="right">创意工具 · 2 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20Lab-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color Lab" /></td><td align="right" style="border:0;"><h3 align="right">创意工具 · 3 项</h3></td></tr>
 </table>
 
-`打字测试器` · `颜色空间对比`
+`配色提取器` · `颜色空间对比` · `打字测试器`
 
-提供中英文打字练习，以及 OKLCH、OKLab、D65 Lab/LCh、RGB、HSL、HSV、近似 CMYK 的实时换算、色域检查与颜色值复制。配色提取属于图像工具，避免同一能力在目录中重复计算。
+提供图像与屏幕实时取色、中英文打字练习，以及 OKLCH、OKLab、D65 Lab/LCh、RGB、HSL、HSV、近似 CMYK 的实时换算、色域检查与颜色值复制。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">清理工具 · 1 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">清理工具 · 2 项</h3></td></tr>
 </table>
 
-`AI 大文件清理`
+`AI 大文件清理` · `C盘清理`
 
-先在本机扫描大文件，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索；删除前逐项确认，最终移入回收站，不读取或上传文件内容。
+AI 大文件清理先在本机扫描候选，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索，删除前逐项确认并移入回收站；C盘清理按低 / 中 / 高三档扫描和清理系统缓存与临时空间，并在执行前明确确认。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI 工作台 · 4 项</h3></td></tr>
@@ -253,6 +253,12 @@ ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、�
 </p>
 
 <p align="center"><sub>2.0 工作台首页预览 · 最终发布截图会随正式版本同步更新</sub></p>
+
+<p align="center"><strong>颜色空间对比 · 1400 × 900 实际运行页面</strong></p>
+
+<p align="center">
+  <img src="assets/readme/color-space-compare.png" alt="ToolKnit Desktop 颜色空间对比实际运行页面" width="100%" />
+</p>
 
 <p align="center"><strong>ToolKnit.com 网页端 · 开箱即用</strong></p>
 <a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>

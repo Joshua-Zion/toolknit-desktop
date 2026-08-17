@@ -6,19 +6,19 @@ export const HELP_CONTENT = {
     title: '功能概览',
     html: `<div class="help-doc">
       <h2>ToolKnit 功能概览</h2>
-      <p>ToolKnit 2.0 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 11 个分类、49 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、清理和硬件处理默认在本机完成。</p>
+      <p>ToolKnit 2.0 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 11 个分类、51 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、清理和硬件处理默认在本机完成。</p>
 
       <h3>工具分类一览</h3>
       <div class="help-tool-grid">
         <div class="help-tool-card"><div class="help-tool-card-name">PDF 工具</div><div class="help-tool-card-desc">合并、拆分、转图像、旋转、加密、解密、压缩、文字增强、轻量编辑</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">PPT 工具</div><div class="help-tool-card-desc">转 PDF / 图像、素材与文字提取、压缩、AI 大纲和黑白极简草稿</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">图像工具</div><div class="help-tool-card-desc">格式转换、图片压缩、长图拼接、图标生成器、图像与屏幕取色</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">图像工具</div><div class="help-tool-card-desc">格式转换、图片压缩、长图拼接、图标生成器</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">音频工具</div><div class="help-tool-card-desc">格式转换、BPM 测速、剪辑、从视频提取音频</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">视频工具</div><div class="help-tool-card-desc">格式转换、高清单帧图、最长 30 秒 GIF</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">文本工具</div><div class="help-tool-card-desc">音视频转文字、文本统计、文本格式化</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">计算器工具</div><div class="help-tool-card-desc">体脂率、时间戳、房贷、利息、密码生成</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">创意工具</div><div class="help-tool-card-desc">配色提取、打字测试</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">清理工具</div><div class="help-tool-card-desc">扫描大文件、AI 元数据建议、移入回收站</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">创意工具</div><div class="help-tool-card-desc">配色提取、颜色空间对比、打字测试</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">清理工具</div><div class="help-tool-card-desc">AI 大文件清理、C盘缓存清理</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">硬件工具</div><div class="help-tool-card-desc">只读查看整机、CPU、内存、显卡、主板、磁盘、网络和传感器</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">AI 工具</div><div class="help-tool-card-desc">AI 润色、翻译、可编辑文档、可编辑表格</div></div>
       </div>

@@ -18,6 +18,9 @@ const { HELP_CONTENT, HELP_CONTENT_EN } = await import('../src/help-data.js');
 
 const root = new URL('..', import.meta.url);
 const indexHtml = await readFile(new URL('index.html', root), 'utf8');
+const rootReadmeZh = await readFile(new URL('../../README.md', import.meta.url), 'utf8');
+const rootReadmeEn = await readFile(new URL('../../README_EN.md', import.meta.url), 'utf8');
+const changelog = await readFile(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
 const zh = JSON.parse(await readFile(new URL('src/locales/zh.json', root), 'utf8'));
 const en = JSON.parse(await readFile(new URL('src/locales/en.json', root), 'utf8'));
 
@@ -110,12 +113,49 @@ const toolToHelp = new Map([
 ]);
 
 const desktopTools = unique(valuesForAttribute(indexHtml, 'data-tool'));
+assert.equal(desktopTools.length, 51, 'The desktop catalog must contain the published 51 tool entries.');
 for (const tool of desktopTools) {
   const section = toolToHelp.get(tool);
   assert.ok(section, `Desktop tool has no help mapping: ${tool}`);
   assert.ok(HELP_CONTENT[section], `Chinese help is missing for desktop tool: ${tool}`);
   assert.ok(HELP_CONTENT_EN[section], `English help is missing for desktop tool: ${tool}`);
 }
+
+assert.match(HELP_CONTENT.overview.html, /51 个桌面工具/, 'Chinese overview must state the current 51-tool count.');
+assert.match(HELP_CONTENT_EN.overview.html, /51 desktop tools/, 'English overview must state the current 51-tool count.');
+assert.match(HELP_CONTENT.overview.html, /配色提取、颜色空间对比、打字测试/, 'Chinese creative overview must list all three creative tools.');
+assert.match(HELP_CONTENT_EN.overview.html, /Color extraction, color-space comparison, typing test/, 'English creative overview must list all three creative tools.');
+
+const creativeHelpStart = indexHtml.indexOf('data-i18n="help.group.creativeTools"');
+const cleanupHelpStart = indexHtml.indexOf('data-i18n="help.group.cleanupTools"');
+assert.ok(creativeHelpStart >= 0 && cleanupHelpStart > creativeHelpStart, 'Creative and cleanup help groups must be ordered and present.');
+const creativeHelpNav = indexHtml.slice(creativeHelpStart, cleanupHelpStart);
+for (const section of ['color-extractor', 'color-space-compare', 'typing-test']) {
+  assert.match(creativeHelpNav, new RegExp(`data-help-section="${section}"`), `Creative help navigation is missing ${section}.`);
+}
+
+assert.match(rootReadmeZh, /全部 51 项工具/, 'Chinese README must state the current 51-tool count.');
+assert.match(rootReadmeZh, /图像工具 · 4 项/, 'Chinese README must state four image tools.');
+assert.match(rootReadmeZh, /创意工具 · 3 项/, 'Chinese README must state three creative tools.');
+assert.match(rootReadmeZh, /清理工具 · 2 项/, 'Chinese README must state two cleanup tools.');
+assert.match(rootReadmeZh, /`配色提取器` · `颜色空间对比` · `打字测试器`/, 'Chinese README creative list must match the app.');
+assert.match(rootReadmeZh, /`AI 大文件清理` · `C盘清理`/, 'Chinese README cleanup list must match the app.');
+assert.match(rootReadmeEn, /all 51 tools/, 'English README must state the current 51-tool count.');
+assert.match(rootReadmeEn, /Image tools · 4/, 'English README must state four image tools.');
+assert.match(rootReadmeEn, /Creative tools · 3/, 'English README must state three creative tools.');
+assert.match(rootReadmeEn, /Cleanup tools · 2/, 'English README must state two cleanup tools.');
+assert.match(rootReadmeEn, /`Color Extractor` · `Color Space Compare` · `Typing Test`/, 'English README creative list must match the app.');
+assert.match(rootReadmeEn, /`AI Large File Cleanup` · `C Drive Cleanup`/, 'English README cleanup list must match the app.');
+
+assert.match(indexHtml, /<dt>51<\/dt><dd[^>]+home\.supportPage\.statTools/, 'Support page must state 51 desktop tools.');
+assert.match(zh.home.supportPage.storyBody2, /51 个桌面工具/, 'Chinese support story must state 51 desktop tools.');
+assert.match(en.home.supportPage.storyBody2, /51 desktop tools/, 'English support story must state 51 desktop tools.');
+
+const unreleasedStart = changelog.indexOf('## Unreleased');
+const releasedStart = changelog.indexOf('## v2.0.0');
+assert.ok(unreleasedStart >= 0 && releasedStart > unreleasedStart, 'CHANGELOG must keep unreleased changes before v2.0.0 history.');
+assert.match(changelog.slice(unreleasedStart, releasedStart), /颜色空间对比/, 'Color Space Compare must be listed under Unreleased.');
+assert.doesNotMatch(changelog.slice(releasedStart), /颜色空间对比/, 'Published release history must not claim Color Space Compare shipped in v2.0.0.');
 
 for (const content of [HELP_CONTENT, HELP_CONTENT_EN]) {
   const visibleHelp = helpSections.map((section) => `${content[section].title}\n${content[section].html}`).join('\n');
