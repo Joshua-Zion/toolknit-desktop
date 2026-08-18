@@ -317,8 +317,6 @@ export function initColorSpaceCompareTool(root) {
     }
 
     function currentValue() {
-      const typed = Number(input.value);
-      if (input.value.trim() !== '' && Number.isFinite(typed)) return typed;
       return getEditableSpaceValues(meta.id)[config.key];
     }
 
@@ -341,6 +339,14 @@ export function initColorSpaceCompareTool(root) {
 
     hit.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
+      // pointerdown is prevented so the active input does not naturally blur.
+      // Finish every active draft before snapshotting the model for this drag;
+      // otherwise a later blur could replay stale text over the slider result.
+      for (const channels of Object.values(sliderElements)) {
+        for (const slider of Object.values(channels)) {
+          slider.inputController?.finishEditing();
+        }
+      }
       dragging = true;
       pointerId = event.pointerId;
       dragValues = getEditableSpaceValues(meta.id);

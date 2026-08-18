@@ -102,20 +102,41 @@ export function bindColorNumberInput(input, {
     input.value = fmtColorNumber(value, config.decimals);
   }
 
-  function commit() {
+  function restoreValueBeforeEditing() {
+    const current = Number(getCurrentValue());
+    const value = Number.isFinite(valueBeforeEditing) ? valueBeforeEditing : current;
+    editing = false;
+    dirty = false;
+    valueBeforeEditing = null;
+    if (!Number.isFinite(value)) return false;
+    // A linked value can legitimately sit outside the visual slider range.
+    // Restoring an editing snapshot must therefore bypass slider normalization.
+    applyTransientValue(value);
+    writeFormatted(value);
+    return true;
+  }
+
+  function finishEditing() {
+    if (!editing) return false;
+
     if (!dirty) {
       editing = false;
       const current = Number(getCurrentValue());
       if (Number.isFinite(current)) writeFormatted(current);
+      valueBeforeEditing = null;
       return false;
     }
 
     const draft = parseColorNumberDraft(input.value);
-    const fallback = Number(getCurrentValue());
-    const value = normalizeSliderValue(draft ?? fallback, config);
+    if (draft === null) return restoreValueBeforeEditing();
+
+    // Normalize only a valid value explicitly entered by the user. Never run
+    // an exact model fallback through the slider's editable bounds.
+    const value = normalizeSliderValue(draft, config);
+    if (value === null) return restoreValueBeforeEditing();
     editing = false;
     dirty = false;
-    if (value === null) return false;
+    valueBeforeEditing = null;
     applyCommittedValue(value);
     writeFormatted(value);
     return true;
@@ -128,37 +149,28 @@ export function bindColorNumberInput(input, {
     const value = parseColorNumberDraft(input.value);
     if (value !== null) applyTransientValue(value);
   });
-  input.addEventListener('change', commit);
+  input.addEventListener('change', finishEditing);
   input.addEventListener('blur', () => {
     if (suppressNextBlur) {
       suppressNextBlur = false;
       return;
     }
-    commit();
+    finishEditing();
   });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       event.preventDefault();
-      editing = false;
-      dirty = false;
+      finishEditing();
       stepValue(event.key === 'ArrowUp' ? 1 : -1);
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      commit();
+      finishEditing();
       suppressNextBlur = true;
       input.blur();
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      const restoreValue = Number.isFinite(valueBeforeEditing)
-        ? valueBeforeEditing
-        : Number(getCurrentValue());
-      editing = false;
-      dirty = false;
-      if (Number.isFinite(restoreValue)) {
-        applyTransientValue(restoreValue);
-        writeFormatted(restoreValue);
-      }
+      restoreValueBeforeEditing();
       suppressNextBlur = true;
       input.blur();
     }
@@ -166,6 +178,8 @@ export function bindColorNumberInput(input, {
 
   return {
     isEditing: () => editing,
-    commit,
+    finishEditing,
+    // Keep the original method name for callers that explicitly commit.
+    commit: finishEditing,
   };
 }

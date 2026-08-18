@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   COLOR_SPACE_SLIDER_CONFIG,
+  fmtColorNumber,
   getSpaceValues,
   spaceToXyz,
   xyzToAllSpaces,
@@ -107,8 +108,8 @@ class FakeInput {
   }
 }
 
-function createInputHarness(initialValue, config) {
-  const input = new FakeInput(String(initialValue));
+function createInputHarness(initialValue, config, initialText = String(initialValue)) {
+  const input = new FakeInput(initialText);
   let modelValue = Number(initialValue);
   const transientValues = [];
   const committedValues = [];
@@ -171,5 +172,138 @@ linkedValue.input.focus();
 linkedValue.input.emit('blur');
 approx(linkedValue.getValue(), convertedOklch.C, 1e-15, 'Untouched linked value');
 assert.equal(linkedValue.committedValues.length, 0);
+
+// Empty and invalid drafts restore the precise model snapshot from focus time.
+// The formatted DOM text is intentionally rounded to prove it is not used as
+// the restoration source.
+const exactLinkedChroma = convertedOklch.C;
+const linkedChromaConfig = COLOR_SPACE_SLIDER_CONFIG.oklch.channels[1];
+const emptyLinkedValue = createInputHarness(exactLinkedChroma, linkedChromaConfig, '0.566');
+emptyLinkedValue.input.focus();
+typeDraft(emptyLinkedValue, '');
+emptyLinkedValue.input.blur();
+approx(emptyLinkedValue.getValue(), exactLinkedChroma, 1e-15, 'Empty linked draft restoration');
+assert.equal(emptyLinkedValue.input.value, '0.566');
+assert.equal(emptyLinkedValue.committedValues.length, 0);
+
+const invalidLinkedValue = createInputHarness(exactLinkedChroma, linkedChromaConfig, '0.566');
+invalidLinkedValue.input.focus();
+typeDraft(invalidLinkedValue, '0.3', 0.3);
+typeDraft(invalidLinkedValue, '-', 0.3);
+invalidLinkedValue.input.blur();
+approx(invalidLinkedValue.getValue(), exactLinkedChroma, 1e-15, 'Invalid linked draft restoration');
+assert.equal(invalidLinkedValue.input.value, '0.566');
+assert.equal(invalidLinkedValue.committedValues.length, 0);
+
+const escapedLinkedValue = createInputHarness(exactLinkedChroma, linkedChromaConfig, '0.566');
+escapedLinkedValue.input.focus();
+typeDraft(escapedLinkedValue, '0.2', 0.2);
+escapedLinkedValue.input.emit('keydown', { key: 'Escape' });
+approx(escapedLinkedValue.getValue(), exactLinkedChroma, 1e-15, 'Escape linked draft restoration');
+assert.equal(escapedLinkedValue.input.value, '0.566');
+assert.equal(escapedLinkedValue.committedValues.length, 0);
+
+// A valid user draft is still normalized only when committed.
+const clampedCommit = createInputHarness(0.4, COLOR_SPACE_SLIDER_CONFIG.oklab.channels[0], '0.400');
+clampedCommit.input.focus();
+typeDraft(clampedCommit, '1.5', 1.5);
+clampedCommit.input.emit('blur');
+assert.equal(clampedCommit.getValue(), 1);
+assert.equal(clampedCommit.input.value, '1.000');
+assert.deepEqual(clampedCommit.committedValues, [1]);
+
+function createSliderTakeoverHarness(initialValues) {
+  const configs = Object.fromEntries(
+    COLOR_SPACE_SLIDER_CONFIG.hsl.channels.map(config => [config.key, config])
+  );
+  let model = preserveColorSpaceValues('hsl', initialValues);
+  const inputs = {
+    h: new FakeInput(fmtColorNumber(model.h, configs.h.decimals)),
+    s: new FakeInput(fmtColorNumber(model.s, configs.s.decimals)),
+  };
+  const controllers = {};
+  const aria = {};
+  let dragValues = null;
+
+  function syncPresentation() {
+    for (const key of ['h', 's']) {
+      const presentation = getColorSliderPresentation(model[key], configs[key]);
+      if (!controllers[key]?.isEditing()) {
+        inputs[key].value = fmtColorNumber(presentation.value, configs[key].decimals);
+      }
+      aria[key] = {
+        valueNow: presentation.sliderValue,
+        valueText: `${fmtColorNumber(presentation.value, configs[key].decimals)}${configs[key].unit}`,
+      };
+    }
+  }
+
+  function applyInputValue(key, value, normalize) {
+    model = replaceColorSpaceChannel('hsl', model, key, value, { normalize });
+    syncPresentation();
+  }
+
+  for (const key of ['h', 's']) {
+    controllers[key] = bindColorNumberInput(inputs[key], {
+      config: configs[key],
+      getCurrentValue: () => model[key],
+      applyTransientValue: value => applyInputValue(key, value, false),
+      applyCommittedValue: value => applyInputValue(key, value, true),
+      stepValue: () => {},
+    });
+  }
+  syncPresentation();
+
+  return {
+    inputs,
+    controllers,
+    aria,
+    getModel: () => ({ ...model }),
+    pointerDownSlider(key, value) {
+      // Mirrors color-space-compare-ui.js: every active editor is finished
+      // before the drag base values are captured and the slider takes over.
+      for (const controller of Object.values(controllers)) controller.finishEditing();
+      dragValues = { ...model };
+      model = replaceColorSpaceChannel('hsl', dragValues, key, value);
+      syncPresentation();
+    },
+    pointerUpSlider() {
+      dragValues = null;
+    },
+  };
+}
+
+function assertSliderTakeover({ dirty, sliderKey }) {
+  const harness = createSliderTakeoverHarness({ h: 30, s: 40, l: 50 });
+  harness.inputs.h.focus();
+  if (dirty) typeDraft({
+    input: harness.inputs.h,
+    getValue: () => harness.getModel().h,
+  }, '12', 12);
+
+  const sliderValue = sliderKey === 'h' ? 270 : 75;
+  harness.pointerDownSlider(sliderKey, sliderValue);
+  harness.pointerUpSlider();
+  harness.inputs.h.blur();
+
+  const model = harness.getModel();
+  assert.equal(model[sliderKey], sliderValue, `${sliderKey} slider result must survive pointerup and blur.`);
+  assert.equal(model.h, sliderKey === 'h' ? 270 : dirty ? 12 : 30);
+  assert.equal(
+    harness.inputs.h.value,
+    fmtColorNumber(model.h, COLOR_SPACE_SLIDER_CONFIG.hsl.channels[0].decimals),
+    'The formerly focused input must match the final model.'
+  );
+  assert.equal(harness.aria[sliderKey].valueNow, sliderValue);
+  assert.equal(
+    harness.aria[sliderKey].valueText,
+    `${fmtColorNumber(sliderValue, COLOR_SPACE_SLIDER_CONFIG.hsl.channels[sliderKey === 'h' ? 0 : 1].decimals)}${COLOR_SPACE_SLIDER_CONFIG.hsl.channels[sliderKey === 'h' ? 0 : 1].unit}`
+  );
+}
+
+assertSliderTakeover({ dirty: true, sliderKey: 'h' });
+assertSliderTakeover({ dirty: false, sliderKey: 'h' });
+assertSliderTakeover({ dirty: true, sliderKey: 's' });
+assertSliderTakeover({ dirty: false, sliderKey: 's' });
 
 console.log('Color space compare runtime regression checks passed');
