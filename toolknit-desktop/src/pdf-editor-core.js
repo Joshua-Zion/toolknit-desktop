@@ -149,6 +149,17 @@ export async function assemblePdf({ sources, pages, useObjectStreams = true, onP
 
 const CJK_TEXT_RE = /[\u2E80-\u2EFF\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/;
 
+/**
+ * Keep inserted-text visual boxes deterministic across the canvas and PDF
+ * export paths. The browser overlay does not have the embedded PDF font
+ * metrics available, so both paths use this conservative width estimate when
+ * an object has not been explicitly resized.
+ */
+export function estimateInsertedTextWidth(text, fontSize) {
+  const size = Math.max(1, Number(fontSize) || 16);
+  return Math.max(1, String(text ?? '').length * size * 0.55);
+}
+
 function normalizeTextColor(color) {
   if (Array.isArray(color) && color.length >= 3) {
     return rgb(
@@ -160,7 +171,7 @@ function normalizeTextColor(color) {
   return rgb(0, 0, 0);
 }
 
-function rotatePointAround(x, y, cx, cy, rotationDegrees) {
+export function rotatePdfPointAround(x, y, cx, cy, rotationDegrees) {
   const rad = (Number(rotationDegrees) || 0) * Math.PI / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -170,6 +181,52 @@ function rotatePointAround(x, y, cx, cy, rotationDegrees) {
     x: cx + dx * cos - dy * sin,
     y: cy + dx * sin + dy * cos
   };
+}
+
+/**
+ * Convert the editor's CSS/UI clockwise angle to the PDF content angle.
+ *
+ * CSS uses a screen coordinate system whose y axis points down, while PDF
+ * content uses a Cartesian y axis that points up. Keep the geometry helpers
+ * above mathematically positive (counter-clockwise) and make this sign change
+ * explicit at the export boundary.
+ */
+export function uiRotationToPdfAngle(rotationDegrees) {
+  const value = Number(rotationDegrees);
+  return Number.isFinite(value) ? -value : 0;
+}
+
+/**
+ * Return the PDF-space origin needed to rotate a box around its visual center.
+ * pdf-lib rotates rectangles and images around their lower-left origin, while
+ * the editor UI rotates controls around their center.
+ */
+export function rotatePdfBoxOriginAroundCenter(x, y, width, height, rotationDegrees) {
+  const boxWidth = Math.max(0, Number(width) || 0);
+  const boxHeight = Math.max(0, Number(height) || 0);
+  const centerX = (Number(x) || 0) + boxWidth / 2;
+  const centerY = (Number(y) || 0) + boxHeight / 2;
+  return rotatePdfPointAround(Number(x) || 0, Number(y) || 0, centerX, centerY, rotationDegrees);
+}
+
+/**
+ * Rotate a text baseline anchor around the center of its editor box.
+ */
+export function rotatePdfTextAnchorAroundBox(baselineX, baselineY, box, rotationDegrees) {
+  if (!box || !Number.isFinite(Number(box.x)) || !Number.isFinite(Number(box.y))) {
+    return { x: Number(baselineX) || 0, y: Number(baselineY) || 0 };
+  }
+  const width = Math.max(0, Number(box.width) || 0);
+  const height = Math.max(0, Number(box.height) || 0);
+  const centerX = Number(box.x) + width / 2;
+  const centerY = Number(box.y) + height / 2;
+  return rotatePdfPointAround(
+    Number(baselineX) || 0,
+    Number(baselineY) || 0,
+    centerX,
+    centerY,
+    rotationDegrees
+  );
 }
 
 /**
@@ -183,10 +240,12 @@ function rotatePointAround(x, y, cx, cy, rotationDegrees) {
  * @param {object} params
  * @param {Array<{ name: string, bytes: Uint8Array }>} params.sources
  * @param {Array<{ sourceIndex: number, pageIndex: number, rotation: number }>} params.pages
- * @param {Array<{ pageIndex: number, baselineX: number, baselineY: number, fontSize: number, text: string, bold?: boolean, italic?: boolean, rotation?: number, box?: { x: number, y: number, width: number, height: number }, color?: number[] }>} [params.textEdits]
- * @param {Array<{ pageIndex: number, x: number, y: number, text: string, fontSize?: number, bold?: boolean, rotation?: number, color?: number[] }>} [params.textObjects]
+ * @param {Array<{ pageIndex: number, baselineX: number, baselineY: number, fontSize: number, text: string, bold?: boolean, italic?: boolean, rotation?: number, box?: { x: number, y: number, width: number, height: number }, textBox?: { x: number, y: number, width: number, height: number }, color?: number[] }>} [params.textEdits]
+ * @param {Array<{ pageIndex: number, x: number, y: number, width?: number, height?: number, text: string, fontSize?: number, bold?: boolean, rotation?: number, color?: number[] }>} [params.textObjects]
  * @param {Array<{ pageIndex: number, x: number, y: number, width: number, height: number, rotation?: number, bytes: Uint8Array, mimeType?: string }>} [params.imageObjects]
  * @param {Array<{ pageIndex: number, shapeType: 'rect'|'ellipse'|'line', x: number, y: number, width: number, height: number, rotation?: number, fill?: number[]|null, stroke?: number[]|null, strokeWidth?: number }>} [params.shapeObjects]
+ * Component rotations are supplied in UI clockwise degrees and converted at
+ * the export boundary to PDF's Cartesian coordinate convention.
  * @param {Uint8Array} [params.fontRegularBytes]
  * @param {Uint8Array} [params.fontSemiboldBytes]
  * @param {boolean} [params.useObjectStreams]
@@ -336,22 +395,78 @@ export async function assemblePdfWithTextEdits({
       // Keep the mask tied to the immutable source box. A longer replacement
       // must not expand the old-text mask into neighboring content.
       const coverWidth = originalWidth || Math.max(1, font.widthOfTextAtSize(text, fontSize));
-
-      copiedPage.drawRectangle({
+      const uiRotation = Number(edit?.rotation) || 0;
+      const pdfRotation = uiRotationToPdfAngle(uiRotation);
+      const maskPadding = fontSize * 0.08;
+      const maskWidth = coverWidth + maskPadding;
+      // The replacement can be moved or resized independently of the
+      // immutable source mask. Center the rotated replacement mask on its own
+      // visual box; rotating the source lower-left around that center drifts
+      // whenever the component has moved or changed size.
+      const rotationBox = edit?.textBox || edit?.box || {
         x: coverX,
         y: coverY,
-        width: coverWidth + fontSize * 0.08,
+        width: maskWidth,
+        height: coverHeight
+      };
+      const replacementX = Number.isFinite(Number(rotationBox.x))
+        ? Number(rotationBox.x)
+        : coverX;
+      const replacementY = Number.isFinite(Number(rotationBox.y))
+        ? Number(rotationBox.y)
+        : coverY;
+      const replacementWidth = Math.max(1, Number(rotationBox.width) || maskWidth);
+      const replacementHeight = Math.max(1, Number(rotationBox.height) || coverHeight);
+      const actualTextWidth = text.length
+        ? font.widthOfTextAtSize(text, fontSize) + maskPadding
+        : 0;
+      const replacementMaskWidth = Math.max(replacementWidth, actualTextWidth);
+      const replacementMaskHeight = Math.max(replacementHeight, coverHeight);
+      const replacementMaskX = replacementX - (replacementMaskWidth - replacementWidth) / 2;
+      const replacementMaskY = replacementY - (replacementMaskHeight - replacementHeight) / 2;
+      const maskOrigin = rotatePdfBoxOriginAroundCenter(
+        replacementMaskX,
+        replacementMaskY,
+        replacementMaskWidth,
+        replacementMaskHeight,
+        pdfRotation
+      );
+
+      const baseMask = {
+        x: coverX - maskPadding / 2,
+        y: coverY,
+        width: maskWidth,
         height: coverHeight,
         color: rgb(1, 1, 1)
-      });
+      };
+      // The source glyphs remain unrotated underneath an edited component.
+      // Keep that original mask, then add a center-rotated mask for the new
+      // glyphs so neither layer leaks through after a component rotation.
+      copiedPage.drawRectangle(baseMask);
+      if (uiRotation) {
+        copiedPage.drawRectangle({
+          x: maskOrigin.x,
+          y: maskOrigin.y,
+          width: replacementMaskWidth,
+          height: replacementMaskHeight,
+          color: rgb(1, 1, 1),
+          rotate: degrees(pdfRotation)
+        });
+      }
 
       if (text.length) {
+        const anchor = rotatePdfTextAnchorAroundBox(
+          baselineX,
+          baselineY,
+          rotationBox,
+          pdfRotation
+        );
         copiedPage.drawText(text, {
-          x: baselineX,
-          y: baselineY,
+          x: anchor.x,
+          y: anchor.y,
           size: fontSize,
           font,
-          rotate: degrees(Number(edit?.rotation) || 0),
+          rotate: degrees(pdfRotation),
           color: normalizeTextColor(edit?.color)
         });
       }
@@ -362,24 +477,43 @@ export async function assemblePdfWithTextEdits({
       if (!text) continue;
       const fontSize = Math.max(1, Number(object.fontSize) || 16);
       const font = await ensureFont(text, Boolean(object.bold), false);
+      const width = Math.max(1, Number(object.width) || estimateInsertedTextWidth(text, fontSize));
+      const height = Math.max(1, Number(object.height) || fontSize * 1.15);
+      const x = Number(object.x) || 0;
+      const y = Number(object.y) || 0;
+      const uiRotation = Number(object.rotation) || 0;
+      const pdfRotation = uiRotationToPdfAngle(uiRotation);
+      const anchor = rotatePdfTextAnchorAroundBox(
+        x,
+        y,
+        { x, y: y - height * 0.2, width, height },
+        pdfRotation
+      );
       copiedPage.drawText(text, {
-        x: Number(object.x) || 0,
-        y: Number(object.y) || 0,
+        x: anchor.x,
+        y: anchor.y,
         size: fontSize,
         font,
-        rotate: degrees(Number(object.rotation) || 0),
+        rotate: degrees(pdfRotation),
         color: normalizeTextColor(object.color)
       });
     }
 
     for (const object of imageObjectsByPageIndex.get(index) || []) {
       const image = await ensureImage(object);
+      const x = Number(object.x) || 0;
+      const y = Number(object.y) || 0;
+      const width = Math.max(1, Number(object.width) || 1);
+      const height = Math.max(1, Number(object.height) || 1);
+      const uiRotation = Number(object.rotation) || 0;
+      const pdfRotation = uiRotationToPdfAngle(uiRotation);
+      const origin = rotatePdfBoxOriginAroundCenter(x, y, width, height, pdfRotation);
       copiedPage.drawImage(image, {
-        x: Number(object.x) || 0,
-        y: Number(object.y) || 0,
-        width: Math.max(1, Number(object.width) || 1),
-        height: Math.max(1, Number(object.height) || 1),
-        rotate: degrees(Number(object.rotation) || 0)
+        x: origin.x,
+        y: origin.y,
+        width,
+        height,
+        rotate: degrees(pdfRotation)
       });
     }
 
@@ -389,7 +523,8 @@ export async function assemblePdfWithTextEdits({
       const y = Number(object.y) || 0;
       const width = Math.max(1, Number(object.width) || 1);
       const height = Math.max(1, Number(object.height) || 1);
-      const rotation = Number(object.rotation) || 0;
+      const uiRotation = Number(object.rotation) || 0;
+      const pdfRotation = uiRotationToPdfAngle(uiRotation);
       const fill = Array.isArray(object.fill) ? normalizeTextColor(object.fill) : null;
       const stroke = normalizeTextColor(object.stroke);
       const strokeWidth = Math.max(0, Number(object.strokeWidth) || 0);
@@ -404,13 +539,16 @@ export async function assemblePdfWithTextEdits({
           yScale: Math.max(0.5, height / 2),
           borderWidth: strokeWidth,
           borderColor: stroke,
-          rotate: degrees(rotation)
+          rotate: degrees(pdfRotation)
         };
         if (fill) options.color = fill;
         copiedPage.drawEllipse(options);
       } else if (shapeType === 'line') {
-        const start = rotatePointAround(x, y, cx, cy, rotation);
-        const end = rotatePointAround(x + width, y + height, cx, cy, rotation);
+        // The SVG preview is drawn in screen coordinates from top-left to
+        // bottom-right. Convert those endpoints back to PDF's bottom-left
+        // origin before applying the shared center rotation.
+        const start = rotatePdfPointAround(x, y + height, cx, cy, pdfRotation);
+        const end = rotatePdfPointAround(x + width, y, cx, cy, pdfRotation);
         copiedPage.drawLine({
           start: { x: start.x, y: start.y },
           end: { x: end.x, y: end.y },
@@ -418,7 +556,7 @@ export async function assemblePdfWithTextEdits({
           color: stroke
         });
       } else {
-        const corner = rotatePointAround(x, y, cx, cy, rotation);
+        const corner = rotatePdfPointAround(x, y, cx, cy, pdfRotation);
         const options = {
           x: corner.x,
           y: corner.y,
@@ -426,7 +564,7 @@ export async function assemblePdfWithTextEdits({
           height,
           borderWidth: strokeWidth,
           borderColor: stroke,
-          rotate: degrees(rotation)
+          rotate: degrees(pdfRotation)
         };
         if (fill) options.color = fill;
         copiedPage.drawRectangle(options);

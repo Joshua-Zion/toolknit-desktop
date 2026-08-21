@@ -104,5 +104,31 @@ assert.match(uiSource, /savedSnapshot = captureEditorSnapshot\(\)/);
 assert.match(uiSource, /\['text', 'inserted-text'\]\.includes\(selectedComponent\?\.type\)/);
 assert.match(uiSource, /openEditModal\(object\.id, object, object, 'edit-inserted-text'\)/);
 assert.match(uiSource, /modalMode === 'edit-inserted-text'/);
+assert.match(uiSource, /textBox: editedTextVisualBox\(edit, edit\.segment\)/);
+assert.match(uiSource, /Number\(segmentData\.rotation\) \|\| 0/);
+assert.match(uiSource, /dataset\?\.maskKey === `\$\{key\}:rotated`/);
+assert.match(uiSource, /function editedTextVisualBox\(edit, segment\)/);
+assert.match(uiSource, /function insertedTextVisualBox\(object\)/);
+assert.match(uiSource, /estimateInsertedTextWidth\(object\?\.text, fontSize\)/);
+assert.match(uiSource, /IMAGE_BATCH_LIMITS\.maxBytesPerFile/);
+assert.match(uiSource, /IMAGE_BATCH_LIMITS\.maxPixelsPerFile/);
+assert.match(uiSource, /function readEncodedImageDimensions\(bytes, mimeType\)/);
+const imagePrepareStart = uiSource.indexOf('async function prepareInsertImage(');
+const imagePrepareEnd = uiSource.indexOf('function saveEditModal(', imagePrepareStart);
+const imagePrepareSource = uiSource.slice(imagePrepareStart, imagePrepareEnd);
+assert.ok(imagePrepareStart >= 0 && imagePrepareEnd > imagePrepareStart);
+assert.ok(
+  imagePrepareSource.indexOf('readEncodedImageDimensions(bytes, mimeType)')
+    < imagePrepareSource.indexOf('await readImageDimensions(bytes, mimeType)'),
+  'encoded image dimensions must be checked before browser decoding'
+);
+assert.match(uiSource, /segmentEl\.style\.transformOrigin = '50% 50%'/);
+
+const editModeStart = uiSource.indexOf('function setEditMode(');
+const editModeEnd = uiSource.indexOf('function openEditModal(', editModeStart);
+const editModeSource = uiSource.slice(editModeStart, editModeEnd);
+assert.ok(editModeStart >= 0 && editModeEnd > editModeStart);
+assert.match(editModeSource, /if \(!page \|\| !pageSupportsContentEditing\(page\)\)/);
+assert.doesNotMatch(editModeSource, /page\?\.rotation/);
 
 console.log('PDF editor state and source contract regression checks passed');
