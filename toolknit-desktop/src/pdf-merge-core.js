@@ -1,4 +1,5 @@
 import { PDFDocument, degrees } from 'pdf-lib';
+import { flattenPdfFormForPageCopy } from './pdf-document-structure.js';
 
 export const PDF_MERGE_LIMITS = Object.freeze({
   maxFiles: 25,
@@ -45,6 +46,7 @@ export async function mergePdfPages({ documents, pages }) {
     let sourcePdf = sourceCache.get(fileIndex);
     if (!sourcePdf) {
       sourcePdf = await PDFDocument.load(documentInfo.fileData.slice());
+      flattenPdfFormForPageCopy(sourcePdf);
       sourceCache.set(fileIndex, sourcePdf);
     }
     if (pageIndex > sourcePdf.getPageCount()) {

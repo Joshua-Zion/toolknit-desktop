@@ -36,6 +36,7 @@ const {
   assertPdfToImageInput,
   assertPdfToImagePageCount,
   getPdfToImageFormatConfig,
+  normalizePdfToImagePageSelection,
   planPdfToImageExport,
   sanitizePdfToImageBaseName
 } = pdfToImageCore;
@@ -67,24 +68,10 @@ function normalizeMode(value) {
 }
 
 function normalizePages(value, pageCount, mode) {
-  if (value === undefined) {
-    if (mode === 'long' && pageCount > PDF_TO_IMAGE_LIMITS.maxLongPages) {
-      throw new ToolKnitError(
-        'INVALID_ARGUMENT',
-        `Long-image export accepts at most ${PDF_TO_IMAGE_LIMITS.maxLongPages} pages. Pass pages explicitly, for example 1-20.`
-      );
-    }
-    return Array.from({ length: pageCount }, (_, index) => index + 1);
-  }
-  if (!Array.isArray(value) || value.length < 1) {
-    throw new ToolKnitError('INVALID_ARGUMENT', 'pages must contain at least one page number.');
-  }
-  return value.map((page, index) => {
-    if (!Number.isSafeInteger(page) || page < 1) {
-      throw new ToolKnitError('INVALID_ARGUMENT', `pages[${index}] must be a positive integer.`);
-    }
-    return page;
-  });
+  const requestedPages = value === undefined
+    ? Array.from({ length: pageCount }, (_, index) => index + 1)
+    : value;
+  return normalizePdfToImagePageSelection(requestedPages, pageCount, mode);
 }
 
 function mapPdfToImageError(error) {

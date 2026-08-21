@@ -1,8 +1,12 @@
 export const PDF_ENCRYPT_LIMITS = Object.freeze({
   maxInputBytes: 150 * 1024 * 1024,
   maxPages: 200,
-  minPasswordLength: 8
+  minPasswordLength: 8,
+  maxPasswordBytes: 127,
+  legacyMaxPasswordLength: 32
 });
+
+export const PDF_ENCRYPT_ERROR_PREFIX = 'pdf-encrypt:';
 
 export function assertPdfEncryptSelection(files, totalBytes, limits = PDF_ENCRYPT_LIMITS) {
   if (!Array.isArray(files) || files.length !== 1) {
@@ -30,9 +34,36 @@ export function assertPdfEncryptPageCount(pageCount, limits = PDF_ENCRYPT_LIMITS
 }
 
 export function assertPdfEncryptPassword(password, limits = PDF_ENCRYPT_LIMITS) {
-  if (typeof password !== 'string' || password.length < limits.minPasswordLength) {
-    throw new Error(`PDF password must contain at least ${limits.minPasswordLength} characters`);
+  if (typeof password !== 'string') {
+    throw new Error(`${PDF_ENCRYPT_ERROR_PREFIX}invalid-password`);
   }
+  if (Array.from(password).length < limits.minPasswordLength) {
+    throw new Error(`${PDF_ENCRYPT_ERROR_PREFIX}password-too-short`);
+  }
+  if (/[\0\r\n]/.test(password)) {
+    throw new Error(`${PDF_ENCRYPT_ERROR_PREFIX}password-unsupported`);
+  }
+  if (new TextEncoder().encode(password).length > limits.maxPasswordBytes) {
+    throw new Error(`${PDF_ENCRYPT_ERROR_PREFIX}password-too-long`);
+  }
+}
+
+export function assertPdfEncryptLegacyPassword(password, limits = PDF_ENCRYPT_LIMITS) {
+  assertPdfEncryptPassword(password, limits);
+  if (password.length > limits.legacyMaxPasswordLength) {
+    throw new Error(`${PDF_ENCRYPT_ERROR_PREFIX}legacy-password-too-long`);
+  }
+  for (let index = 0; index < password.length; index++) {
+    if (password.charCodeAt(index) > 0xFF) {
+      throw new Error(`${PDF_ENCRYPT_ERROR_PREFIX}legacy-password-unsupported`);
+    }
+  }
+}
+
+export function getPdfEncryptErrorCode(error) {
+  const message = String(error?.message || error || '');
+  const match = message.match(/pdf-encrypt:([a-z-]+)/i);
+  return match ? match[1].toLowerCase() : 'encryption-failed';
 }
 
 export function normalizePdfEncryptPermissions(permissions = {}) {
@@ -82,7 +113,7 @@ async function loadPdfDocument() {
 
 export async function encryptPdf({ fileData, password, permissions, onProgress }) {
   assertPdfEncryptInput(fileData);
-  assertPdfEncryptPassword(password);
+  assertPdfEncryptLegacyPassword(password);
   await onProgress?.({ stage: 'loading', percent: 20 });
 
   // Existing protected files must be explicitly unlocked by PDF Decrypt first.

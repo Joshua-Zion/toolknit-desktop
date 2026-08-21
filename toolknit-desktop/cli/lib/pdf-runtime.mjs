@@ -51,10 +51,16 @@ const [
 const { PDF_MERGE_LIMITS, assertPdfMergeSelection, mergePdfPages } = mergeCore;
 const { PDF_SPLIT_LIMITS, assertPdfSplitPageCount, assertPdfSplitSelection, splitPdfPages } = splitCore;
 const { PDF_ROTATE_LIMITS, assertPdfRotateSelection, rotatePdfPages } = rotateCore;
-const { PDF_ENCRYPT_LIMITS, assertPdfEncryptPassword, assertPdfEncryptSelection, encryptPdf } = encryptCore;
+const { PDF_ENCRYPT_LIMITS, assertPdfEncryptLegacyPassword, assertPdfEncryptSelection, encryptPdf } = encryptCore;
 const { PDF_DECRYPT_LIMITS, assertPdfDecryptPassword, assertPdfDecryptSelection } = decryptCore;
 const { PDF_COMPRESS_LIMITS, assertPdfCompressLevel, assertPdfCompressSelection } = compressCore;
-const { PDF_ENHANCE_LIMITS, assertPdfEnhancePagePlan, assertPdfEnhanceSelection, assertPdfEnhanceStrength } = enhanceCore;
+const {
+  PDF_ENHANCE_LIMITS,
+  assertPdfEnhancePagePlan,
+  assertPdfEnhanceSelection,
+  assertPdfEnhanceStrength,
+  createPdfEnhanceRenderPlan
+} = enhanceCore;
 
 function assertObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -204,22 +210,25 @@ function normalizeRotations(value, sourcePageCount, defaultRotation) {
   if (!Array.isArray(value) || value.length === 0) {
     throw new ToolKnitError('INVALID_ARGUMENT', 'page_rotations must contain at least one page rotation.');
   }
-  const pageIndexes = new Set();
-  return value.map((entry, index) => {
+  const rotationsByPage = new Map();
+  for (const [index, entry] of value.entries()) {
     assertObject(entry, `page_rotations[${index}]`);
     assertOnlyKeys(entry, new Set(['page', 'rotation']));
     const pageIndex = assertPositiveInteger(entry.page, `page_rotations[${index}].page`);
     if (pageIndex > sourcePageCount) {
       throw new ToolKnitError('INVALID_ARGUMENT', `page_rotations[${index}].page is outside the input PDF.`);
     }
-    if (pageIndexes.has(pageIndex)) {
+    if (rotationsByPage.has(pageIndex)) {
       throw new ToolKnitError('INVALID_ARGUMENT', 'page_rotations cannot contain duplicate pages.');
     }
-    pageIndexes.add(pageIndex);
     if (!Number.isFinite(entry.rotation) || entry.rotation % 90 !== 0) {
       throw new ToolKnitError('INVALID_ARGUMENT', `page_rotations[${index}].rotation must be a multiple of 90.`);
     }
-    return { pageIndex, rotation: entry.rotation };
+    rotationsByPage.set(pageIndex, entry.rotation);
+  }
+  return Array.from({ length: sourcePageCount }, (_, index) => {
+    const pageIndex = index + 1;
+    return { pageIndex, rotation: rotationsByPage.get(pageIndex) ?? 0 };
   });
 }
 
@@ -495,7 +504,7 @@ export async function encryptPdfFile(args) {
   }));
   try {
     assertPdfEncryptSelection([input], input.size);
-    assertPdfEncryptPassword(assertString(args.password, 'password'));
+    assertPdfEncryptLegacyPassword(assertString(args.password, 'password'));
   } catch (error) {
     throw new ToolKnitError('INPUT_INVALID', String(error.message || error));
   }
@@ -647,26 +656,24 @@ export async function enhancePdfFile(args) {
       verbosity: 0
     });
     const sourcePdf = await loadingTask.promise;
-    const pagePlan = [];
+    const pageSizes = [];
     for (let pageIndex = 1; pageIndex <= sourcePdf.numPages; pageIndex++) {
       const page = await sourcePdf.getPage(pageIndex);
       const outputViewport = page.getViewport({ scale: 1 });
-      const renderViewport = page.getViewport({ scale: 2.5 });
-      pagePlan.push({
+      pageSizes.push({
         outputWidth: outputViewport.width,
-        outputHeight: outputViewport.height,
-        renderWidth: renderViewport.width,
-        renderHeight: renderViewport.height
+        outputHeight: outputViewport.height
       });
       try { page.cleanup(); } catch {}
     }
+    const pagePlan = createPdfEnhanceRenderPlan(pageSizes, { baseRenderScale: 2.5 });
     assertPdfEnhancePagePlan(pagePlan);
 
     const outputPdf = await PDFDocument.create();
     for (let pageIndex = 1; pageIndex <= sourcePdf.numPages; pageIndex++) {
       const page = await sourcePdf.getPage(pageIndex);
       const plan = pagePlan[pageIndex - 1];
-      const renderViewport = page.getViewport({ scale: 2.5 });
+      const renderViewport = page.getViewport({ scale: plan.renderScale });
       const canvas = createCanvas(Math.ceil(plan.renderWidth), Math.ceil(plan.renderHeight));
       const context = canvas.getContext('2d');
       if (!context) throw new Error('pdf-enhance:enhancement-failed');

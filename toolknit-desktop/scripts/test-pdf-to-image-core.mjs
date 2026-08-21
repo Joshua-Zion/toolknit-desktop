@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { PDFDocument } from 'pdf-lib';
+import { convertPdfToImages } from '../cli/lib/pdf-to-image-runtime.mjs';
+import { ToolKnitError } from '../cli/lib/errors.mjs';
 import {
   PDF_TO_IMAGE_CLARITY_PRESETS,
   PDF_TO_IMAGE_LIMITS,
@@ -204,5 +210,27 @@ assert.doesNotMatch(pdfToImageUiSource, /invoke\('cancel_convert'\)/);
 assert.match(pdfToImageUiSource, /isTauri && operation\.type === 'export'/);
 assert.match(pdfToImageUiSource, /invoke\('write_pdf_to_image_page_json', \{/);
 assert.doesNotMatch(pdfToImageUiSource, /invoke\('write_pdf_to_image_page', bytes/);
+
+const runtimeDirectory = await mkdtemp(path.join(os.tmpdir(), 'toolknit-pdf-to-image-validation-'));
+try {
+  const sourceDocument = await PDFDocument.create();
+  sourceDocument.addPage([612, 792]);
+  const inputPath = path.join(runtimeDirectory, 'one-page.pdf');
+  await writeFile(inputPath, await sourceDocument.save());
+  for (const pages of [[2], [1, 1]]) {
+    await assert.rejects(
+      () => convertPdfToImages({
+        input_path: inputPath,
+        output_dir: runtimeDirectory,
+        pages,
+        format: 'png',
+        clarity: 'standard'
+      }),
+      error => error instanceof ToolKnitError && error.code === 'INVALID_ARGUMENT'
+    );
+  }
+} finally {
+  await rm(runtimeDirectory, { recursive: true, force: true });
+}
 
 console.log('PDF to image core regression checks passed');

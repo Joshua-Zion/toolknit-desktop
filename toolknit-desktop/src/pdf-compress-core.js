@@ -37,3 +37,16 @@ export function getPdfCompressErrorCode(error) {
   const match = String(error?.message || error || '').match(/pdf-compress:([a-z-]+)/i);
   return match ? match[1].toLowerCase() : 'compression-failed';
 }
+
+export function summarizePdfCompressResults(results) {
+  const processedResults = Array.isArray(results) ? results : [];
+  const savedResults = processedResults.filter(result => typeof result?.outputPath === 'string' && result.outputPath.trim().length > 0);
+  const noOutputResults = processedResults.filter(result => !savedResults.includes(result));
+  return {
+    processedCount: processedResults.length,
+    savedCount: savedResults.length,
+    noOutputCount: noOutputResults.length,
+    savedResults,
+    noOutputResults
+  };
+}

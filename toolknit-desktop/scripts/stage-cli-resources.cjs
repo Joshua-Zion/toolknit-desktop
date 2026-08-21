@@ -29,6 +29,7 @@ const fontDestination = path.join(root, 'cli', 'resources', 'fonts');
 const fontFiles = ['NotoSansSC-Regular.ttf', 'NotoSansSC-Semibold.ttf'];
 const coreFiles = [
   'pdf-merge-core.js',
+  'pdf-document-structure.js',
   'pdf-split-core.js',
   'pdf-rotate-core.js',
   'pdf-encrypt-core.js',

@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ToolKnit Desktop</title>
     <link rel="stylesheet" href="./src/styles.css">
-    <link rel="preload" href="/assets/fonts/Alibaba-PuHuiTi-Heavy.ttf" as="font" type="font/ttf" crossorigin>
-    <link rel="preload" href="/assets/fonts/BebasNeue-1.otf" as="font" type="font/otf" crossorigin>
     <script>
       if (new URLSearchParams(window.location.search).get('screen-picker') === '1') {
         document.documentElement.dataset.screenPicker = '1';
@@ -92,9 +90,9 @@
               <div class="settings-v2-poster-kicker">TOOLKNIT SETTINGS</div>
               <h1 data-i18n="settings.centerTitle">设置中心</h1>
               <p data-i18n="settings.centerDesc">管理 AI 密钥、依赖、存储和窗口外观。所有设置只保存在本机。</p>
-              <div class="settings-v2-poster-note" data-i18n="settings.posterNote">这一版不再放“自定义背景”，保持统一的黑白极简视觉。</div>
+              <div class="settings-v2-poster-note" data-i18n="settings.posterNote">高级黑是唯一的视觉基底；图片和视频背景只作为可选的氛围层。</div>
               <div class="settings-v2-poster-meta">
-                <div><span data-i18n="settings.versionInfo">版本信息</span><strong id="settings-version">v2.0.0</strong></div>
+                <div><span data-i18n="settings.versionInfo">版本信息</span><strong id="settings-version">v2.1.0</strong></div>
                 <div><span data-i18n="settings.storageMeta">保存位置</span><strong>LOCAL</strong></div>
                 <div><span data-i18n="settings.visualMeta">视觉方向</span><strong>MONOCHROME</strong></div>
               </div>
@@ -102,6 +100,8 @@
                 <span><i data-lucide="languages"></i><span data-i18n="settings.language">语言切换</span></span>
                 <span><i data-lucide="key-round"></i><span data-i18n="settings.aiRuntimeMeta">AI / 模型 / 运行时</span></span>
                 <span><i data-lucide="folder-open"></i><span data-i18n="settings.storageMeta">存储位置</span></span>
+                <span><i data-lucide="image"></i><span data-i18n="settings.customBackground">自定义背景</span></span>
+                <span><i data-lucide="type"></i><span data-i18n="settings.interfaceFonts">界面字体</span></span>
                 <span><i data-lucide="volume-2"></i><span data-i18n="settings.soundEffects">界面音效</span></span>
                 <span><i data-lucide="maximize-2"></i><span data-i18n="settings.windowAppearance">窗口外观</span></span>
                 <span><i data-lucide="life-buoy"></i><span data-i18n="settings.helpFeedback">帮助与反馈</span></span>
@@ -189,8 +189,52 @@
                 <p class="settings-v2-hint" data-i18n="settings.storageHint">输出会自动按 PDF、图像、音频、视频、AI 文档等功能分类保存。</p>
               </article>
 
+              <article class="settings-v2-card span-6 settings-v2-background-card">
+                <div class="settings-v2-head"><div><div class="settings-v2-index">09 / BACKGROUND</div><h2 data-i18n="settings.customBackground">自定义背景</h2></div></div>
+                <div class="settings-v2-background-preview" id="settingsBackgroundPreview" role="img" data-i18n-aria-label="settings.customBackgroundPreview" aria-label="自定义背景预览">
+                  <div class="settings-v2-background-preview-grid" aria-hidden="true"></div>
+                  <div class="settings-v2-background-preview-copy"><i data-lucide="image-plus"></i><span data-i18n="settings.customBackgroundEmpty">尚未选择背景</span></div>
+                </div>
+                <div class="settings-v2-background-summary" id="settingsBackgroundSummary" data-i18n="settings.customBackgroundEmptyHint">默认使用高级黑动画层</div>
+                <div class="settings-v2-background-import" id="settingsBackgroundImportStatus" role="status" aria-live="polite" hidden>
+                  <span class="settings-v2-background-import-label" id="settingsBackgroundImportLabel" data-i18n="settings.backgroundImportPreparing">正在准备导入背景...</span>
+                  <progress class="settings-v2-background-import-track" id="settingsBackgroundImportTrack" value="0" max="100" aria-describedby="settingsBackgroundImportLabel">0%</progress>
+                </div>
+                <div class="settings-v2-row settings-v2-background-actions">
+                  <button class="settings-v2-btn" id="chooseBackgroundImage" type="button"><i data-lucide="image-plus"></i><span data-i18n="settings.chooseBackgroundImage">选择图片</span></button>
+                  <button class="settings-v2-btn" id="chooseBackgroundVideo" type="button"><i data-lucide="film"></i><span data-i18n="settings.chooseBackgroundVideo">选择视频</span></button>
+                  <button class="settings-v2-btn settings-v2-background-clear" id="clearCustomBackground" type="button" disabled><i data-lucide="trash-2"></i><span data-i18n="settings.clearBackground">清除背景</span></button>
+                </div>
+                <input id="customBackgroundImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif,image/bmp" hidden>
+                <input id="customBackgroundVideoInput" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogv,.ogg,.mov" hidden>
+                <p class="settings-v2-hint" data-i18n="settings.customBackgroundHint">仅作用于首页与工具工作台；设置页、弹框和屏幕取色保持纯黑。文件只保存在本机。</p>
+              </article>
+
+              <article class="settings-v2-card span-12 settings-v2-font-card" id="settingsFontCard">
+                <div class="settings-v2-head"><div><div class="settings-v2-index">10 / TYPE</div><h2 data-i18n="settings.interfaceFonts">界面字体</h2></div></div>
+                <div class="settings-v2-font-grid" id="settingsFontSlots" aria-live="polite">
+                  <section class="settings-v2-font-slot" data-font-slot="cn-medium">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontCnBody">中文正文</strong><span data-font-slot-summary>Alibaba PuHuiTi Medium</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="cn-medium"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="cn-medium" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                  <section class="settings-v2-font-slot" data-font-slot="cn-bold">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontCnHeading">中文标题</strong><span data-font-slot-summary>Alibaba PuHuiTi Bold</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="cn-bold"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="cn-bold" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                  <section class="settings-v2-font-slot" data-font-slot="en-regular">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontEnBody">English text</strong><span data-font-slot-summary>Fonarto Regular</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="en-regular"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="en-regular" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                  <section class="settings-v2-font-slot" data-font-slot="en-bold">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontEnHeading">English heading</strong><span data-font-slot-summary>Fonarto Bold</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="en-bold"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="en-bold" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                </div>
+                <p class="settings-v2-hint" data-i18n="settings.interfaceFontsHint">默认字体已随应用提供。可按文字类型替换为本地字体；字体只保存在本机，不会上传或下载。</p>
+              </article>
+
               <article class="settings-v2-card span-6 settings-v2-update-card">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">09 / UPDATE</div><h2 data-i18n="settings.versionUpdateTitle">检查版本更新</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">11 / UPDATE</div><h2 data-i18n="settings.versionUpdateTitle">检查版本更新</h2></div></div>
                 <div class="settings-v2-row">
                   <div class="settings-v2-path" id="versionUpdateStatus">--</div>
                   <button class="settings-v2-btn settings-v2-btn-primary" id="checkVersionUpdateBtn" type="button"><i data-lucide="refresh-cw"></i><span data-i18n="settings.checkUpdate">检查更新</span></button>
@@ -200,7 +244,7 @@
               </article>
 
               <article class="settings-v2-card span-12">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">10 / WINDOW</div><h2 data-i18n="settings.windowAppearance">窗口外观</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">12 / WINDOW</div><h2 data-i18n="settings.windowAppearance">窗口外观</h2></div></div>
                 <div class="settings-v2-toggle-row">
                   <div class="settings-v2-toggle-copy"><strong data-i18n="settings.windowResize">允许窗口拉伸</strong><span data-i18n="settings.windowResizeDesc">开启后可拖拽边缘调整窗口大小，最小不会低于当前设计尺寸。</span></div>
                   <button class="settings-v2-switch" id="windowResizeToggle" type="button" aria-pressed="false" data-i18n-title="settings.windowResize"></button>
@@ -216,17 +260,17 @@
               </article>
 
               <article class="settings-v2-card span-6">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">11 / HELP</div><h2 data-i18n="settings.helpFeedback">帮助与反馈</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">13 / HELP</div><h2 data-i18n="settings.helpFeedback">帮助与反馈</h2></div></div>
                 <div class="settings-v2-link-grid"><button class="settings-v2-link-card" type="button" id="helpLink"><span data-i18n="settings.helpCenter">帮助中心</span><i data-lucide="arrow-up-right"></i></button><button class="settings-v2-link-card" type="button" id="feedbackLink"><span data-i18n="settings.feedbackBug">反馈 BUG</span><i data-lucide="message-circle-warning"></i></button></div>
               </article>
 
               <article class="settings-v2-card span-6">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">12 / LEGAL</div><h2 data-i18n="settings.legal">声明与规范</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">14 / LEGAL</div><h2 data-i18n="settings.legal">声明与规范</h2></div></div>
                 <div class="settings-v2-link-grid"><button class="settings-v2-link-card" type="button" id="declarationLink"><span data-i18n="settings.declaration">程序声明</span><i data-lucide="book-open"></i></button><button class="settings-v2-link-card" type="button" id="usagePolicyLink"><span data-i18n="settings.usagePolicy">使用规范</span><i data-lucide="shield-check"></i></button></div>
               </article>
             </section>
           </main>
-          <footer class="settings-v2-footnote"><span>TOOLKNIT SETTINGS / MONOCHROME</span><span>NO CUSTOM BACKGROUND</span></footer>
+          <footer class="settings-v2-footnote"><span>TOOLKNIT SETTINGS / ADVANCED DARK</span><span>CUSTOM IMAGE OR VIDEO / LOCAL ONLY</span></footer>
         </div>
       </div>
     </div>
@@ -3453,7 +3497,15 @@
         <aside class="pdf-editor-sidebar pdf-editor-page-sidebar" aria-label="PDF 页面选择">
           <div class="pdf-editor-pages-head">
             <span data-i18n="home.pdfEditor.pages">页面</span>
-            <span class="pdf-editor-pages-count" id="pdfEditorSelectedCount"></span>
+            <div class="pdf-editor-pages-head-actions">
+              <span class="pdf-editor-pages-count" id="pdfEditorSelectedCount"></span>
+              <button class="pdf-editor-pages-action" id="pdfEditorSelectAll" type="button" data-i18n-title="home.pdfEditor.selectAll" title="全选页面" aria-label="全选页面">
+                <i data-lucide="check-check"></i>
+              </button>
+              <button class="pdf-editor-pages-action" id="pdfEditorInvertSelection" type="button" data-i18n-title="home.pdfEditor.invertSelection" title="反选页面" aria-label="反选页面">
+                <i data-lucide="list-restart"></i>
+              </button>
+            </div>
           </div>
           <div class="pdf-editor-page-strip" id="pdfEditorPageStrip" aria-live="polite"></div>
         </aside>
@@ -3594,6 +3646,16 @@
                 </button>
               </div>
               <div class="pdf-editor-tool-row">
+                <button class="pdf-editor-tool" id="pdfEditorDuplicate" type="button" data-i18n-title="home.pdfEditor.duplicate" title="复制页面">
+                  <i data-lucide="copy-plus"></i>
+                  <span data-i18n="home.pdfEditor.duplicate">复制页面</span>
+                </button>
+                <button class="pdf-editor-tool" id="pdfEditorBlankPage" type="button" data-i18n-title="home.pdfEditor.blankPage" title="插入空白页">
+                  <i data-lucide="file-plus"></i>
+                  <span data-i18n="home.pdfEditor.blankPage">空白页</span>
+                </button>
+              </div>
+              <div class="pdf-editor-tool-row">
                 <button class="pdf-editor-tool pdf-editor-tool-danger" id="pdfEditorDelete" type="button">
                   <i data-lucide="trash-2"></i>
                   <span data-i18n="home.pdfEditor.delete">删除</span>
@@ -3634,6 +3696,10 @@
             <div class="pdf-editor-edit-modal-original" id="pdfEditorEditOriginal"></div>
             <label class="pdf-editor-edit-modal-label" id="pdfEditorEditNewLabel" data-i18n="home.pdfEditor.editTextNew">新文字</label>
             <input class="pdf-editor-edit-modal-input" id="pdfEditorEditInput" type="text" autocomplete="off">
+            <div class="pdf-editor-edit-security-note" id="pdfEditorEditSecurityNote" hidden>
+              <i data-lucide="shield-alert"></i>
+              <span data-i18n="home.pdfEditor.visualEditWarning">此操作仅覆盖原文字的视觉外观，原内容仍可能被提取，不可用于敏感信息脱敏。</span>
+            </div>
           </div>
           <footer class="pdf-editor-edit-modal-foot">
             <button class="pdf-merge-selection-btn pdf-merge-selection-btn-secondary" id="pdfEditorEditCancel" type="button">
@@ -8253,7 +8319,7 @@
               <i data-lucide="settings"></i>
             </div>
           </div>
-          <div class="version-text" id="sidebarVersion">v2.0.0</div>
+          <div class="version-text" id="sidebarVersion">v2.1.0</div>
         </div>
       </div>
       <div class="divider"></div>
@@ -8302,7 +8368,7 @@
                 </div>
 
                 <div class="weave-stage" aria-label="ToolKnit 网页端预览">
-                  <button class="loop-stage web-preview-stage" type="button" data-home-link="website" aria-label="打开 ToolKnit 网页版">
+                  <button class="web-preview-stage" type="button" data-home-link="website" aria-label="打开 ToolKnit 网页版">
                     <img class="web-preview-image" src="assets/backgrounds/home-web-preview.png" alt="ToolKnit 网页版工具库预览" loading="eager" decoding="async" />
                     <span class="web-preview-tint" aria-hidden="true"></span>
                     <span class="web-preview-sheen" aria-hidden="true"></span>
@@ -8313,31 +8379,6 @@
                     </span>
                   </button>
                 </div>
-              </section>
-
-              <section class="github-strip" aria-label="GitHub 项目数据">
-                <div class="github-intro">
-                  <i data-lucide="github"></i>
-                  <div>
-                    <strong>开源，也保持独立。</strong>
-                    <span>ZihangDong / toolknit-desktop</span>
-                  </div>
-                </div>
-                <div class="github-stat">
-                  <div class="github-stat-value"><i class="github-stat-icon github-stat-icon-star" data-lucide="star" aria-hidden="true"></i><strong id="githubStars">--</strong></div>
-                  <span>STARS</span>
-                </div>
-                <div class="github-stat">
-                  <div class="github-stat-value"><i class="github-stat-icon" data-lucide="git-fork" aria-hidden="true"></i><strong id="githubForks">--</strong></div>
-                  <span>FORKS</span>
-                </div>
-                <div class="github-stat">
-                  <div class="github-stat-value"><i class="github-stat-icon" data-lucide="circle-dot" aria-hidden="true"></i><strong id="githubIssues">--</strong></div>
-                  <span>OPEN ISSUES</span>
-                </div>
-                <a class="github-open" href="https://github.com/ZihangDong/toolknit-desktop" data-home-link="github" target="_blank" rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
-                  <i data-lucide="arrow-up-right"></i>
-                </a>
               </section>
 
               <section class="favorites" id="favorites" aria-labelledby="favoritesTitle">
@@ -8386,6 +8427,37 @@
                 </div>
 
                 <div class="tool-result-grid" id="homeToolGrid" aria-live="polite"></div>
+              </section>
+
+              <section class="github-strip" aria-labelledby="openSourceTitle">
+                <div class="github-manifesto">
+                  <span class="github-section-index" data-i18n="home.openSource.index">03 / OPEN COMMONS</span>
+                  <div class="github-intro">
+                    <div class="github-mark" aria-hidden="true"><i data-lucide="github"></i></div>
+                    <div>
+                      <span class="github-kicker" data-i18n="home.openSource.kicker">OPEN SOURCE / WINDOWS EXE</span>
+                      <strong id="openSourceTitle" data-i18n="home.openSource.title">这个 EXE，不是黑箱。</strong>
+                      <p data-i18n="home.openSource.desc">ToolKnit Desktop 把能直接使用的工具和完整源代码一起交到你手里。文件留在本机，代码公开可查；任何人都可以阅读、分享、提出问题，也可以把它改得更好。</p>
+                      <div class="github-principles" aria-label="开源原则">
+                        <span><i data-lucide="code-2" aria-hidden="true"></i><span data-i18n="home.openSource.sourceVisible">源码可查</span></span>
+                        <span><i data-lucide="shield-check" aria-hidden="true"></i><span data-i18n="home.openSource.localFirst">文件留在本机</span></span>
+                        <span><i data-lucide="git-pull-request-arrow" aria-hidden="true"></i><span data-i18n="home.openSource.buildTogether">欢迎共同改进</span></span>
+                      </div>
+                      <div class="github-actions">
+                        <span class="github-repo">ZihangDong / toolknit-desktop</span>
+                        <a class="github-open" href="https://github.com/ZihangDong/toolknit-desktop" data-home-link="github" target="_blank" rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
+                          <span data-i18n="home.openSource.cta">查看源码与参与共建</span>
+                          <i data-lucide="arrow-up-right"></i>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="github-stat" aria-label="GitHub Stars">
+                  <span class="github-stat-label" data-i18n="home.openSource.stars">GITHUB STARS</span>
+                  <div class="github-stat-value"><i class="github-stat-icon github-stat-icon-star" data-lucide="star" aria-hidden="true"></i><strong id="githubStars">--</strong></div>
+                  <span class="github-stat-note" data-i18n="home.openSource.starNote">每一颗 Star，都是自由工具继续生长的公开回声。</span>
+                </div>
               </section>
 
               <footer class="footer-note">
@@ -9351,6 +9423,7 @@
             <span class="audio-convert-success-value" id="imageConvertSuccessPath"></span>
           </div>
         </div>
+        <div class="image-batch-failure-summary" id="imageConvertFailureSummary" aria-live="polite" hidden></div>
         <div class="audio-convert-success-actions">
           <button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="imageConvertOpenFolder" data-i18n="home.imageConvert.openFolder">打开文件夹</button>
           <button class="audio-convert-success-btn audio-convert-success-btn-primary" id="imageConvertSuccessOk" data-i18n="home.imageConvert.ok">确定</button>
@@ -9400,6 +9473,7 @@
             <span class="audio-convert-success-value" id="imageCompressSuccessPath"></span>
           </div>
         </div>
+        <div class="image-batch-failure-summary" id="imageCompressFailureSummary" aria-live="polite" hidden></div>
         <div class="audio-convert-success-actions">
           <button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="imageCompressOpenFolder" data-i18n="home.imageCompress.openFolder">打开文件夹</button>
           <button class="audio-convert-success-btn audio-convert-success-btn-primary" id="imageCompressSuccessOk" data-i18n="home.imageCompress.ok">确定</button>
@@ -9521,6 +9595,13 @@
             <div class="api-key-custom-field">
               <label class="api-key-label" data-i18n="apiKey.customModel">模型名称</label>
               <input type="text" class="api-key-input" id="apiKeyCustomModel" placeholder="model-name" autocomplete="off">
+            </div>
+            <div class="settings-toggle-row api-key-private-http-row">
+              <div class="settings-toggle-copy">
+                <strong data-i18n="apiKey.allowPrivateHttp">允许私网 HTTP</strong>
+                <span data-i18n="apiKey.allowPrivateHttpHint">仅用于你信任的局域网 AI 服务</span>
+              </div>
+              <button class="settings-switch" id="apiKeyPrivateHttpSwitch" type="button" role="switch" aria-checked="false" data-i18n-aria-label="apiKey.allowPrivateHttp"><span></span></button>
             </div>
           </div>
           <div class="api-key-hint" data-i18n="apiKey.hint">用于 AI 功能。密钥仅保存在本地，不会上传服务器。</div>

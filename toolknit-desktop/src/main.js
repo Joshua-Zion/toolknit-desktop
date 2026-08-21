@@ -1,5 +1,5 @@
       import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
-      import { createIcons, icons } from 'lucide';
+      import { createElement as createLucideElement, createIcons, icons } from 'lucide';
       import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
       import { initLightRays } from './lightrays.js';
       import { initPlasma } from './plasma.js';
@@ -68,6 +68,7 @@
       } from './color-extractor-core.js';
       import {
         ImageBatchError,
+        getImageBatchFailureSummary,
         normalizeImageCompressionQuality,
         normalizeImageTargetFormat,
         validateImageCompressionSelection,
@@ -1117,11 +1118,335 @@
         mouseInteractive: false
       };
 
+      // Custom backgrounds use the same host nodes as the existing plasma
+      // layers.  Keep the media lifecycle here instead of adding listeners to
+      // every tool: there are many independent overlays, but only one custom
+      // image/video should ever be decoding or playing at a time.
+      const CUSTOM_BACKGROUND_STORAGE_KEY = 'toolknit.customBackground.v1';
+      const CUSTOM_BACKGROUND_CHANGE_EVENT = 'toolknit-custom-background-change';
+      const customBackgroundRuntime = {
+        config: null,
+        configKey: '',
+        source: '',
+        sourceKey: '',
+        sourcePromise: null,
+        media: null,
+        mediaRole: '',
+        mediaToken: 0,
+        homeHost: null,
+        homeSession: null,
+        homeReady: false,
+        homeFailedKey: '',
+        toolSessions: new Set()
+      };
+
+      function readCustomBackgroundConfig() {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(localStorage.getItem(CUSTOM_BACKGROUND_STORAGE_KEY) || 'null');
+        } catch {
+          parsed = null;
+        }
+        if (!parsed || typeof parsed !== 'object') return null;
+        const mediaType = String(parsed.media_type || parsed.type || '').toLowerCase();
+        if (mediaType !== 'image' && mediaType !== 'video') return null;
+        const path = typeof parsed.path === 'string' ? parsed.path.trim() : '';
+        const source = typeof parsed.src === 'string' ? parsed.src.trim() : '';
+        if (!path && !source) return null;
+        return {
+          type: mediaType,
+          path,
+          src: source,
+          poster: typeof parsed.poster === 'string' ? parsed.poster.trim() : '',
+          name: typeof parsed.name === 'string' ? parsed.name.trim() : ''
+        };
+      }
+
+      function customBackgroundConfigKey(config) {
+        if (!config) return '';
+        const source = String(config.src || '');
+        // Do not copy an entire browser data URL into every comparison. Keep
+        // a small fingerprint so a reselected file still invalidates stale
+        // media without making category switches scan megabytes of text.
+        const sourceFingerprint = source
+          ? `${source.length}:${source.slice(0, 24)}:${source.slice(-24)}`
+          : '';
+        return [config.type, config.path, config.name, config.size || '', sourceFingerprint, config.poster].join('|');
+      }
+
+      function refreshCustomBackgroundConfig() {
+        const config = readCustomBackgroundConfig();
+        const key = customBackgroundConfigKey(config);
+        if (key !== customBackgroundRuntime.configKey) {
+          customBackgroundRuntime.config = config;
+          customBackgroundRuntime.configKey = key;
+          customBackgroundRuntime.source = '';
+          customBackgroundRuntime.sourceKey = '';
+          customBackgroundRuntime.sourcePromise = null;
+          customBackgroundRuntime.homeFailedKey = '';
+          customBackgroundRuntime.homeReady = false;
+        } else {
+          customBackgroundRuntime.config = config;
+        }
+        return config;
+      }
+
+      function isAllowedCustomBackgroundSource(source) {
+        if (!source) return false;
+        // Native imports are served from the loopback range server.  Browser
+        // previews may use blob/data URLs.  Reject arbitrary local file paths
+        // and unknown schemes so a stale localStorage value cannot bypass CSP.
+        return /^(?:blob:|data:|https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:\/|$))/i.test(source);
+      }
+
+      async function resolveCustomBackgroundSource(config) {
+        const current = config || refreshCustomBackgroundConfig();
+        if (!current) return '';
+        const key = customBackgroundConfigKey(current);
+        if (customBackgroundRuntime.sourceKey === key && customBackgroundRuntime.source) {
+          return customBackgroundRuntime.source;
+        }
+        if (customBackgroundRuntime.sourcePromise && customBackgroundRuntime.sourceKey === key) {
+          return customBackgroundRuntime.sourcePromise;
+        }
+        customBackgroundRuntime.sourceKey = key;
+        customBackgroundRuntime.sourcePromise = (async () => {
+          let source = current.src;
+          if (!source && isTauri && current.path) {
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              source = await invoke('get_custom_background_media_url', { path: current.path });
+            } catch (error) {
+              console.error('Failed to resolve custom background:', error);
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('log_custom_background_event', { event: `resolve-failed:${String(error?.message || error)}` });
+              } catch { /* logging is best effort */ }
+              source = '';
+            }
+          }
+          if (!isAllowedCustomBackgroundSource(source)) return '';
+          customBackgroundRuntime.source = source;
+          return source;
+        })();
+        try {
+          return await customBackgroundRuntime.sourcePromise;
+        } finally {
+          if (customBackgroundRuntime.sourceKey === key) customBackgroundRuntime.sourcePromise = null;
+        }
+      }
+
+      function ensureCustomHomeHost() {
+        const root = document.querySelector('.app');
+        if (!root) return null;
+        if (customBackgroundRuntime.homeHost?.isConnected) return customBackgroundRuntime.homeHost;
+        const host = document.createElement('div');
+        host.className = 'home-v2-custom-background-host';
+        host.setAttribute('aria-hidden', 'true');
+        const canvas = document.getElementById('homeV2ShaderBg');
+        root.insertBefore(host, canvas || root.firstChild);
+        customBackgroundRuntime.homeHost = host;
+        return host;
+      }
+
+      function disposeCustomBackgroundMedia(expectedToken = null) {
+        if (expectedToken !== null && expectedToken !== customBackgroundRuntime.mediaToken) return;
+        const media = customBackgroundRuntime.media;
+        const host = media?.parentElement;
+        customBackgroundRuntime.media = null;
+        customBackgroundRuntime.mediaRole = '';
+        customBackgroundRuntime.mediaToken += 1;
+        if (!media) return;
+        host?.classList.remove('has-custom-background');
+        try {
+          if (media instanceof HTMLVideoElement) {
+            media.pause();
+            media.removeAttribute('src');
+            media.load();
+          } else {
+            media.removeAttribute('src');
+          }
+        } catch { /* media cleanup is best effort */ }
+        media.remove();
+      }
+
+      function mountCustomBackgroundMedia(host, config, source, role) {
+        if (!host || !config || !source || !host.isConnected) return null;
+        disposeCustomBackgroundMedia();
+        const token = customBackgroundRuntime.mediaToken;
+        const media = config.type === 'video'
+          ? document.createElement('video')
+          : document.createElement('img');
+        media.className = 'toolknit-custom-background-media';
+        media.dataset.backgroundRole = role;
+        media.setAttribute('aria-hidden', 'true');
+        media.setAttribute('draggable', 'false');
+        if (config.type === 'video') {
+          media.autoplay = true;
+          media.loop = true;
+          media.muted = true;
+          media.playsInline = true;
+          media.preload = 'metadata';
+          if (config.poster && isAllowedCustomBackgroundSource(config.poster)) media.poster = config.poster;
+        } else {
+          media.decoding = 'async';
+          media.loading = 'eager';
+        }
+        customBackgroundRuntime.media = media;
+        customBackgroundRuntime.mediaRole = role;
+        host.appendChild(media);
+
+        let settled = false;
+        let resolveReady;
+        const ready = new Promise(resolve => { resolveReady = resolve; });
+        const settle = ok => {
+          if (settled || token !== customBackgroundRuntime.mediaToken) return;
+          settled = true;
+          resolveReady(Boolean(ok));
+          if (!ok) {
+            try {
+              if (isTauri) {
+                import('@tauri-apps/api/core').then(({ invoke }) => invoke('log_custom_background_event', {
+                  event: `media-error:${role}:${config.name || config.path || config.type}`
+                })).catch(() => {});
+              }
+            } catch { /* logging is best effort */ }
+          }
+        };
+        const handleError = () => settle(false);
+        const handleReady = () => {
+          settle(true);
+          if (media instanceof HTMLVideoElement) media.play().catch(() => {});
+        };
+        media.addEventListener('error', handleError, { once: true });
+        if (media instanceof HTMLVideoElement) {
+          media.addEventListener('canplay', handleReady, { once: true });
+          media.addEventListener('loadeddata', handleReady, { once: true });
+        } else {
+          media.addEventListener('load', handleReady, { once: true });
+        }
+        media.src = source;
+        if (media instanceof HTMLVideoElement) media.load();
+
+        const dispose = () => {
+          if (token !== customBackgroundRuntime.mediaToken) return;
+          disposeCustomBackgroundMedia(token);
+        };
+        return { token, media, ready, dispose };
+      }
+
+      function syncCustomHomeBackground() {
+        const config = refreshCustomBackgroundConfig();
+        const root = document.querySelector('.app');
+        const homeActive = Boolean(root?.classList.contains('is-v2-home')) && customBackgroundRuntime.toolSessions.size === 0;
+        root?.classList.toggle('has-custom-background', Boolean(config && homeActive && customBackgroundRuntime.homeReady));
+        if (!root?.classList.contains('is-v2-home') || customBackgroundRuntime.toolSessions.size > 0 || !config) {
+          customBackgroundRuntime.homeReady = false;
+          if (customBackgroundRuntime.homeSession) {
+            customBackgroundRuntime.homeSession.dispose();
+            customBackgroundRuntime.homeSession = null;
+          }
+          return;
+        }
+        const host = ensureCustomHomeHost();
+        if (!host) return;
+        const configKey = customBackgroundRuntime.configKey;
+        if (customBackgroundRuntime.homeSession?.configKey === configKey) return;
+        if (customBackgroundRuntime.homeFailedKey === configKey) return;
+        customBackgroundRuntime.homeReady = false;
+        customBackgroundRuntime.homeSession?.dispose();
+        const session = { configKey, disposed: false, dispose: () => {} };
+        customBackgroundRuntime.homeSession = session;
+        resolveCustomBackgroundSource(config).then(source => {
+          if (session.disposed || customBackgroundRuntime.homeSession !== session) return;
+          if (!source) {
+            customBackgroundRuntime.homeFailedKey = configKey;
+            session.dispose();
+            syncHomeV2Shader();
+            return;
+          }
+          const mounted = mountCustomBackgroundMedia(host, config, source, 'home');
+          if (!mounted) return;
+          mounted.ready.then(ok => {
+            if (ok && !session.disposed && customBackgroundRuntime.homeSession === session) {
+              customBackgroundRuntime.homeReady = true;
+              host.classList.add('has-custom-background');
+              root?.classList.toggle('has-custom-background', Boolean(root?.classList.contains('is-v2-home') && customBackgroundRuntime.toolSessions.size === 0));
+              syncHomeV2Shader();
+            } else if (!ok && !session.disposed) {
+              customBackgroundRuntime.homeFailedKey = configKey;
+              session.dispose();
+              syncHomeV2Shader();
+            }
+          });
+          session.dispose = () => {
+            if (session.disposed) return;
+            session.disposed = true;
+            if (customBackgroundRuntime.homeSession === session) customBackgroundRuntime.homeSession = null;
+            customBackgroundRuntime.homeReady = false;
+            mounted.dispose();
+          };
+        }).catch(() => {});
+        session.dispose = () => {
+          if (session.disposed) return;
+          session.disposed = true;
+          if (customBackgroundRuntime.homeSession === session) customBackgroundRuntime.homeSession = null;
+          customBackgroundRuntime.homeReady = false;
+        };
+      }
+
+      window.toolknitCustomBackground = {
+        refresh: () => {
+          refreshCustomBackgroundConfig();
+          syncCustomHomeBackground();
+          customBackgroundRuntime.toolSessions.forEach(session => session.refresh?.());
+          // Clearing or replacing a ready background can re-enable the shader;
+          // reconcile its RAF after the media sessions have been updated.
+          syncHomeV2Shader();
+        },
+        getConfig: () => ({ ...(refreshCustomBackgroundConfig() || {}) })
+      };
+      window.addEventListener(CUSTOM_BACKGROUND_CHANGE_EVENT, () => {
+        // A user-initiated selection should be allowed to retry the same
+        // source after a transient decode or local-server failure.
+        customBackgroundRuntime.homeFailedKey = '';
+        window.toolknitCustomBackground.refresh();
+      });
+
+      function pauseCustomBackgroundMedia() {
+        const media = customBackgroundRuntime.media;
+        if (media instanceof HTMLVideoElement) media.pause();
+      }
+
+      function resumeCustomBackgroundMedia() {
+        const media = customBackgroundRuntime.media;
+        if (!(media instanceof HTMLVideoElement) || document.hidden || !media.isConnected) return;
+        media.play().catch(() => {});
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) pauseCustomBackgroundMedia();
+        else resumeCustomBackgroundMedia();
+        syncCustomBackgroundPreviewPlayback?.();
+      });
+      window.addEventListener('pagehide', pauseCustomBackgroundMedia);
+      window.addEventListener('pageshow', () => {
+        resumeCustomBackgroundMedia();
+        syncCustomBackgroundPreviewPlayback?.();
+      });
+
       function initStandardToolPlasma(containerEl) {
         if (!containerEl) return null;
         let disposed = false;
         let innerDispose = null;
         let rebuildRaf = 0;
+        let customSession = null;
+        let customConfigKey = '';
+
+        const startStandard = () => {
+          if (disposed || innerDispose || document.hidden || !containerEl.isConnected) return;
+          innerDispose = initPlasma(containerEl, STANDARD_TOOL_PLASMA_OPTIONS);
+        };
 
         const stopInner = () => {
           if (rebuildRaf) {
@@ -1136,8 +1461,7 @@
 
         const startInner = () => {
           rebuildRaf = 0;
-          if (disposed || innerDispose || document.hidden || !containerEl.isConnected) return;
-          innerDispose = initPlasma(containerEl, STANDARD_TOOL_PLASMA_OPTIONS);
+          startStandard();
         };
 
         const scheduleStart = () => {
@@ -1148,6 +1472,7 @@
         const sync = () => {
           if (disposed) return;
           if (document.hidden) stopInner();
+          else if (customSession) stopInner();
           else scheduleStart();
         };
 
@@ -1156,12 +1481,73 @@
         window.addEventListener('pagehide', stopInner);
         scheduleStart();
 
+        const session = {
+          refresh: () => {
+            if (disposed) return;
+            const config = refreshCustomBackgroundConfig();
+            const nextKey = customBackgroundConfigKey(config);
+            const ownsMedia = Boolean(
+              customSession?.media?.isConnected
+              && customSession.media.parentElement === containerEl
+            );
+            if (nextKey === customConfigKey && (ownsMedia || !config)) return;
+            if (customSession && !ownsMedia) customSession = null;
+            customConfigKey = nextKey;
+            containerEl.classList.remove('has-custom-background');
+            customSession?.dispose();
+            customSession = null;
+            if (!config) {
+              if (!innerDispose && !document.hidden) scheduleStart();
+              return;
+            }
+            // Keep the shader as an immediate fallback while the native range
+            // URL is resolved and the first media frame is decoded.
+            if (!innerDispose && !document.hidden) scheduleStart();
+            const localKey = nextKey;
+            resolveCustomBackgroundSource(config).then(source => {
+              if (disposed || localKey !== customConfigKey || !source) return;
+              const mounted = mountCustomBackgroundMedia(containerEl, config, source, 'tool');
+              if (!mounted) return;
+              customSession = mounted;
+              mounted.ready.then(ok => {
+                if (disposed || localKey !== customConfigKey) return;
+                if (ok) {
+                  containerEl.classList.add('has-custom-background');
+                  stopInner();
+                }
+                else {
+                  containerEl.classList.remove('has-custom-background');
+                  mounted.dispose();
+                  if (customSession === mounted) customSession = null;
+                  if (!innerDispose && !document.hidden) scheduleStart();
+                }
+              });
+            }).catch(() => {});
+          },
+          dispose: () => {
+            if (disposed) return;
+            disposed = true;
+            customBackgroundRuntime.toolSessions.delete(session);
+            containerEl.classList.remove('has-custom-background');
+            customSession?.dispose();
+            customSession = null;
+          }
+        };
+        customBackgroundRuntime.toolSessions.add(session);
+        syncCustomHomeBackground();
+        session.refresh();
+
         return () => {
-          disposed = true;
+          session.dispose();
           document.removeEventListener('visibilitychange', sync);
           window.removeEventListener('pageshow', sync);
           window.removeEventListener('pagehide', stopInner);
           stopInner();
+          // Nested workspaces can keep an older tool session alive. If the
+          // newest workspace released the shared media node, let the older
+          // session reclaim it instead of leaving its background blank.
+          customBackgroundRuntime.toolSessions.forEach(other => other.refresh?.());
+          if (customBackgroundRuntime.toolSessions.size === 0) syncCustomHomeBackground();
         };
       }
 
@@ -1607,12 +1993,27 @@
 
       function syncHomeV2Shader() {
         if (!homeV2ShaderContext || homeV2ShaderState.reduced) return;
-        if (appRoot?.classList.contains('is-v2-home') && !document.hidden && !homeV2ShaderState.raf) {
+        const isHome = appRoot?.classList.contains('is-v2-home');
+        const customConfig = refreshCustomBackgroundConfig();
+        if (isHome) {
+          syncCustomHomeBackground();
+        }
+        if (isHome && customConfig) {
+          if (customBackgroundRuntime.homeReady) {
+            if (homeV2ShaderState.raf) {
+              window.cancelAnimationFrame(homeV2ShaderState.raf);
+              homeV2ShaderState.raf = 0;
+            }
+            homeV2ShaderState.lastRenderAt = 0;
+            return;
+          }
+        }
+        if (isHome && !document.hidden && !homeV2ShaderState.raf) {
           resizeHomeV2Shader();
           homeV2ShaderState.lastRenderAt = 0;
           homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
         }
-        if ((!appRoot?.classList.contains('is-v2-home') || document.hidden) && homeV2ShaderState.raf) {
+        if ((!isHome || document.hidden) && homeV2ShaderState.raf) {
           window.cancelAnimationFrame(homeV2ShaderState.raf);
           homeV2ShaderState.raf = 0;
           homeV2ShaderState.lastRenderAt = 0;
@@ -1631,6 +2032,7 @@
             homeV2ShaderState.scrollIdleTimer = 0;
           }
         }
+        syncCustomHomeBackground();
         syncHomeV2Shader();
       }
 
@@ -1918,11 +2320,497 @@
         void refreshStoragePath();
       });
 
+      // ===== Custom Advanced Dark background =====
+      // Keep only lightweight metadata in localStorage. Desktop media is
+      // copied into app data by Rust and exposed through the local range
+      // server; browser fallback stores a small data URL for development.
+      const CUSTOM_BACKGROUND_BROWSER_MAX_BYTES = 8 * 1024 * 1024;
+      const settingsBackgroundPreview = document.getElementById('settingsBackgroundPreview');
+      const settingsBackgroundSummary = document.getElementById('settingsBackgroundSummary');
+      const chooseBackgroundImage = document.getElementById('chooseBackgroundImage');
+      const chooseBackgroundVideo = document.getElementById('chooseBackgroundVideo');
+      const clearCustomBackground = document.getElementById('clearCustomBackground');
+      const customBackgroundImageInput = document.getElementById('customBackgroundImageInput');
+      const customBackgroundVideoInput = document.getElementById('customBackgroundVideoInput');
+      const settingsBackgroundImportStatus = document.getElementById('settingsBackgroundImportStatus');
+      const settingsBackgroundImportTrack = document.getElementById('settingsBackgroundImportTrack');
+      const settingsBackgroundImportLabel = document.getElementById('settingsBackgroundImportLabel');
+      let customBackgroundRenderToken = 0;
+      let customBackgroundPreviewMedia = null;
+      let customBackgroundImportBusy = false;
+
+      function readCustomBackgroundMetadata() {
+        try {
+          const raw = localStorage.getItem(CUSTOM_BACKGROUND_STORAGE_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (!parsed || !['image', 'video'].includes(String(parsed.type || parsed.media_type))) return null;
+          return {
+            ...parsed,
+            type: parsed.type === 'video' || parsed.media_type === 'video' ? 'video' : 'image'
+          };
+        } catch {
+          return null;
+        }
+      }
+
+      function saveCustomBackgroundMetadata(metadata) {
+        try {
+          if (!metadata) localStorage.removeItem(CUSTOM_BACKGROUND_STORAGE_KEY);
+          else localStorage.setItem(CUSTOM_BACKGROUND_STORAGE_KEY, JSON.stringify(metadata));
+        } catch (error) {
+          console.warn('Unable to persist custom background metadata:', error);
+        }
+      }
+
+      function customBackgroundName(path = '') {
+        const value = String(path || '');
+        return value.split(/[\\/]/).pop() || '';
+      }
+
+      function customBackgroundImportLabel(phase = 'preparing') {
+        const labels = {
+          validating: 'settings.backgroundImportPreparing',
+          prepare: 'settings.backgroundImportPreparing',
+          preparing: 'settings.backgroundImportPreparing',
+          copying: 'settings.backgroundImportCopying',
+          probing: 'settings.backgroundImportAnalyzing',
+          analyzing: 'settings.backgroundImportAnalyzing',
+          converting: 'settings.backgroundImportTranscoding',
+          transcoding: 'settings.backgroundImportTranscoding',
+          verify: 'settings.backgroundImportFinalizing',
+          finalizing: 'settings.backgroundImportFinalizing',
+          complete: 'settings.backgroundImportComplete',
+          error: 'settings.backgroundImportFailed',
+          failed: 'settings.backgroundImportFailed'
+        };
+        return t(labels[String(phase || '').toLowerCase()] || 'settings.backgroundImportPreparing');
+      }
+
+      function syncCustomBackgroundControls() {
+        const hasBackground = Boolean(readCustomBackgroundMetadata());
+        if (chooseBackgroundImage) chooseBackgroundImage.disabled = customBackgroundImportBusy;
+        if (chooseBackgroundVideo) chooseBackgroundVideo.disabled = customBackgroundImportBusy;
+        if (clearCustomBackground) clearCustomBackground.disabled = customBackgroundImportBusy || !hasBackground;
+      }
+
+      function setCustomBackgroundImportState(active, { percent = 0, phase = 'preparing' } = {}) {
+        customBackgroundImportBusy = Boolean(active);
+        const rawPercent = Number(percent) || 0;
+        // Rust progress is normalized to 0..1; local browser stages use an
+        // already human-facing 0..100 range.
+        const normalizedPercent = Math.max(0, Math.min(100, rawPercent <= 1 ? rawPercent * 100 : rawPercent));
+        if (settingsBackgroundImportStatus) settingsBackgroundImportStatus.hidden = !customBackgroundImportBusy;
+        if (settingsBackgroundImportLabel && customBackgroundImportBusy) {
+          settingsBackgroundImportLabel.textContent = customBackgroundImportLabel(phase);
+        }
+        if (settingsBackgroundImportTrack) {
+          settingsBackgroundImportTrack.value = normalizedPercent;
+          settingsBackgroundImportTrack.setAttribute('aria-valuenow', String(Math.round(normalizedPercent)));
+        }
+        syncCustomBackgroundControls();
+      }
+
+      function dispatchCustomBackgroundChange(metadata, src = '') {
+        window.dispatchEvent(new CustomEvent('toolknit-custom-background-change', {
+          detail: metadata ? { ...metadata, src } : null
+        }));
+      }
+
+      function resetCustomBackgroundPreview() {
+        if (!settingsBackgroundPreview) return;
+        settingsBackgroundPreview.querySelectorAll('img, video').forEach(media => {
+          try { media.pause?.(); } catch {}
+          media.removeAttribute('src');
+          media.load?.();
+          media.remove();
+        });
+        customBackgroundPreviewMedia = null;
+        settingsBackgroundPreview.classList.remove('has-media');
+        const copy = settingsBackgroundPreview.querySelector('.settings-v2-background-preview-copy');
+        if (copy) copy.hidden = false;
+        syncCustomBackgroundControls();
+      }
+
+      function syncCustomBackgroundPreviewPlayback() {
+        const media = customBackgroundPreviewMedia;
+        if (!(media instanceof HTMLVideoElement)) return;
+        const shouldPlay = Boolean(settingsOverlay?.classList.contains('visible') && !document.hidden);
+        if (shouldPlay) media.play().catch(() => {});
+        else media.pause();
+      }
+
+      function setCustomBackgroundSummary(metadata = null) {
+        if (!settingsBackgroundSummary) return;
+        if (!metadata) {
+          settingsBackgroundSummary.textContent = t('settings.customBackgroundEmptyHint');
+          return;
+        }
+        const kind = metadata.type === 'video' ? t('settings.chooseBackgroundVideo') : t('settings.chooseBackgroundImage');
+        settingsBackgroundSummary.textContent = `${kind} · ${metadata.name || customBackgroundName(metadata.path) || t('settings.customBackground')}`;
+      }
+
+      async function renderCustomBackground(metadata) {
+        const token = ++customBackgroundRenderToken;
+        resetCustomBackgroundPreview();
+        if (!metadata) {
+          setCustomBackgroundSummary(null);
+          dispatchCustomBackgroundChange(null);
+          return;
+        }
+        let src = metadata.src || '';
+        try {
+          if (!src && isTauri && metadata.path) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            src = await invoke('get_custom_background_media_url', { path: metadata.path });
+          }
+          if (!src) throw new Error('Background source is unavailable');
+          if (token !== customBackgroundRenderToken || !settingsBackgroundPreview) return;
+          const isVideo = metadata.type === 'video' || metadata.media_type === 'video';
+          const media = document.createElement(isVideo ? 'video' : 'img');
+          media.src = src;
+          media.alt = '';
+          media.setAttribute('aria-hidden', 'true');
+          if (isVideo) {
+            media.muted = true;
+            media.loop = true;
+            media.autoplay = false;
+            media.playsInline = true;
+            media.preload = 'metadata';
+            media.addEventListener('error', () => window.showToast?.(t('settings.customBackgroundImportFailed')), { once: true });
+          } else {
+            media.decoding = 'async';
+            media.addEventListener('error', () => window.showToast?.(t('settings.customBackgroundImportFailed')), { once: true });
+          }
+          settingsBackgroundPreview.appendChild(media);
+          customBackgroundPreviewMedia = isVideo ? media : null;
+          syncCustomBackgroundPreviewPlayback();
+          settingsBackgroundPreview.classList.add('has-media');
+          const copy = settingsBackgroundPreview.querySelector('.settings-v2-background-preview-copy');
+          if (copy) copy.hidden = true;
+          setCustomBackgroundSummary(metadata);
+          syncCustomBackgroundControls();
+          dispatchCustomBackgroundChange(metadata, src);
+        } catch (error) {
+          console.error('Failed to render custom background:', error);
+          setCustomBackgroundSummary(null);
+          syncCustomBackgroundControls();
+          window.showToast?.(t('settings.customBackgroundImportFailed'));
+          dispatchCustomBackgroundChange(null);
+        }
+      }
+
+      function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('Unable to read background file'));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function importBrowserBackground(file, type) {
+        if (!file || customBackgroundImportBusy) return;
+        const mime = String(file.type || '').toLowerCase();
+        const extension = String(file.name || '').toLowerCase().split('.').pop();
+        const allowedExtensions = type === 'video'
+          ? ['mp4', 'webm', 'ogv', 'ogg', 'mov']
+          : ['png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp'];
+        const validType = type === 'video' ? mime.startsWith('video/') : mime.startsWith('image/');
+        if (!validType && !allowedExtensions.includes(extension)) {
+          window.showToast?.(t('settings.customBackgroundImportFailed'));
+          return;
+        }
+        if (file.size > CUSTOM_BACKGROUND_BROWSER_MAX_BYTES) {
+          window.showToast?.(t('settings.customBackgroundTooLarge'));
+          return;
+        }
+        setCustomBackgroundImportState(true, { percent: 12, phase: 'preparing' });
+        try {
+          setCustomBackgroundImportState(true, { percent: 48, phase: 'copying' });
+          const src = await fileToDataUrl(file);
+          const metadata = { type, media_type: type, name: file.name, mime: file.type, size: file.size, src };
+          saveCustomBackgroundMetadata(metadata);
+          setCustomBackgroundImportState(true, { percent: 88, phase: 'finalizing' });
+          await renderCustomBackground(metadata);
+          setCustomBackgroundImportState(true, { percent: 100, phase: 'complete' });
+        } catch (error) {
+          console.error('Failed to import browser background:', error);
+          setCustomBackgroundImportState(true, { percent: 0, phase: 'failed' });
+          window.showToast?.(t('settings.customBackgroundImportFailed'));
+        } finally {
+          window.setTimeout(() => setCustomBackgroundImportState(false), 220);
+        }
+      }
+
+      async function chooseDesktopBackground(type) {
+        if (customBackgroundImportBusy) return;
+        let unlistenProgress = null;
+        try {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const extensions = type === 'video'
+            ? ['mp4', 'webm', 'ogv', 'ogg', 'mov']
+            : ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'];
+          const selected = await open({
+            multiple: false,
+            directory: false,
+            title: type === 'video' ? t('settings.chooseBackgroundVideo') : t('settings.chooseBackgroundImage'),
+            filters: [{ name: type === 'video' ? 'Video' : 'Image', extensions }]
+          });
+          if (!selected || Array.isArray(selected)) return;
+          const jobId = `background-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          const [{ invoke }, { listen }] = await Promise.all([
+            import('@tauri-apps/api/core'),
+            import('@tauri-apps/api/event')
+          ]);
+          setCustomBackgroundImportState(true, {
+            percent: type === 'video' ? 6 : 10,
+            phase: type === 'video' ? 'analyzing' : 'copying'
+          });
+          unlistenProgress = await listen('custom-background-import-progress', event => {
+            const progress = event?.payload || {};
+            const progressJobId = progress.jobId || progress.job_id;
+            if (progressJobId && progressJobId !== jobId) return;
+            setCustomBackgroundImportState(true, {
+              percent: progress.percent,
+              phase: progress.phase || 'preparing'
+            });
+          });
+          const asset = await invoke('import_custom_background', { sourcePath: selected, jobId });
+          const metadata = {
+            type: asset?.media_type === 'video' ? 'video' : type,
+            media_type: asset?.media_type || type,
+            path: asset?.path || selected,
+            name: customBackgroundName(selected)
+          };
+          saveCustomBackgroundMetadata(metadata);
+          await renderCustomBackground(metadata);
+          setCustomBackgroundImportState(true, { percent: 100, phase: 'complete' });
+        } catch (error) {
+          console.error('Failed to import desktop background:', error);
+          setCustomBackgroundImportState(true, { percent: 0, phase: 'failed' });
+          window.showToast?.(String(error?.message || error) || t('settings.customBackgroundImportFailed'));
+        } finally {
+          try { unlistenProgress?.(); } catch {}
+          if (customBackgroundImportBusy) {
+            window.setTimeout(() => setCustomBackgroundImportState(false), 340);
+          }
+        }
+      }
+
+      chooseBackgroundImage?.addEventListener('click', () => {
+        if (isTauri) void chooseDesktopBackground('image');
+        else customBackgroundImageInput?.click();
+      });
+      chooseBackgroundVideo?.addEventListener('click', () => {
+        if (isTauri) void chooseDesktopBackground('video');
+        else customBackgroundVideoInput?.click();
+      });
+      customBackgroundImageInput?.addEventListener('change', event => {
+        void importBrowserBackground(event.target.files?.[0], 'image');
+        event.target.value = '';
+      });
+      customBackgroundVideoInput?.addEventListener('change', event => {
+        void importBrowserBackground(event.target.files?.[0], 'video');
+        event.target.value = '';
+      });
+      clearCustomBackground?.addEventListener('click', async () => {
+        if (customBackgroundImportBusy) return;
+        try {
+          if (isTauri) {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('clear_custom_background');
+          }
+          saveCustomBackgroundMetadata(null);
+          await renderCustomBackground(null);
+          window.showToast?.(t('settings.customBackgroundCleared'));
+        } catch (error) {
+          console.error('Failed to clear custom background:', error);
+          window.showToast?.(t('settings.customBackgroundImportFailed'));
+        }
+      });
+
+      void renderCustomBackground(readCustomBackgroundMetadata());
+      onLangChange(() => setCustomBackgroundSummary(readCustomBackgroundMetadata()));
+
+      // ===== Local interface font overrides =====
+      // The four slots are always loaded as a coherent family pair. This lets
+      // a user replace only one slot while all other weights keep their bundled
+      // counterparts, without relying on browser-generated faux bold text.
+      const CUSTOM_FONT_DEFAULTS = Object.freeze({
+        'cn-medium': Object.freeze({ family: 'ToolKnitRuntimeCn', weight: '100 500', path: '/assets/fonts/Alibaba-PuHuiTi-Medium.ttf', name: 'Alibaba PuHuiTi Medium' }),
+        'cn-bold': Object.freeze({ family: 'ToolKnitRuntimeCn', weight: '600 900', path: '/assets/fonts/Alibaba-PuHuiTi-Bold.ttf', name: 'Alibaba PuHuiTi Bold' }),
+        'en-regular': Object.freeze({ family: 'ToolKnitRuntimeEn', weight: '100 500', path: '/assets/fonts/Fonarto-Regular.otf', name: 'Fonarto Regular' }),
+        'en-bold': Object.freeze({ family: 'ToolKnitRuntimeEn', weight: '600 900', path: '/assets/fonts/Fonarto-Bold.otf', name: 'Fonarto Bold' })
+      });
+      const customFontSlots = [...document.querySelectorAll('[data-font-slot]')];
+      const customFontAssets = new Map();
+      let activeRuntimeFontFaces = [];
+      let customFontBusySlot = '';
+
+      function setInterfaceFontFamilies(useRuntimeFonts) {
+        const root = document.documentElement;
+        root.style.setProperty('--tk-font-ui-cn', useRuntimeFonts ? "'ToolKnitRuntimeCn'" : "'ToolKnitBuiltinCn'");
+        root.style.setProperty('--tk-font-display-cn', useRuntimeFonts ? "'ToolKnitRuntimeCnHeading'" : "'ToolKnitBuiltinCnHeading'");
+        root.style.setProperty('--tk-font-ui-en', useRuntimeFonts ? "'ToolKnitRuntimeEn'" : "'ToolKnitBuiltinEn'");
+        root.style.setProperty('--tk-font-display-en', useRuntimeFonts
+          ? "'ToolKnitRuntimeEnHeading', 'ToolKnitRuntimeCnHeading'"
+          : "'ToolKnitBuiltinEnHeading', 'ToolKnitBuiltinCnHeading'");
+      }
+
+      function renderCustomFontSlots() {
+        customFontSlots.forEach(slotElement => {
+          const slot = slotElement.dataset.fontSlot;
+          const asset = customFontAssets.get(slot);
+          const summary = slotElement.querySelector('[data-font-slot-summary]');
+          const upload = slotElement.querySelector('[data-font-upload]');
+          const reset = slotElement.querySelector('[data-font-reset]');
+          const busy = customFontBusySlot === slot;
+          if (summary) summary.textContent = asset?.fileName || CUSTOM_FONT_DEFAULTS[slot]?.name || '';
+          slotElement.classList.toggle('is-custom', Boolean(asset));
+          slotElement.classList.toggle('is-busy', busy);
+          if (upload) upload.disabled = Boolean(customFontBusySlot);
+          if (reset) reset.disabled = Boolean(customFontBusySlot) || !asset;
+        });
+      }
+
+      function removeRuntimeFontFaces() {
+        activeRuntimeFontFaces.forEach(face => {
+          try { document.fonts.delete(face); } catch {}
+        });
+        activeRuntimeFontFaces = [];
+      }
+
+      async function resolveCustomFontSource(asset) {
+        if (!asset?.path) return '';
+        const { convertFileSrc } = await import('@tauri-apps/api/core');
+        return convertFileSrc(asset.path);
+      }
+
+      async function applyCustomInterfaceFonts() {
+        if (!customFontAssets.size) {
+          removeRuntimeFontFaces();
+          setInterfaceFontFamilies(false);
+          window.dispatchEvent(new Event('toolknit-interface-font-change'));
+          return;
+        }
+        const loadedFaces = [];
+        for (const [slot, defaults] of Object.entries(CUSTOM_FONT_DEFAULTS)) {
+          const source = customFontAssets.has(slot)
+            ? await resolveCustomFontSource(customFontAssets.get(slot))
+            : defaults.path;
+          if (!source) throw new Error('Custom font source is unavailable');
+          const face = new FontFace(
+            defaults.family,
+            `url(${JSON.stringify(source)})`,
+            { style: 'normal', weight: defaults.weight, display: 'swap' }
+          );
+          await face.load();
+          loadedFaces.push(face);
+        }
+        for (const slot of ['cn-bold', 'en-bold']) {
+          const defaults = CUSTOM_FONT_DEFAULTS[slot];
+          const source = customFontAssets.has(slot)
+            ? await resolveCustomFontSource(customFontAssets.get(slot))
+            : defaults.path;
+          const face = new FontFace(
+            slot === 'cn-bold' ? 'ToolKnitRuntimeCnHeading' : 'ToolKnitRuntimeEnHeading',
+            `url(${JSON.stringify(source)})`,
+            { style: 'normal', weight: '100 900', display: 'swap' }
+          );
+          await face.load();
+          loadedFaces.push(face);
+        }
+        removeRuntimeFontFaces();
+        loadedFaces.forEach(face => document.fonts.add(face));
+        activeRuntimeFontFaces = loadedFaces;
+        setInterfaceFontFamilies(true);
+        await document.fonts.ready;
+        window.dispatchEvent(new Event('toolknit-interface-font-change'));
+      }
+
+      async function refreshCustomFonts() {
+        if (!isTauri) {
+          customFontAssets.clear();
+          renderCustomFontSlots();
+          return;
+        }
+        const { invoke } = await import('@tauri-apps/api/core');
+        const assets = await invoke('list_custom_fonts');
+        customFontAssets.clear();
+        (Array.isArray(assets) ? assets : []).forEach(asset => {
+          const slot = String(asset?.slot || '');
+          if (CUSTOM_FONT_DEFAULTS[slot]) customFontAssets.set(slot, asset);
+        });
+        await applyCustomInterfaceFonts();
+        renderCustomFontSlots();
+      }
+
+      async function chooseCustomFont(slot) {
+        if (!CUSTOM_FONT_DEFAULTS[slot] || customFontBusySlot) return;
+        if (!isTauri) {
+          window.showToast?.(t('settings.fontDesktopOnly'));
+          return;
+        }
+        customFontBusySlot = slot;
+        renderCustomFontSlots();
+        try {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const selected = await open({
+            multiple: false,
+            directory: false,
+            title: t('settings.fontUpload'),
+            filters: [{ name: 'Font', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]
+          });
+          if (!selected || Array.isArray(selected)) return;
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('import_custom_font', { slot, sourcePath: selected });
+          await refreshCustomFonts();
+          window.showToast?.(t('settings.fontUploadSuccess'));
+        } catch (error) {
+          console.error('Unable to apply custom font:', error);
+          window.showToast?.(t('settings.fontUploadFailed'));
+        } finally {
+          customFontBusySlot = '';
+          renderCustomFontSlots();
+        }
+      }
+
+      async function restoreDefaultFont(slot) {
+        if (!customFontAssets.has(slot) || customFontBusySlot) return;
+        customFontBusySlot = slot;
+        renderCustomFontSlots();
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('reset_custom_font', { slot });
+          await refreshCustomFonts();
+          window.showToast?.(t('settings.fontRestoreSuccess'));
+        } catch (error) {
+          console.error('Unable to restore default font:', error);
+          window.showToast?.(t('settings.fontUploadFailed'));
+        } finally {
+          customFontBusySlot = '';
+          renderCustomFontSlots();
+        }
+      }
+
+      customFontSlots.forEach(slotElement => {
+        const slot = slotElement.dataset.fontSlot;
+        slotElement.querySelector('[data-font-upload]')?.addEventListener('click', () => void chooseCustomFont(slot));
+        slotElement.querySelector('[data-font-reset]')?.addEventListener('click', () => void restoreDefaultFont(slot));
+      });
+      void refreshCustomFonts().catch(error => {
+        console.error('Unable to initialize custom fonts:', error);
+        setInterfaceFontFamilies(false);
+        renderCustomFontSlots();
+      });
+      onLangChange(renderCustomFontSlots);
+
       // ===== Version update check =====
       const versionUpdateStatus = document.getElementById('versionUpdateStatus');
       const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
       const openReleasePageBtn = document.getElementById('openReleasePageBtn');
-      const APP_VERSION_FALLBACK = '2.0.0';
+      const APP_VERSION_FALLBACK = '2.1.0';
       const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/ZihangDong/toolknit-desktop/releases/latest';
       const GITHUB_RELEASES_PAGE = 'https://github.com/ZihangDong/toolknit-desktop/releases/latest';
       let versionCheckRunning = false;
@@ -3255,6 +4143,7 @@
           if (settingsContent) settingsContent.scrollTop = 0;
           settingsOverlay.style.zIndex = '50000';
           settingsOverlay.classList.add('visible');
+          syncCustomBackgroundPreviewPlayback?.();
         }));
       }
       if (helpBtn) {
@@ -3267,6 +4156,7 @@
         settingsBack.addEventListener('click', () => {
           settingsOverlay.classList.remove('visible');
           settingsOverlay.style.zIndex = '';
+          syncCustomBackgroundPreviewPlayback?.();
         });
       }
 
@@ -11321,12 +12211,30 @@
       const imageConvertSuccessOverlay = document.getElementById('imageConvertSuccessOverlay');
       const imageConvertSuccessPath = document.getElementById('imageConvertSuccessPath');
       const imageConvertSuccessMeta = document.getElementById('imageConvertSuccessMeta');
+      const imageConvertFailureSummary = document.getElementById('imageConvertFailureSummary');
       const imageConvertSuccessFormat = document.getElementById('imageConvertSuccessFormat');
       const imageConvertSuccessCount = document.getElementById('imageConvertSuccessCount');
       const imageConvertOpenFolder = document.getElementById('imageConvertOpenFolder');
       const imageConvertSuccessOk = document.getElementById('imageConvertSuccessOk');
       const imageConvertFormatOptions = document.getElementById('imageConvertFormatOptions');
       const imageExts = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'];
+
+      function renderImageBatchFailureSummary(element, result, translationRoot) {
+        if (!element) return;
+        const { failCount, visibleErrors, remainingCount } = getImageBatchFailureSummary(result);
+        if (failCount === 0) {
+          element.hidden = true;
+          element.textContent = '';
+          return;
+        }
+        const lines = [t(`${translationRoot}.failureDetails`, { count: failCount })];
+        lines.push(...visibleErrors.map(error => `- ${error}`));
+        if (remainingCount > 0) {
+          lines.push(t(`${translationRoot}.failureMore`, { count: remainingCount }));
+        }
+        element.textContent = lines.join('\n');
+        element.hidden = false;
+      }
 
       function addImageFiles(fileList) {
         if (!fileList || fileList.length === 0) return;
@@ -11456,6 +12364,7 @@
         if (imageConvertSuccessFormat) imageConvertSuccessFormat.textContent = targetImageFormat;
         if (imageConvertSuccessCount) imageConvertSuccessCount.textContent = `${successCount} ${t('home.imageConvert.successCountUnit')}`;
         if (imageConvertSuccessPath) imageConvertSuccessPath.textContent = displayFilesystemPath(outputPath);
+        renderImageBatchFailureSummary(imageConvertFailureSummary, result, 'home.imageConvert');
         lastImageOutputPath = outputPath;
         if (imageConvertSuccessOverlay) imageConvertSuccessOverlay.classList.add('visible');
       }
@@ -11643,6 +12552,7 @@
       const imageCompressSuccessOverlay = document.getElementById('imageCompressSuccessOverlay');
       const imageCompressSuccessPath = document.getElementById('imageCompressSuccessPath');
       const imageCompressSuccessMeta = document.getElementById('imageCompressSuccessMeta');
+      const imageCompressFailureSummary = document.getElementById('imageCompressFailureSummary');
       const imageCompressSuccessFormat = document.getElementById('imageCompressSuccessFormat');
       const imageCompressSuccessCount = document.getElementById('imageCompressSuccessCount');
       const imageCompressOpenFolder = document.getElementById('imageCompressOpenFolder');
@@ -11806,6 +12716,7 @@
         if (compEl) compEl.textContent = formatBytes(compSize);
         if (savedEl) savedEl.textContent = `${formatBytes(savedBytes)} (${savedPercent}%)`;
 
+        renderImageBatchFailureSummary(imageCompressFailureSummary, result, 'home.imageCompress');
         lastImageCompressOutputPath = outputPath;
         if (imageCompressSuccessOverlay) imageCompressSuccessOverlay.classList.add('visible');
       }
@@ -16439,7 +17350,7 @@
               '',
               isChinese ? '## 提交信息' : '## Reporter details',
               '',
-              `- ${isChinese ? 'ToolKnit 版本' : 'ToolKnit version'}: 2.0.0`,
+              `- ${isChinese ? 'ToolKnit 版本' : 'ToolKnit version'}: 2.1.0`,
               payload.name ? `- ${isChinese ? '称呼' : 'Name'}: ${payload.name}` : '',
               payload.github ? `- GitHub: ${payload.github}` : '',
               '',
@@ -16603,6 +17514,7 @@
       const apiKeyCustomWrap = document.getElementById('apiKeyCustomWrap');
       const apiKeyCustomUrl = document.getElementById('apiKeyCustomUrl');
       const apiKeyCustomModel = document.getElementById('apiKeyCustomModel');
+      const apiKeyPrivateHttpSwitch = document.getElementById('apiKeyPrivateHttpSwitch');
 
       // AI platform configurations
       const AI_PLATFORMS = {
@@ -16620,9 +17532,10 @@
           return {
             url: localStorage.getItem('ai_custom_url') || '',
             model: localStorage.getItem('ai_custom_model') || '',
+            allowPrivateHttp: localStorage.getItem('ai_custom_allow_private_http') === 'true',
           };
         }
-        return { url: base.url, model: base.model };
+        return { url: base.url, model: base.model, allowPrivateHttp: false };
       }
 
       function hasAiApiKey() {
@@ -16643,6 +17556,18 @@
         } else {
           if (apiKeyCustomWrap) apiKeyCustomWrap.style.display = 'none';
         }
+      }
+
+      function setPrivateHttpPermission(enabled) {
+        if (!apiKeyPrivateHttpSwitch) return;
+        apiKeyPrivateHttpSwitch.classList.toggle('active', enabled);
+        apiKeyPrivateHttpSwitch.setAttribute('aria-checked', enabled ? 'true' : 'false');
+      }
+
+      if (apiKeyPrivateHttpSwitch) {
+        apiKeyPrivateHttpSwitch.addEventListener('click', () => {
+          setPrivateHttpPermission(apiKeyPrivateHttpSwitch.getAttribute('aria-checked') !== 'true');
+        });
       }
 
       if (apiKeyDropdownTrigger && apiKeyDropdown) {
@@ -16674,6 +17599,7 @@
           apiKeyInput.value = savedKey;
           if (apiKeyCustomUrl) apiKeyCustomUrl.value = localStorage.getItem('ai_custom_url') || '';
           if (apiKeyCustomModel) apiKeyCustomModel.value = localStorage.getItem('ai_custom_model') || '';
+          setPrivateHttpPermission(localStorage.getItem('ai_custom_allow_private_http') === 'true');
           apiKeyStatus.classList.remove('show', 'success', 'error');
           apiKeyOverlay.classList.add('visible');
         });
@@ -16708,11 +17634,20 @@
               return;
             }
             try {
-              const normalizedConfig = normalizeAiProviderConfig({ url: customUrl, model: customModel });
+              const normalizedConfig = normalizeAiProviderConfig({
+                url: customUrl,
+                model: customModel,
+                allowPrivateHttp: apiKeyPrivateHttpSwitch?.getAttribute('aria-checked') === 'true'
+              });
               customUrl = normalizedConfig.url;
               customModel = normalizedConfig.model;
-            } catch {
-              apiKeyStatus.textContent = t('apiKey.errCustom');
+            } catch (error) {
+              const errorKey = error instanceof AiProviderError && error.code === 'private_http_requires_opt_in'
+                ? 'apiKey.errPrivateHttp'
+                : error instanceof AiProviderError && error.code === 'insecure_http_not_allowed'
+                  ? 'apiKey.errInsecureHttp'
+                  : 'apiKey.errInvalidUrl';
+              apiKeyStatus.textContent = t(errorKey);
               apiKeyStatus.className = 'api-key-status show error';
               return;
             }
@@ -16722,6 +17657,7 @@
           if (platform === 'custom') {
             localStorage.setItem('ai_custom_url', customUrl);
             localStorage.setItem('ai_custom_model', customModel);
+            localStorage.setItem('ai_custom_allow_private_http', apiKeyPrivateHttpSwitch?.getAttribute('aria-checked') === 'true' ? 'true' : 'false');
           }
           apiKeyStatus.textContent = t('apiKey.saved');
           apiKeyStatus.className = 'api-key-status show success';
@@ -16736,6 +17672,8 @@
           localStorage.removeItem('ai_platform');
           localStorage.removeItem('ai_custom_url');
           localStorage.removeItem('ai_custom_model');
+          localStorage.removeItem('ai_custom_allow_private_http');
+          setPrivateHttpPermission(false);
           // Also clear legacy key
           localStorage.removeItem('deepseek_api_key');
           apiKeyStatus.textContent = t('apiKey.cleared');
@@ -17047,8 +17985,6 @@
           if (!cached || typeof cached !== 'object' || !cached.data) return null;
           return {
             stars: normalizeGithubStarCount(cached.data.stars) ?? DEFAULT_GITHUB_STAR_COUNT,
-            forks: normalizeGithubStarCount(cached.data.forks) ?? null,
-            issues: normalizeGithubStarCount(cached.data.issues) ?? null,
             donationTotal: Number.isFinite(Number(cached.data.donationTotal))
               ? Math.max(0, Number(cached.data.donationTotal))
               : DEFAULT_DONATION_TOTAL
@@ -17070,21 +18006,15 @@
         const status = document.getElementById('githubActivityStatus');
         const starCount = document.getElementById('githubStarCount');
         const stars = document.getElementById('githubStars');
-        const forks = document.getElementById('githubForks');
-        const issues = document.getElementById('githubIssues');
         const donationGithubStars = document.getElementById('donationGithubStars');
         const starStat = document.getElementById('githubStars')?.closest('.github-stat');
         const donationTotal = document.getElementById('githubDonationTotal');
         const chartLine = document.getElementById('githubActivityLine');
 
         const starsValue = data?.stars === null || data?.stars === undefined ? '--' : String(data.stars);
-        const forksValue = data?.forks === null || data?.forks === undefined ? '--' : String(data.forks);
-        const issuesValue = data?.issues === null || data?.issues === undefined ? '--' : String(data.issues);
 
         if (starCount) starCount.textContent = starsValue;
         if (stars) stars.textContent = starsValue;
-        if (forks) forks.textContent = forksValue;
-        if (issues) issues.textContent = issuesValue;
         if (donationGithubStars) donationGithubStars.textContent = starsValue === '--' ? '400+' : `${starsValue}+`;
         starStat?.classList.toggle('is-synced', Boolean(repoSynced && Number.isFinite(Number(data?.stars))));
         if (donationTotal) donationTotal.textContent = formatDonationTotal(Number(data?.donationTotal));
@@ -17123,8 +18053,6 @@
         const cached = getCachedGithubStats();
         renderGithubActivity(cached || {
           stars: DEFAULT_GITHUB_STAR_COUNT,
-          forks: null,
-          issues: null,
           donationTotal: DEFAULT_DONATION_TOTAL
         });
 
@@ -17140,12 +18068,6 @@
           stars: repoSynced
             ? normalizeGithubStarCount(repoResult.value?.stargazers_count)
             : cached?.stars ?? DEFAULT_GITHUB_STAR_COUNT,
-          forks: repoSynced
-            ? normalizeGithubStarCount(repoResult.value?.forks_count)
-            : cached?.forks ?? null,
-          issues: repoSynced
-            ? normalizeGithubStarCount(repoResult.value?.open_issues_count)
-            : cached?.issues ?? null,
           donationTotal: donationsAvailable
             ? donationResult.value.total
             : cached?.donationTotal ?? DEFAULT_DONATION_TOTAL
@@ -18752,11 +19674,28 @@
 
       function formatPdfEncryptError(error) {
         const message = String(error?.message || error);
+        const code = message.match(/pdf-encrypt:([a-z-]+)/i)?.[1]?.toLowerCase();
+        const messages = {
+          'password-too-short': 'home.pdfEncrypt.passwordTooShort',
+          'password-too-long': 'home.pdfEncrypt.passwordTooLong',
+          'password-unsupported': 'home.pdfEncrypt.passwordUnsupported',
+          'legacy-password-too-long': 'home.pdfEncrypt.browserPasswordTooLong',
+          'legacy-password-unsupported': 'home.pdfEncrypt.browserPasswordUnsupported',
+          'input-too-large': 'home.pdfEncrypt.fileTooLarge',
+          'too-many-pages': 'home.pdfEncrypt.tooManyPages',
+          'password-protected': 'home.pdfEncrypt.passwordProtected',
+          'invalid-pdf': 'home.pdfEncrypt.invalidPdf',
+          'qpdf-unavailable': 'home.pdfEncrypt.engineUnavailable',
+          'invalid-permissions': 'home.pdfEncrypt.invalidPermissions',
+          'output-path': 'home.pdfEncrypt.outputPathError',
+          'encryption-failed': 'home.pdfEncrypt.encryptFailed'
+        };
+        if (code) return t(messages[code] || 'home.pdfEncrypt.encryptFailed');
         if (/at least 8 characters/.test(message)) return t('home.pdfEncrypt.passwordTooShort');
         if (/encrypted/i.test(message)) return t('home.pdfEncrypt.passwordProtected');
         if (/encryption limit/.test(message) && /MB/.test(message)) return t('home.pdfEncrypt.fileTooLarge');
         if (/encryption limit/.test(message) && /page/.test(message)) return t('home.pdfEncrypt.tooManyPages');
-        return message;
+        return t('home.pdfEncrypt.encryptFailed');
       }
 
       async function preflightPdfEncryptFile() {
@@ -18770,15 +19709,6 @@
       }
 
       async function readPdfEncryptFileData(file) {
-        if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const bytes = await invoke('read_file_bytes', { path: file.path });
-          if (Array.isArray(bytes)) return Uint8Array.from(bytes);
-          if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
-          if (bytes instanceof Uint8Array) return bytes;
-          if (bytes && typeof bytes.length === 'number') return Uint8Array.from(bytes);
-          throw new Error(`Invalid file data for ${file.name}`);
-        }
         return new Uint8Array(await file.arrayBuffer());
       }
 
@@ -18787,15 +19717,6 @@
       }
 
       async function savePdfEncryptBytes(bytes, fileName) {
-        if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
-          return invoke('write_unique_file_bytes', {
-            directory: await getPdfEncryptOutputDir(),
-            fileName,
-            bytes: Array.from(bytes)
-          });
-        }
-
         const blob = new Blob([bytes], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
@@ -18979,8 +19900,8 @@
       // Password dialog confirm — start encryption
       async function handleEncryptConfirm() {
         if (pdfEncryptProcessing) return;
-        const password = pdfEncryptPasswordInput ? pdfEncryptPasswordInput.value : '';
-        const confirmPwd = pdfEncryptConfirmInput ? pdfEncryptConfirmInput.value : '';
+        let password = pdfEncryptPasswordInput ? pdfEncryptPasswordInput.value : '';
+        let confirmPwd = pdfEncryptConfirmInput ? pdfEncryptConfirmInput.value : '';
 
         if (!password) {
           alert(t('home.pdfEncrypt.passwordEmpty'));
@@ -18992,8 +19913,12 @@
         }
 
         try {
-          const { assertPdfEncryptPassword } = await import('./pdf-encrypt-core.js');
-          assertPdfEncryptPassword(password);
+          const { assertPdfEncryptLegacyPassword, assertPdfEncryptPassword } = await import('./pdf-encrypt-core.js');
+          if (isTauri) {
+            assertPdfEncryptPassword(password);
+          } else {
+            assertPdfEncryptLegacyPassword(password);
+          }
         } catch (error) {
           alert(formatPdfEncryptError(error));
           return;
@@ -19009,8 +19934,6 @@
         try {
           await preflightPdfEncryptFile();
           const file = selectedPdfEncryptFiles[0];
-          const fileData = await readPdfEncryptFileData(file);
-          if (!fileData.length) throw new Error(`File ${file.name} is empty`);
 
           const permPrinting = pdfEncryptPermPrinting && pdfEncryptPermPrinting.checked;
           const permHighQuality = pdfEncryptPermHighQualityPrint && pdfEncryptPermHighQualityPrint.checked;
@@ -19023,23 +19946,40 @@
             contentAccessibility: !!(pdfEncryptPermAccessibility && pdfEncryptPermAccessibility.checked),
             documentAssembly: !!(pdfEncryptPermAssembly && pdfEncryptPermAssembly.checked),
           };
-          const { createPdfEncryptFileName, encryptPdf } = await import('./pdf-encrypt-core.js');
-          const encryptedBytes = await encryptPdf({
-            fileData,
-            password,
-            permissions,
-            onProgress: ({ percent }) => setPdfEncryptProgress(percent, t('home.pdfEncrypt.encrypting'))
-          });
+          let savedPath;
+          if (isTauri) {
+            if (!file.path) throw new Error('pdf-encrypt:invalid-pdf');
+            const { invoke } = await import('@tauri-apps/api/core');
+            setPdfEncryptProgress(35, t('home.pdfEncrypt.encrypting'));
+            savedPath = await invoke('encrypt_pdf', {
+              inputPath: file.path,
+              password,
+              permissions,
+              outputDir: await getPdfEncryptOutputDir()
+            });
+          } else {
+            const fileData = await readPdfEncryptFileData(file);
+            if (!fileData.length) throw new Error('pdf-encrypt:invalid-pdf');
+            const { createPdfEncryptFileName, encryptPdf } = await import('./pdf-encrypt-core.js');
+            const encryptedBytes = await encryptPdf({
+              fileData,
+              password,
+              permissions,
+              onProgress: ({ percent }) => setPdfEncryptProgress(percent, t('home.pdfEncrypt.encrypting'))
+            });
+            savedPath = await savePdfEncryptBytes(
+              encryptedBytes,
+              createPdfEncryptFileName(file.name)
+            );
+          }
           setPdfEncryptProgress(95, t('home.pdfEncrypt.encrypting'));
-          const savedPath = await savePdfEncryptBytes(
-            encryptedBytes,
-            createPdfEncryptFileName(file.name)
-          );
           showPdfEncryptSuccess(savedPath, 1);
         } catch (e) {
           console.error('[PDF Encrypt] Error:', e);
           alert(t('common.errorOccurred', { error: formatPdfEncryptError(e) }));
         } finally {
+          password = '';
+          confirmPwd = '';
           if (pdfEncryptProcessMask) pdfEncryptProcessMask.classList.remove('visible');
           setPdfEncryptProgress(0);
           pdfEncryptProcessing = false;
@@ -19643,6 +20583,7 @@
           'invalid-strength': 'errorInvalidStrength',
           'invalid-pdf': 'errorInvalidPdf',
           'password-protected': 'errorPasswordProtected',
+          'output-path': 'errorOutputPath',
           'enhancement-failed': 'errorFailed'
         }[code] || 'errorFailed';
         return t(`home.pdfEnhance.${messageKey}`);
@@ -19829,7 +20770,7 @@
       function sharpen5x5(data, w, h, amount) {
         const original = new Uint8ClampedArray(data);
         const rowStride = w * 4;
-        const center = 1 + 8 * amount;
+        const center = 1 + 6 * amount;
         const side = -amount;
         for (let y = 2; y < h - 2; y++) {
           const rowOff = y * rowStride;
@@ -19908,6 +20849,7 @@
           if (pdfEnhanceProcessText) pdfEnhanceProcessText.textContent = t('home.pdfEnhance.loading');
 
           let pdfDoc = null;
+          let pdfEnhanceWriteSessionId = null;
           try {
             const enhanceCore = await import('./pdf-enhance-core.js');
             let file = selectedPdfEnhanceFiles[0];
@@ -19947,46 +20889,29 @@
             const totalPages = pdfDoc.numPages;
 
             const BASE_RENDER_SCALE = 2.5;
-            const pagePlan = [];
-            let totalPageArea = 0;
-            let maxDimensionScale = Number.POSITIVE_INFINITY;
+            const pageSizes = [];
 
             for (let pi = 1; pi <= totalPages; pi++) {
               const page = await pdfDoc.getPage(pi);
               const outputViewport = page.getViewport({ scale: 1 });
               const outputWidth = outputViewport.width;
               const outputHeight = outputViewport.height;
-              totalPageArea += outputWidth * outputHeight;
-              if (outputWidth > 0 && outputHeight > 0) {
-                maxDimensionScale = Math.min(maxDimensionScale, enhanceCore.PDF_ENHANCE_LIMITS.maxRenderDimension / Math.max(outputWidth, outputHeight));
-              }
-              pagePlan.push({
+              pageSizes.push({
                 outputWidth,
                 outputHeight
               });
               try { page.cleanup(); } catch (_) {}
             }
 
-            let renderScale = BASE_RENDER_SCALE;
-            if (totalPageArea > 0) {
-              const softBudgetScale = Math.sqrt(enhanceCore.PDF_ENHANCE_LIMITS.maxTotalRenderPixels / totalPageArea);
-              renderScale = Math.min(renderScale, softBudgetScale);
-            }
-            renderScale = Math.min(renderScale, maxDimensionScale);
-            if (!Number.isFinite(renderScale) || renderScale <= 0) {
-              renderScale = BASE_RENDER_SCALE;
-            }
+            const pagePlan = enhanceCore.createPdfEnhanceRenderPlan(pageSizes, {
+              baseRenderScale: BASE_RENDER_SCALE
+            });
+            const renderScale = pagePlan[0].renderScale;
             if (renderScale < BASE_RENDER_SCALE) {
               window.showToast?.(getLang() === 'zh'
                 ? '检测到大文档，已自动降低渲染倍率并继续处理。'
                 : 'Large document detected; rendering scale was lowered automatically and processing continues.');
             }
-
-            pagePlan.forEach(plan => {
-              plan.renderScale = renderScale;
-              plan.renderWidth = plan.outputWidth * renderScale;
-              plan.renderHeight = plan.outputHeight * renderScale;
-            });
 
             enhanceCore.assertPdfEnhancePagePlan(pagePlan);
 
@@ -20031,24 +20956,25 @@
               throw new Error('pdf-enhance:output-too-large');
             }
             if (pdfEnhanceProcessBarFill) pdfEnhanceProcessBarFill.style.width = '100%';
+            const outputFileName = enhanceCore.createPdfEnhanceFileName(file.name);
 
             if (isTauri) {
               const { invoke } = await import('@tauri-apps/api/core');
               const outputDir = await getOutputDir('Enhance');
-              const baseName = file.name.replace(/\.pdf$/i, '');
-              let fileName = `${baseName}_enhanced.pdf`;
-              let fullPath = outputDir + '\\' + fileName;
-              let counter = 1;
-              while (await invoke('exists_path', { path: fullPath }).catch(() => false)) {
-                fileName = `${baseName}_enhanced_${counter}.pdf`;
-                fullPath = outputDir + '\\' + fileName;
-                counter++;
-              }
-              await invoke('write_file_chunk', { path: fullPath, offset: 0, bytes: Array.from(enhancedBytes.subarray(0, 5_000_000)) });
-              for (let offset = 5_000_000; offset < enhancedBytes.length; offset += 5_000_000) {
+              pdfEnhanceWriteSessionId = await invoke('begin_pdf_enhance_write', {
+                directory: outputDir,
+                fileName: outputFileName,
+                expectedPages: totalPages
+              });
+              for (let offset = 0; offset < enhancedBytes.length; offset += 5_000_000) {
                 const end = Math.min(offset + 5_000_000, enhancedBytes.length);
-                await invoke('write_file_chunk', { path: fullPath, offset, bytes: Array.from(enhancedBytes.subarray(offset, end)) });
+                await invoke('append_pdf_enhance_chunk', {
+                  sessionId: pdfEnhanceWriteSessionId,
+                  bytes: Array.from(enhancedBytes.subarray(offset, end))
+                });
               }
+              const fullPath = await invoke('finalize_pdf_enhance_write', { sessionId: pdfEnhanceWriteSessionId });
+              pdfEnhanceWriteSessionId = null;
               if (pdfEnhanceProcessMask) pdfEnhanceProcessMask.classList.remove('visible');
               if (pdfEnhanceProcessBarFill) pdfEnhanceProcessBarFill.style.width = '0%';
               pdfEnhanceProcessing = false;
@@ -20058,13 +20984,13 @@
               const url = URL.createObjectURL(blob);
               const anchor = document.createElement('a');
               anchor.href = url;
-              anchor.download = `${file.name.replace(/\.pdf$/i, '')}_enhanced.pdf`;
+              anchor.download = outputFileName;
               anchor.click();
               setTimeout(() => URL.revokeObjectURL(url), 1_000);
               if (pdfEnhanceProcessMask) pdfEnhanceProcessMask.classList.remove('visible');
               if (pdfEnhanceProcessBarFill) pdfEnhanceProcessBarFill.style.width = '0%';
               pdfEnhanceProcessing = false;
-              showPdfEnhanceSuccess(`~/Downloads/${file.name.replace(/\.pdf$/i, '')}_enhanced.pdf`, totalPages);
+              showPdfEnhanceSuccess(`~/Downloads/${outputFileName}`, totalPages);
             }
           } catch (e) {
             console.error('[PDF Enhance] Error:', e);
@@ -20073,6 +20999,12 @@
             pdfEnhanceProcessing = false;
             alert(t('common.errorOccurred', { error: await getPdfEnhanceErrorMessage(e) }));
           } finally {
+            if (pdfEnhanceWriteSessionId !== null && isTauri) {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('discard_pdf_enhance_write', { sessionId: pdfEnhanceWriteSessionId });
+              } catch (_) {}
+            }
             if (pdfDoc) {
               try { await pdfDoc.destroy(); } catch (_) {}
             }
@@ -20339,7 +21271,7 @@
         if (!apiKey) {
           throw new Error(t('home.aiPolish.noApiKey'));
         }
-        const { url: apiUrl, model } = getAiPlatformConfig();
+        const { url: apiUrl, model, allowPrivateHttp } = getAiPlatformConfig();
         if (!apiUrl || !model) {
           throw new Error(t('home.aiPolish.noApiKey'));
         }
@@ -20350,7 +21282,12 @@
             model,
             messages,
             maxTokens,
-            signal
+            signal,
+            allowPrivateHttp,
+            nativeRequestImpl: async request => {
+              const { invoke } = await import('@tauri-apps/api/core');
+              return invoke('request_private_ai_completion', { request });
+            }
           });
         } catch (error) {
           if (error instanceof AiProviderError) {
@@ -22996,8 +23933,8 @@
         if (aiDocFontRegularBytes && aiDocFontBoldBytes) return;
         try {
           const [regularResponse, semiboldResponse] = await Promise.all([
-            fetch('/assets/fonts/MiSans-Regular.ttf'),
-            fetch('/assets/fonts/MiSans-Semibold.ttf')
+            fetch('/assets/fonts/NotoSansSC-Regular.ttf'),
+            fetch('/assets/fonts/NotoSansSC-Semibold.ttf')
           ]);
           if (!regularResponse.ok || !semiboldResponse.ok) throw new Error('font fetch failed');
           const [regularBytes, semiboldBytes] = await Promise.all([
@@ -23963,7 +24900,21 @@
       }
 
       // ===== Chart Rendering (Chart.js, refined monochrome theme) =====
-      const AI_TABLE_FONT = "'DouyinSansBold', 'Microsoft YaHei', sans-serif";
+      function getAiTableFontFamily() {
+        const rootStyle = getComputedStyle(document.documentElement);
+        const latin = rootStyle.getPropertyValue('--tk-font-ui-en').trim() || "'ToolKnitBuiltinEn'";
+        const chinese = rootStyle.getPropertyValue('--tk-font-ui-cn').trim() || "'ToolKnitBuiltinCn'";
+        return `${latin}, ${chinese}, sans-serif`;
+      }
+
+      function getAiTableFontWeight() {
+        return 400;
+      }
+
+      window.addEventListener('toolknit-interface-font-change', () => {
+        if (aiTableData?.ready) renderAiTablePreview(aiTableData);
+      });
+
       // Per-series gradient stops [top, bottom] for depth; doughnut slice palette
       const AI_TABLE_SERIES = [
         { dark: '#1f1f1f', light: '#5f5f5f' },
@@ -24010,7 +24961,7 @@
           const type = chart.config.type;
           if (type !== 'bar' && type !== 'line') return;
           const ctx = chart.ctx; ctx.save();
-          ctx.font = "600 11px " + AI_TABLE_FONT;
+          ctx.font = "600 11px " + getAiTableFontFamily();
           ctx.fillStyle = '#4d4d4d';
           ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
           chart.data.datasets.forEach((ds, di) => {
@@ -24043,15 +24994,15 @@
             const r = (arc.innerRadius + arc.outerRadius) / 2;
             const x = arc.x + Math.cos(ang) * r;
             const y = arc.y + Math.sin(ang) * r;
-            ctx.font = "700 11px " + AI_TABLE_FONT;
+            ctx.font = "700 11px " + getAiTableFontFamily();
             ctx.fillStyle = (i % AI_TABLE_SLICES.length) < 4 ? '#ffffff' : '#1f1f1f';
             ctx.fillText(Math.round(pct * 100) + '%', x, y);
           });
           const arc0 = meta.data[0];
           if (arc0) {
-            ctx.fillStyle = '#9a9a9a'; ctx.font = "600 11px " + AI_TABLE_FONT;
+            ctx.fillStyle = '#9a9a9a'; ctx.font = "600 11px " + getAiTableFontFamily();
             ctx.fillText(t('home.aiTable.total'), arc0.x, arc0.y - 11);
-            ctx.fillStyle = '#1f1f1f'; ctx.font = "700 18px " + AI_TABLE_FONT;
+            ctx.fillStyle = '#1f1f1f'; ctx.font = "700 18px " + getAiTableFontFamily();
             ctx.fillText(aiTableFmtNum(total), arc0.x, arc0.y + 9);
           }
           ctx.restore();
@@ -24072,8 +25023,10 @@
         const valCols = (chartDef.valueColumns && chartDef.valueColumns.length) ? chartDef.valueColumns : [1];
         const labels = data.rows.map(r => String(r[labelCol] !== undefined ? r[labelCol] : ''));
 
-        const tickFont = { family: AI_TABLE_FONT, size: 11 };
-        const legendFont = { family: AI_TABLE_FONT, size: 12 };
+        const tableFontFamily = getAiTableFontFamily();
+        const tableFontWeight = getAiTableFontWeight();
+        const tickFont = { family: tableFontFamily, size: 11, weight: tableFontWeight };
+        const legendFont = { family: tableFontFamily, size: 12, weight: tableFontWeight };
 
         let config;
         if (chartDef.type === 'pie') {
@@ -29490,7 +30443,7 @@
           if (pdfCompressProcessText) pdfCompressProcessText.textContent = t('home.pdfCompress.processing');
 
           try {
-            const { assertPdfCompressSelection } = await import('./pdf-compress-core.js');
+            const { assertPdfCompressSelection, summarizePdfCompressResults } = await import('./pdf-compress-core.js');
             const { invoke } = await import('@tauri-apps/api/core');
             assertPdfCompressSelection(selectedPdfCompressFiles);
             if (!isTauri) throw new Error('pdf-compress:desktop-only');
@@ -29525,16 +30478,31 @@
             if (pdfCompressProcessBarFill) pdfCompressProcessBarFill.style.width = '0%';
             pdfCompressProcessing = false;
 
-            if (pdfCompressResults.length > 0) {
-              const successType = selectedPdfCompressFiles.length > 1 ? 'all' : 'single';
-              showPdfCompressSuccess(pdfCompressOutputDir || pdfCompressResults.find(result => result.outputPath)?.outputPath || '', successType);
+            const summary = summarizePdfCompressResults(pdfCompressResults);
+            if (summary.processedCount > 0) {
+              renderCompressResults();
+              if (pdfCompressDrawer) pdfCompressDrawer.classList.add('visible');
             }
-            if (pdfCompressResults.length > 0 && errors.length > 0) {
+            if (summary.savedCount > 0) {
+              const successType = summary.savedCount > 1 ? 'all' : 'single';
+              showPdfCompressSuccess(
+                summary.savedResults[0].outputPath,
+                successType,
+                summary.savedResults,
+                summary.noOutputCount
+              );
+            } else if (summary.noOutputCount > 0) {
+              const noOutputMessage = t('home.pdfCompress.noSmallerAll', { count: summary.noOutputCount });
+              alert(errors.length > 0
+                ? `${noOutputMessage}\n\n${t('home.pdfCompress.partialFail')}:\n${errors.join('\n')}`
+                : noOutputMessage);
+            }
+            if (summary.savedCount > 0 && errors.length > 0) {
               alert(`${t('home.pdfCompress.partialFail')}:\n${errors.join('\n')}`);
             }
-            if (pdfCompressResults.length === 0 && errors.length === 0) {
+            if (summary.processedCount === 0 && errors.length === 0) {
               alert(t('home.pdfCompress.errorFailed'));
-            } else if (pdfCompressResults.length === 0 && errors.length > 0) {
+            } else if (summary.processedCount === 0 && errors.length > 0) {
               alert(`${t('home.pdfCompress.compressFailed')}:\n${errors.join('\n')}`);
             }
           } catch (e) {
@@ -29633,18 +30601,22 @@
 
       let lastPdfCompressSavedPath = '';
 
-      function showPdfCompressSuccess(savePath, type) {
+      function showPdfCompressSuccess(savePath, type, savedResults, noOutputCount = 0) {
         lastPdfCompressSavedPath = savePath;
-        const count = pdfCompressResults.length;
-        const totalOriginalSize = pdfCompressResults.reduce((sum, result) => sum + (Number(result.originalSize) || 0), 0);
-        const totalCompressedSize = pdfCompressResults.reduce((sum, result) => sum + (Number(result.compressedSize) || 0), 0);
-        const firstName = pdfCompressResults[0]?.name || '';
+        const outputs = Array.isArray(savedResults) ? savedResults.filter(result => result?.outputPath) : [];
+        const count = outputs.length;
+        if (count === 0) return;
+        const totalOriginalSize = outputs.reduce((sum, result) => sum + (Number(result.originalSize) || 0), 0);
+        const totalCompressedSize = outputs.reduce((sum, result) => sum + (Number(result.compressedSize) || 0), 0);
+        const firstName = outputs[0]?.name || '';
         if (pdfCompressSuccessCount) pdfCompressSuccessCount.textContent = String(count);
         if (pdfCompressSuccessFileName) pdfCompressSuccessFileName.textContent = count === 1 ? firstName : (firstName ? `${firstName} 等 ${count} 个文件` : `${count} 个文件`);
         if (pdfCompressSuccessOriginalSize) pdfCompressSuccessOriginalSize.textContent = formatFileSize(totalOriginalSize);
         if (pdfCompressSuccessCompressedSize) pdfCompressSuccessCompressedSize.textContent = formatFileSize(totalCompressedSize);
         if (pdfCompressSuccessPath) pdfCompressSuccessPath.textContent = displayFilesystemPath(savePath);
-        if (type === 'all') {
+        if (noOutputCount > 0) {
+          if (pdfCompressSuccessMeta) pdfCompressSuccessMeta.textContent = t('home.pdfCompress.successWithNoOutputMeta', { saved: count, skipped: noOutputCount });
+        } else if (type === 'all') {
           if (pdfCompressSuccessMeta) pdfCompressSuccessMeta.textContent = t('home.pdfCompress.successAllMeta', { count });
         } else {
           if (pdfCompressSuccessMeta) pdfCompressSuccessMeta.textContent = t('home.pdfCompress.successSingleMeta');

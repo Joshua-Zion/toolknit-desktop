@@ -9,7 +9,8 @@ import {
   PDF_COMPRESS_LIMITS,
   assertPdfCompressLevel,
   assertPdfCompressSelection,
-  getPdfCompressErrorCode
+  getPdfCompressErrorCode,
+  summarizePdfCompressResults
 } from '../src/pdf-compress-core.js';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -56,5 +57,15 @@ assert.throws(() => assertPdfCompressSelection(Array.from({ length: PDF_COMPRESS
 assert.throws(() => assertPdfCompressLevel('invalid'));
 assert.doesNotThrow(() => assertPdfCompressLevel('high'));
 assert.equal(getPdfCompressErrorCode('pdf-compress:input-too-large'), 'input-too-large');
+const resultSummary = summarizePdfCompressResults([
+  { name: 'saved.pdf', outputPath: 'C:\\output\\saved.pdf', originalSize: 100, compressedSize: 60 },
+  { name: 'unchanged.pdf', outputPath: '', originalSize: 100, compressedSize: 105 }
+]);
+assert.equal(resultSummary.processedCount, 2);
+assert.equal(resultSummary.savedCount, 1);
+assert.equal(resultSummary.noOutputCount, 1);
+assert.deepEqual(resultSummary.savedResults.map(result => result.name), ['saved.pdf']);
+assert.deepEqual(resultSummary.noOutputResults.map(result => result.name), ['unchanged.pdf']);
+assert.equal(summarizePdfCompressResults([{ outputPath: null }]).savedCount, 0);
 
 console.log('PDF compress core and qpdf regression checks passed');

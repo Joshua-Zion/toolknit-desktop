@@ -1734,6 +1734,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-range"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
+
+[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4012,6 +4018,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "http-range",
  "jni",
  "libc",
  "log",
@@ -4611,11 +4618,12 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "toolknit-desktop"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
  "flate2",
+ "getrandom 0.2.17",
  "image",
  "log",
  "opener",
@@ -4632,6 +4640,7 @@ dependencies = [
  "tokio",
  "url",
  "windows 0.54.0",
+ "zeroize",
 ]
 
 [[package]]

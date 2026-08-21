@@ -28,6 +28,23 @@ assert.deepEqual(mergedDocument.getPage(0).getSize(), { width: 420, height: 595 
 assert.equal(mergedDocument.getPage(1).getRotation().angle, 90);
 assert.deepEqual(mergedDocument.getPage(2).getSize(), { width: 612, height: 792 });
 
+const formDocument = await PDFDocument.create();
+const formPage = formDocument.addPage([612, 792]);
+const formField = formDocument.getForm().createTextField('merge.profile');
+formField.setText('ToolKnit');
+formField.addToPage(formPage, { x: 48, y: 680, width: 220, height: 28 });
+const formBytes = await formDocument.save();
+const flattenedMergeBytes = await mergePdfPages({
+  documents: [{ fileData: formBytes }, { fileData: sourceB }],
+  pages: [
+    { fileIndex: 0, pageIndex: 1, rotation: 0 },
+    { fileIndex: 1, pageIndex: 1, rotation: 0 }
+  ]
+});
+const flattenedMerge = await PDFDocument.load(flattenedMergeBytes);
+assert.equal(flattenedMerge.getForm().getFields().length, 0);
+assert.equal(flattenedMerge.getPage(0).node.Annots()?.size() || 0, 0);
+
 assert.throws(() => assertPdfMergeSelection([{ name: 'only.pdf' }], 10));
 assert.throws(() => assertPdfMergeSelection(Array(PDF_MERGE_LIMITS.maxFiles + 1).fill({}), 10));
 assert.throws(() => assertPdfMergeSelection([{}, {}], PDF_MERGE_LIMITS.maxTotalBytes + 1));

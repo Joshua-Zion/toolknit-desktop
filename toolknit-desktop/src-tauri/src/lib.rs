@@ -8,6 +8,10 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 mod system_cleanup;
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
+static CUSTOM_BACKGROUND_IMPORT_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// The selected logical corner radius for the primary native window.
 ///
@@ -21,6 +25,267 @@ struct WindowCornerRadiusState {
 }
 
 const MAX_WINDOW_CORNER_RADIUS: u32 = 32;
+
+const AI_PROVIDER_MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const AI_PROVIDER_MAX_MESSAGES: usize = 12;
+const AI_PROVIDER_MAX_MESSAGE_CHARS: usize = 50_000;
+const AI_PROVIDER_MAX_TOKENS: u32 = 16_384;
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct AiProviderNativeMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AiProviderNativeRequest {
+    url: String,
+    api_key: String,
+    model: String,
+    messages: Vec<AiProviderNativeMessage>,
+    max_tokens: Option<u32>,
+    #[serde(default)]
+    allow_private_http: bool,
+}
+
+#[derive(serde::Serialize)]
+struct AiProviderNativeResponse {
+    content: String,
+}
+
+fn is_private_ipv4_address(value: std::net::Ipv4Addr) -> bool {
+    let [first, second, _, _] = value.octets();
+    first == 10 || (first == 172 && (16..=31).contains(&second)) || (first == 192 && second == 168)
+}
+
+fn is_private_ipv6_address(value: std::net::Ipv6Addr) -> bool {
+    value.octets()[0] & 0xfe == 0xfc
+}
+
+fn validate_ai_provider_http_endpoint(
+    raw_url: &str,
+    allow_private_http: bool,
+) -> Result<url::Url, String> {
+    if raw_url.len() > 2048 {
+        return Err("ai-provider:invalid_config".to_string());
+    }
+    let endpoint =
+        url::Url::parse(raw_url).map_err(|_| "ai-provider:invalid_config".to_string())?;
+    if endpoint.scheme() != "http"
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.fragment().is_some()
+    {
+        return Err("ai-provider:invalid_config".to_string());
+    }
+    let is_loopback = match endpoint.host() {
+        Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    };
+    let is_private = match endpoint.host() {
+        Some(url::Host::Ipv4(address)) => is_private_ipv4_address(address),
+        Some(url::Host::Ipv6(address)) => is_private_ipv6_address(address),
+        _ => false,
+    };
+    if is_loopback || (allow_private_http && is_private) {
+        Ok(endpoint)
+    } else {
+        Err("ai-provider:invalid_config".to_string())
+    }
+}
+
+fn validate_ai_provider_native_request(
+    request: &AiProviderNativeRequest,
+) -> Result<url::Url, String> {
+    let endpoint = validate_ai_provider_http_endpoint(&request.url, request.allow_private_http)?;
+    let api_key = request.api_key.trim();
+    let model = request.model.trim();
+    if api_key.is_empty()
+        || api_key.chars().count() > 8192
+        || api_key.chars().any(char::is_control)
+        || model.is_empty()
+        || model.chars().count() > 256
+        || request.messages.is_empty()
+        || request.messages.len() > AI_PROVIDER_MAX_MESSAGES
+        || request
+            .max_tokens
+            .is_some_and(|value| value == 0 || value > AI_PROVIDER_MAX_TOKENS)
+    {
+        return Err("ai-provider:invalid_request".to_string());
+    }
+    for message in &request.messages {
+        if !matches!(message.role.as_str(), "system" | "user" | "assistant")
+            || message.content.chars().count() > AI_PROVIDER_MAX_MESSAGE_CHARS
+        {
+            return Err("ai-provider:invalid_request".to_string());
+        }
+    }
+    Ok(endpoint)
+}
+
+async fn request_private_ai_completion_impl(
+    request: AiProviderNativeRequest,
+) -> Result<AiProviderNativeResponse, String> {
+    let endpoint = validate_ai_provider_native_request(&request)?;
+    let mut body = serde_json::json!({
+        "model": request.model.trim(),
+        "messages": request.messages,
+        "temperature": 0.7,
+        "stream": false,
+    });
+    if let Some(max_tokens) = request.max_tokens {
+        body["max_tokens"] = serde_json::json!(max_tokens);
+    }
+    let encoded_body =
+        serde_json::to_vec(&body).map_err(|_| "ai-provider:invalid_request".to_string())?;
+    if encoded_body.len() > AI_PROVIDER_MAX_RESPONSE_BYTES {
+        return Err("ai-provider:invalid_request".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("ToolKnit/2.1 local-ai-provider")
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(45))
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .build()
+        .map_err(|_| "ai-provider:network_error".to_string())?;
+    let mut response = client
+        .post(endpoint)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .bearer_auth(request.api_key.trim())
+        .body(encoded_body)
+        .send()
+        .await
+        .map_err(|_| "ai-provider:network_error".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "ai-provider:http_error:{}",
+            response.status().as_u16()
+        ));
+    }
+    if response
+        .content_length()
+        .is_some_and(|value| value > AI_PROVIDER_MAX_RESPONSE_BYTES as u64)
+    {
+        return Err("ai-provider:response_too_large".to_string());
+    }
+
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "ai-provider:invalid_response".to_string())?
+    {
+        if bytes.len().saturating_add(chunk.len()) > AI_PROVIDER_MAX_RESPONSE_BYTES {
+            return Err("ai-provider:response_too_large".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| "ai-provider:invalid_response".to_string())?;
+    let content = payload
+        .get("choices")
+        .and_then(|value| value.get(0))
+        .and_then(|value| value.get("message"))
+        .and_then(|value| value.get("content"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    Ok(AiProviderNativeResponse { content })
+}
+
+#[tauri::command]
+async fn request_private_ai_completion(
+    request: AiProviderNativeRequest,
+) -> Result<AiProviderNativeResponse, String> {
+    request_private_ai_completion_impl(request).await
+}
+
+#[cfg(test)]
+mod ai_provider_native_tests {
+    use super::*;
+
+    #[test]
+    fn private_http_requires_explicit_opt_in() {
+        assert!(validate_ai_provider_http_endpoint(
+            "http://127.0.0.1:11434/v1/chat/completions",
+            false
+        )
+        .is_ok());
+        assert!(validate_ai_provider_http_endpoint(
+            "http://172.23.20.253:3001/v1/chat/completions",
+            false
+        )
+        .is_err());
+        assert!(validate_ai_provider_http_endpoint(
+            "http://172.23.20.253:3001/v1/chat/completions",
+            true
+        )
+        .is_ok());
+        assert!(validate_ai_provider_http_endpoint(
+            "http://192.168.1.20/v1/chat/completions",
+            true
+        )
+        .is_ok());
+        assert!(
+            validate_ai_provider_http_endpoint("http://8.8.8.8/v1/chat/completions", true).is_err()
+        );
+        assert!(
+            validate_ai_provider_http_endpoint("http://example.com/v1/chat/completions", true)
+                .is_err()
+        );
+        assert!(validate_ai_provider_http_endpoint(
+            "https://api.example.com/v1/chat/completions",
+            true
+        )
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn loopback_native_request_returns_only_completion_content() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request_bytes = [0_u8; 8192];
+            let read = stream.read(&mut request_bytes).unwrap();
+            let request_text = String::from_utf8_lossy(&request_bytes[..read]);
+            assert!(request_text
+                .to_ascii_lowercase()
+                .contains("authorization: bearer test-key"));
+            assert!(request_text.contains("POST /v1/chat/completions HTTP/1.1"));
+            let body = r#"{"choices":[{"message":{"content":"native response"}}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        let result = request_private_ai_completion_impl(AiProviderNativeRequest {
+            url: format!("http://{}/v1/chat/completions", address),
+            api_key: "test-key".to_string(),
+            model: "test-model".to_string(),
+            messages: vec![AiProviderNativeMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            max_tokens: Some(100),
+            allow_private_http: false,
+        })
+        .await
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(result.content, "native response");
+    }
+}
 
 #[derive(Clone, serde::Serialize)]
 struct ScreenPickerBounds {
@@ -704,6 +969,222 @@ fn toolknit_app_data_dir() -> Result<std::path::PathBuf, String> {
         .join("ToolKnit"))
 }
 
+const CUSTOM_FONT_DIRECTORY: &str = "custom-fonts";
+const CUSTOM_FONT_MAX_BYTES: u64 = 40 * 1024 * 1024;
+const CUSTOM_FONT_SLOTS: [&str; 4] = ["cn-medium", "cn-bold", "en-regular", "en-bold"];
+const CUSTOM_FONT_EXTENSIONS: [&str; 4] = ["ttf", "otf", "woff", "woff2"];
+
+#[derive(serde::Serialize)]
+struct CustomFontAsset {
+    slot: String,
+    path: String,
+    file_name: String,
+}
+
+fn custom_font_dir() -> Result<std::path::PathBuf, String> {
+    Ok(toolknit_app_data_dir()?.join(CUSTOM_FONT_DIRECTORY))
+}
+
+fn normalized_custom_font_slot(slot: &str) -> Result<&'static str, String> {
+    let value = slot.trim().to_ascii_lowercase();
+    CUSTOM_FONT_SLOTS
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == value)
+        .ok_or("Unknown custom font slot".to_string())
+}
+
+fn normalized_custom_font_extension(path: &std::path::Path) -> Result<String, String> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .ok_or("Font file must use a supported extension".to_string())?;
+    if CUSTOM_FONT_EXTENSIONS.contains(&extension.as_str()) {
+        Ok(extension)
+    } else {
+        Err("Font file must be TTF, OTF, WOFF, or WOFF2".to_string())
+    }
+}
+
+fn custom_font_slot_path(slot: &str, extension: &str) -> Result<std::path::PathBuf, String> {
+    let normalized_slot = normalized_custom_font_slot(slot)?;
+    if !CUSTOM_FONT_EXTENSIONS.contains(&extension) {
+        return Err("Unsupported custom font extension".to_string());
+    }
+    Ok(custom_font_dir()?.join(format!("{}.{}", normalized_slot, extension)))
+}
+
+fn existing_custom_font_path(slot: &str) -> Result<Option<std::path::PathBuf>, String> {
+    let normalized_slot = normalized_custom_font_slot(slot)?;
+    let directory = custom_font_dir()?;
+    for extension in CUSTOM_FONT_EXTENSIONS {
+        let candidate = directory.join(format!("{}.{}", normalized_slot, extension));
+        if candidate.is_file() {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
+}
+
+fn remove_custom_font_slot_files(slot: &str) -> Result<(), String> {
+    let normalized_slot = normalized_custom_font_slot(slot)?;
+    let directory = custom_font_dir()?;
+    for extension in CUSTOM_FONT_EXTENSIONS {
+        let candidate = directory.join(format!("{}.{}", normalized_slot, extension));
+        if candidate.exists() {
+            std::fs::remove_file(&candidate)
+                .map_err(|error| format!("Cannot remove custom font: {}", error))?;
+        }
+    }
+    Ok(())
+}
+
+fn custom_font_magic_is_valid(extension: &str, header: &[u8]) -> bool {
+    match extension {
+        "ttf" => header.starts_with(&[0x00, 0x01, 0x00, 0x00]) || header.starts_with(b"true"),
+        "otf" => header.starts_with(b"OTTO"),
+        "woff" => header.starts_with(b"wOFF"),
+        "woff2" => header.starts_with(b"wOF2"),
+        _ => false,
+    }
+}
+
+fn validate_custom_font_source(source: &std::path::Path) -> Result<(std::path::PathBuf, String, u64), String> {
+    let canonical = source
+        .canonicalize()
+        .map_err(|error| format!("Cannot read font file: {}", error))?;
+    let metadata = std::fs::metadata(&canonical)
+        .map_err(|error| format!("Cannot inspect font file: {}", error))?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > CUSTOM_FONT_MAX_BYTES {
+        return Err("Font file must be a non-empty file no larger than 40 MB".to_string());
+    }
+    let extension = normalized_custom_font_extension(&canonical)?;
+    let mut input = std::fs::File::open(&canonical)
+        .map_err(|error| format!("Cannot open font file: {}", error))?;
+    let mut header = [0_u8; 4];
+    use std::io::Read;
+    input
+        .read_exact(&mut header)
+        .map_err(|_| "Invalid font file".to_string())?;
+    if !custom_font_magic_is_valid(&extension, &header) {
+        return Err("Font data does not match its file extension".to_string());
+    }
+    Ok((canonical, extension, metadata.len()))
+}
+
+#[tauri::command]
+fn list_custom_fonts() -> Result<Vec<CustomFontAsset>, String> {
+    let directory = custom_font_dir()?;
+    if !directory.exists() {
+        return Ok(Vec::new());
+    }
+    let root = directory
+        .canonicalize()
+        .map_err(|error| format!("Cannot inspect custom font folder: {}", error))?;
+    let mut assets = Vec::new();
+    for slot in CUSTOM_FONT_SLOTS {
+        let Some(path) = existing_custom_font_path(slot)? else {
+            continue;
+        };
+        let canonical = path
+            .canonicalize()
+            .map_err(|error| format!("Cannot inspect custom font: {}", error))?;
+        if !canonical.starts_with(&root) {
+            return Err("Custom font path is not permitted".to_string());
+        }
+        let metadata = std::fs::metadata(&canonical)
+            .map_err(|error| format!("Cannot inspect custom font: {}", error))?;
+        if !metadata.is_file() || metadata.len() == 0 || metadata.len() > CUSTOM_FONT_MAX_BYTES {
+            return Err("Installed custom font has an invalid size".to_string());
+        }
+        let extension = normalized_custom_font_extension(&canonical)?;
+        let mut input = std::fs::File::open(&canonical)
+            .map_err(|error| format!("Cannot open custom font: {}", error))?;
+        let mut header = [0_u8; 4];
+        use std::io::Read;
+        input
+            .read_exact(&mut header)
+            .map_err(|_| "Invalid custom font".to_string())?;
+        if !custom_font_magic_is_valid(&extension, &header) {
+            return Err("Installed custom font is invalid".to_string());
+        }
+        assets.push(CustomFontAsset {
+            slot: slot.to_string(),
+            path: canonical.to_string_lossy().into_owned(),
+            file_name: canonical
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(slot)
+                .to_string(),
+        });
+    }
+    Ok(assets)
+}
+
+#[tauri::command]
+fn import_custom_font(slot: String, source_path: String) -> Result<CustomFontAsset, String> {
+    if source_path.contains('\0') {
+        return Err("Invalid font file".to_string());
+    }
+    let normalized_slot = normalized_custom_font_slot(&slot)?;
+    let (source, extension, _) = validate_custom_font_source(std::path::Path::new(&source_path))?;
+    let directory = custom_font_dir()?;
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| format!("Cannot prepare custom font folder: {}", error))?;
+    let target = custom_font_slot_path(normalized_slot, &extension)?;
+    let temporary = directory.join(format!(".{}.part.{}", normalized_slot, extension));
+    std::fs::copy(&source, &temporary)
+        .map_err(|error| format!("Cannot copy custom font: {}", error))?;
+    if let Err(error) = validate_custom_font_source(&temporary) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    remove_custom_font_slot_files(normalized_slot)?;
+    std::fs::rename(&temporary, &target)
+        .map_err(|error| format!("Cannot apply custom font: {}", error))?;
+    let canonical = target
+        .canonicalize()
+        .map_err(|error| format!("Cannot finalize custom font: {}", error))?;
+    Ok(CustomFontAsset {
+        slot: normalized_slot.to_string(),
+        path: canonical.to_string_lossy().into_owned(),
+        file_name: canonical
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or(normalized_slot)
+            .to_string(),
+    })
+}
+
+#[tauri::command]
+fn reset_custom_font(slot: String) -> Result<(), String> {
+    remove_custom_font_slot_files(&slot)
+}
+
+#[cfg(test)]
+mod custom_font_tests {
+    use super::*;
+
+    #[test]
+    fn custom_font_slots_are_a_closed_allowlist() {
+        assert_eq!(normalized_custom_font_slot("cn-medium").unwrap(), "cn-medium");
+        assert_eq!(normalized_custom_font_slot(" EN-BOLD ").unwrap(), "en-bold");
+        assert!(normalized_custom_font_slot("../outside").is_err());
+        assert!(normalized_custom_font_slot("cn-heavy").is_err());
+    }
+
+    #[test]
+    fn custom_font_signatures_must_match_declared_format() {
+        assert!(custom_font_magic_is_valid("ttf", &[0x00, 0x01, 0x00, 0x00]));
+        assert!(custom_font_magic_is_valid("otf", b"OTTO"));
+        assert!(custom_font_magic_is_valid("woff", b"wOFF"));
+        assert!(custom_font_magic_is_valid("woff2", b"wOF2"));
+        assert!(!custom_font_magic_is_valid("ttf", b"OTTO"));
+        assert!(!custom_font_magic_is_valid("exe", b"MZ\0\0"));
+    }
+}
+
 fn output_root_config_path() -> Result<std::path::PathBuf, String> {
     Ok(toolknit_app_data_dir()?.join("output-location.json"))
 }
@@ -837,17 +1318,27 @@ fn custom_background_media_type(extension: &str) -> Option<&'static str> {
 async fn import_custom_background(
     app: tauri::AppHandle,
     source_path: String,
+    job_id: Option<String>,
 ) -> Result<CustomBackgroundAsset, String> {
-    tokio::task::spawn_blocking(move || import_custom_background_blocking(&app, source_path))
-        .await
-        .map_err(|error| format!("Background import worker failed: {}", error))?
+    tokio::task::spawn_blocking(move || {
+        import_custom_background_blocking(&app, source_path, job_id)
+    })
+    .await
+    .map_err(|error| format!("Background import worker failed: {}", error))?
 }
 
 fn import_custom_background_blocking(
     app: &tauri::AppHandle,
     source_path: String,
+    job_id: Option<String>,
 ) -> Result<CustomBackgroundAsset, String> {
     const MAX_BACKGROUND_BYTES: u64 = 250 * 1024 * 1024;
+    let job_id = normalize_custom_background_job_id(job_id);
+    let import_lock = CUSTOM_BACKGROUND_IMPORT_LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     if source_path.contains('\0') {
         return Err("Invalid background file".to_string());
     }
@@ -867,6 +1358,16 @@ fn import_custom_background_blocking(
     let media_type =
         custom_background_media_type(&extension).ok_or("Unsupported background format")?;
 
+    emit_custom_background_import_progress(
+        app,
+        &job_id,
+        "prepare",
+        0.0,
+        media_type,
+        None,
+        Some(metadata.len()),
+    );
+
     let target_dir = custom_background_dir(app)?;
     std::fs::create_dir_all(&target_dir)
         .map_err(|error| format!("Cannot prepare background folder: {}", error))?;
@@ -883,79 +1384,378 @@ fn import_custom_background_blocking(
             extension.as_str()
         }
     ));
+    let temporary = custom_background_temporary_path(&target)?;
 
-    if media_type == "video" {
+    let import_result = if media_type == "video" {
         let ffmpeg = get_ffmpeg_path()?;
         if !ffmpeg.is_file() {
             return Err(
                 "Background video conversion requires the bundled FFmpeg engine".to_string(),
             );
         }
-        let output = std::process::Command::new(&ffmpeg)
-            .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
-            .arg(&source)
-            .args([
-                "-map",
-                "0:v:0",
-                "-an",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "22",
-                "-pix_fmt",
-                "yuv420p",
-                "-movflags",
-                "+faststart",
-            ])
-            .arg(&target)
-            .output()
-            .map_err(|error| format!("Cannot start background video conversion: {}", error))?;
-        if !output.status.success() {
-            let _ = std::fs::remove_file(&target);
-            let details = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if details.is_empty() {
-                "Cannot convert background video to H.264".to_string()
-            } else {
-                format!("Cannot convert background video to H.264: {}", details)
-            });
-        }
-        log::info!(
-            "Custom background video converted: source={}, target={}",
-            source.display(),
-            target.display()
-        );
+        convert_custom_background_video(app, &job_id, &ffmpeg, &source, &temporary, media_type)
     } else {
-        std::fs::copy(&source, &target)
-            .map_err(|error| format!("Cannot import background file: {}", error))?;
+        copy_custom_background_image(
+            app,
+            &job_id,
+            &source,
+            &temporary,
+            metadata.len(),
+            media_type,
+        )
+    };
+
+    if let Err(error) = import_result {
+        let _ = std::fs::remove_file(&temporary);
+        emit_custom_background_import_progress(
+            app,
+            &job_id,
+            "error",
+            1.0,
+            media_type,
+            None,
+            Some(metadata.len()),
+        );
+        return Err(error);
     }
 
-    let target_metadata = std::fs::metadata(&target)
+    emit_custom_background_import_progress(
+        app,
+        &job_id,
+        "verify",
+        0.98,
+        media_type,
+        None,
+        Some(metadata.len()),
+    );
+    let target_metadata = std::fs::metadata(&temporary)
         .map_err(|error| format!("Cannot read imported background: {}", error))?;
     if !target_metadata.is_file()
         || target_metadata.len() == 0
         || target_metadata.len() > MAX_BACKGROUND_BYTES
     {
-        let _ = std::fs::remove_file(&target);
+        let _ = std::fs::remove_file(&temporary);
         return Err(
             "Converted background must be a non-empty file no larger than 250MB".to_string(),
         );
     }
 
+    if let Err(error) = std::fs::rename(&temporary, &target) {
+        let _ = std::fs::remove_file(&temporary);
+        emit_custom_background_import_progress(
+            app,
+            &job_id,
+            "error",
+            1.0,
+            media_type,
+            None,
+            Some(metadata.len()),
+        );
+        return Err(format!("Cannot publish imported background: {}", error));
+    }
+
+    // The new file is now durable and addressable. Only after publishing it do
+    // we remove previous completed backgrounds, so a failed import never
+    // destroys the currently active setting.
     if let Ok(entries) = std::fs::read_dir(&target_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path != target && path.is_file() {
+            if path != target && path.is_file() && is_completed_custom_background_file(&path) {
                 let _ = std::fs::remove_file(path);
             }
         }
     }
 
+    emit_custom_background_import_progress(
+        app,
+        &job_id,
+        "complete",
+        1.0,
+        media_type,
+        Some(target_metadata.len()),
+        Some(target_metadata.len()),
+    );
+    drop(import_lock);
+
     Ok(CustomBackgroundAsset {
         path: target.to_string_lossy().into_owned(),
         media_type: media_type.to_string(),
     })
+}
+
+fn normalize_custom_background_job_id(job_id: Option<String>) -> String {
+    let value = job_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("desktop");
+    value.chars().take(128).collect()
+}
+
+fn emit_custom_background_import_progress(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    phase: &str,
+    percent: f64,
+    media_type: &str,
+    bytes_copied: Option<u64>,
+    total_bytes: Option<u64>,
+) {
+    let _ = app.emit(
+        "custom-background-import-progress",
+        serde_json::json!({
+            "jobId": job_id,
+            "phase": phase,
+            "percent": percent.clamp(0.0, 1.0),
+            "mediaType": media_type,
+            "bytesCopied": bytes_copied,
+            "totalBytes": total_bytes,
+        }),
+    );
+}
+
+fn custom_background_temporary_path(
+    target: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let parent = target
+        .parent()
+        .ok_or("Cannot prepare temporary background path")?;
+    let stem = target
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or("Cannot prepare temporary background path")?;
+    let extension = target
+        .extension()
+        .and_then(|value| value.to_str())
+        .ok_or("Cannot prepare temporary background path")?;
+    Ok(parent.join(format!("{stem}.part.{extension}")))
+}
+
+fn is_completed_custom_background_file(path: &std::path::Path) -> bool {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .map(|name| name.starts_with("background-") && !name.contains(".part."))
+        .unwrap_or(false)
+}
+
+fn copy_custom_background_image(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    source: &std::path::Path,
+    temporary: &std::path::Path,
+    total_bytes: u64,
+    media_type: &str,
+) -> Result<(), String> {
+    use std::io::{Read, Write};
+
+    let input = std::fs::File::open(source)
+        .map_err(|error| format!("Cannot read background file: {}", error))?;
+    let output = std::fs::File::create(temporary)
+        .map_err(|error| format!("Cannot prepare background file: {}", error))?;
+    let mut reader = std::io::BufReader::with_capacity(512 * 1024, input);
+    let mut writer = std::io::BufWriter::with_capacity(512 * 1024, output);
+    let mut buffer = vec![0_u8; 512 * 1024];
+    let mut copied = 0_u64;
+    let mut last_reported = 0_u64;
+    let mut last_report_at = std::time::Instant::now();
+
+    emit_custom_background_import_progress(
+        app,
+        job_id,
+        "copying",
+        0.0,
+        media_type,
+        Some(0),
+        Some(total_bytes),
+    );
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("Cannot read background file: {}", error))?;
+        if read == 0 {
+            break;
+        }
+        writer
+            .write_all(&buffer[..read])
+            .map_err(|error| format!("Cannot import background file: {}", error))?;
+        copied = copied.saturating_add(read as u64);
+        let should_report = copied >= total_bytes
+            || copied.saturating_sub(last_reported) >= 1_048_576
+            || last_report_at.elapsed() >= std::time::Duration::from_millis(100);
+        if should_report {
+            let percent = if total_bytes == 0 {
+                0.0
+            } else {
+                ((copied as f64 / total_bytes as f64) * 0.96).clamp(0.0, 0.96)
+            };
+            emit_custom_background_import_progress(
+                app,
+                job_id,
+                "copying",
+                percent,
+                media_type,
+                Some(copied),
+                Some(total_bytes),
+            );
+            last_reported = copied;
+            last_report_at = std::time::Instant::now();
+        }
+    }
+    writer
+        .flush()
+        .map_err(|error| format!("Cannot finish importing background: {}", error))?;
+    writer
+        .get_ref()
+        .sync_all()
+        .map_err(|error| format!("Cannot finish importing background: {}", error))?;
+    Ok(())
+}
+
+fn probe_custom_background_video_duration(
+    ffmpeg: &std::path::Path,
+    source: &std::path::Path,
+) -> Option<f64> {
+    let mut command = std::process::Command::new(ffmpeg);
+    command
+        .args(["-hide_banner", "-nostdin", "-i"])
+        .arg(source)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = command.output().ok()?;
+    parse_ffmpeg_duration(&String::from_utf8_lossy(&output.stderr))
+}
+
+fn convert_custom_background_video(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    ffmpeg: &std::path::Path,
+    source: &std::path::Path,
+    temporary: &std::path::Path,
+    media_type: &str,
+) -> Result<(), String> {
+    use std::io::{BufRead, Read};
+
+    emit_custom_background_import_progress(app, job_id, "probing", 0.01, media_type, None, None);
+    let duration = probe_custom_background_video_duration(ffmpeg, source);
+    emit_custom_background_import_progress(
+        app,
+        job_id,
+        "converting",
+        0.02,
+        media_type,
+        None,
+        None,
+    );
+
+    let mut command = std::process::Command::new(ffmpeg);
+    command
+        .args(["-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-i"])
+        .arg(source)
+        .args([
+            "-map",
+            "0:v:0",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "22",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+        ])
+        .arg(temporary)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Cannot start background video conversion: {}", error))?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        let _ = child.kill();
+        "Cannot read background video conversion progress".to_string()
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        let _ = child.kill();
+        "Cannot read background video conversion errors".to_string()
+    })?;
+    let stderr_reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut reader = std::io::BufReader::new(stderr);
+        let _ = reader.read_to_end(&mut bytes);
+        String::from_utf8_lossy(&bytes).into_owned()
+    });
+
+    let mut last_percent = 0.02_f64;
+    let progress_result = (|| -> Result<(), String> {
+        for line in std::io::BufReader::new(stdout).lines() {
+            let line = line.map_err(|error| {
+                format!(
+                    "Cannot read background video conversion progress: {}",
+                    error
+                )
+            })?;
+            let Some(seconds) = parse_ffmpeg_progress_seconds(&line) else {
+                continue;
+            };
+            let Some(duration) = duration.filter(|value| *value > 0.0) else {
+                continue;
+            };
+            let percent = (0.02 + (seconds / duration).clamp(0.0, 0.96) * 0.94).clamp(0.02, 0.96);
+            if percent - last_percent < 0.003 && percent < 0.96 {
+                continue;
+            }
+            last_percent = percent;
+            emit_custom_background_import_progress(
+                app,
+                job_id,
+                "converting",
+                percent,
+                media_type,
+                None,
+                None,
+            );
+        }
+        Ok(())
+    })();
+    if progress_result.is_err() {
+        let _ = child.kill();
+    }
+    let status_result = child.wait();
+    let stderr = stderr_reader.join().unwrap_or_default();
+    progress_result?;
+    let status = status_result
+        .map_err(|error| format!("Cannot finish background video conversion: {}", error))?;
+    if !status.success() {
+        let details = compact_video_convert_error(&stderr);
+        return Err(format!(
+            "Cannot convert background video to H.264: {}",
+            details
+        ));
+    }
+    log::info!(
+        "Custom background video converted: source={}, temporary={}",
+        source.display(),
+        temporary.display()
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -1156,6 +1956,37 @@ mod custom_background_media_tests {
     use std::io::{Read, Write};
 
     #[test]
+    fn background_temp_path_keeps_the_real_media_extension() {
+        let target = std::path::Path::new("C:/temp/background-42.mp4");
+        let temporary = custom_background_temporary_path(target).unwrap();
+        assert_eq!(
+            temporary,
+            std::path::PathBuf::from("C:/temp/background-42.part.mp4")
+        );
+        assert!(is_completed_custom_background_file(target));
+        assert!(!is_completed_custom_background_file(&temporary));
+    }
+
+    #[test]
+    fn background_import_job_id_is_bounded_and_has_a_default() {
+        assert_eq!(normalize_custom_background_job_id(None), "desktop");
+        assert_eq!(
+            normalize_custom_background_job_id(Some("  import-1  ".to_string())),
+            "import-1"
+        );
+        assert_eq!(
+            normalize_custom_background_job_id(Some(" ".to_string())),
+            "desktop"
+        );
+        assert_eq!(
+            normalize_custom_background_job_id(Some("x".repeat(256)))
+                .chars()
+                .count(),
+            128
+        );
+    }
+
+    #[test]
     fn serves_custom_background_with_http_range_support() {
         let root =
             std::env::temp_dir().join(format!("toolknit-background-test-{}", std::process::id()));
@@ -1289,8 +2120,15 @@ static ICON_ARCHIVE_WRITE_ID: AtomicU64 = AtomicU64::new(0);
 static ICON_ARCHIVE_WRITES: std::sync::OnceLock<
     std::sync::Mutex<std::collections::BTreeMap<u64, IconArchiveWrite>>,
 > = std::sync::OnceLock::new();
+static PDF_ENHANCE_WRITE_ID: AtomicU64 = AtomicU64::new(0);
+static PDF_ENHANCE_WRITES: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::BTreeMap<u64, PdfEnhanceWrite>>,
+> = std::sync::OnceLock::new();
 
 const MAX_ICON_ARCHIVE_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_PDF_ENHANCE_OUTPUT_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_PDF_ENHANCE_PAGES: u32 = 100;
+const MAX_PDF_ENHANCE_WRITE_SESSIONS: usize = 4;
 
 #[derive(Clone)]
 struct IconArchiveWrite {
@@ -1299,9 +2137,23 @@ struct IconArchiveWrite {
     file_name: String,
 }
 
+struct PdfEnhanceWrite {
+    file: std::fs::File,
+    temporary_path: std::path::PathBuf,
+    output_directory: std::path::PathBuf,
+    file_name: String,
+    expected_pages: u32,
+    bytes_written: u64,
+}
+
 fn icon_archive_writes(
 ) -> &'static std::sync::Mutex<std::collections::BTreeMap<u64, IconArchiveWrite>> {
     ICON_ARCHIVE_WRITES.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeMap::new()))
+}
+
+fn pdf_enhance_writes(
+) -> &'static std::sync::Mutex<std::collections::BTreeMap<u64, PdfEnhanceWrite>> {
+    PDF_ENHANCE_WRITES.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeMap::new()))
 }
 
 fn active_video_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>> {
@@ -2951,8 +3803,13 @@ async fn transcribe_media(
 
 const PDF_DECRYPT_MAX_INPUT_BYTES: u64 = 150 * 1024 * 1024;
 const PDF_DECRYPT_MAX_PAGES: u32 = 200;
+const PDF_ENCRYPT_MAX_INPUT_BYTES: u64 = 150 * 1024 * 1024;
+const PDF_ENCRYPT_MAX_PAGES: u32 = 200;
+const PDF_ENCRYPT_MIN_PASSWORD_CHARS: usize = 8;
+const PDF_ENCRYPT_MAX_PASSWORD_BYTES: usize = 127;
 const PDF_COMPRESS_MAX_INPUT_BYTES: u64 = 150 * 1024 * 1024;
 const PDF_COMPRESS_MAX_PAGES: u32 = 500;
+const QPDF_PROCESS_TIMEOUT_SECS: u64 = 120;
 
 fn get_qpdf_path() -> Result<std::path::PathBuf, String> {
     let exe_name = if cfg!(target_os = "windows") {
@@ -2979,30 +3836,34 @@ fn get_qpdf_path() -> Result<std::path::PathBuf, String> {
     Err("pdf-decrypt:qpdf-unavailable".to_string())
 }
 
-fn clear_pdf_decrypt_password(password: &mut String) {
-    if !password.is_empty() {
-        let zeros = "\0".repeat(password.len());
-        password.replace_range(.., &zeros);
-        password.clear();
-    }
+fn clear_pdf_password(password: &mut String) {
+    use zeroize::Zeroize;
+    password.zeroize();
 }
 
-async fn run_qpdf(
+async fn run_qpdf_with_stdin(
     qpdf_path: &std::path::Path,
     args: &[std::ffi::OsString],
-    password: Option<&str>,
+    stdin_data: Option<&[u8]>,
+    capture_stdout: bool,
+    failure_code: &str,
 ) -> Result<std::process::Output, String> {
     use tokio::io::AsyncWriteExt;
 
     let mut command = tokio::process::Command::new(qpdf_path);
     command
         .args(args)
-        .stdin(if password.is_some() {
+        .kill_on_drop(true)
+        .stdin(if stdin_data.is_some() {
             std::process::Stdio::piped()
         } else {
             std::process::Stdio::null()
         })
-        .stdout(std::process::Stdio::piped())
+        .stdout(if capture_stdout {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
         .stderr(std::process::Stdio::piped());
 
     #[cfg(target_os = "windows")]
@@ -3012,26 +3873,52 @@ async fn run_qpdf(
 
     let mut child = command
         .spawn()
-        .map_err(|_| "pdf-decrypt:decryption-failed".to_string())?;
-    if let Some(value) = password {
-        let mut stdin = child.stdin.take().ok_or("pdf-decrypt:decryption-failed")?;
+        .map_err(|_| failure_code.to_string())?;
+    if let Some(value) = stdin_data {
+        let mut stdin = child.stdin.take().ok_or_else(|| failure_code.to_string())?;
         stdin
-            .write_all(value.as_bytes())
+            .write_all(value)
             .await
-            .map_err(|_| "pdf-decrypt:decryption-failed".to_string())?;
-        stdin
-            .write_all(b"\n")
-            .await
-            .map_err(|_| "pdf-decrypt:decryption-failed".to_string())?;
+            .map_err(|_| failure_code.to_string())?;
         stdin
             .shutdown()
             .await
-            .map_err(|_| "pdf-decrypt:decryption-failed".to_string())?;
+            .map_err(|_| failure_code.to_string())?;
     }
-    child
-        .wait_with_output()
-        .await
-        .map_err(|_| "pdf-decrypt:decryption-failed".to_string())
+    tokio::time::timeout(
+        std::time::Duration::from_secs(QPDF_PROCESS_TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| failure_code.to_string())?
+    .map_err(|_| failure_code.to_string())
+}
+
+async fn run_qpdf(
+    qpdf_path: &std::path::Path,
+    args: &[std::ffi::OsString],
+    password: Option<&str>,
+) -> Result<std::process::Output, String> {
+    use zeroize::Zeroize;
+
+    let mut stdin_data = password.map(|value| {
+        let mut bytes = Vec::with_capacity(value.len() + 1);
+        bytes.extend_from_slice(value.as_bytes());
+        bytes.push(b'\n');
+        bytes
+    });
+    let result = run_qpdf_with_stdin(
+        qpdf_path,
+        args,
+        stdin_data.as_deref(),
+        true,
+        "pdf-decrypt:decryption-failed",
+    )
+    .await;
+    if let Some(bytes) = stdin_data.as_mut() {
+        bytes.zeroize();
+    }
+    result
 }
 
 fn create_pdf_decrypt_file_name(input_path: &std::path::Path) -> String {
@@ -3143,7 +4030,7 @@ async fn decrypt_pdf(
     output_dir: Option<String>,
 ) -> Result<String, String> {
     let result = decrypt_pdf_inner(&input_path, &password, output_dir.as_deref()).await;
-    clear_pdf_decrypt_password(&mut password);
+    clear_pdf_password(&mut password);
     result
 }
 
@@ -3238,6 +4125,665 @@ async fn decrypt_pdf_inner(
         &output_dir,
         &create_pdf_decrypt_file_name(input),
     )
+}
+
+#[derive(Clone, serde::Deserialize)]
+#[serde(untagged)]
+enum PdfEncryptPrintingPermission {
+    Enabled(bool),
+    Quality(String),
+}
+
+impl Default for PdfEncryptPrintingPermission {
+    fn default() -> Self {
+        Self::Enabled(true)
+    }
+}
+
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PdfEncryptPermissions {
+    #[serde(default)]
+    printing: PdfEncryptPrintingPermission,
+    #[serde(default = "pdf_encrypt_permission_default")]
+    modifying: bool,
+    #[serde(default = "pdf_encrypt_permission_default")]
+    copying: bool,
+    #[serde(default = "pdf_encrypt_permission_default")]
+    annotating: bool,
+    #[serde(default = "pdf_encrypt_permission_default")]
+    filling_forms: bool,
+    #[serde(default = "pdf_encrypt_permission_default")]
+    content_accessibility: bool,
+    #[serde(default = "pdf_encrypt_permission_default")]
+    document_assembly: bool,
+}
+
+fn pdf_encrypt_permission_default() -> bool {
+    true
+}
+
+fn validate_pdf_encrypt_password(password: &str) -> Result<(), String> {
+    if password.chars().count() < PDF_ENCRYPT_MIN_PASSWORD_CHARS {
+        return Err("pdf-encrypt:password-too-short".to_string());
+    }
+    if password.len() > PDF_ENCRYPT_MAX_PASSWORD_BYTES {
+        return Err("pdf-encrypt:password-too-long".to_string());
+    }
+    if password
+        .chars()
+        .any(|character| matches!(character, '\0' | '\r' | '\n'))
+    {
+        return Err("pdf-encrypt:password-unsupported".to_string());
+    }
+    Ok(())
+}
+
+fn pdf_encrypt_print_option(
+    permission: &PdfEncryptPrintingPermission,
+) -> Result<&'static str, String> {
+    match permission {
+        PdfEncryptPrintingPermission::Enabled(true) => Ok("full"),
+        PdfEncryptPrintingPermission::Enabled(false) => Ok("none"),
+        PdfEncryptPrintingPermission::Quality(value) if value == "highResolution" => Ok("full"),
+        PdfEncryptPrintingPermission::Quality(value) if value == "lowResolution" => Ok("low"),
+        _ => Err("pdf-encrypt:invalid-permissions".to_string()),
+    }
+}
+
+fn pdf_encrypt_yes_no(value: bool) -> &'static str {
+    if value {
+        "y"
+    } else {
+        "n"
+    }
+}
+
+fn validate_pdf_encrypt_argument(value: &str, error_code: &str) -> Result<(), String> {
+    if value
+        .chars()
+        .any(|character| matches!(character, '\0' | '\r' | '\n'))
+    {
+        Err(error_code.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn append_pdf_encrypt_argument(
+    payload: &mut Vec<u8>,
+    value: &str,
+    error_code: &str,
+) -> Result<(), String> {
+    validate_pdf_encrypt_argument(value, error_code)?;
+    payload.extend_from_slice(value.as_bytes());
+    payload.push(b'\n');
+    Ok(())
+}
+
+fn append_pdf_encrypt_option(
+    payload: &mut Vec<u8>,
+    prefix: &str,
+    value: &str,
+    error_code: &str,
+) -> Result<(), String> {
+    validate_pdf_encrypt_argument(value, error_code)?;
+    payload.extend_from_slice(prefix.as_bytes());
+    payload.extend_from_slice(value.as_bytes());
+    payload.push(b'\n');
+    Ok(())
+}
+
+fn create_pdf_encrypt_owner_password() -> Result<String, String> {
+    use std::fmt::Write;
+    use zeroize::Zeroize;
+
+    let mut random_bytes = [0_u8; 32];
+    getrandom::getrandom(&mut random_bytes)
+        .map_err(|_| "pdf-encrypt:encryption-failed".to_string())?;
+    let mut password = String::with_capacity(random_bytes.len() * 2);
+    for byte in &random_bytes {
+        write!(&mut password, "{:02x}", byte)
+            .map_err(|_| "pdf-encrypt:encryption-failed".to_string())?;
+    }
+    random_bytes.zeroize();
+    Ok(password)
+}
+
+fn create_pdf_encrypt_file_name(input_path: &std::path::Path) -> String {
+    let raw_stem = input_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("document");
+    let sanitized: String = raw_stem
+        .chars()
+        .map(|character| {
+            if matches!(
+                character,
+                '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+            ) {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let trimmed = sanitized
+        .trim()
+        .trim_end_matches(|character| character == '.' || character == ' ');
+    let stem = if trimmed.is_empty() {
+        "document"
+    } else {
+        trimmed
+    };
+    format!("{}_encrypted.pdf", stem)
+}
+
+fn create_pdf_encrypt_temp_path(
+    output_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "pdf-encrypt:encryption-failed".to_string())?
+        .as_nanos();
+    for _ in 0..100 {
+        let id = PDF_DECRYPT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+        let candidate = output_dir.join(format!(
+            ".toolknit-encrypt-{}-{}-{}.pdf",
+            std::process::id(),
+            timestamp,
+            id
+        ));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err("pdf-encrypt:encryption-failed".to_string())
+}
+
+fn publish_pdf_encrypt_output(
+    temporary_path: &std::path::Path,
+    output_dir: &std::path::Path,
+    file_name: &str,
+) -> Result<String, String> {
+    let source = std::path::Path::new(file_name);
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or("pdf-encrypt:encryption-failed")?;
+
+    for counter in 0..10_000_u32 {
+        let candidate_name = if counter == 0 {
+            file_name.to_string()
+        } else {
+            format!("{}_{}.pdf", stem, counter)
+        };
+        let candidate = output_dir.join(candidate_name);
+        match std::fs::hard_link(temporary_path, &candidate) {
+            Ok(()) => {
+                std::fs::remove_file(temporary_path)
+                    .map_err(|_| "pdf-encrypt:encryption-failed".to_string())?;
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
+            Err(_) if candidate.exists() => continue,
+            Err(_) => return Err("pdf-encrypt:encryption-failed".to_string()),
+        }
+    }
+    Err("pdf-encrypt:encryption-failed".to_string())
+}
+
+fn map_qpdf_encrypt_error(output: &std::process::Output) -> String {
+    let details = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+    if details.contains("invalid password")
+        || details.contains("password supplied is incorrect")
+        || details.contains("encrypted file")
+    {
+        "pdf-encrypt:password-protected".to_string()
+    } else if details.contains("not a pdf")
+        || details.contains("damaged pdf")
+        || details.contains("can't find pdf header")
+    {
+        "pdf-encrypt:invalid-pdf".to_string()
+    } else {
+        "pdf-encrypt:encryption-failed".to_string()
+    }
+}
+
+fn build_pdf_encrypt_qpdf_arguments(
+    input: &std::path::Path,
+    temporary_path: &std::path::Path,
+    password: &str,
+    owner_password: &str,
+    permissions: &PdfEncryptPermissions,
+) -> Result<Vec<u8>, String> {
+    input
+        .to_str()
+        .ok_or("pdf-encrypt:invalid-pdf".to_string())?;
+    temporary_path
+        .to_str()
+        .ok_or("pdf-encrypt:output-path".to_string())?;
+    let input = cleanup_display_path(input);
+    let output = cleanup_display_path(temporary_path);
+    let print = pdf_encrypt_print_option(&permissions.printing)?;
+    let mut payload = Vec::with_capacity(input.len() + output.len() + password.len() + 512);
+    append_pdf_encrypt_argument(&mut payload, "--warning-exit-0", "pdf-encrypt:encryption-failed")?;
+    append_pdf_encrypt_argument(&mut payload, "--password-mode=unicode", "pdf-encrypt:encryption-failed")?;
+    append_pdf_encrypt_argument(&mut payload, "--encrypt", "pdf-encrypt:encryption-failed")?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--user-password=",
+        password,
+        "pdf-encrypt:password-unsupported",
+    )?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--owner-password=",
+        owner_password,
+        "pdf-encrypt:encryption-failed",
+    )?;
+    append_pdf_encrypt_argument(&mut payload, "--bits=256", "pdf-encrypt:encryption-failed")?;
+    append_pdf_encrypt_option(&mut payload, "--print=", print, "pdf-encrypt:invalid-permissions")?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--extract=",
+        pdf_encrypt_yes_no(permissions.copying),
+        "pdf-encrypt:invalid-permissions",
+    )?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--modify-other=",
+        pdf_encrypt_yes_no(permissions.modifying),
+        "pdf-encrypt:invalid-permissions",
+    )?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--annotate=",
+        pdf_encrypt_yes_no(permissions.annotating),
+        "pdf-encrypt:invalid-permissions",
+    )?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--form=",
+        pdf_encrypt_yes_no(permissions.filling_forms),
+        "pdf-encrypt:invalid-permissions",
+    )?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--accessibility=",
+        pdf_encrypt_yes_no(permissions.content_accessibility),
+        "pdf-encrypt:invalid-permissions",
+    )?;
+    append_pdf_encrypt_option(
+        &mut payload,
+        "--assemble=",
+        pdf_encrypt_yes_no(permissions.document_assembly),
+        "pdf-encrypt:invalid-permissions",
+    )?;
+    append_pdf_encrypt_argument(&mut payload, "--", "pdf-encrypt:encryption-failed")?;
+    append_pdf_encrypt_argument(&mut payload, &input, "pdf-encrypt:invalid-pdf")?;
+    append_pdf_encrypt_argument(&mut payload, &output, "pdf-encrypt:output-path")?;
+    Ok(payload)
+}
+
+#[tauri::command]
+async fn encrypt_pdf(
+    input_path: String,
+    mut password: String,
+    permissions: PdfEncryptPermissions,
+    output_dir: Option<String>,
+) -> Result<String, String> {
+    let result = encrypt_pdf_inner(
+        &input_path,
+        &password,
+        &permissions,
+        output_dir.as_deref(),
+    )
+    .await;
+    clear_pdf_password(&mut password);
+    result
+}
+
+async fn encrypt_pdf_inner(
+    input_path: &str,
+    password: &str,
+    permissions: &PdfEncryptPermissions,
+    requested_output_dir: Option<&str>,
+) -> Result<String, String> {
+    use zeroize::Zeroize;
+
+    validate_pdf_encrypt_password(password)?;
+    validate_pdf_encrypt_argument(input_path, "pdf-encrypt:invalid-pdf")?;
+    let requested = std::path::Path::new(input_path);
+    let requested_metadata = std::fs::symlink_metadata(requested)
+        .map_err(|_| "pdf-encrypt:invalid-pdf".to_string())?;
+    if requested_metadata.file_type().is_symlink() || !requested_metadata.is_file() {
+        return Err("pdf-encrypt:invalid-pdf".to_string());
+    }
+    let input = requested
+        .canonicalize()
+        .map_err(|_| "pdf-encrypt:invalid-pdf".to_string())?;
+    if !input
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("pdf"))
+    {
+        return Err("pdf-encrypt:invalid-pdf".to_string());
+    }
+    let input_size = std::fs::metadata(&input)
+        .map_err(|_| "pdf-encrypt:invalid-pdf".to_string())?
+        .len();
+    if input_size == 0 {
+        return Err("pdf-encrypt:invalid-pdf".to_string());
+    }
+    if input_size > PDF_ENCRYPT_MAX_INPUT_BYTES {
+        return Err("pdf-encrypt:input-too-large".to_string());
+    }
+
+    let qpdf_path =
+        get_qpdf_path().map_err(|_| "pdf-encrypt:qpdf-unavailable".to_string())?;
+    let qpdf_input_path = std::path::PathBuf::from(cleanup_display_path(&input));
+    let page_output = run_qpdf_with_stdin(
+        &qpdf_path,
+        &[
+            std::ffi::OsString::from("--show-npages"),
+            qpdf_input_path.as_os_str().to_os_string(),
+        ],
+        None,
+        true,
+        "pdf-encrypt:encryption-failed",
+    )
+    .await?;
+    if !page_output.status.success() {
+        return Err(map_qpdf_encrypt_error(&page_output));
+    }
+    let page_count = String::from_utf8_lossy(&page_output.stdout)
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| "pdf-encrypt:invalid-pdf".to_string())?;
+    if page_count == 0 {
+        return Err("pdf-encrypt:invalid-pdf".to_string());
+    }
+    if page_count > PDF_ENCRYPT_MAX_PAGES {
+        return Err("pdf-encrypt:too-many-pages".to_string());
+    }
+
+    let output_dir = requested_output_dir
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::document_dir()
+                .unwrap_or_default()
+                .join("ToolKnit")
+                .join("PDF_Encrypt")
+        });
+    let output_dir_text = output_dir
+        .to_str()
+        .ok_or("pdf-encrypt:output-path".to_string())?;
+    validate_pdf_encrypt_argument(output_dir_text, "pdf-encrypt:output-path")?;
+    is_path_safe(&output_dir).map_err(|_| "pdf-encrypt:output-path".to_string())?;
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|_| "pdf-encrypt:encryption-failed".to_string())?;
+    is_path_safe(&output_dir).map_err(|_| "pdf-encrypt:output-path".to_string())?;
+    let temporary_path = create_pdf_encrypt_temp_path(&output_dir)?;
+
+    let result = async {
+        let mut owner_password = create_pdf_encrypt_owner_password()?;
+        let arguments_result = build_pdf_encrypt_qpdf_arguments(
+            &input,
+            &temporary_path,
+            password,
+            &owner_password,
+            permissions,
+        );
+        let mut argument_payload = match arguments_result {
+            Ok(payload) => payload,
+            Err(error) => {
+                owner_password.zeroize();
+                return Err(error);
+            }
+        };
+        let encrypt_result = run_qpdf_with_stdin(
+            &qpdf_path,
+            &[std::ffi::OsString::from("@-")],
+            Some(&argument_payload),
+            false,
+            "pdf-encrypt:engine-failed",
+        )
+        .await;
+        argument_payload.zeroize();
+        owner_password.zeroize();
+        let mut encryption_output = encrypt_result?;
+        if !encryption_output.status.success() {
+            let mapped = map_qpdf_encrypt_error(&encryption_output);
+            encryption_output.stdout.zeroize();
+            encryption_output.stderr.zeroize();
+            return Err(if mapped == "pdf-encrypt:encryption-failed" {
+                "pdf-encrypt:engine-failed".to_string()
+            } else {
+                mapped
+            });
+        }
+        encryption_output.stdout.zeroize();
+        encryption_output.stderr.zeroize();
+        if std::fs::metadata(&temporary_path)
+            .map(|metadata| metadata.len() == 0)
+            .unwrap_or(true)
+        {
+            return Err("pdf-encrypt:output-invalid".to_string());
+        }
+
+        let mut password_input = Vec::with_capacity(password.len() + 1);
+        password_input.extend_from_slice(password.as_bytes());
+        password_input.push(b'\n');
+        let check_result = run_qpdf_with_stdin(
+            &qpdf_path,
+            &[
+                std::ffi::OsString::from("--password-mode=unicode"),
+                std::ffi::OsString::from("--password-file=-"),
+                std::ffi::OsString::from("--check"),
+                temporary_path.as_os_str().to_os_string(),
+            ],
+            Some(&password_input),
+            false,
+            "pdf-encrypt:verification-failed",
+        )
+        .await;
+        password_input.zeroize();
+        let mut check_output = check_result?;
+        let check_succeeded = check_output.status.success();
+        check_output.stdout.zeroize();
+        check_output.stderr.zeroize();
+        if !check_succeeded {
+            return Err("pdf-encrypt:verification-failed".to_string());
+        }
+
+        publish_pdf_encrypt_output(
+            &temporary_path,
+            &output_dir,
+            &create_pdf_encrypt_file_name(&input),
+        )
+    }
+    .await;
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary_path);
+    }
+    result
+}
+
+#[cfg(test)]
+mod pdf_encrypt_backend_tests {
+    use super::*;
+
+    fn test_directory() -> std::path::PathBuf {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock must be after epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-pdf-encrypt-{}-{}",
+            std::process::id(),
+            suffix
+        ));
+        std::fs::create_dir_all(&directory).expect("create PDF encryption test directory");
+        directory
+    }
+
+    fn structured_pdf_fixture() -> Vec<u8> {
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm 5 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources <<>> /Contents 4 0 R /Annots [6 0 R] >>",
+            "<< /Length 0 >>\nstream\n\nendstream",
+            "<< /Fields [6 0 R] /NeedAppearances true >>",
+            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (customer.name) /V (ToolKnit) /Rect [48 680 268 708] /P 3 0 R >>",
+            "<< /Title (ToolKnit encryption structure regression) >>",
+        ];
+        let mut pdf = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
+        let mut offsets = Vec::with_capacity(objects.len());
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+        }
+        let xref_offset = pdf.len();
+        pdf.extend_from_slice(format!("xref\n0 {}\n", objects.len() + 1).as_bytes());
+        pdf.extend_from_slice(b"0000000000 65535 f \n");
+        for offset in offsets {
+            pdf.extend_from_slice(format!("{:010} 00000 n \n", offset).as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R /Info 7 0 R >>\nstartxref\n{}\n%%EOF\n",
+                objects.len() + 1,
+                xref_offset
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
+
+    fn default_permissions() -> PdfEncryptPermissions {
+        PdfEncryptPermissions {
+            printing: PdfEncryptPrintingPermission::Quality("lowResolution".to_string()),
+            modifying: false,
+            copying: false,
+            annotating: true,
+            filling_forms: true,
+            content_accessibility: true,
+            document_assembly: false,
+        }
+    }
+
+    #[test]
+    fn password_contract_prevents_qpdf_truncation() {
+        assert!(validate_pdf_encrypt_password("中文密码安全测试-😀").is_ok());
+        assert!(validate_pdf_encrypt_password(&"x".repeat(64)).is_ok());
+        assert_eq!(
+            validate_pdf_encrypt_password(&"x".repeat(PDF_ENCRYPT_MAX_PASSWORD_BYTES + 1))
+                .unwrap_err(),
+            "pdf-encrypt:password-too-long"
+        );
+        assert_eq!(
+            validate_pdf_encrypt_password("valid-pass\nline").unwrap_err(),
+            "pdf-encrypt:password-unsupported"
+        );
+    }
+
+    #[tokio::test]
+    async fn qpdf_encrypts_and_decrypts_unicode_password_without_losing_catalog_data() {
+        let directory = test_directory();
+        let source = directory.join("source.pdf");
+        std::fs::write(&source, structured_pdf_fixture()).expect("write structured PDF fixture");
+        let password = format!("中文密码安全测试-😀-{}", "long-password-".repeat(4));
+        assert!(password.len() > 32);
+        assert!(password.len() <= PDF_ENCRYPT_MAX_PASSWORD_BYTES);
+
+        let encrypted = encrypt_pdf_inner(
+            source.to_str().expect("UTF-8 source path"),
+            &password,
+            &default_permissions(),
+            directory.to_str(),
+        )
+        .await
+        .expect("encrypt Unicode password PDF");
+        let encrypted_path = std::path::PathBuf::from(&encrypted);
+        assert!(encrypted_path.is_file());
+
+        let qpdf_path = get_qpdf_path().expect("bundled qpdf");
+        let encryption_info = run_qpdf_with_stdin(
+            &qpdf_path,
+            &[
+                std::ffi::OsString::from("--show-encryption"),
+                encrypted_path.as_os_str().to_os_string(),
+            ],
+            None,
+            true,
+            "pdf-encrypt:encryption-failed",
+        )
+        .await
+        .expect("inspect encryption");
+        let encryption_info = String::from_utf8_lossy(&encryption_info.stdout);
+        assert!(encryption_info.contains("R = 6"));
+        assert!(encryption_info.contains("stream encryption method: AESv3"));
+        assert!(!encryption_info.contains(&password));
+
+        let wrong_password = decrypt_pdf_inner(
+            encrypted_path.to_str().expect("UTF-8 encrypted path"),
+            "wrong-password",
+            directory.to_str(),
+        )
+        .await
+        .expect_err("wrong password must fail");
+        assert_eq!(wrong_password, "pdf-decrypt:invalid-password");
+
+        let decrypted = decrypt_pdf_inner(
+            encrypted_path.to_str().expect("UTF-8 encrypted path"),
+            &password,
+            directory.to_str(),
+        )
+        .await
+        .expect("decrypt Unicode password PDF");
+        let decrypted_path = std::path::PathBuf::from(&decrypted);
+        let qdf_path = directory.join("decrypted-qdf.pdf");
+        let qdf_output = run_qpdf_with_stdin(
+            &qpdf_path,
+            &[
+                std::ffi::OsString::from("--qdf"),
+                std::ffi::OsString::from("--object-streams=disable"),
+                decrypted_path.as_os_str().to_os_string(),
+                qdf_path.as_os_str().to_os_string(),
+            ],
+            None,
+            false,
+            "pdf-encrypt:encryption-failed",
+        )
+        .await
+        .expect("write inspectable decrypted PDF");
+        assert!(qdf_output.status.success());
+        let qdf_bytes = std::fs::read(&qdf_path).expect("read decrypted QDF");
+        let qdf = String::from_utf8_lossy(&qdf_bytes);
+        assert!(qdf.contains("/AcroForm"));
+        assert!(qdf.contains("/Title (ToolKnit encryption structure regression)"));
+        assert!(qdf.contains("/T (customer.name)"));
+
+        let encrypted_again = encrypt_pdf_inner(
+            source.to_str().expect("UTF-8 source path"),
+            &password,
+            &default_permissions(),
+            directory.to_str(),
+        )
+        .await
+        .expect("publish a unique second encryption output");
+        assert_ne!(encrypted, encrypted_again);
+        assert!(std::path::Path::new(&encrypted_again).is_file());
+        assert!(!std::fs::read_dir(&directory)
+            .expect("inspect encryption temp cleanup")
+            .filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().starts_with(".toolknit-encrypt-")));
+
+        std::fs::remove_dir_all(&directory).expect("remove PDF encryption test directory");
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -4422,7 +5968,7 @@ async fn convert_image_batch(
     .map_err(|error| format!("Image conversion worker failed: {}", error))?
 }
 
-fn validate_image_batch_inputs(input_paths: &[String]) -> Result<(), String> {
+fn validate_image_batch_request(input_paths: &[String]) -> Result<(), String> {
     if input_paths.is_empty() {
         return Err("Select at least one image file".to_string());
     }
@@ -4432,61 +5978,78 @@ fn validate_image_batch_inputs(input_paths: &[String]) -> Result<(), String> {
             MAX_IMAGE_BATCH_FILES
         ));
     }
+    Ok(())
+}
 
-    let mut seen = std::collections::BTreeSet::new();
-    for input_path in input_paths {
-        if input_path.contains('\0') {
-            return Err("An image input path is invalid".to_string());
-        }
-        let input = std::path::Path::new(input_path);
-        let file_name = input
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("input image");
-        let extension = input
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if !matches!(
-            extension.as_str(),
-            "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif"
-        ) {
-            return Err(format!("{} has an unsupported image format", file_name));
-        }
-        let metadata = std::fs::symlink_metadata(input)
-            .map_err(|error| format!("Cannot read {}: {}", file_name, error))?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
-            return Err(format!("{} is not a regular file", file_name));
-        }
-        if metadata.len() > MAX_IMAGE_FILE_BYTES {
-            return Err(format!(
-                "{} exceeds the {} MB file limit",
-                file_name,
-                MAX_IMAGE_FILE_BYTES / 1024 / 1024
-            ));
-        }
-        let canonical = input
-            .canonicalize()
-            .map_err(|error| format!("Cannot resolve {}: {}", file_name, error))?;
-        if !seen.insert(canonical.clone()) {
-            return Err(format!("Duplicate image file: {}", file_name));
-        }
-        let (width, height) = image::image_dimensions(&canonical)
-            .map_err(|error| format!("Cannot read dimensions for {}: {}", file_name, error))?;
-        let pixels = u64::from(width) * u64::from(height);
-        if width == 0 || height == 0 || pixels > MAX_IMAGE_PIXELS {
-            return Err(format!(
-                "{} exceeds the {} megapixel limit",
-                file_name,
-                MAX_IMAGE_PIXELS / 1_000_000
-            ));
-        }
-        if extension == "gif" && image_has_multiple_gif_frames(&canonical)? {
+fn validate_image_batch_input(input_path: &str) -> Result<(std::path::PathBuf, String), String> {
+    if input_path.contains('\0') {
+        return Err("An image input path is invalid".to_string());
+    }
+    let input = std::path::Path::new(input_path);
+    let file_name = input
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("input image");
+    let extension = input
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(
+        extension.as_str(),
+        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif"
+    ) {
+        return Err(format!("{} has an unsupported image format", file_name));
+    }
+    let metadata = std::fs::symlink_metadata(input)
+        .map_err(|error| format!("Cannot read {}: {}", file_name, error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!("{} is not a regular file", file_name));
+    }
+    if metadata.len() > MAX_IMAGE_FILE_BYTES {
+        return Err(format!(
+            "{} exceeds the {} MB file limit",
+            file_name,
+            MAX_IMAGE_FILE_BYTES / 1024 / 1024
+        ));
+    }
+    let canonical = input
+        .canonicalize()
+        .map_err(|error| format!("Cannot resolve {}: {}", file_name, error))?;
+    let (width, height) = image::image_dimensions(&canonical)
+        .map_err(|error| format!("Cannot read dimensions for {}: {}", file_name, error))?;
+    let pixels = u64::from(width) * u64::from(height);
+    if width == 0 || height == 0 || pixels > MAX_IMAGE_PIXELS {
+        return Err(format!(
+            "{} exceeds the {} megapixel limit",
+            file_name,
+            MAX_IMAGE_PIXELS / 1_000_000
+        ));
+    }
+    if extension == "gif" {
+        let has_multiple_frames = image_has_multiple_gif_frames(&canonical)
+            .map_err(|error| format!("Cannot inspect {}: {}", file_name, error))?;
+        if has_multiple_frames {
             return Err(format!(
                 "{} is animated and cannot be converted without losing frames",
                 file_name
             ));
+        }
+    }
+    Ok((canonical, extension))
+}
+
+fn validate_image_batch_inputs(input_paths: &[String]) -> Result<(), String> {
+    validate_image_batch_request(input_paths)?;
+    let mut seen = std::collections::BTreeSet::new();
+    for input_path in input_paths {
+        let file_name = std::path::Path::new(input_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("input image");
+        let (canonical, _) = validate_image_batch_input(input_path)?;
+        if !seen.insert(canonical) {
+            return Err(format!("Duplicate image file: {}", file_name));
         }
     }
     Ok(())
@@ -4543,6 +6106,30 @@ fn publish_image_output(
     Ok(())
 }
 
+fn flatten_image_to_rgb(
+    source: &image::DynamicImage,
+    background: image::Rgb<u8>,
+) -> image::RgbImage {
+    let rgba = source.to_rgba8();
+    let mut output = image::RgbImage::new(rgba.width(), rgba.height());
+    let [background_red, background_green, background_blue] = background.0;
+    for (source_pixel, output_pixel) in rgba.pixels().zip(output.pixels_mut()) {
+        let [red, green, blue, alpha] = source_pixel.0;
+        let alpha = u32::from(alpha);
+        let inverse_alpha = 255 - alpha;
+        let blend = |channel: u8, background_channel: u8| {
+            ((u32::from(channel) * alpha + u32::from(background_channel) * inverse_alpha + 127)
+                / 255) as u8
+        };
+        *output_pixel = image::Rgb([
+            blend(red, background_red),
+            blend(green, background_green),
+            blend(blue, background_blue),
+        ]);
+    }
+    output
+}
+
 fn write_converted_image(
     image: &image::DynamicImage,
     output_path: &std::path::Path,
@@ -4556,11 +6143,11 @@ fn write_converted_image(
             let file = std::fs::File::create(output_path)?;
             let writer = BufWriter::new(file);
             let mut encoder = JpegEncoder::new_with_quality(writer, 92);
-            let rgb = image.to_rgb8();
+            let rgb = flatten_image_to_rgb(image, image::Rgb([255, 255, 255]));
             encoder.encode(
                 &rgb,
-                image.width(),
-                image.height(),
+                rgb.width(),
+                rgb.height(),
                 image::ExtendedColorType::Rgb8,
             )
         }
@@ -4629,22 +6216,21 @@ struct ImageStitchLayout {
     height: u32,
 }
 
-fn read_oriented_image(path: &std::path::Path) -> Result<image::DynamicImage, String> {
+fn decode_oriented_image(path: &std::path::Path) -> image::ImageResult<image::DynamicImage> {
     use image::ImageDecoder;
     let reader = image::ImageReader::open(path)
-        .map_err(|_| "image-stitch:invalid-input".to_string())?
+        .map_err(image::ImageError::IoError)?
         .with_guessed_format()
-        .map_err(|_| "image-stitch:invalid-input".to_string())?;
-    let mut decoder = reader
-        .into_decoder()
-        .map_err(|_| "image-stitch:invalid-input".to_string())?;
-    let orientation = decoder
-        .orientation()
-        .map_err(|_| "image-stitch:invalid-input".to_string())?;
-    let mut decoded = image::DynamicImage::from_decoder(decoder)
-        .map_err(|_| "image-stitch:invalid-input".to_string())?;
+        .map_err(image::ImageError::IoError)?;
+    let mut decoder = reader.into_decoder()?;
+    let orientation = decoder.orientation()?;
+    let mut decoded = image::DynamicImage::from_decoder(decoder)?;
     decoded.apply_orientation(orientation);
     Ok(decoded)
+}
+
+fn read_oriented_image(path: &std::path::Path) -> Result<image::DynamicImage, String> {
+    decode_oriented_image(path).map_err(|_| "image-stitch:invalid-input".to_string())
 }
 
 fn oriented_image_dimensions(path: &std::path::Path) -> Result<(u32, u32), String> {
@@ -6892,12 +8478,12 @@ mod pdf_to_image_backend_tests {
 #[cfg(test)]
 mod image_conversion_tests {
     use super::*;
-    use image::GenericImage;
+    use image::{GenericImage, GenericImageView, ImageEncoder};
 
-    #[test]
-    fn jpeg_conversion_accepts_an_rgba_source() {
+    fn image_test_directory(label: &str) -> std::path::PathBuf {
         let unique = format!(
-            "toolknit-image-test-{}-{}",
+            "toolknit-image-{}-{}-{}",
+            label,
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -6906,16 +8492,123 @@ mod image_conversion_tests {
         );
         let directory = std::env::temp_dir().join(unique);
         std::fs::create_dir_all(&directory).expect("create temporary image test directory");
-        let output = directory.join("converted.jpg");
+        directory
+    }
 
-        let mut source = image::DynamicImage::new_rgba8(2, 2);
-        source.put_pixel(0, 0, image::Rgba([255, 0, 0, 0]));
-        write_converted_image(&source, &output, image::ImageFormat::Jpeg)
+    fn exif_orientation_payload(orientation: u16) -> Vec<u8> {
+        let mut exif = vec![0_u8; 26];
+        exif[0..2].copy_from_slice(b"II");
+        exif[2..4].copy_from_slice(&42_u16.to_le_bytes());
+        exif[4..8].copy_from_slice(&8_u32.to_le_bytes());
+        exif[8..10].copy_from_slice(&1_u16.to_le_bytes());
+        exif[10..12].copy_from_slice(&0x0112_u16.to_le_bytes());
+        exif[12..14].copy_from_slice(&3_u16.to_le_bytes());
+        exif[14..18].copy_from_slice(&1_u32.to_le_bytes());
+        exif[18..20].copy_from_slice(&orientation.to_le_bytes());
+        exif
+    }
+
+    fn write_exif_jpeg(path: &std::path::Path, image: &image::RgbImage, orientation: u16) {
+        let file = std::fs::File::create(path).expect("create EXIF JPEG fixture");
+        let writer = std::io::BufWriter::new(file);
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(writer, 100);
+        encoder
+            .set_exif_metadata(exif_orientation_payload(orientation))
+            .expect("attach EXIF orientation");
+        encoder
+            .encode(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .expect("encode EXIF JPEG fixture");
+    }
+
+    fn assert_rgb_near(actual: image::Rgb<u8>, expected: [u8; 3], tolerance: i16) {
+        for (actual, expected) in actual.0.into_iter().zip(expected) {
+            assert!(
+                (i16::from(actual) - i16::from(expected)).abs() <= tolerance,
+                "channel {actual} differs from expected {expected} by more than {tolerance}"
+            );
+        }
+    }
+
+    #[test]
+    fn jpeg_writers_flatten_transparent_pixels_onto_white() {
+        let directory = image_test_directory("jpeg-alpha");
+        let input = directory.join("transparent.png");
+        let converted_output = directory.join("converted.jpg");
+        let compressed_output = directory.join("compressed.jpg");
+
+        let source = image::RgbaImage::from_fn(64, 64, |x, y| match (x < 32, y < 32) {
+            (true, true) => image::Rgba([255, 0, 0, 0]),
+            (false, true) => image::Rgba([0, 255, 0, 255]),
+            (true, false) => image::Rgba([0, 0, 255, 128]),
+            (false, false) => image::Rgba([0, 0, 0, 0]),
+        });
+        source.save(&input).expect("write transparent PNG fixture");
+        let decoded = decode_oriented_image(&input).expect("decode transparent PNG fixture");
+        write_converted_image(&decoded, &converted_output, image::ImageFormat::Jpeg)
             .expect("RGBA image should convert to JPEG");
+        write_compressed_image(
+            &decoded,
+            &compressed_output,
+            image::ImageFormat::Jpeg,
+            92,
+            image::codecs::png::CompressionType::Default,
+        )
+        .expect("RGBA image should compress to JPEG");
 
-        let decoded = image::open(&output).expect("converted JPEG should be readable");
-        assert_eq!((decoded.width(), decoded.height()), (2, 2));
-        assert!(!decoded.color().has_alpha());
+        for output in [&converted_output, &compressed_output] {
+            let decoded = image::open(output)
+                .expect("JPEG output should be readable")
+                .to_rgb8();
+            assert_eq!((decoded.width(), decoded.height()), (64, 64));
+            assert_rgb_near(*decoded.get_pixel(4, 4), [255, 255, 255], 20);
+            assert_rgb_near(*decoded.get_pixel(59, 4), [0, 255, 0], 20);
+            assert_rgb_near(*decoded.get_pixel(4, 59), [127, 127, 255], 24);
+            assert_rgb_near(*decoded.get_pixel(59, 59), [255, 255, 255], 20);
+        }
+        std::fs::remove_dir_all(&directory).expect("remove temporary image test directory");
+    }
+
+    #[test]
+    fn exif_orientation_is_applied_to_shared_decode_and_icon_preparation() {
+        let directory = image_test_directory("exif-orientation");
+        let input = directory.join("orientation-6.jpg");
+        let converted = directory.join("orientation-applied.png");
+        let source = image::RgbImage::from_fn(64, 32, |x, y| match (x < 32, y < 16) {
+            (true, true) => image::Rgb([255, 0, 0]),
+            (false, true) => image::Rgb([0, 255, 0]),
+            (true, false) => image::Rgb([0, 0, 255]),
+            (false, false) => image::Rgb([255, 255, 0]),
+        });
+        write_exif_jpeg(&input, &source, 6);
+
+        let decoded = decode_oriented_image(&input).expect("decode oriented JPEG");
+        assert_eq!((decoded.width(), decoded.height()), (32, 64));
+        let decoded_rgb = decoded.to_rgb8();
+        assert_rgb_near(*decoded_rgb.get_pixel(4, 4), [0, 0, 255], 28);
+        assert_rgb_near(*decoded_rgb.get_pixel(27, 4), [255, 0, 0], 28);
+        assert_rgb_near(*decoded_rgb.get_pixel(4, 59), [255, 255, 0], 28);
+        assert_rgb_near(*decoded_rgb.get_pixel(27, 59), [0, 255, 0], 28);
+
+        write_converted_image(&decoded, &converted, image::ImageFormat::Png)
+            .expect("write orientation-normalized PNG");
+        let normalized = image::open(&converted)
+            .expect("read orientation-normalized PNG")
+            .to_rgb8();
+        assert_eq!(normalized.dimensions(), (32, 64));
+        assert_rgb_near(*normalized.get_pixel(4, 4), [0, 0, 255], 28);
+
+        let prepared = prepare_icon_source_image(input.to_string_lossy().into_owned())
+            .expect("prepare oriented icon source");
+        assert_eq!((prepared.width, prepared.height), (32, 64));
+        let prepared_image = image::load_from_memory(&prepared.bytes)
+            .expect("decode prepared icon PNG")
+            .to_rgb8();
+        assert_rgb_near(*prepared_image.get_pixel(4, 4), [0, 0, 255], 28);
         std::fs::remove_dir_all(&directory).expect("remove temporary image test directory");
     }
 
@@ -7232,6 +8925,150 @@ mod image_conversion_tests {
     }
 
     #[test]
+    fn image_conversion_keeps_successful_outputs_when_one_input_is_damaged() {
+        let _conversion_lock = test_conversion_lock();
+        CANCEL_FLAG.store(false, Ordering::SeqCst);
+        let directory = image_test_directory("partial-convert");
+        let inputs = directory.join("inputs");
+        let outputs = directory.join("outputs");
+        std::fs::create_dir_all(&inputs).expect("create conversion input directory");
+        let first = inputs.join("first.png");
+        let damaged = inputs.join("damaged.png");
+        let second = inputs.join("second.png");
+        image::RgbaImage::from_pixel(8, 6, image::Rgba([240, 20, 30, 255]))
+            .save(&first)
+            .expect("write first conversion input");
+        std::fs::write(&damaged, b"not an image").expect("write damaged conversion input");
+        image::RgbaImage::from_pixel(5, 9, image::Rgba([10, 180, 220, 255]))
+            .save(&second)
+            .expect("write second conversion input");
+
+        let mut progress = Vec::new();
+        let result = convert_image_batch_blocking_with_progress(
+            vec![
+                first.to_string_lossy().into_owned(),
+                damaged.to_string_lossy().into_owned(),
+                second.to_string_lossy().into_owned(),
+            ],
+            outputs.to_string_lossy().into_owned(),
+            "PNG".to_string(),
+            |event| progress.push(event),
+        )
+        .expect("conversion batch should return a partial result");
+
+        assert_eq!((result.success_count, result.fail_count), (2, 1));
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("damaged.png"));
+        assert_eq!(
+            image::open(outputs.join("first.png")).unwrap().dimensions(),
+            (8, 6)
+        );
+        assert_eq!(
+            image::open(outputs.join("second.png"))
+                .unwrap()
+                .dimensions(),
+            (5, 9)
+        );
+        let damaged_error = progress
+            .iter()
+            .position(|event| event.file_name == "damaged.png" && event.status == "error")
+            .expect("damaged input should emit an error result");
+        let later_success = progress
+            .iter()
+            .position(|event| event.file_name == "second.png" && event.status == "done")
+            .expect("later valid input should still complete");
+        assert!(damaged_error < later_success);
+        assert!(!std::fs::read_dir(&outputs)
+            .expect("read conversion output directory")
+            .filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains("toolknit")));
+        std::fs::remove_dir_all(&directory).expect("remove partial conversion test directory");
+    }
+
+    #[test]
+    fn image_compression_keeps_successes_and_reports_bad_or_unsupported_inputs() {
+        let _conversion_lock = test_conversion_lock();
+        CANCEL_FLAG.store(false, Ordering::SeqCst);
+        let directory = image_test_directory("partial-compress");
+        let inputs = directory.join("inputs");
+        let outputs = directory.join("outputs");
+        std::fs::create_dir_all(&inputs).expect("create compression input directory");
+        let first = inputs.join("first.jpg");
+        let damaged = inputs.join("damaged.jpg");
+        let unsupported = inputs.join("unsupported.bmp");
+        let second = inputs.join("second.jpg");
+
+        let mut source = image::DynamicImage::new_rgba8(256, 256);
+        for y in 0..256 {
+            for x in 0..256 {
+                let value = ((x * 31 + y * 17) % 256) as u8;
+                source.put_pixel(
+                    x,
+                    y,
+                    image::Rgba([value, value.wrapping_mul(3), value.wrapping_mul(7), 255]),
+                );
+            }
+        }
+        write_converted_image(&source, &first, image::ImageFormat::Jpeg)
+            .expect("write first JPEG input");
+        std::fs::write(&damaged, b"not an image").expect("write damaged JPEG input");
+        image::RgbaImage::from_pixel(12, 12, image::Rgba([30, 60, 90, 255]))
+            .save(&unsupported)
+            .expect("write unsupported BMP input");
+        write_converted_image(&source, &second, image::ImageFormat::Jpeg)
+            .expect("write second JPEG input");
+
+        let input_paths = vec![
+            first.to_string_lossy().into_owned(),
+            damaged.to_string_lossy().into_owned(),
+            unsupported.to_string_lossy().into_owned(),
+            second.to_string_lossy().into_owned(),
+        ];
+        assert!(validate_image_compression_inputs(&input_paths, "low").is_err());
+        let expected_original_size =
+            std::fs::metadata(&first).unwrap().len() + std::fs::metadata(&second).unwrap().len();
+        let mut progress = Vec::new();
+        let result = compress_image_batch_blocking_with_progress(
+            input_paths,
+            outputs.to_string_lossy().into_owned(),
+            "low".to_string(),
+            |event| progress.push(event),
+        )
+        .expect("compression batch should return a partial result");
+
+        assert_eq!((result.success_count, result.fail_count), (2, 2));
+        assert_eq!(result.errors.len(), 2);
+        assert!(result
+            .errors
+            .iter()
+            .any(|error| error.contains("damaged.jpg")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|error| error.contains("unsupported.bmp")));
+        assert_eq!(result.original_size, Some(expected_original_size));
+        assert!(result.compressed_size.unwrap() < expected_original_size);
+        assert!(image::open(outputs.join("first.jpg")).is_ok());
+        assert!(image::open(outputs.join("second.jpg")).is_ok());
+        assert!(!outputs.join("damaged.jpg").exists());
+        assert!(!outputs.join("unsupported.bmp").exists());
+        let damaged_error = progress
+            .iter()
+            .position(|event| event.file_name == "damaged.jpg" && event.status == "error")
+            .expect("damaged compression input should emit an error result");
+        let later_success = progress
+            .iter()
+            .position(|event| event.file_name == "second.jpg" && event.status == "done")
+            .expect("later compression input should still complete");
+        assert!(damaged_error < later_success);
+        assert!(!std::fs::read_dir(&outputs)
+            .expect("read compression output directory")
+            .filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().contains("toolknit")));
+        std::fs::remove_dir_all(&directory).expect("remove partial compression test directory");
+    }
+
+    #[test]
     fn jpeg_compression_produces_a_smaller_readable_file() {
         let unique = format!(
             "toolknit-compression-test-{}-{}",
@@ -7280,7 +9117,7 @@ mod image_conversion_tests {
     }
 
     #[test]
-    fn webp_compression_preserves_pixels_losslessly() {
+    fn webp_compression_is_lossless_and_quality_independent() {
         let unique = format!(
             "toolknit-webp-compression-test-{}-{}",
             std::process::id(),
@@ -7291,21 +9128,36 @@ mod image_conversion_tests {
         );
         let directory = std::env::temp_dir().join(unique);
         std::fs::create_dir_all(&directory).expect("create temporary image test directory");
-        let output = directory.join("compressed.webp");
+        let high_quality_output = directory.join("high.webp");
+        let low_quality_output = directory.join("low.webp");
         let mut source = image::DynamicImage::new_rgba8(2, 2);
         source.put_pixel(0, 0, image::Rgba([10, 20, 30, 40]));
         source.put_pixel(1, 1, image::Rgba([200, 150, 100, 50]));
 
         write_compressed_image(
             &source,
-            &output,
+            &high_quality_output,
+            image::ImageFormat::WebP,
+            90,
+            image::codecs::png::CompressionType::Fast,
+        )
+        .expect("write high preset lossless WebP");
+        write_compressed_image(
+            &source,
+            &low_quality_output,
             image::ImageFormat::WebP,
             35,
             image::codecs::png::CompressionType::Best,
         )
-        .expect("write lossless WebP");
-        let decoded = image::open(&output).expect("decode WebP").to_rgba8();
-        assert_eq!(decoded, source.to_rgba8());
+        .expect("write low preset lossless WebP");
+        assert_eq!(
+            std::fs::read(&high_quality_output).expect("read high preset WebP"),
+            std::fs::read(&low_quality_output).expect("read low preset WebP")
+        );
+        for output in [&high_quality_output, &low_quality_output] {
+            let decoded = image::open(output).expect("decode WebP").to_rgba8();
+            assert_eq!(decoded, source.to_rgba8());
+        }
         std::fs::remove_dir_all(&directory).expect("remove temporary image test directory");
     }
 }
@@ -7316,8 +9168,23 @@ fn convert_image_batch_blocking(
     output_dir: String,
     target_format: String,
 ) -> Result<BatchConvertResult, String> {
-    use image::ImageFormat;
     use tauri::Emitter;
+
+    convert_image_batch_blocking_with_progress(input_paths, output_dir, target_format, |progress| {
+        let _ = app_handle.emit("convert-progress", progress);
+    })
+}
+
+fn convert_image_batch_blocking_with_progress<F>(
+    input_paths: Vec<String>,
+    output_dir: String,
+    target_format: String,
+    mut emit_progress: F,
+) -> Result<BatchConvertResult, String>
+where
+    F: FnMut(ConvertProgress),
+{
+    use image::ImageFormat;
 
     let target_fmt = match target_format.trim().to_uppercase().as_str() {
         "JPG" | "JPEG" => Some(ImageFormat::Jpeg),
@@ -7337,28 +9204,66 @@ fn convert_image_batch_blocking(
         None => ".svg",
         _ => ".png",
     };
-    validate_image_batch_inputs(&input_paths)?;
+    validate_image_batch_request(&input_paths)?;
     let output_dir_path = validate_image_output_dir(&output_dir)?;
 
     let total = input_paths.len();
     let mut success_count = 0usize;
     let mut fail_count = 0usize;
     let mut errors = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
 
     for (i, input_path) in input_paths.iter().enumerate() {
         if CANCEL_FLAG.load(Ordering::SeqCst) {
             break;
         }
 
-        let input = std::path::Path::new(input_path);
-        let file_name = input
+        let input_hint = std::path::Path::new(input_path);
+        let file_name = input_hint
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "unknown".to_string());
-        let stem = input
+        let stem = input_hint
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "output".to_string());
+
+        emit_progress(ConvertProgress {
+            file_name: file_name.clone(),
+            current: i + 1,
+            total,
+            progress: 0.0,
+            status: "converting".to_string(),
+        });
+
+        let (input, _) = match validate_image_batch_input(input_path) {
+            Ok(validated) => validated,
+            Err(error) => {
+                fail_count += 1;
+                errors.push(error);
+                emit_progress(ConvertProgress {
+                    file_name,
+                    current: i + 1,
+                    total,
+                    progress: 1.0,
+                    status: "error".to_string(),
+                });
+                continue;
+            }
+        };
+        if !seen.insert(input.clone()) {
+            fail_count += 1;
+            errors.push(format!("Duplicate image file: {}", file_name));
+            emit_progress(ConvertProgress {
+                file_name,
+                current: i + 1,
+                total,
+                progress: 1.0,
+                status: "error".to_string(),
+            });
+            continue;
+        }
+
         let output_path = get_unique_output_path(&output_dir_path, &stem, ext);
         let temporary_output_path = output_dir_path.join(format!(
             ".{}-toolknit-{}-{}.tmp",
@@ -7367,18 +9272,7 @@ fn convert_image_batch_blocking(
             i
         ));
 
-        let _ = app_handle.emit(
-            "convert-progress",
-            ConvertProgress {
-                file_name: file_name.clone(),
-                current: i + 1,
-                total,
-                progress: 0.0,
-                status: "converting".to_string(),
-            },
-        );
-
-        let result = image::open(input);
+        let result = decode_oriented_image(&input);
         match result {
             Ok(img) => {
                 if CANCEL_FLAG.load(Ordering::SeqCst) {
@@ -7394,29 +9288,23 @@ fn convert_image_batch_blocking(
                         fail_count += 1;
                         errors.push(format!("{}: {}", file_name, error));
                         let _ = std::fs::remove_file(&temporary_output_path);
-                        let _ = app_handle.emit(
-                            "convert-progress",
-                            ConvertProgress {
-                                file_name,
-                                current: i + 1,
-                                total,
-                                progress: 1.0,
-                                status: "error".to_string(),
-                            },
-                        );
-                        continue;
-                    }
-                    success_count += 1;
-                    let _ = app_handle.emit(
-                        "convert-progress",
-                        ConvertProgress {
+                        emit_progress(ConvertProgress {
                             file_name,
                             current: i + 1,
                             total,
                             progress: 1.0,
-                            status: "done".to_string(),
-                        },
-                    );
+                            status: "error".to_string(),
+                        });
+                        continue;
+                    }
+                    success_count += 1;
+                    emit_progress(ConvertProgress {
+                        file_name,
+                        current: i + 1,
+                        total,
+                        progress: 1.0,
+                        status: "done".to_string(),
+                    });
                 } else {
                     let cancelled = CANCEL_FLAG.load(Ordering::SeqCst);
                     fail_count += 1;
@@ -7425,16 +9313,13 @@ fn convert_image_batch_blocking(
                         errors.push(format!("{}: {}", file_name, e));
                     }
                     let _ = std::fs::remove_file(&temporary_output_path);
-                    let _ = app_handle.emit(
-                        "convert-progress",
-                        ConvertProgress {
-                            file_name,
-                            current: i + 1,
-                            total,
-                            progress: 1.0,
-                            status: "error".to_string(),
-                        },
-                    );
+                    emit_progress(ConvertProgress {
+                        file_name,
+                        current: i + 1,
+                        total,
+                        progress: 1.0,
+                        status: "error".to_string(),
+                    });
                     if cancelled {
                         break;
                     }
@@ -7443,16 +9328,13 @@ fn convert_image_batch_blocking(
             Err(e) => {
                 fail_count += 1;
                 errors.push(format!("{}: {}", file_name, e));
-                let _ = app_handle.emit(
-                    "convert-progress",
-                    ConvertProgress {
-                        file_name,
-                        current: i + 1,
-                        total,
-                        progress: 1.0,
-                        status: "error".to_string(),
-                    },
-                );
+                emit_progress(ConvertProgress {
+                    file_name,
+                    current: i + 1,
+                    total,
+                    progress: 1.0,
+                    status: "error".to_string(),
+                });
             }
         }
     }
@@ -7482,27 +9364,49 @@ async fn compress_image_batch(
     .map_err(|error| format!("Image compression worker failed: {}", error))?
 }
 
-fn validate_image_compression_inputs(input_paths: &[String], quality: &str) -> Result<(), String> {
-    validate_image_batch_inputs(input_paths)?;
+fn validate_image_compression_request(input_paths: &[String], quality: &str) -> Result<(), String> {
+    validate_image_batch_request(input_paths)?;
     if !matches!(quality, "high" | "medium" | "low") {
         return Err("Unsupported image compression quality".to_string());
     }
-    for input_path in input_paths {
-        let input = std::path::Path::new(input_path);
-        let file_name = input
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("input image");
-        let extension = input
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if !matches!(extension.as_str(), "jpg" | "jpeg" | "png" | "webp") {
+    Ok(())
+}
+
+fn validate_image_compression_input(
+    input_path: &str,
+) -> Result<(std::path::PathBuf, image::ImageFormat, &'static str), String> {
+    let input = std::path::Path::new(input_path);
+    let file_name = input
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("input image");
+    let (canonical, extension) = validate_image_batch_input(input_path)?;
+    let (format, output_extension) = match extension.as_str() {
+        "jpg" | "jpeg" => (image::ImageFormat::Jpeg, ".jpg"),
+        "png" => (image::ImageFormat::Png, ".png"),
+        "webp" => (image::ImageFormat::WebP, ".webp"),
+        _ => {
             return Err(format!(
                 "{} cannot be compressed safely while preserving its format",
                 file_name
-            ));
+            ))
+        }
+    };
+    Ok((canonical, format, output_extension))
+}
+
+#[cfg(test)]
+fn validate_image_compression_inputs(input_paths: &[String], quality: &str) -> Result<(), String> {
+    validate_image_compression_request(input_paths, quality)?;
+    let mut seen = std::collections::BTreeSet::new();
+    for input_path in input_paths {
+        let file_name = std::path::Path::new(input_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("input image");
+        let (canonical, _, _) = validate_image_compression_input(input_path)?;
+        if !seen.insert(canonical) {
+            return Err(format!("Duplicate image file: {}", file_name));
         }
     }
     Ok(())
@@ -7525,11 +9429,11 @@ fn write_compressed_image(
     match format {
         image::ImageFormat::Jpeg => {
             let mut encoder = JpegEncoder::new_with_quality(writer, jpeg_quality);
-            let rgb = image.to_rgb8();
+            let rgb = flatten_image_to_rgb(image, image::Rgb([255, 255, 255]));
             encoder.encode(
                 &rgb,
-                image.width(),
-                image.height(),
+                rgb.width(),
+                rgb.height(),
                 image::ExtendedColorType::Rgb8,
             )
         }
@@ -7557,11 +9461,25 @@ fn compress_image_batch_blocking(
     output_dir: String,
     quality: String,
 ) -> Result<BatchConvertResult, String> {
-    use image::codecs::png::CompressionType;
-    use image::ImageFormat;
     use tauri::Emitter;
 
-    validate_image_compression_inputs(&input_paths, &quality)?;
+    compress_image_batch_blocking_with_progress(input_paths, output_dir, quality, |progress| {
+        let _ = app_handle.emit("convert-progress", progress);
+    })
+}
+
+fn compress_image_batch_blocking_with_progress<F>(
+    input_paths: Vec<String>,
+    output_dir: String,
+    quality: String,
+    mut emit_progress: F,
+) -> Result<BatchConvertResult, String>
+where
+    F: FnMut(ConvertProgress),
+{
+    use image::codecs::png::CompressionType;
+
+    validate_image_compression_request(&input_paths, &quality)?;
 
     let output_dir_path = validate_image_output_dir(&output_dir)?;
 
@@ -7579,34 +9497,58 @@ fn compress_image_batch_blocking(
     let mut errors = Vec::new();
     let mut original_size: u64 = 0;
     let mut compressed_size: u64 = 0;
+    let mut seen = std::collections::BTreeSet::new();
 
     for (i, input_path) in input_paths.iter().enumerate() {
         if CANCEL_FLAG.load(Ordering::SeqCst) {
             break;
         }
 
-        let input = std::path::Path::new(input_path);
-        let file_name = input
+        let input_hint = std::path::Path::new(input_path);
+        let file_name = input_hint
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "unknown".to_string());
-        let stem = input
+        let stem = input_hint
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "output".to_string());
 
-        // The input format is validated before this worker starts.
-        let ext = input
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("png")
-            .to_lowercase();
-        let (format, out_ext) = match ext.as_str() {
-            "jpg" | "jpeg" => (ImageFormat::Jpeg, ".jpg"),
-            "png" => (ImageFormat::Png, ".png"),
-            "webp" => (ImageFormat::WebP, ".webp"),
-            _ => unreachable!("validated image compression extension"),
+        emit_progress(ConvertProgress {
+            file_name: file_name.clone(),
+            current: i + 1,
+            total,
+            progress: 0.0,
+            status: "converting".to_string(),
+        });
+
+        let (input, format, out_ext) = match validate_image_compression_input(input_path) {
+            Ok(validated) => validated,
+            Err(error) => {
+                fail_count += 1;
+                errors.push(error);
+                emit_progress(ConvertProgress {
+                    file_name,
+                    current: i + 1,
+                    total,
+                    progress: 1.0,
+                    status: "error".to_string(),
+                });
+                continue;
+            }
         };
+        if !seen.insert(input.clone()) {
+            fail_count += 1;
+            errors.push(format!("Duplicate image file: {}", file_name));
+            emit_progress(ConvertProgress {
+                file_name,
+                current: i + 1,
+                total,
+                progress: 1.0,
+                status: "error".to_string(),
+            });
+            continue;
+        }
 
         let output_path = get_unique_output_path(&output_dir_path, &stem, out_ext);
         let temporary_output_path = output_dir_path.join(format!(
@@ -7616,18 +9558,7 @@ fn compress_image_batch_blocking(
             i
         ));
 
-        let _ = app_handle.emit(
-            "convert-progress",
-            ConvertProgress {
-                file_name: file_name.clone(),
-                current: i + 1,
-                total,
-                progress: 0.0,
-                status: "converting".to_string(),
-            },
-        );
-
-        let result = image::open(input);
+        let result = decode_oriented_image(&input);
         match result {
             Ok(img) => {
                 if CANCEL_FLAG.load(Ordering::SeqCst) {
@@ -7640,7 +9571,7 @@ fn compress_image_batch_blocking(
                     jpeg_quality,
                     png_compression,
                 );
-                let input_size = std::fs::metadata(input)
+                let input_size = std::fs::metadata(&input)
                     .map(|metadata| metadata.len())
                     .unwrap_or(0);
                 let output_size = std::fs::metadata(&temporary_output_path)
@@ -7654,31 +9585,25 @@ fn compress_image_batch_blocking(
                         fail_count += 1;
                         errors.push(format!("{}: {}", file_name, error));
                         let _ = std::fs::remove_file(&temporary_output_path);
-                        let _ = app_handle.emit(
-                            "convert-progress",
-                            ConvertProgress {
-                                file_name,
-                                current: i + 1,
-                                total,
-                                progress: 1.0,
-                                status: "error".to_string(),
-                            },
-                        );
+                        emit_progress(ConvertProgress {
+                            file_name,
+                            current: i + 1,
+                            total,
+                            progress: 1.0,
+                            status: "error".to_string(),
+                        });
                         continue;
                     }
                     success_count += 1;
                     compressed_size += output_size;
                     original_size += input_size;
-                    let _ = app_handle.emit(
-                        "convert-progress",
-                        ConvertProgress {
-                            file_name,
-                            current: i + 1,
-                            total,
-                            progress: 1.0,
-                            status: "done".to_string(),
-                        },
-                    );
+                    emit_progress(ConvertProgress {
+                        file_name,
+                        current: i + 1,
+                        total,
+                        progress: 1.0,
+                        status: "done".to_string(),
+                    });
                 } else {
                     let cancelled = CANCEL_FLAG.load(Ordering::SeqCst);
                     fail_count += 1;
@@ -7692,16 +9617,13 @@ fn compress_image_batch_blocking(
                         errors.push(format!("{}: {}", file_name, reason));
                     }
                     let _ = std::fs::remove_file(&temporary_output_path);
-                    let _ = app_handle.emit(
-                        "convert-progress",
-                        ConvertProgress {
-                            file_name,
-                            current: i + 1,
-                            total,
-                            progress: 1.0,
-                            status: "error".to_string(),
-                        },
-                    );
+                    emit_progress(ConvertProgress {
+                        file_name,
+                        current: i + 1,
+                        total,
+                        progress: 1.0,
+                        status: "error".to_string(),
+                    });
                     if cancelled {
                         break;
                     }
@@ -7710,16 +9632,13 @@ fn compress_image_batch_blocking(
             Err(e) => {
                 fail_count += 1;
                 errors.push(format!("{}: {}", file_name, e));
-                let _ = app_handle.emit(
-                    "convert-progress",
-                    ConvertProgress {
-                        file_name,
-                        current: i + 1,
-                        total,
-                        progress: 1.0,
-                        status: "error".to_string(),
-                    },
-                );
+                emit_progress(ConvertProgress {
+                    file_name,
+                    current: i + 1,
+                    total,
+                    progress: 1.0,
+                    status: "error".to_string(),
+                });
             }
         }
     }
@@ -9767,11 +11686,7 @@ fn prepare_icon_source_image(path: String) -> Result<PreparedIconSourceImage, St
         );
     }
 
-    let image = image::ImageReader::open(&source)
-        .map_err(|error| format!("Cannot open image file: {}", error))?
-        .with_guessed_format()
-        .map_err(|error| format!("Cannot detect image format: {}", error))?
-        .decode()
+    let image = decode_oriented_image(&source)
         .map_err(|error| format!("Cannot decode image file: {}", error))?;
     let width = image.width();
     let height = image.height();
@@ -10231,6 +12146,405 @@ fn discard_icon_archive_write(session_id: u64) -> Result<(), String> {
         .ok_or("Icon archive write session is unavailable")?;
     std::fs::remove_file(&write.temporary_path)
         .map_err(|error| format!("Cannot discard icon archive: {}", error))
+}
+
+fn validate_pdf_enhance_file_name(file_name: &str) -> Result<String, String> {
+    if file_name.contains('\0')
+        || file_name.encode_utf16().count() > 240
+        || file_name
+            .chars()
+            .any(|character| character.is_control() || "<>:\"/\\|?*".contains(character))
+    {
+        return Err("pdf-enhance:output-path".to_string());
+    }
+    let path = std::path::Path::new(file_name);
+    if path.is_absolute() || path.components().count() != 1 {
+        return Err("pdf-enhance:output-path".to_string());
+    }
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .ok_or("pdf-enhance:output-path")?;
+    let is_pdf = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("pdf"));
+    if !is_pdf {
+        return Err("pdf-enhance:output-path".to_string());
+    }
+    let normalized_stem = stem.trim_end_matches(['.', ' ']).to_ascii_uppercase();
+    let is_reserved = matches!(
+        normalized_stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CLOCK$"
+    ) || (normalized_stem.len() == 4
+        && (normalized_stem.starts_with("COM") || normalized_stem.starts_with("LPT"))
+        && normalized_stem
+            .as_bytes()
+            .last()
+            .copied()
+            .is_some_and(|value| matches!(value, b'1'..=b'9')));
+    if normalized_stem != stem.to_ascii_uppercase() || is_reserved {
+        return Err("pdf-enhance:output-path".to_string());
+    }
+    Ok(stem.to_string())
+}
+
+fn unique_pdf_enhance_path(
+    directory: &std::path::Path,
+    file_name: &str,
+    counter: u32,
+) -> Result<std::path::PathBuf, String> {
+    let stem = validate_pdf_enhance_file_name(file_name)?;
+    let candidate = if counter == 0 {
+        format!("{}.pdf", stem)
+    } else {
+        format!("{}_{}.pdf", stem, counter)
+    };
+    Ok(directory.join(candidate))
+}
+
+#[tauri::command]
+fn begin_pdf_enhance_write(
+    directory: String,
+    file_name: String,
+    expected_pages: u32,
+) -> Result<u64, String> {
+    if expected_pages == 0 || expected_pages > MAX_PDF_ENHANCE_PAGES {
+        return Err("pdf-enhance:too-many-pages".to_string());
+    }
+    if directory.contains('\0') {
+        return Err("pdf-enhance:output-path".to_string());
+    }
+    validate_pdf_enhance_file_name(&file_name)?;
+
+    let output_directory = std::path::PathBuf::from(directory);
+    is_path_safe(&output_directory).map_err(|_| "pdf-enhance:output-path".to_string())?;
+    std::fs::create_dir_all(&output_directory)
+        .map_err(|_| "pdf-enhance:output-path".to_string())?;
+    if !output_directory.is_dir() {
+        return Err("pdf-enhance:output-path".to_string());
+    }
+    let output_directory = output_directory
+        .canonicalize()
+        .map_err(|_| "pdf-enhance:output-path".to_string())?;
+    is_path_safe(&output_directory).map_err(|_| "pdf-enhance:output-path".to_string())?;
+
+    let mut writes = pdf_enhance_writes()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if writes.len() >= MAX_PDF_ENHANCE_WRITE_SESSIONS {
+        return Err("pdf-enhance:enhancement-failed".to_string());
+    }
+
+    for _ in 0..10_000 {
+        let session_id = PDF_ENHANCE_WRITE_ID.fetch_add(1, Ordering::SeqCst);
+        let temporary_path = output_directory.join(format!(
+            ".toolknit-pdf-enhance-{}-{}.part",
+            std::process::id(),
+            session_id
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+        {
+            Ok(file) => {
+                writes.insert(
+                    session_id,
+                    PdfEnhanceWrite {
+                        file,
+                        temporary_path,
+                        output_directory,
+                        file_name,
+                        expected_pages,
+                        bytes_written: 0,
+                    },
+                );
+                return Ok(session_id);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("pdf-enhance:output-path".to_string()),
+        }
+    }
+    Err("pdf-enhance:output-path".to_string())
+}
+
+#[tauri::command]
+fn append_pdf_enhance_chunk(session_id: u64, bytes: Vec<u8>) -> Result<(), String> {
+    use std::io::Write;
+
+    if bytes.is_empty() {
+        return Err("pdf-enhance:enhancement-failed".to_string());
+    }
+    let mut writes = pdf_enhance_writes()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let write = writes
+        .get_mut(&session_id)
+        .ok_or("pdf-enhance:enhancement-failed")?;
+    let next_size = write
+        .bytes_written
+        .checked_add(bytes.len() as u64)
+        .ok_or("pdf-enhance:output-too-large")?;
+    if next_size > MAX_PDF_ENHANCE_OUTPUT_BYTES {
+        return Err("pdf-enhance:output-too-large".to_string());
+    }
+    write
+        .file
+        .write_all(&bytes)
+        .map_err(|_| "pdf-enhance:enhancement-failed".to_string())?;
+    write.bytes_written = next_size;
+    Ok(())
+}
+
+async fn validate_pdf_enhance_output(
+    path: &std::path::Path,
+    expected_pages: u32,
+) -> Result<(), String> {
+    let qpdf_path = get_qpdf_path().map_err(|_| "pdf-enhance:enhancement-failed".to_string())?;
+    let qpdf_input_path = std::path::PathBuf::from(cleanup_display_path(path));
+    let check_output = run_qpdf_with_stdin(
+        &qpdf_path,
+        &[
+            std::ffi::OsString::from("--warning-exit-0"),
+            std::ffi::OsString::from("--check"),
+            qpdf_input_path.as_os_str().to_os_string(),
+        ],
+        None,
+        false,
+        "pdf-enhance:enhancement-failed",
+    )
+    .await?;
+    if !check_output.status.success() {
+        return Err("pdf-enhance:enhancement-failed".to_string());
+    }
+
+    let page_output = run_qpdf_with_stdin(
+        &qpdf_path,
+        &[
+            std::ffi::OsString::from("--show-npages"),
+            qpdf_input_path.as_os_str().to_os_string(),
+        ],
+        None,
+        true,
+        "pdf-enhance:enhancement-failed",
+    )
+    .await?;
+    let page_count = String::from_utf8_lossy(&page_output.stdout)
+        .trim()
+        .parse::<u32>()
+        .ok();
+    if !page_output.status.success() || page_count != Some(expected_pages) {
+        return Err("pdf-enhance:enhancement-failed".to_string());
+    }
+    Ok(())
+}
+
+fn publish_pdf_enhance_output(
+    temporary_path: &std::path::Path,
+    output_directory: &std::path::Path,
+    file_name: &str,
+) -> Result<String, String> {
+    for counter in 0..10_000_u32 {
+        let output_path = unique_pdf_enhance_path(output_directory, file_name, counter)?;
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            use windows::core::PCWSTR;
+            use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS};
+
+            let source_wide = temporary_path
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect::<Vec<_>>();
+            let output_wide = output_path
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect::<Vec<_>>();
+            let move_result = unsafe {
+                MoveFileExW(
+                    PCWSTR(source_wide.as_ptr()),
+                    PCWSTR(output_wide.as_ptr()),
+                    MOVE_FILE_FLAGS(0),
+                )
+            };
+            match move_result {
+                Ok(()) => return Ok(cleanup_display_path(&output_path)),
+                Err(_) if output_path.exists() => continue,
+                Err(_) => return Err("pdf-enhance:output-path".to_string()),
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            match std::fs::hard_link(temporary_path, &output_path) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(temporary_path);
+                    return Ok(cleanup_display_path(&output_path));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return Err("pdf-enhance:output-path".to_string()),
+            }
+        }
+    }
+    Err("pdf-enhance:output-path".to_string())
+}
+
+#[tauri::command]
+async fn finalize_pdf_enhance_write(session_id: u64) -> Result<String, String> {
+    let write = pdf_enhance_writes()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&session_id)
+        .ok_or("pdf-enhance:enhancement-failed")?;
+    let PdfEnhanceWrite {
+        file,
+        temporary_path,
+        output_directory,
+        file_name,
+        expected_pages,
+        bytes_written,
+    } = write;
+
+    let sync_result = file.sync_all();
+    drop(file);
+    if bytes_written == 0 || bytes_written > MAX_PDF_ENHANCE_OUTPUT_BYTES || sync_result.is_err() {
+        let _ = std::fs::remove_file(&temporary_path);
+        return Err("pdf-enhance:enhancement-failed".to_string());
+    }
+    if let Err(error) = validate_pdf_enhance_output(&temporary_path, expected_pages).await {
+        let _ = std::fs::remove_file(&temporary_path);
+        return Err(error);
+    }
+    let result = publish_pdf_enhance_output(
+        &temporary_path,
+        &output_directory,
+        &file_name,
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary_path);
+    }
+    result
+}
+
+#[tauri::command]
+fn discard_pdf_enhance_write(session_id: u64) -> Result<(), String> {
+    let write = pdf_enhance_writes()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&session_id)
+        .ok_or("pdf-enhance:enhancement-failed")?;
+    let temporary_path = write.temporary_path.clone();
+    drop(write);
+    match std::fs::remove_file(temporary_path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err("pdf-enhance:enhancement-failed".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod pdf_enhance_write_tests {
+    use super::*;
+
+    fn test_directory() -> std::path::PathBuf {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock must be after epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-pdf-enhance-write-{}-{}",
+            std::process::id(),
+            suffix
+        ));
+        std::fs::create_dir_all(&directory).expect("create PDF enhance test directory");
+        directory
+    }
+
+    #[test]
+    fn pdf_enhance_chunk_session_discards_partial_output() {
+        let directory = test_directory();
+        assert!(begin_pdf_enhance_write(
+            directory.to_string_lossy().into_owned(),
+            "stream:name.pdf".to_string(),
+            1,
+        )
+        .is_err());
+        assert!(begin_pdf_enhance_write(
+            directory.to_string_lossy().into_owned(),
+            "CON.pdf".to_string(),
+            1,
+        )
+        .is_err());
+        let session_id = begin_pdf_enhance_write(
+            directory.to_string_lossy().into_owned(),
+            "scan_enhanced.pdf".to_string(),
+            1,
+        )
+        .expect("begin PDF enhance write");
+        append_pdf_enhance_chunk(session_id, b"partial".to_vec())
+            .expect("append PDF enhance chunk");
+        let temporary_path = pdf_enhance_writes()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&session_id)
+            .expect("PDF enhance write session")
+            .temporary_path
+            .clone();
+        assert!(temporary_path.exists());
+        discard_pdf_enhance_write(session_id).expect("discard PDF enhance write");
+        assert!(!temporary_path.exists());
+        assert!(!directory.join("scan_enhanced.pdf").exists());
+        std::fs::remove_dir_all(directory).expect("remove PDF enhance test directory");
+    }
+
+    #[test]
+    fn pdf_enhance_publish_never_overwrites_an_existing_file() {
+        let directory = test_directory();
+        let existing = directory.join("scan_enhanced.pdf");
+        let temporary = directory.join(".validated.part");
+        std::fs::write(&existing, b"existing").expect("write existing output");
+        std::fs::write(&temporary, b"validated").expect("write validated output");
+        let published = publish_pdf_enhance_output(
+            &temporary,
+            &directory,
+            "scan_enhanced.pdf",
+        )
+        .expect("publish unique PDF enhance output");
+        assert!(published.ends_with("scan_enhanced_1.pdf"));
+        assert_eq!(std::fs::read(existing).expect("read existing output"), b"existing");
+        assert_eq!(
+            std::fs::read(&published).expect("read published output"),
+            b"validated"
+        );
+        assert!(!temporary.exists());
+        std::fs::remove_dir_all(directory).expect("remove PDF enhance test directory");
+    }
+
+    #[tokio::test]
+    async fn pdf_enhance_validation_removes_invalid_staging_file() {
+        if get_qpdf_path().is_err() {
+            return;
+        }
+        let directory = test_directory();
+        let session_id = begin_pdf_enhance_write(
+            directory.to_string_lossy().into_owned(),
+            "broken_enhanced.pdf".to_string(),
+            1,
+        )
+        .expect("begin invalid PDF enhance write");
+        append_pdf_enhance_chunk(session_id, b"%PDF-1.7\ninvalid".to_vec())
+            .expect("append invalid PDF bytes");
+        assert!(finalize_pdf_enhance_write(session_id).await.is_err());
+        let entries = std::fs::read_dir(&directory)
+            .expect("read PDF enhance test directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect PDF enhance test entries");
+        assert!(entries.is_empty());
+        std::fs::remove_dir_all(directory).expect("remove PDF enhance test directory");
+    }
 }
 
 #[tauri::command]
@@ -10817,7 +13131,9 @@ $monitors = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID | Wher
     product_code = DecodeWmiText $_.ProductCodeID
     width_cm = if ($basic) { [int]$basic.MaxHorizontalImageSize } else { 0 }
     height_cm = if ($basic) { [int]$basic.MaxVerticalImageSize } else { 0 }
-    connection_code = if ($connection) { [int]$connection.VideoOutputTechnology } else { -1 }
+    connection_code = if ($null -ne $connection -and $null -ne $connection.VideoOutputTechnology) {
+      try { [Int64]$connection.VideoOutputTechnology } catch { [Int64]-1 }
+    } else { [Int64]-1 }
   }
 })
 [ordered]@{ gpus = $gpus; monitors = $monitors } | ConvertTo-Json -Depth 5 -Compress
@@ -13012,6 +15328,7 @@ pub fn run() {
         .manage(WindowCornerRadiusState::default())
         .invoke_handler(tauri::generate_handler![
             open_url,
+            request_private_ai_completion,
             set_window_corner_radius,
             get_documents_dir,
             get_download_dir,
@@ -13020,6 +15337,9 @@ pub fn run() {
             get_output_root,
             get_default_output_root,
             set_output_root,
+            list_custom_fonts,
+            import_custom_font,
+            reset_custom_font,
             import_custom_background,
             clear_custom_background,
             log_custom_background_event,
@@ -13046,6 +15366,10 @@ pub fn run() {
             append_icon_archive_chunk,
             finalize_icon_archive_write,
             discard_icon_archive_write,
+            begin_pdf_enhance_write,
+            append_pdf_enhance_chunk,
+            finalize_pdf_enhance_write,
+            discard_pdf_enhance_write,
             exists_path,
             get_file_size,
             get_hardware_overview,
@@ -13059,6 +15383,7 @@ pub fn run() {
             scan_large_files,
             get_cleanup_drive_space,
             move_files_to_recycle_bin,
+            encrypt_pdf,
             decrypt_pdf,
             compress_pdf,
             trim_audio,

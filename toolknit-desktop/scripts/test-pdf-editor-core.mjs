@@ -6,6 +6,7 @@ import {
   assertPdfEditorPageCount,
   assertPdfEditorMergeSelection,
   normalizePageRotation,
+  resolvePdfPageRotation,
   sanitizePdfBaseName,
   buildPdfName,
   assemblePdf,
@@ -96,8 +97,40 @@ const insertedDocument = await PDFDocument.load(inserted);
 assert.equal(insertedDocument.getPageCount(), 1);
 assert.ok(inserted.length > textSource.length);
 
+const formSource = await (async () => {
+  const document = await PDFDocument.create();
+  const page = document.addPage([612, 792]);
+  const form = document.getForm();
+  const field = form.createTextField('profile.name');
+  field.setText('ToolKnit');
+  field.addToPage(page, { x: 48, y: 680, width: 220, height: 28 });
+  document.setTitle('PDF editor structure regression');
+  return document.save();
+})();
+
+const rotatedFormBytes = await assemblePdf({
+  sources: [{ name: 'form.pdf', bytes: formSource }],
+  pages: [{ sourceIndex: 0, pageIndex: 0, rotation: 90 }]
+});
+const rotatedFormDocument = await PDFDocument.load(rotatedFormBytes);
+assert.equal(rotatedFormDocument.getTitle(), 'PDF editor structure regression');
+assert.equal(rotatedFormDocument.getPage(0).getRotation().angle, 90);
+assert.deepEqual(rotatedFormDocument.getForm().getFields().map(field => field.getName()), ['profile.name']);
+
+const annotatedFormBytes = await assemblePdfWithTextEdits({
+  sources: [{ name: 'form.pdf', bytes: formSource }],
+  pages: [{ sourceIndex: 0, pageIndex: 0, rotation: 0 }],
+  textObjects: [{ pageIndex: 0, x: 48, y: 620, text: 'Reviewed', fontSize: 14 }]
+});
+const annotatedFormDocument = await PDFDocument.load(annotatedFormBytes);
+assert.equal(annotatedFormDocument.getTitle(), 'PDF editor structure regression');
+assert.deepEqual(annotatedFormDocument.getForm().getFields().map(field => field.getName()), ['profile.name']);
+
 assert.equal(normalizePageRotation(-90), 270);
 assert.equal(normalizePageRotation(450), 90);
+assert.equal(resolvePdfPageRotation(90, 0), 90);
+assert.equal(resolvePdfPageRotation(90, -90), 0);
+assert.equal(resolvePdfPageRotation(270, 180), 90);
 assert.equal(sanitizePdfBaseName('C:\\Docs\\A/B:c.pdf'), 'B_c');
 assert.equal(buildPdfName('report.pdf', 'edited'), 'report_edited.pdf');
 
@@ -107,5 +140,13 @@ assert.throws(() => assertPdfEditorPageCount(0));
 assert.throws(() => assertPdfEditorPageCount(PDF_EDITOR_LIMITS.maxPages + 1));
 assert.throws(() => assertPdfEditorMergeSelection([], 0));
 assert.throws(() => assertPdfEditorMergeSelection([{}], PDF_EDITOR_LIMITS.maxMergeTotalBytes + 1));
+assert.doesNotThrow(() => assertPdfEditorMergeSelection(
+  Array(PDF_EDITOR_LIMITS.maxMergeFiles).fill({}),
+  PDF_EDITOR_LIMITS.maxMergeTotalBytes
+));
+assert.throws(() => assertPdfEditorMergeSelection(
+  Array(PDF_EDITOR_LIMITS.maxMergeFiles + 1).fill({}),
+  PDF_EDITOR_LIMITS.maxMergeTotalBytes
+));
 
 console.log('PDF editor core regression checks passed');

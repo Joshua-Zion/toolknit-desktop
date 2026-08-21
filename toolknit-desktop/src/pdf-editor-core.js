@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import fontkit from './pdf-lib-fontkit.js';
 import { encryptPdf as encryptPdfBytes, normalizePdfEncryptPermissions } from './pdf-encrypt-core.js';
+import { flattenPdfFormForPageCopy } from './pdf-document-structure.js';
 
 export const PDF_EDITOR_LIMITS = Object.freeze({
   maxInputBytes: 150 * 1024 * 1024,
@@ -50,6 +51,12 @@ export function normalizePageRotation(value) {
   return ((number % 360) + 360) % 360;
 }
 
+export function resolvePdfPageRotation(sourceRotation, editRotation = 0) {
+  return normalizePageRotation(
+    normalizePageRotation(sourceRotation) + normalizePageRotation(editRotation)
+  );
+}
+
 export function sanitizePdfBaseName(sourceName) {
   const baseName = String(sourceName || 'document.pdf')
     .split(/[\\/]/)
@@ -69,6 +76,16 @@ async function loadPdfLibDocument(bytes) {
   return PDFDocument.load(bytes.slice());
 }
 
+async function loadInPlaceAssemblyTarget(sources, pages) {
+  if (sources.length !== 1 || !sources[0]?.bytes?.length) return null;
+  if (!pages.every((pageRef, index) => (
+    pageRef?.sourceIndex === 0
+    && pageRef.pageIndex === index
+  ))) return null;
+  const document = await loadPdfLibDocument(sources[0].bytes);
+  return document.getPageCount() === pages.length ? document : null;
+}
+
 /**
  * Assemble an ordered page list into a single PDF document.
  *
@@ -82,6 +99,18 @@ async function loadPdfLibDocument(bytes) {
 export async function assemblePdf({ sources, pages, useObjectStreams = true, onProgress }) {
   if (!Array.isArray(sources) || !Array.isArray(pages) || pages.length === 0) {
     throw new Error('No PDF pages are available to assemble');
+  }
+
+  const inPlaceOutput = await loadInPlaceAssemblyTarget(sources, pages);
+  if (inPlaceOutput) {
+    for (let index = 0; index < pages.length; index++) {
+      const page = inPlaceOutput.getPage(index);
+      page.setRotation(degrees(
+        page.getRotation().angle + normalizePageRotation(pages[index].rotation)
+      ));
+      onProgress?.({ done: index + 1, total: pages.length });
+    }
+    return inPlaceOutput.save({ useObjectStreams });
   }
 
   const output = await PDFDocument.create();
@@ -100,6 +129,7 @@ export async function assemblePdf({ sources, pages, useObjectStreams = true, onP
     let sourceDoc = sourceCache.get(pageRef.sourceIndex);
     if (!sourceDoc) {
       sourceDoc = await loadPdfLibDocument(source.bytes);
+      flattenPdfFormForPageCopy(sourceDoc);
       sourceCache.set(pageRef.sourceIndex, sourceDoc);
     }
     if (pageRef.pageIndex >= sourceDoc.getPageCount()) {
@@ -183,10 +213,11 @@ export async function assemblePdfWithTextEdits({
   const insertedTexts = Array.isArray(textObjects) ? textObjects : [];
   const insertedImages = Array.isArray(imageObjects) ? imageObjects : [];
   const insertedShapes = Array.isArray(shapeObjects) ? shapeObjects : [];
-  const output = await PDFDocument.create();
+  const inPlaceOutput = await loadInPlaceAssemblyTarget(sources, pages);
+  const output = inPlaceOutput || await PDFDocument.create();
   if (edits.length || insertedTexts.length) output.registerFontkit(fontkit);
 
-  const sourceCache = new Map();
+  const sourceCache = inPlaceOutput ? new Map([[0, inPlaceOutput]]) : new Map();
   const editsByPageIndex = new Map();
   for (const edit of edits) {
     const pageIndex = Number(edit?.pageIndex);
@@ -277,13 +308,16 @@ export async function assemblePdfWithTextEdits({
     let sourceDoc = sourceCache.get(pageRef.sourceIndex);
     if (!sourceDoc) {
       sourceDoc = await loadPdfLibDocument(source.bytes);
+      flattenPdfFormForPageCopy(sourceDoc);
       sourceCache.set(pageRef.sourceIndex, sourceDoc);
     }
     if (pageRef.pageIndex >= sourceDoc.getPageCount()) {
       throw new Error(`Page ${pageRef.pageIndex + 1} is outside source index ${pageRef.sourceIndex}`);
     }
 
-    const [copiedPage] = await output.copyPages(sourceDoc, [pageRef.pageIndex]);
+    const copiedPage = inPlaceOutput
+      ? output.getPage(index)
+      : (await output.copyPages(sourceDoc, [pageRef.pageIndex]))[0];
 
     for (const edit of editsByPageIndex.get(index) || []) {
       const text = String(edit?.text ?? '');
@@ -402,7 +436,7 @@ export async function assemblePdfWithTextEdits({
     copiedPage.setRotation(degrees(
       copiedPage.getRotation().angle + normalizePageRotation(pageRef.rotation)
     ));
-    output.addPage(copiedPage);
+    if (!inPlaceOutput) output.addPage(copiedPage);
     onProgress?.({ done: index + 1, total: pages.length });
   }
 
