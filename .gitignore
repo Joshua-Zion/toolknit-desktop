@@ -76,3 +76,10 @@ toolknit-desktop/cli/*.tgz
 
 # GitHub 只识别根目录 .github；子应用目录里的副本不提交
 toolknit-desktop/.github/
+
+# 本地 UI/浏览器测试产物（可能包含浏览器登录态与历史记录）
+toolknit-desktop/.cache/
+toolknit-desktop/.codex-*.png
+
+# 本地文章草稿，不属于桌面端发布源码
+docs/articles/devto/
