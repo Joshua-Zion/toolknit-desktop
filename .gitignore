@@ -15,9 +15,10 @@ build-log*.txt
 dev-error.log
 
 # 敏感配置
+.npmrc
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # 系统文件
 .DS_Store

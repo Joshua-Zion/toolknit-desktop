@@ -1,7 +1,7 @@
 {
   "name": "toolknit-desktop",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.1",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -56,6 +56,7 @@
     "test:hardware-gpu-display": "node scripts/test-hardware-gpu-display.mjs",
     "test:task-runtime": "node scripts/test-task-runtime.mjs",
     "test:help": "node scripts/test-help-center.mjs",
+    "test:release-version": "node scripts/test-release-version.mjs",
     "test:cli-package": "npm run stage:cli-resources && node scripts/test-cli-package.mjs",
     "test:cli": "npm run test:cli-package && npm run test:cli-agent",
     "test:release": "node scripts/run-release-tests.mjs",

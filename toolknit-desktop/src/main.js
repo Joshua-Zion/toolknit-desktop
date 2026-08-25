@@ -2862,7 +2862,7 @@
       const versionUpdateStatus = document.getElementById('versionUpdateStatus');
       const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
       const openReleasePageBtn = document.getElementById('openReleasePageBtn');
-      const APP_VERSION_FALLBACK = '2.1.0';
+      const APP_VERSION_FALLBACK = '2.1.1';
       const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/ZihangDong/toolknit-desktop/releases/latest';
       const GITHUB_RELEASES_PAGE = 'https://github.com/ZihangDong/toolknit-desktop/releases/latest';
       let versionCheckRunning = false;

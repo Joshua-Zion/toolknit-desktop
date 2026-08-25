@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/2.1.0-正式版-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.1.0" />
+  <img src="https://img.shields.io/badge/2.1.1-正式版-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.1.1" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -45,7 +45,7 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
       <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
-      <sub>2.1.0 安装包、校验文件和版本说明会同步到 Release。</sub>
+      <sub>2.1.1 安装包、校验文件和版本说明会同步到 Release。</sub>
     </td>
   </tr>
 </table>
@@ -67,9 +67,9 @@ ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把�
   </tr>
 </table>
 
-## 2.1.0 新功能
+## 2.1 系列新功能
 
-2.1.0 新增 11 项桌面工具，并围绕自定义背景、玻璃拟态交互、依赖复用、任务生命周期和失败恢复完成一轮系统升级。新工具继续遵循本地优先原则，重型编辑器与算法模块按需加载，离开页面后会释放 Worker、Canvas、监听器和临时资源。
+2.1 系列新增 11 项桌面工具，并围绕自定义背景、玻璃拟态交互、依赖复用、任务生命周期和失败恢复完成一轮系统升级。新工具继续遵循本地优先原则，重型编辑器与算法模块按需加载，离开页面后会释放 Worker、Canvas、监听器和临时资源。
 
 <table cellpadding="16" cellspacing="0">
   <tr>
@@ -365,11 +365,11 @@ ToolKnit 2.1 采用轻量桌面容器与本地文件引擎组合，网页端、�
 
 ### 安装 Windows 桌面端
 
-从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。2.1.0 正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
+从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。2.1.1 正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
 
 正式安装包发布前请以仓库 Release 页面为准，并在运行前核对同页提供的 SHA-256 校验值。
 
-**代码签名状态：** 2.1.0 尚未使用 SignPath 签名流程。项目已申请 SignPath Foundation 的开源代码签名支持；获批并完成集成后，后续版本将按照[代码签名政策](CODE_SIGNING_POLICY.md)签名。
+**代码签名状态：** 2.1.1 尚未使用 SignPath 签名流程。项目已申请 SignPath Foundation 的开源代码签名支持；获批并完成集成后，后续版本将按照[代码签名政策](CODE_SIGNING_POLICY.md)签名。
 
 ### 从源码运行
 
