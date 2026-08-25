@@ -1,4 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
+import { flattenPdfFormForPageCopy } from './pdf-document-structure.js';
 
 export const PDF_SPLIT_LIMITS = Object.freeze({
   maxFiles: 25,
@@ -65,6 +66,7 @@ export async function splitPdfPages({ documents, pages, onProgress }) {
     let sourcePdf = sourceCache.get(fileIndex);
     if (!sourcePdf) {
       sourcePdf = await PDFDocument.load(documentInfo.fileData.slice());
+      flattenPdfFormForPageCopy(sourcePdf);
       sourceCache.set(fileIndex, sourcePdf);
     }
     if (pageIndex > sourcePdf.getPageCount()) {

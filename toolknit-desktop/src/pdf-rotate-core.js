@@ -1,4 +1,5 @@
 import { PDFDocument, degrees } from 'pdf-lib';
+import { flattenPdfFormForPageCopy } from './pdf-document-structure.js';
 
 export const PDF_ROTATE_LIMITS = Object.freeze({
   maxInputBytes: 150 * 1024 * 1024,
@@ -65,20 +66,38 @@ export async function rotatePdfPages({ fileData, pages, onProgress }) {
 
   // Do not ignore encryption: a user must unlock protected PDFs in the dedicated tool.
   const sourcePdf = await PDFDocument.load(fileData.slice());
-  const outputPdf = await PDFDocument.create();
   const sourcePageCount = sourcePdf.getPageCount();
   assertPdfRotatePageCount(sourcePageCount);
 
-  for (let outputIndex = 0; outputIndex < pages.length; outputIndex++) {
-    const { pageIndex, rotation = 0 } = pages[outputIndex] || {};
+  const normalizedPages = pages.map((entry) => {
+    const { pageIndex, rotation = 0 } = entry || {};
     if (!Number.isInteger(pageIndex) || pageIndex < 1 || pageIndex > sourcePageCount) {
       throw new Error(`Page ${pageIndex} is outside the source PDF`);
     }
-    const normalizedRotation = normalizePdfRotation(rotation);
+    return { pageIndex, rotation: normalizePdfRotation(rotation) };
+  });
+
+  const updatesWholeDocument = normalizedPages.length === sourcePageCount
+    && normalizedPages.every((entry, index) => entry.pageIndex === index + 1);
+  if (updatesWholeDocument) {
+    for (let index = 0; index < normalizedPages.length; index++) {
+      const entry = normalizedPages[index];
+      const page = sourcePdf.getPage(index);
+      page.setRotation(degrees((page.getRotation().angle + entry.rotation) % 360));
+      await onProgress?.({ completed: index + 1, total: normalizedPages.length });
+    }
+    return sourcePdf.save();
+  }
+
+  flattenPdfFormForPageCopy(sourcePdf);
+  const outputPdf = await PDFDocument.create();
+
+  for (let outputIndex = 0; outputIndex < normalizedPages.length; outputIndex++) {
+    const { pageIndex, rotation } = normalizedPages[outputIndex];
     const [copiedPage] = await outputPdf.copyPages(sourcePdf, [pageIndex - 1]);
-    copiedPage.setRotation(degrees((copiedPage.getRotation().angle + normalizedRotation) % 360));
+    copiedPage.setRotation(degrees((copiedPage.getRotation().angle + rotation) % 360));
     outputPdf.addPage(copiedPage);
-    await onProgress?.({ completed: outputIndex + 1, total: pages.length });
+    await onProgress?.({ completed: outputIndex + 1, total: normalizedPages.length });
   }
 
   return outputPdf.save();

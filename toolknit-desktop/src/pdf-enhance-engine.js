@@ -100,10 +100,10 @@ function sauvolaBinarize(data, width, height, windowSize, k) {
   }
 }
 
-function sharpen(data, width, height, amount, radius) {
+export function sharpenRgbaImage(data, width, height, amount, radius) {
   const original = new Uint8ClampedArray(data);
   const rowStride = width * 4;
-  const center = radius === 1 ? 1 + 4 * amount : 1 + 8 * amount;
+  const center = radius === 1 ? 1 + 4 * amount : 1 + 6 * amount;
   const side = -amount;
   for (let y = radius; y < height - radius; y++) {
     for (let x = radius; x < width - radius; x++) {
@@ -127,7 +127,7 @@ export function enhanceRgbaImage(data, width, height, strength) {
   }
   if (strength === 'light') {
     clahe(data, width, height, 64, 20);
-    sharpen(data, width, height, 0.4, 1);
+    sharpenRgbaImage(data, width, height, 0.4, 1);
     return;
   }
   if (strength === 'medium') {
@@ -138,7 +138,7 @@ export function enhanceRgbaImage(data, width, height, strength) {
       data[index + 2] = data[index + 2] * 0.4 + gray * 0.6;
     }
     clahe(data, width, height, 48, 15);
-    sharpen(data, width, height, 0.5, 2);
+    sharpenRgbaImage(data, width, height, 0.5, 2);
     return;
   }
   if (strength === 'strong') {
@@ -150,7 +150,7 @@ export function enhanceRgbaImage(data, width, height, strength) {
     }
     clahe(data, width, height, 32, 10);
     sauvolaBinarize(data, width, height, 41, 0.15);
-    sharpen(data, width, height, 0.4, 2);
+    sharpenRgbaImage(data, width, height, 0.4, 2);
     return;
   }
   throw new Error('pdf-enhance:invalid-strength');

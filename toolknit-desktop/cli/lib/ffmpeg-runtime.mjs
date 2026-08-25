@@ -44,6 +44,9 @@ export async function resolveFfmpeg() {
   const executable = ffmpegExecutableName();
   const managedCandidates = [
     path.join(managedFfmpegDirectory(), executable),
+    // The repository vendor copy keeps local release and regression tests
+    // self-contained when the user has not installed FFmpeg system-wide.
+    path.join(CLI_ROOT, 'vendor', 'ffmpeg', executable),
     // Development-only compatibility. This path is never part of the published CLI.
     path.join(PROJECT_ROOT, 'src-tauri', 'resources', 'ffmpeg', executable)
   ];

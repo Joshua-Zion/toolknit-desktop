@@ -48,6 +48,29 @@ export function normalizeImageCompressionQuality(value) {
   return quality;
 }
 
+export function getImageBatchFailureSummary(result, maxVisible = 8) {
+  const requestedLimit = Number(maxVisible);
+  const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, IMAGE_BATCH_LIMITS.maxFiles)
+    : 8;
+  const errors = Array.isArray(result?.errors)
+    ? result.errors
+      .map(error => String(error ?? '').trim().slice(0, 500))
+      .filter(Boolean)
+      .slice(0, IMAGE_BATCH_LIMITS.maxFiles)
+    : [];
+  const declaredFailCount = Number(result?.fail_count);
+  const failCount = Number.isSafeInteger(declaredFailCount) && declaredFailCount >= 0
+    ? Math.max(declaredFailCount, errors.length)
+    : errors.length;
+  const visibleErrors = errors.slice(0, limit);
+  return {
+    failCount,
+    visibleErrors,
+    remainingCount: Math.max(0, failCount - visibleErrors.length)
+  };
+}
+
 export function validateImageBatchSelection(files) {
   if (!Array.isArray(files) || files.length === 0) {
     throw new ImageBatchError('missing_input', 'Select at least one image file.');

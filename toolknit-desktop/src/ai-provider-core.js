@@ -49,10 +49,38 @@ function utf8ByteLength(value) {
 }
 
 function isLoopbackHost(hostname) {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  if (hostname === 'localhost' || hostname === '[::1]') return true;
+  const octets = parseIpv4Host(hostname);
+  return !!octets && octets[0] === 127;
 }
 
-export function normalizeAiProviderConfig({ url, model }) {
+function parseIpv4Host(hostname) {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) return null;
+  const octets = hostname.split('.').map(Number);
+  return octets.every(value => Number.isInteger(value) && value >= 0 && value <= 255) ? octets : null;
+}
+
+function isPrivateNetworkHost(hostname) {
+  const octets = parseIpv4Host(hostname);
+  if (octets) {
+    return octets[0] === 10
+      || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+      || (octets[0] === 192 && octets[1] === 168);
+  }
+  const ipv6 = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return /^(?:fc|fd)[0-9a-f]{2}(?::|$)/.test(ipv6);
+}
+
+export function isPrivateHttpAiProviderUrl(value) {
+  try {
+    const endpoint = new URL(value);
+    return endpoint.protocol === 'http:' && isPrivateNetworkHost(endpoint.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeAiProviderConfig({ url, model, allowPrivateHttp = false }) {
   if (typeof url !== 'string' || !url.trim() || typeof model !== 'string' || !model.trim()) {
     throw new AiProviderError('invalid_config');
   }
@@ -63,12 +91,38 @@ export function normalizeAiProviderConfig({ url, model }) {
   } catch {
     throw new AiProviderError('invalid_config');
   }
+  endpoint.hash = '';
   const isSecureEndpoint = endpoint.protocol === 'https:';
   const isLoopbackHttp = endpoint.protocol === 'http:' && isLoopbackHost(endpoint.hostname);
-  if ((!isSecureEndpoint && !isLoopbackHttp) || endpoint.username || endpoint.password) {
+  const isPrivateHttp = endpoint.protocol === 'http:' && isPrivateNetworkHost(endpoint.hostname);
+  if (endpoint.username || endpoint.password) {
     throw new AiProviderError('invalid_config');
   }
+  if (isPrivateHttp && !allowPrivateHttp) {
+    throw new AiProviderError('private_http_requires_opt_in');
+  }
+  if (!isSecureEndpoint && !isLoopbackHttp && !isPrivateHttp) {
+    throw new AiProviderError('insecure_http_not_allowed');
+  }
   return { url: endpoint.href, model: model.trim() };
+}
+
+function nativeAiProviderError(error) {
+  const value = typeof error === 'string' ? error : String(error?.message || error || '');
+  const match = value.match(/ai-provider:(http_error):(\d{3})/);
+  if (match) return new AiProviderError(match[1], Number(match[2]));
+  const code = value.match(/ai-provider:(aborted|network_error|invalid_config|invalid_request|invalid_response|response_too_large)/)?.[1];
+  return new AiProviderError(code || 'network_error');
+}
+
+async function waitForNativeAiProvider(request, signal) {
+  if (!signal) return request;
+  if (signal.aborted) throw new AiProviderError('aborted');
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new AiProviderError('aborted'));
+    signal.addEventListener('abort', abort, { once: true });
+    request.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
 }
 
 /**
@@ -82,12 +136,14 @@ export async function requestAiCompletion({
   messages,
   maxTokens,
   signal,
-  fetchImpl
+  fetchImpl,
+  nativeRequestImpl,
+  allowPrivateHttp = false
 }) {
   if (typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new AiProviderError('invalid_config');
   }
-  const config = normalizeAiProviderConfig({ url, model });
+  const config = normalizeAiProviderConfig({ url, model, allowPrivateHttp });
   if (!Array.isArray(messages) || messages.length === 0 || messages.length > AI_PROVIDER_LIMITS.maxMessages
     || !messages.every(isValidMessage)) {
     throw new AiProviderError('invalid_request');
@@ -107,6 +163,34 @@ export async function requestAiCompletion({
     stream: false
   };
   if (maxTokens !== undefined) body.max_tokens = maxTokens;
+
+  const endpoint = new URL(config.url);
+  const useNativeTransport = endpoint.protocol === 'http:' && typeof nativeRequestImpl === 'function';
+  if (useNativeTransport) {
+    let result;
+    try {
+      result = await waitForNativeAiProvider(nativeRequestImpl({
+        url: config.url,
+        apiKey: apiKey.trim(),
+        model: config.model,
+        messages,
+        maxTokens,
+        allowPrivateHttp: Boolean(allowPrivateHttp)
+      }), signal);
+    } catch (error) {
+      if (error instanceof AiProviderError) throw error;
+      throw nativeAiProviderError(error);
+    }
+    const content = typeof result === 'string' ? result : result?.content;
+    if (typeof content !== 'string') throw new AiProviderError('invalid_response');
+    if (utf8ByteLength(content) > AI_PROVIDER_LIMITS.maxResponseBytes) {
+      throw new AiProviderError('response_too_large');
+    }
+    return content;
+  }
+  if (isPrivateHttpAiProviderUrl(config.url)) {
+    throw new AiProviderError('native_transport_unavailable');
+  }
 
   let response;
   try {

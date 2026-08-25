@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ToolKnit Desktop</title>
     <link rel="stylesheet" href="./src/styles.css">
-    <link rel="preload" href="/assets/fonts/Alibaba-PuHuiTi-Heavy.ttf" as="font" type="font/ttf" crossorigin>
-    <link rel="preload" href="/assets/fonts/BebasNeue-1.otf" as="font" type="font/otf" crossorigin>
+    <link rel="stylesheet" href="./src/tool-page-v2-final.css">
     <script>
       if (new URLSearchParams(window.location.search).get('screen-picker') === '1') {
         document.documentElement.dataset.screenPicker = '1';
@@ -92,9 +91,9 @@
               <div class="settings-v2-poster-kicker">TOOLKNIT SETTINGS</div>
               <h1 data-i18n="settings.centerTitle">设置中心</h1>
               <p data-i18n="settings.centerDesc">管理 AI 密钥、依赖、存储和窗口外观。所有设置只保存在本机。</p>
-              <div class="settings-v2-poster-note" data-i18n="settings.posterNote">这一版不再放“自定义背景”，保持统一的黑白极简视觉。</div>
+              <div class="settings-v2-poster-note" data-i18n="settings.posterNote">高级黑是唯一的视觉基底；图片和视频背景只作为可选的氛围层。</div>
               <div class="settings-v2-poster-meta">
-                <div><span data-i18n="settings.versionInfo">版本信息</span><strong id="settings-version">v2.0.0</strong></div>
+                <div><span data-i18n="settings.versionInfo">版本信息</span><strong id="settings-version">v2.1.0</strong></div>
                 <div><span data-i18n="settings.storageMeta">保存位置</span><strong>LOCAL</strong></div>
                 <div><span data-i18n="settings.visualMeta">视觉方向</span><strong>MONOCHROME</strong></div>
               </div>
@@ -102,6 +101,8 @@
                 <span><i data-lucide="languages"></i><span data-i18n="settings.language">语言切换</span></span>
                 <span><i data-lucide="key-round"></i><span data-i18n="settings.aiRuntimeMeta">AI / 模型 / 运行时</span></span>
                 <span><i data-lucide="folder-open"></i><span data-i18n="settings.storageMeta">存储位置</span></span>
+                <span><i data-lucide="image"></i><span data-i18n="settings.customBackground">自定义背景</span></span>
+                <span><i data-lucide="type"></i><span data-i18n="settings.interfaceFonts">界面字体</span></span>
                 <span><i data-lucide="volume-2"></i><span data-i18n="settings.soundEffects">界面音效</span></span>
                 <span><i data-lucide="maximize-2"></i><span data-i18n="settings.windowAppearance">窗口外观</span></span>
                 <span><i data-lucide="life-buoy"></i><span data-i18n="settings.helpFeedback">帮助与反馈</span></span>
@@ -139,7 +140,7 @@
               <article class="settings-v2-card span-6 settings-v2-sound-card">
                 <div class="settings-v2-head"><div><div class="settings-v2-index">04 / SOUND</div><h2 data-i18n="settings.soundEffects">界面音效</h2></div></div>
                 <div class="settings-v2-toggle-row settings-v2-sound-toggle-row">
-                  <div class="settings-v2-toggle-copy"><strong data-i18n="settings.soundEffectsEnabled">启用界面音效</strong><span data-i18n="settings.soundEffectsEnabledDesc">为点击、触碰和滑动提供轻量反馈，默认开启。</span></div>
+                  <div class="settings-v2-toggle-copy"><strong data-i18n="settings.soundEffectsEnabled">启用界面音效</strong><span data-i18n="settings.soundEffectsEnabledDesc">为悬停、触碰和滑动提供轻量反馈，默认开启。</span></div>
                   <button class="settings-v2-switch no-ui-sound" id="uiSoundToggle" type="button" aria-pressed="true" data-i18n-title="settings.soundEffectsEnabled" data-i18n-aria-label="settings.soundEffectsEnabled"></button>
                 </div>
                 <div class="settings-v2-sound-style-label" data-i18n="settings.soundStyle">音效风格</div>
@@ -189,8 +190,52 @@
                 <p class="settings-v2-hint" data-i18n="settings.storageHint">输出会自动按 PDF、图像、音频、视频、AI 文档等功能分类保存。</p>
               </article>
 
+              <article class="settings-v2-card span-6 settings-v2-background-card">
+                <div class="settings-v2-head"><div><div class="settings-v2-index">09 / BACKGROUND</div><h2 data-i18n="settings.customBackground">自定义背景</h2></div></div>
+                <div class="settings-v2-background-preview" id="settingsBackgroundPreview" role="img" data-i18n-aria-label="settings.customBackgroundPreview" aria-label="自定义背景预览">
+                  <div class="settings-v2-background-preview-grid" aria-hidden="true"></div>
+                  <div class="settings-v2-background-preview-copy"><i data-lucide="image-plus"></i><span data-i18n="settings.customBackgroundEmpty">尚未选择背景</span></div>
+                </div>
+                <div class="settings-v2-background-summary" id="settingsBackgroundSummary" data-i18n="settings.customBackgroundEmptyHint">默认使用高级黑动画层</div>
+                <div class="settings-v2-background-import" id="settingsBackgroundImportStatus" role="status" aria-live="polite" hidden>
+                  <span class="settings-v2-background-import-label" id="settingsBackgroundImportLabel" data-i18n="settings.backgroundImportPreparing">正在准备导入背景...</span>
+                  <progress class="settings-v2-background-import-track" id="settingsBackgroundImportTrack" value="0" max="100" aria-describedby="settingsBackgroundImportLabel">0%</progress>
+                </div>
+                <div class="settings-v2-row settings-v2-background-actions">
+                  <button class="settings-v2-btn" id="chooseBackgroundImage" type="button"><i data-lucide="image-plus"></i><span data-i18n="settings.chooseBackgroundImage">选择图片</span></button>
+                  <button class="settings-v2-btn" id="chooseBackgroundVideo" type="button"><i data-lucide="film"></i><span data-i18n="settings.chooseBackgroundVideo">选择视频</span></button>
+                  <button class="settings-v2-btn settings-v2-background-clear" id="clearCustomBackground" type="button" disabled><i data-lucide="trash-2"></i><span data-i18n="settings.clearBackground">清除背景</span></button>
+                </div>
+                <input id="customBackgroundImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif,image/bmp" hidden>
+                <input id="customBackgroundVideoInput" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogv,.ogg,.mov" hidden>
+                <p class="settings-v2-hint" data-i18n="settings.customBackgroundHint">仅作用于首页与工具工作台；设置页、弹框和屏幕取色保持纯黑。文件只保存在本机。</p>
+              </article>
+
+              <article class="settings-v2-card span-12 settings-v2-font-card" id="settingsFontCard">
+                <div class="settings-v2-head"><div><div class="settings-v2-index">10 / TYPE</div><h2 data-i18n="settings.interfaceFonts">界面字体</h2></div></div>
+                <div class="settings-v2-font-grid" id="settingsFontSlots" aria-live="polite">
+                  <section class="settings-v2-font-slot" data-font-slot="cn-medium">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontCnBody">中文正文</strong><span data-font-slot-summary>Alibaba PuHuiTi Medium</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="cn-medium"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="cn-medium" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                  <section class="settings-v2-font-slot" data-font-slot="cn-bold">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontCnHeading">中文标题</strong><span data-font-slot-summary>Alibaba PuHuiTi Bold</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="cn-bold"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="cn-bold" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                  <section class="settings-v2-font-slot" data-font-slot="en-regular">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontEnBody">English text</strong><span data-font-slot-summary>Fonarto Regular</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="en-regular"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="en-regular" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                  <section class="settings-v2-font-slot" data-font-slot="en-bold">
+                    <div class="settings-v2-font-slot-copy"><strong data-i18n="settings.fontEnHeading">English heading</strong><span data-font-slot-summary>Fonarto Bold</span></div>
+                    <div class="settings-v2-font-slot-actions"><button class="settings-v2-btn" type="button" data-font-upload="en-bold"><i data-lucide="upload"></i><span data-i18n="settings.fontUpload">上传替换</span></button><button class="settings-v2-icon-btn" type="button" data-font-reset="en-bold" data-i18n-title="settings.fontRestore" title="恢复默认" disabled><i data-lucide="rotate-ccw"></i></button></div>
+                  </section>
+                </div>
+                <p class="settings-v2-hint" data-i18n="settings.interfaceFontsHint">默认字体已随应用提供。可按文字类型替换为本地字体；字体只保存在本机，不会上传或下载。</p>
+              </article>
+
               <article class="settings-v2-card span-6 settings-v2-update-card">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">09 / UPDATE</div><h2 data-i18n="settings.versionUpdateTitle">检查版本更新</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">11 / UPDATE</div><h2 data-i18n="settings.versionUpdateTitle">检查版本更新</h2></div></div>
                 <div class="settings-v2-row">
                   <div class="settings-v2-path" id="versionUpdateStatus">--</div>
                   <button class="settings-v2-btn settings-v2-btn-primary" id="checkVersionUpdateBtn" type="button"><i data-lucide="refresh-cw"></i><span data-i18n="settings.checkUpdate">检查更新</span></button>
@@ -200,7 +245,7 @@
               </article>
 
               <article class="settings-v2-card span-12">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">10 / WINDOW</div><h2 data-i18n="settings.windowAppearance">窗口外观</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">12 / WINDOW</div><h2 data-i18n="settings.windowAppearance">窗口外观</h2></div></div>
                 <div class="settings-v2-toggle-row">
                   <div class="settings-v2-toggle-copy"><strong data-i18n="settings.windowResize">允许窗口拉伸</strong><span data-i18n="settings.windowResizeDesc">开启后可拖拽边缘调整窗口大小，最小不会低于当前设计尺寸。</span></div>
                   <button class="settings-v2-switch" id="windowResizeToggle" type="button" aria-pressed="false" data-i18n-title="settings.windowResize"></button>
@@ -216,17 +261,17 @@
               </article>
 
               <article class="settings-v2-card span-6">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">11 / HELP</div><h2 data-i18n="settings.helpFeedback">帮助与反馈</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">13 / HELP</div><h2 data-i18n="settings.helpFeedback">帮助与反馈</h2></div></div>
                 <div class="settings-v2-link-grid"><button class="settings-v2-link-card" type="button" id="helpLink"><span data-i18n="settings.helpCenter">帮助中心</span><i data-lucide="arrow-up-right"></i></button><button class="settings-v2-link-card" type="button" id="feedbackLink"><span data-i18n="settings.feedbackBug">反馈 BUG</span><i data-lucide="message-circle-warning"></i></button></div>
               </article>
 
               <article class="settings-v2-card span-6">
-                <div class="settings-v2-head"><div><div class="settings-v2-index">12 / LEGAL</div><h2 data-i18n="settings.legal">声明与规范</h2></div></div>
+                <div class="settings-v2-head"><div><div class="settings-v2-index">14 / LEGAL</div><h2 data-i18n="settings.legal">声明与规范</h2></div></div>
                 <div class="settings-v2-link-grid"><button class="settings-v2-link-card" type="button" id="declarationLink"><span data-i18n="settings.declaration">程序声明</span><i data-lucide="book-open"></i></button><button class="settings-v2-link-card" type="button" id="usagePolicyLink"><span data-i18n="settings.usagePolicy">使用规范</span><i data-lucide="shield-check"></i></button></div>
               </article>
             </section>
           </main>
-          <footer class="settings-v2-footnote"><span>TOOLKNIT SETTINGS / MONOCHROME</span><span>NO CUSTOM BACKGROUND</span></footer>
+          <footer class="settings-v2-footnote"><span>TOOLKNIT SETTINGS / ADVANCED DARK</span><span>CUSTOM IMAGE OR VIDEO / LOCAL ONLY</span></footer>
         </div>
       </div>
     </div>
@@ -308,7 +353,11 @@
           <input type="text" class="help-search-input" id="helpSearchInput" data-i18n-placeholder="help.searchPlaceholder" placeholder="搜索文档..." />
         </div>
         <div class="help-nav" id="helpNav">
-          <div class="help-nav-group">
+<div class="help-nav-group">
+  <div class="help-nav-group-title">Developer Tools</div>
+  <div class="help-nav-item" data-help-section="developer-tools">2.1.0 新功能</div>
+</div>
+<div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.gettingStarted">快速开始</div>
             <div class="help-nav-item active" data-help-section="overview" data-i18n="help.nav.overview">功能概览</div>
             <div class="help-nav-item" data-help-section="install" data-i18n="help.nav.install">安装与启动</div>
@@ -373,6 +422,7 @@
           <div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.creativeTools">创意工具</div>
             <div class="help-nav-item" data-help-section="color-extractor" data-i18n="help.nav.colorExtractor">配色提取器</div>
+            <div class="help-nav-item" data-help-section="color-space-compare" data-i18n="help.nav.colorSpaceCompare">颜色空间对比</div>
             <div class="help-nav-item" data-help-section="typing-test" data-i18n="help.nav.typingTest">打字测试器</div>
           </div>
           <div class="help-nav-group">
@@ -442,71 +492,49 @@
 
     <div class="feedback-overlay" id="feedbackOverlay">
       <div class="lightrays-bg" id="lightraysBg"></div>
-      <div class="feedback-header">
-        <button class="settings-back" id="feedbackBack" data-i18n-title="settings.back">
-          <div class="svg-wrapper-1">
-            <div class="svg-wrapper">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                class="icon"
-              >
-                <path d="M19 12H5M12 19l-7-7 7-7"></path>
-              </svg>
+      <header class="settings-v2-topbar feedback-v2-topbar">
+        <div class="settings-v2-topbar-left">
+          <button class="settings-v2-back" id="feedbackBack" type="button" data-i18n-title="settings.back" title="返回首页">
+            <i data-lucide="arrow-left"></i>
+            <span data-i18n="settings.back">返回首页</span>
+          </button>
+          <span class="settings-v2-top-tag">ToolKnit 2.1 Feedback</span>
+        </div>
+        <div class="home-v2-top-actions settings-v2-top-actions">
+          <button class="home-v2-nav-link" type="button" data-home-link="website" data-i18n-title="home.webVersion" data-i18n-aria-label="home.webVersion" title="网页版" aria-label="网页版">
+            <i data-lucide="globe-2"></i>
+            <span data-i18n="home.webVersion">网页版</span>
+          </button>
+          <button class="home-v2-support-top" type="button" data-open-support data-i18n-title="home.supportAuthor" data-i18n-aria-label="home.supportAuthor" title="支持作者" aria-label="支持作者">
+            <i data-lucide="heart"></i>
+            <span data-i18n="home.supportAuthor">支持作者</span>
+          </button>
+          <div class="home-v2-window-cluster" aria-label="窗口与设置">
+            <button class="home-v2-icon-button" id="feedbackV2Settings" type="button" data-i18n-title="nav.settings" title="设置" aria-label="设置">
+              <i data-lucide="settings"></i>
+            </button>
+            <div class="home-v2-window-controls" aria-label="窗口控制">
+              <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.minimize" title="最小化" data-action="minimize"><i data-lucide="minus"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.maximize" title="最大化" data-action="maximize"><i data-lucide="square"></i></button>
+              <button class="home-v2-window-button ctrl-btn close" type="button" data-i18n-title="common.close" title="关闭" data-action="close"><i data-lucide="x"></i></button>
             </div>
           </div>
-          <span data-i18n="settings.back">返回</span>
-        </button>
-      </div>
+        </div>
+      </header>
       <div class="feedback-body">
         <div class="feedback-hero">
           <div class="feedback-hero-label" data-i18n="home.feedbackPage.heroLabel">ToolKnit Feedback</div>
           <h1 class="feedback-hero-title" data-i18n="home.feedbackPage.title">告诉我们你的想法</h1>
           <p class="feedback-hero-subtitle" data-i18n="home.feedbackPage.subtitle">遇到 bug、有功能建议，或者只是想打个招呼？尽管告诉我们，每一条反馈都会被认真对待。</p>
-          <button class="feedback-cta" id="feedbackCta" data-i18n="home.feedbackPage.cta">我要反馈</button>
+          <button class="feedback-cta" id="feedbackCta" type="button" data-home-link="feedback">
+            <span data-i18n="home.feedbackPage.cta">我要反馈</span>
+            <i data-lucide="arrow-up-right"></i>
+          </button>
         </div>
         <div class="feedback-marquee">
           <div class="marquee-fade-left"></div>
           <div class="marquee-fade-right"></div>
           <div class="marquee-track" id="marqueeTrack"></div>
-        </div>
-      </div>
-      <div class="feedback-drawer" id="feedbackDrawer">
-        <div class="feedback-drawer-backdrop" id="feedbackDrawerBackdrop"></div>
-        <div class="feedback-drawer-panel">
-          <div class="feedback-drawer-handle"></div>
-          <div class="feedback-drawer-header">
-            <h3 class="feedback-drawer-title" data-i18n="home.feedbackPage.drawerTitle">提交反馈</h3>
-            <button class="feedback-drawer-close" id="feedbackDrawerClose" data-i18n-aria-label="common.close" aria-label="关闭">
-              <i data-lucide="x"></i>
-            </button>
-          </div>
-          <form class="feedback-form" id="feedbackForm">
-            <div class="feedback-form-row">
-              <div class="feedback-form-field">
-                <label class="feedback-form-label" for="feedbackName" data-i18n="home.feedbackPage.nameLabel">称呼</label>
-                <input class="feedback-form-input" type="text" id="feedbackName" name="name" maxlength="60" placeholder="How should we call you?" data-i18n-placeholder="home.feedbackPage.namePlaceholder">
-              </div>
-              <div class="feedback-form-field">
-                <label class="feedback-form-label" for="feedbackEmail" data-i18n="home.feedbackPage.emailLabel">GitHub 用户名（可选）</label>
-                <input class="feedback-form-input" type="text" id="feedbackEmail" name="github" maxlength="80" placeholder="@username" data-i18n-placeholder="home.feedbackPage.emailPlaceholder">
-              </div>
-            </div>
-            <div class="feedback-form-field">
-              <label class="feedback-form-label" for="feedbackTitle" data-i18n="home.feedbackPage.subjectLabel">标题</label>
-              <input class="feedback-form-input" type="text" id="feedbackTitle" name="title" maxlength="160" placeholder="Briefly describe your feedback" data-i18n-placeholder="home.feedbackPage.subjectPlaceholder" required>
-            </div>
-            <div class="feedback-form-field">
-              <label class="feedback-form-label" for="feedbackContent" data-i18n="home.feedbackPage.contentLabel">内容</label>
-              <textarea class="feedback-form-textarea" id="feedbackContent" name="content" rows="4" maxlength="6000" placeholder="Tell us the details..." data-i18n-placeholder="home.feedbackPage.contentPlaceholder" required></textarea>
-            </div>
-            <div class="feedback-form-actions">
-              <button type="button" class="feedback-form-btn feedback-form-btn-cancel" id="feedbackFormCancel" data-i18n="home.feedbackPage.cancel">取消</button>
-              <button type="submit" class="feedback-form-btn feedback-form-btn-submit" id="feedbackFormSubmit" data-i18n="home.feedbackPage.submit">提交</button>
-            </div>
-          </form>
         </div>
       </div>
     </div>
@@ -1463,6 +1491,117 @@
           <button class="audio-clip-success-btn audio-clip-success-btn-secondary" id="transcriptionSuccessOpenFolder" data-i18n="home.transcription.openFolder">打开文件夹</button>
           <button class="audio-clip-success-btn audio-clip-success-btn-primary" id="transcriptionSuccessOk" data-i18n="home.transcription.ok">确定</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Image Crop Tool Page -->
+    <div class="pdf-merge-overlay pdf-merge-v2 image-crop-v2" id="imageCropOverlay">
+      <div class="plasma-bg pdf-merge-v2-bg" id="imageCropPlasmaBg"></div>
+      <div class="audio-convert-drop-zone pdf-merge-v2-drop-zone" id="imageCropDropZone"><span class="drop-hint">松手即可载入图片</span></div>
+      <header class="pdf-merge-v2-topbar">
+        <div class="pdf-merge-v2-topbar-left">
+          <button class="settings-v2-back settings-back pdf-merge-v2-back" id="imageCropBack" type="button" title="返回首页">
+            <i data-lucide="arrow-left"></i><span>返回首页</span>
+          </button>
+          <span class="pdf-merge-v2-top-tag">IMAGE TOOLS · CROP STUDIO</span>
+        </div>
+        <div class="home-v2-top-actions pdf-merge-v2-top-actions">
+          <button class="home-v2-nav-link" type="button" data-home-link="website"><i data-lucide="globe-2"></i><span>网页版本</span></button>
+          <button class="home-v2-support-top" type="button" data-open-support><i data-lucide="heart"></i><span>支持作者</span></button>
+          <div class="home-v2-window-cluster" aria-label="窗口与设置">
+            <button class="home-v2-icon-button" id="imageCropV2Settings" type="button" title="设置" aria-label="设置"><i data-lucide="settings"></i></button>
+            <div class="home-v2-window-controls" aria-label="窗口控制">
+              <button class="home-v2-window-button ctrl-btn" type="button" title="最小化" data-action="minimize"><i data-lucide="minus"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" title="最大化" data-action="maximize"><i data-lucide="square"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" title="关闭" data-action="close"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+        </div>
+      </header>
+      <div class="image-crop-v2-body">
+        <main class="image-crop-stage-column">
+          <div class="image-crop-heading">
+            <div>
+              <span class="pdf-merge-v2-section-kicker">NON-DESTRUCTIVE · ORIGINAL PIXELS</span>
+              <h1>图像裁剪</h1>
+              <p id="imageCropFileMeta">精确构图，原始分辨率本地导出</p>
+            </div>
+            <button class="image-crop-secondary-button" id="imageCropPick" type="button"><i data-lucide="image-plus"></i><span id="imageCropPickLabel">选择图片</span></button>
+          </div>
+          <section class="image-crop-stage-shell" id="imageCropStageShell" aria-label="图像裁剪画布">
+            <button class="image-crop-empty" id="imageCropEmpty" type="button">
+              <i data-lucide="crop"></i><strong>载入一张图片开始裁剪</strong><span>支持 JPG、PNG、WebP、BMP 和静态 GIF</span>
+            </button>
+            <canvas class="image-crop-canvas" id="imageCropCanvas" tabindex="0" aria-label="裁剪区域，可拖动或使用方向键微调"></canvas>
+            <div class="image-crop-snap-indicator" id="imageCropSnapIndicator" aria-hidden="true"><i data-lucide="magnet"></i><span>中心已吸附</span></div>
+            <div class="image-crop-processing" id="imageCropProcessing" aria-live="polite"><span class="image-crop-spinner"></span><strong>正在以原始分辨率导出...</strong></div>
+          </section>
+          <div class="image-crop-stage-footer">
+            <span id="imageCropSelectionSize">等待载入图片</span>
+            <span>拖动边角调整 · 拖动内部移动 · Alt 临时关闭吸附</span>
+          </div>
+        </main>
+        <aside class="image-crop-controls" aria-label="裁剪参数">
+          <section class="image-crop-control-section image-crop-transform-section">
+            <div class="image-crop-section-head"><div><span>TRANSFORM</span><h2>变换</h2></div><div class="image-crop-history">
+              <button id="imageCropUndo" type="button" title="撤销" aria-label="撤销" disabled><i data-lucide="undo-2"></i></button>
+              <button id="imageCropRedo" type="button" title="重做" aria-label="重做" disabled><i data-lucide="redo-2"></i></button>
+            </div></div>
+            <div class="image-crop-icon-tools">
+              <button type="button" data-crop-transform="rotate-left" title="向左旋转" aria-label="向左旋转"><i data-lucide="rotate-ccw"></i></button>
+              <button type="button" data-crop-transform="rotate-right" title="向右旋转" aria-label="向右旋转"><i data-lucide="rotate-cw"></i></button>
+              <button type="button" data-crop-transform="flip-horizontal" title="水平翻转" aria-label="水平翻转"><i data-lucide="flip-horizontal-2"></i></button>
+              <button type="button" data-crop-transform="flip-vertical" title="垂直翻转" aria-label="垂直翻转"><i data-lucide="flip-vertical-2"></i></button>
+              <button type="button" data-crop-transform="reset" title="重置" aria-label="重置"><i data-lucide="refresh-cw"></i></button>
+            </div>
+          </section>
+          <section class="image-crop-control-section">
+            <div class="image-crop-section-head"><div><span>ASPECT RATIO</span><h2>裁剪比例</h2></div></div>
+            <div class="image-crop-ratio-grid" id="imageCropRatioGrid">
+              <button class="active" type="button" data-ratio="free">自由</button><button type="button" data-ratio="original">原图</button>
+              <button type="button" data-ratio="1:1">1:1</button><button type="button" data-ratio="4:3">4:3</button>
+              <button type="button" data-ratio="3:4">3:4</button><button type="button" data-ratio="3:2">3:2</button>
+              <button type="button" data-ratio="2:3">2:3</button><button type="button" data-ratio="16:9">16:9</button>
+              <button type="button" data-ratio="9:16">9:16</button><button type="button" data-ratio="21:9">21:9</button>
+              <button type="button" data-ratio="custom">自定义</button>
+            </div>
+            <div class="image-crop-custom-ratio" id="imageCropCustomRatio" hidden>
+              <label><span>宽</span><input id="imageCropRatioWidth" type="number" min="1" max="999" value="5"></label>
+              <span>:</span>
+              <label><span>高</span><input id="imageCropRatioHeight" type="number" min="1" max="999" value="4"></label>
+            </div>
+          </section>
+          <section class="image-crop-control-section image-crop-guide-section">
+            <label class="image-crop-field"><span>构图辅助线</span><select id="imageCropGuide">
+              <option value="thirds">三分法</option><option value="golden">黄金分割</option><option value="spiral">黄金螺旋</option>
+              <option value="crosshair">中心准星</option><option value="diagonals">对角线</option><option value="grid">中心网格</option>
+              <option value="safe-area">安全区域</option><option value="none">无</option>
+            </select></label>
+            <button class="image-crop-spiral-direction" id="imageCropSpiralDirection" type="button" hidden><i data-lucide="rotate-cw"></i><span>旋转螺旋方向</span></button>
+            <label class="image-crop-toggle"><span><strong>磁吸居中</strong><small>靠近中心时自动对齐</small></span><input id="imageCropSnap" type="checkbox" checked><i></i></label>
+          </section>
+          <section class="image-crop-control-section image-crop-export-section">
+            <div class="image-crop-section-head"><div><span>EXPORT</span><h2>导出</h2></div></div>
+            <div class="image-crop-format" id="imageCropFormat">
+              <button class="active" type="button" data-format="png">PNG</button><button type="button" data-format="jpg">JPG</button><button type="button" data-format="webp">WebP</button><button type="button" data-format="bmp">BMP</button>
+            </div>
+            <label class="image-crop-field"><span>文件名</span><input id="imageCropOutputName" type="text" maxlength="96" placeholder="自动使用原文件名"></label>
+            <label class="image-crop-field image-crop-quality" id="imageCropQualityWrap" hidden><span>JPG 质量 <output id="imageCropQualityValue">92</output></span><input id="imageCropQuality" type="range" min="50" max="100" value="92"></label>
+            <label class="image-crop-field image-crop-background" id="imageCropBackgroundWrap" hidden><span>透明背景填充</span><input id="imageCropBackground" type="color" value="#ffffff"></label>
+            <button class="image-crop-export-button" id="imageCropExport" type="button" disabled><i data-lucide="download"></i><span>导出裁剪图片</span></button>
+          </section>
+        </aside>
+      </div>
+    </div>
+    <div class="audio-convert-success-overlay" id="imageCropSuccessOverlay">
+      <div class="audio-convert-success-dialog">
+        <div class="audio-convert-success-icon"><i data-lucide="check"></i></div><h3 class="audio-convert-success-title">裁剪完成</h3>
+        <div class="audio-convert-success-meta" id="imageCropSuccessMeta"></div>
+        <div class="audio-convert-success-detail">
+          <div class="audio-convert-success-row"><span class="audio-convert-success-key">输出规格</span><span class="audio-convert-success-value" id="imageCropSuccessSize"></span></div>
+          <div class="audio-convert-success-row"><span class="audio-convert-success-key">保存路径</span><span class="audio-convert-success-value" id="imageCropSuccessPath"></span></div>
+        </div>
+        <div class="audio-convert-success-actions"><button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="imageCropOpenFolder" type="button">打开文件夹</button><button class="audio-convert-success-btn audio-convert-success-btn-primary" id="imageCropSuccessOk" type="button">继续裁剪</button></div>
       </div>
     </div>
 
@@ -3453,7 +3592,15 @@
         <aside class="pdf-editor-sidebar pdf-editor-page-sidebar" aria-label="PDF 页面选择">
           <div class="pdf-editor-pages-head">
             <span data-i18n="home.pdfEditor.pages">页面</span>
-            <span class="pdf-editor-pages-count" id="pdfEditorSelectedCount"></span>
+            <div class="pdf-editor-pages-head-actions">
+              <span class="pdf-editor-pages-count" id="pdfEditorSelectedCount"></span>
+              <button class="pdf-editor-pages-action" id="pdfEditorSelectAll" type="button" data-i18n-title="home.pdfEditor.selectAll" title="全选页面" aria-label="全选页面">
+                <i data-lucide="check-check"></i>
+              </button>
+              <button class="pdf-editor-pages-action" id="pdfEditorInvertSelection" type="button" data-i18n-title="home.pdfEditor.invertSelection" title="反选页面" aria-label="反选页面">
+                <i data-lucide="list-restart"></i>
+              </button>
+            </div>
           </div>
           <div class="pdf-editor-page-strip" id="pdfEditorPageStrip" aria-live="polite"></div>
         </aside>
@@ -3594,6 +3741,16 @@
                 </button>
               </div>
               <div class="pdf-editor-tool-row">
+                <button class="pdf-editor-tool" id="pdfEditorDuplicate" type="button" data-i18n-title="home.pdfEditor.duplicate" title="复制页面">
+                  <i data-lucide="copy-plus"></i>
+                  <span data-i18n="home.pdfEditor.duplicate">复制页面</span>
+                </button>
+                <button class="pdf-editor-tool" id="pdfEditorBlankPage" type="button" data-i18n-title="home.pdfEditor.blankPage" title="插入空白页">
+                  <i data-lucide="file-plus"></i>
+                  <span data-i18n="home.pdfEditor.blankPage">空白页</span>
+                </button>
+              </div>
+              <div class="pdf-editor-tool-row">
                 <button class="pdf-editor-tool pdf-editor-tool-danger" id="pdfEditorDelete" type="button">
                   <i data-lucide="trash-2"></i>
                   <span data-i18n="home.pdfEditor.delete">删除</span>
@@ -3634,6 +3791,10 @@
             <div class="pdf-editor-edit-modal-original" id="pdfEditorEditOriginal"></div>
             <label class="pdf-editor-edit-modal-label" id="pdfEditorEditNewLabel" data-i18n="home.pdfEditor.editTextNew">新文字</label>
             <input class="pdf-editor-edit-modal-input" id="pdfEditorEditInput" type="text" autocomplete="off">
+            <div class="pdf-editor-edit-security-note" id="pdfEditorEditSecurityNote" hidden>
+              <i data-lucide="shield-alert"></i>
+              <span data-i18n="home.pdfEditor.visualEditWarning">此操作仅覆盖原文字的视觉外观，原内容仍可能被提取，不可用于敏感信息脱敏。</span>
+            </div>
           </div>
           <footer class="pdf-editor-edit-modal-foot">
             <button class="pdf-merge-selection-btn pdf-merge-selection-btn-secondary" id="pdfEditorEditCancel" type="button">
@@ -8163,7 +8324,7 @@
         <button class="home-v2-brand" type="button" data-home-return aria-label="ToolKnit 首页">
           <img src="/logo.png" alt="" />
           <span class="home-v2-brand-name">ToolKnit</span>
-          <span class="home-v2-brand-version">2.0</span>
+          <span class="home-v2-brand-version">2.1</span>
         </button>
         <div class="home-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -8240,6 +8401,10 @@
             <i data-lucide="monitor-cog" class="nav-icon"></i>
             <span data-i18n="nav.hardware">硬件工具</span>
           </div>
+          <div class="nav-item" data-category="developer">
+            <i data-lucide="braces" class="nav-icon"></i>
+            <span data-i18n="nav.developer">开发者工具</span>
+          </div>
         </div>
         <div class="sidebar-footer">
           <div class="footer-btns">
@@ -8253,7 +8418,7 @@
               <i data-lucide="settings"></i>
             </div>
           </div>
-          <div class="version-text" id="sidebarVersion">v2.0.0</div>
+          <div class="version-text" id="sidebarVersion">v2.1.0</div>
         </div>
       </div>
       <div class="divider"></div>
@@ -8290,6 +8455,10 @@
                       <i data-lucide="heart"></i>
                       <span>支持持续更新</span>
                     </button>
+                    <button class="secondary-action" type="button" data-home-link="website">
+                      <i data-lucide="globe-2"></i>
+                      <span data-i18n="home.openWebWorkbench">Open web workbench</span>
+                    </button>
                   </div>
                   <p class="hero-support-note text-cn">
                     如果 ToolKnit 刚好帮你少传一次文件、少熬一会儿夜，<strong>点一下支持作者</strong>，它就会变成下一次更认真、更好用的更新。
@@ -8302,7 +8471,7 @@
                 </div>
 
                 <div class="weave-stage" aria-label="ToolKnit 网页端预览">
-                  <button class="loop-stage web-preview-stage" type="button" data-home-link="website" aria-label="打开 ToolKnit 网页版">
+                  <button class="web-preview-stage" type="button" data-home-link="website" aria-label="打开 ToolKnit 网页版">
                     <img class="web-preview-image" src="assets/backgrounds/home-web-preview.png" alt="ToolKnit 网页版工具库预览" loading="eager" decoding="async" />
                     <span class="web-preview-tint" aria-hidden="true"></span>
                     <span class="web-preview-sheen" aria-hidden="true"></span>
@@ -8313,31 +8482,6 @@
                     </span>
                   </button>
                 </div>
-              </section>
-
-              <section class="github-strip" aria-label="GitHub 项目数据">
-                <div class="github-intro">
-                  <i data-lucide="github"></i>
-                  <div>
-                    <strong>开源，也保持独立。</strong>
-                    <span>ZihangDong / toolknit-desktop</span>
-                  </div>
-                </div>
-                <div class="github-stat">
-                  <div class="github-stat-value"><i class="github-stat-icon github-stat-icon-star" data-lucide="star" aria-hidden="true"></i><strong id="githubStars">--</strong></div>
-                  <span>STARS</span>
-                </div>
-                <div class="github-stat">
-                  <div class="github-stat-value"><i class="github-stat-icon" data-lucide="git-fork" aria-hidden="true"></i><strong id="githubForks">--</strong></div>
-                  <span>FORKS</span>
-                </div>
-                <div class="github-stat">
-                  <div class="github-stat-value"><i class="github-stat-icon" data-lucide="circle-dot" aria-hidden="true"></i><strong id="githubIssues">--</strong></div>
-                  <span>OPEN ISSUES</span>
-                </div>
-                <a class="github-open" href="https://github.com/ZihangDong/toolknit-desktop" data-home-link="github" target="_blank" rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
-                  <i data-lucide="arrow-up-right"></i>
-                </a>
               </section>
 
               <section class="favorites" id="favorites" aria-labelledby="favoritesTitle">
@@ -8367,7 +8511,7 @@
                   </div>
                   <label class="home-search-field">
                     <i data-lucide="search"></i>
-                    <input id="homeToolSearch" type="search" placeholder="搜索 PDF、PPT、图像、音视频、文本、AI、硬件..." autocomplete="off" />
+                    <input id="homeToolSearch" type="search" placeholder="搜索 PDF、PPT、图像、音视频、文本、AI、硬件..." autocomplete="off" data-i18n-aria-label="home.searchToolsLabel" aria-label="搜索全部工具" />
                   </label>
                 </div>
 
@@ -8382,14 +8526,60 @@
                   <button class="category-chip" type="button" data-home-category="creative"><i data-lucide="palette"></i><span>创意</span></button>
                   <button class="category-chip" type="button" data-home-category="ai"><i data-lucide="sparkles"></i><span>AI</span></button>
                   <button class="category-chip" type="button" data-home-category="hardware"><i data-lucide="cpu"></i><span>硬件</span></button>
+                  <button class="category-chip" type="button" data-home-category="developer"><i data-lucide="braces"></i><span>开发者</span></button>
                   <button class="category-chip" type="button" data-home-category="clean"><i data-lucide="trash-2"></i><span>清理</span></button>
-                </div>
+                   <div class="tool-feedback-prompt">
+                     <span data-i18n="home.featureRequestPrompt">Can't find the right tool? Tell us what you'd like to see.</span>
+                     <button class="tool-feedback-link" type="button" data-home-link="feedback">
+                       <i data-lucide="message-square-plus"></i>
+                       <span data-i18n="home.featureRequestAction">Suggest a feature</span>
+                     </button>
+                   </div>
+                 </div>
 
-                <div class="tool-result-grid" id="homeToolGrid" aria-live="polite"></div>
+                 <div class="tool-result-grid" id="homeToolGrid" aria-live="polite"></div>
+                <div class="tool-load-more" id="homeToolLoadMore" aria-live="polite" hidden>
+                  <span class="tool-load-more-summary" id="homeToolLoadMoreSummary"></span>
+                  <button class="tool-load-more-button" id="homeToolLoadMoreButton" type="button" aria-controls="homeToolGrid">
+                    <span data-i18n="home.loadMore">继续加载</span>
+                    <i data-lucide="arrow-down"></i>
+                  </button>
+                </div>
+              </section>
+
+              <section class="github-strip" aria-labelledby="openSourceTitle">
+                <div class="github-manifesto">
+                  <span class="github-section-index" data-i18n="home.openSource.index">03 / OPEN COMMONS</span>
+                  <div class="github-intro">
+                    <div class="github-mark" aria-hidden="true"><i data-lucide="github"></i></div>
+                    <div>
+                      <span class="github-kicker" data-i18n="home.openSource.kicker">OPEN SOURCE / WINDOWS EXE</span>
+                      <strong id="openSourceTitle" data-i18n="home.openSource.title">这个 EXE，不是黑箱。</strong>
+                      <p data-i18n="home.openSource.desc">ToolKnit Desktop 把能直接使用的工具和完整源代码一起交到你手里。文件留在本机，代码公开可查；任何人都可以阅读、分享、提出问题，也可以把它改得更好。</p>
+                      <div class="github-principles" aria-label="开源原则">
+                        <span><i data-lucide="code-2" aria-hidden="true"></i><span data-i18n="home.openSource.sourceVisible">源码可查</span></span>
+                        <span><i data-lucide="shield-check" aria-hidden="true"></i><span data-i18n="home.openSource.localFirst">文件留在本机</span></span>
+                        <span><i data-lucide="git-pull-request-arrow" aria-hidden="true"></i><span data-i18n="home.openSource.buildTogether">欢迎共同改进</span></span>
+                      </div>
+                      <div class="github-actions">
+                        <span class="github-repo">ZihangDong / toolknit-desktop</span>
+                        <a class="github-open" href="https://github.com/ZihangDong/toolknit-desktop" data-home-link="github" target="_blank" rel="noreferrer" title="打开 GitHub" aria-label="打开 GitHub">
+                          <span data-i18n="home.openSource.cta">查看源码与参与共建</span>
+                          <i data-lucide="arrow-up-right"></i>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="github-stat" aria-label="GitHub Stars">
+                  <span class="github-stat-label" data-i18n="home.openSource.stars">GITHUB STARS</span>
+                  <div class="github-stat-value"><i class="github-stat-icon github-stat-icon-star" data-lucide="star" aria-hidden="true"></i><strong id="githubStars">--</strong></div>
+                  <span class="github-stat-note" data-i18n="home.openSource.starNote">每一颗 Star，都是自由工具继续生长的公开回声。</span>
+                </div>
               </section>
 
               <footer class="footer-note">
-                <span>TOOLKNIT DESKTOP 2.0 / UI CONCEPT 01</span>
+                <span>TOOLKNIT DESKTOP 2.1.0 / UI CONCEPT 01</span>
                 <span>FILES STAY ON YOUR DEVICE</span>
               </footer>
             </div>
@@ -8676,6 +8866,16 @@
                 <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
               </div>
               <div class="audio-list">
+                <div class="audio-list-item" data-tool="image-crop" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.imgCrop">
+                  <div class="audio-list-icon"><i data-lucide="crop"></i></div>
+                  <div class="audio-list-info"><div class="audio-list-title" data-i18n="home.toolNames.imgCrop">图片裁剪</div><div class="audio-list-desc" data-i18n="home.toolNames.imgCropDesc">自由裁剪尺寸</div></div>
+                  <div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span><span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span></div><div class="audio-list-meta">比例预设 / 构图辅助线 / 磁吸居中 / 原图导出</div></div>
+                </div>
+                <div class="audio-list-item" data-tool="image-color-replace" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.imageColorReplace">
+                  <div class="audio-list-icon"><i data-lucide="pipette"></i></div>
+                  <div class="audio-list-info"><div class="audio-list-title" data-i18n="home.toolNames.imageColorReplace">智能颜色替换</div><div class="audio-list-desc" data-i18n="home.toolNames.imageColorReplaceDesc">吸管取样、连通区域保护与自然边缘过渡</div></div>
+                  <div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span><span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span></div><div class="audio-list-meta" data-i18n="home.toolNames.imageColorReplaceMeta">智能保护 / 阈值 / 柔化 / 原图导出</div></div>
+                </div>
                 <div class="audio-list-item" data-tool="image-convert" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.imgConvert">
                   <div class="audio-list-icon"><i data-lucide="arrow-left-right"></i></div>
                   <div class="audio-list-info">
@@ -8857,6 +9057,11 @@
                 <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
               </div>
               <div class="audio-list">
+                <div class="audio-list-item" data-tool="markdown-editor" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.markdownEditor">
+                  <div class="audio-list-icon"><i data-lucide="notebook-pen"></i></div>
+                  <div class="audio-list-info"><div class="audio-list-title" data-i18n="home.toolNames.markdownEditor">Markdown 文档编辑器</div><div class="audio-list-desc" data-i18n="home.toolNames.markdownEditorDesc">实时预览、文档目录、Mermaid 与数学公式</div></div>
+                  <div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag" data-i18n="home.toolNames.textCategoryTag">文本工具</span><span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span></div><div class="audio-list-meta" data-i18n="home.toolNames.markdownEditorMeta">GFM / 草稿恢复 / MD·HTML 导出</div></div>
+                </div>
                 <div class="audio-list-item" data-tool="transcription" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.transcription">
                   <div class="audio-list-icon"><i data-lucide="captions"></i></div>
                   <div class="audio-list-info">
@@ -8997,7 +9202,7 @@
               <div class="tools-hero-text">
                 <span class="tools-eyebrow" data-i18n="home.toolNames.creativeEyebrow">Design Studio</span>
                 <h2 data-i18n="nav.creative">创意工具</h2>
-                <p data-i18n="home.creativeCategoryDesc">从图片提取主色，并进行中英文打字测试。</p>
+                <p data-i18n="home.creativeCategoryDesc">提取图片主色、联动比较颜色空间，并进行中英文打字测试。</p>
               </div>
               <div class="audio-search tools-search">
                 <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
@@ -9019,6 +9224,20 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.colorExtractorMeta">图片取色 / 色卡导出 / HEX复制</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="color-space-compare" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.colorSpaceCompare">
+                  <div class="audio-list-icon"><i data-lucide="blend"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.colorSpaceCompare">颜色空间对比</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.colorSpaceCompareDesc">八种颜色空间实时联动与色域检查</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.creativeCategoryTag">创意工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.colorSpaceCompareMeta">OKLCH / D65 Lab / RGB / CMYK</div>
                   </div>
                 </div>
                 <div class="audio-list-item" data-tool="typing-test" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.typingTest">
@@ -9277,6 +9496,35 @@
               </div>
             </div>
           </div>
+
+          <div class="content-section" data-category="developer" data-developer-section>
+            <div class="developer-tool-quicklist audio-list">
+              <div class="audio-list-item" data-tool="json-tools" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.jsonTools"><div class="audio-list-icon"><i data-lucide="braces"></i></div><div class="audio-list-info"><div class="audio-list-title">JSON 格式化</div><div class="audio-list-desc">校验、格式化和压缩 JSON 文本</div></div><div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag">开发者工具</span><span class="tool-badge badge-new">新</span></div><div class="audio-list-meta">Pretty Print / Minify / Validate</div></div></div>
+              <div class="audio-list-item" data-tool="base64" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.base64"><div class="audio-list-icon"><i data-lucide="binary"></i></div><div class="audio-list-info"><div class="audio-list-title">Base64 编解码</div><div class="audio-list-desc">安全处理 UTF-8 文本的 Base64 编码与解码</div></div><div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag">开发者工具</span><span class="tool-badge badge-new">新</span></div><div class="audio-list-meta">UTF-8 / Encode / Decode</div></div></div>
+              <div class="audio-list-item" data-tool="url-codec" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.urlCodec"><div class="audio-list-icon"><i data-lucide="link-2"></i></div><div class="audio-list-info"><div class="audio-list-title">URL 编解码</div><div class="audio-list-desc">编码和还原 URL 查询参数与路径片段</div></div><div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag">开发者工具</span><span class="tool-badge badge-new">新</span></div><div class="audio-list-meta">encodeURIComponent / decodeURIComponent</div></div></div>
+              <div class="audio-list-item" data-tool="uuid" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.uuid"><div class="audio-list-icon"><i data-lucide="fingerprint"></i></div><div class="audio-list-info"><div class="audio-list-title">UUID 生成器</div><div class="audio-list-desc">批量生成 RFC 4122 随机 UUID v4</div></div><div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag">开发者工具</span><span class="tool-badge badge-new">新</span></div><div class="audio-list-meta">Crypto RNG / Batch</div></div></div>
+              <div class="audio-list-item" data-tool="jwt" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.jwt"><div class="audio-list-icon"><i data-lucide="key-round"></i></div><div class="audio-list-info"><div class="audio-list-title">JWT 查看器</div><div class="audio-list-desc">本地查看 JWT Header 与 Payload，不验证签名</div></div><div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag">开发者工具</span><span class="tool-badge badge-new">新</span></div><div class="audio-list-meta">Header / Payload / No Verify</div></div></div>
+            </div>
+            <div class="tools-page">
+              <div class="tools-hero-text">
+                <span class="tools-eyebrow" data-i18n="home.toolNames.developerEyebrow">Local Developer Lab</span>
+                <h2 data-i18n="nav.developer">开发者工具</h2>
+                <p data-i18n="home.developerCategoryDesc">本地完成摘要校验、密码算法兼容与认证文件加密。</p>
+              </div>
+              <div class="audio-search tools-search">
+                <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
+                <button class="audio-search-btn tools-search-btn" data-i18n-aria-label="home.searchBtn" aria-label="搜索"><i data-lucide="search"></i></button>
+                <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
+              </div>
+              <div class="audio-list">
+                <div class="audio-list-item" data-tool="hash-crypto" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.hashCrypto">
+                  <div class="audio-list-icon"><i data-lucide="binary"></i></div>
+                  <div class="audio-list-info"><div class="audio-list-title" data-i18n="home.toolNames.hashCrypto">Hash &amp; Crypto</div><div class="audio-list-desc" data-i18n="home.toolNames.hashCryptoDesc">17 类摘要、对称与非对称密码工具</div></div>
+                  <div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag" data-i18n="home.toolNames.developerCategoryTag">开发者工具</span><span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span></div><div class="audio-list-meta" data-i18n="home.toolNames.hashCryptoMeta">文件 Hash / 国密 / RSA / TKAES</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -9313,6 +9561,7 @@
             <span class="audio-convert-success-key" data-i18n="home.audioConvert.successPath">保存路径</span>
             <span class="audio-convert-success-value" id="audioConvertSuccessPath"></span>
           </div>
+
         </div>
         <div class="audio-convert-success-actions">
           <button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="audioConvertOpenFolder" data-i18n="home.audioConvert.openFolder">打开文件夹</button>
@@ -9351,6 +9600,7 @@
             <span class="audio-convert-success-value" id="imageConvertSuccessPath"></span>
           </div>
         </div>
+        <div class="image-batch-failure-summary" id="imageConvertFailureSummary" aria-live="polite" hidden></div>
         <div class="audio-convert-success-actions">
           <button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="imageConvertOpenFolder" data-i18n="home.imageConvert.openFolder">打开文件夹</button>
           <button class="audio-convert-success-btn audio-convert-success-btn-primary" id="imageConvertSuccessOk" data-i18n="home.imageConvert.ok">确定</button>
@@ -9400,6 +9650,7 @@
             <span class="audio-convert-success-value" id="imageCompressSuccessPath"></span>
           </div>
         </div>
+        <div class="image-batch-failure-summary" id="imageCompressFailureSummary" aria-live="polite" hidden></div>
         <div class="audio-convert-success-actions">
           <button class="audio-convert-success-btn audio-convert-success-btn-secondary" id="imageCompressOpenFolder" data-i18n="home.imageCompress.openFolder">打开文件夹</button>
           <button class="audio-convert-success-btn audio-convert-success-btn-primary" id="imageCompressSuccessOk" data-i18n="home.imageCompress.ok">确定</button>
@@ -9521,6 +9772,13 @@
             <div class="api-key-custom-field">
               <label class="api-key-label" data-i18n="apiKey.customModel">模型名称</label>
               <input type="text" class="api-key-input" id="apiKeyCustomModel" placeholder="model-name" autocomplete="off">
+            </div>
+            <div class="settings-toggle-row api-key-private-http-row">
+              <div class="settings-toggle-copy">
+                <strong data-i18n="apiKey.allowPrivateHttp">允许私网 HTTP</strong>
+                <span data-i18n="apiKey.allowPrivateHttpHint">仅用于你信任的局域网 AI 服务</span>
+              </div>
+              <button class="settings-switch" id="apiKeyPrivateHttpSwitch" type="button" role="switch" aria-checked="false" data-i18n-aria-label="apiKey.allowPrivateHttp"><span></span></button>
             </div>
           </div>
           <div class="api-key-hint" data-i18n="apiKey.hint">用于 AI 功能。密钥仅保存在本地，不会上传服务器。</div>
@@ -9692,9 +9950,35 @@
       </div>
     </div>
 
-    <div class="donation-overlay" id="donationOverlay" role="dialog" aria-modal="true" aria-labelledby="donationTitle" aria-hidden="true">
-      <button class="donation-overlay-bg" type="button" data-donation-close data-i18n-aria-label="home.supportPage.close" aria-label="关闭支持作者页面"></button>
+    <div class="donation-overlay" id="donationOverlay" role="main" aria-labelledby="donationTitle" aria-hidden="true">
       <section class="donation-dialog" tabindex="-1">
+        <header class="home-v2-topbar donation-page-topbar">
+          <button class="home-v2-brand" type="button" data-donation-close aria-label="ToolKnit 首页">
+            <img src="/logo.png" alt="" />
+            <span class="home-v2-brand-name">ToolKnit</span>
+            <span class="home-v2-brand-version">2.1</span>
+          </button>
+          <div class="home-v2-top-actions">
+            <button class="home-v2-nav-link" type="button" data-home-link="website">
+              <i data-lucide="globe-2"></i>
+              <span>网页版本</span>
+            </button>
+            <button class="home-v2-support-top is-current" type="button" aria-current="page">
+              <i data-lucide="heart"></i>
+              <span data-i18n="home.supportAuthor">支持作者</span>
+            </button>
+            <div class="home-v2-window-cluster" aria-label="窗口与设置">
+              <button class="home-v2-icon-button" id="donationV2Settings" type="button" data-i18n-title="nav.settings" title="设置" aria-label="设置">
+                <i data-lucide="settings"></i>
+              </button>
+              <div class="home-v2-window-controls" aria-label="窗口控制">
+                <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.minimize" title="最小化" data-action="minimize"><i data-lucide="minus"></i></button>
+                <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.maximize" title="最大化" data-action="maximize"><i data-lucide="square"></i></button>
+                <button class="home-v2-window-button ctrl-btn close" type="button" data-i18n-title="common.close" title="关闭" data-action="close"><i data-lucide="x"></i></button>
+              </div>
+            </div>
+          </div>
+        </header>
         <button class="donation-close" type="button" data-donation-close data-i18n-aria-label="home.supportPage.close" aria-label="关闭支持作者页面">
           <i data-lucide="x" aria-hidden="true"></i>
         </button>
@@ -9708,9 +9992,9 @@
 
               <dl class="donation-stats" aria-label="ToolKnit 项目数据">
                 <div><dt id="donationGithubStars">435+</dt><dd data-i18n="home.supportPage.statStars">GitHub Stars</dd></div>
-                <div><dt>49</dt><dd data-i18n="home.supportPage.statTools">桌面工具</dd></div>
+                <div><dt>60</dt><dd data-i18n="home.supportPage.statTools">桌面工具</dd></div>
                 <div><dt data-i18n="home.supportPage.statViewsValue">近 100 万</dt><dd data-i18n="home.supportPage.statViews">累计内容播放</dd></div>
-                <div><dt>78</dt><dd data-i18n="home.supportPage.statLogs">公开更新日志</dd></div>
+                <div><dt id="donationJournalCount">81</dt><dd data-i18n="home.supportPage.statLogs">公开更新日志</dd></div>
               </dl>
             </div>
 
@@ -9754,9 +10038,30 @@
             </section>
           </div>
 
+          <section class="donation-journal-section" aria-labelledby="donationJournalTitle">
+            <div class="donation-journal-heading">
+              <div>
+                <span class="donation-section-index">03 / DEVELOPMENT JOURNAL</span>
+                <h3 id="donationJournalTitle" data-i18n="home.supportPage.journalTitle">81 天的开发手记</h3>
+              </div>
+              <p data-i18n="home.supportPage.journalLead">每一次发布都记录在案：功能、取舍、修复，以及一个人把工具做下去的真实过程。</p>
+            </div>
+            <article class="donation-journal-reader" id="donationJournalReader" role="button" tabindex="0" aria-pressed="false" aria-live="polite" aria-label="开发者手记，点击暂停或继续">
+              <div class="donation-journal-reader-meta">
+                <span class="donation-journal-reader-date" id="donationJournalDate"></span>
+                <span class="donation-journal-reader-count" id="donationJournalReaderCount"></span>
+              </div>
+              <h4 id="donationJournalReaderTitle"></h4>
+              <div class="donation-journal-reader-body" id="donationJournalReaderBody"></div>
+              <div class="donation-journal-reader-hint" id="donationJournalReaderHint">点击文字暂停 · 再次点击继续播放</div>
+              <div class="donation-journal-progress" aria-hidden="true"><span id="donationJournalProgressBar"></span></div>
+            </article>
+            <p class="donation-journal-status" id="donationJournalStatus">44 篇开发者手记 · 随机循环播放</p>
+          </section>
+
           <section class="donation-use-section" aria-labelledby="donationUseTitle">
             <div>
-              <span class="donation-section-index">03 / KEEP IT GOING</span>
+              <span class="donation-section-index">04 / KEEP IT GOING</span>
               <h3 id="donationUseTitle" data-i18n="home.supportPage.useTitle">支持会花在哪里</h3>
               <p data-i18n="home.supportPage.useBody">兼容性测试设备、安装包与依赖镜像验证、文档教程、线上服务和持续开源维护。金额无论大小，都会变成下一次更稳的发布。</p>
             </div>
@@ -9778,6 +10083,11 @@
         </div>
       </section>
     </div>
+    <div class="feature-tool-overlay markdown-editor-overlay" id="markdownEditorOverlay" aria-hidden="true"></div>
+    <div class="feature-tool-overlay color-replace-overlay" id="imageColorReplaceOverlay" aria-hidden="true"></div>
+    <div class="feature-tool-overlay crypto-tool-overlay" id="cryptoToolOverlay" aria-hidden="true"></div>
+    <div class="feature-tool-overlay developer-toolbox-overlay" id="developerToolboxOverlay" aria-hidden="true"></div>
+    <div class="feature-tool-overlay color-space-compare-overlay" id="colorSpaceCompareOverlay" aria-hidden="true"></div>
     <div class="toast" id="favToast"><span id="favToastText"></span></div>
   </body>
 </html>

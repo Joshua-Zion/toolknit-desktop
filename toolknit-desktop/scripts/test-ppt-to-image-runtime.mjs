@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { buildPptDraftPptx } from '../src/ppt-draft-core.js';
@@ -54,6 +54,7 @@ function runCli(args) {
 }
 
 const fixtureDirectory = await mkdtemp(path.join(os.tmpdir(), 'toolknit-ppt-to-image-'));
+try {
 const inputPath = path.join(fixtureDirectory, 'demo.pptx');
 const outputDirectory = path.join(fixtureDirectory, 'out');
 const draft = await buildPptDraftPptx(outlinePayload(3), { theme: 'tech-blue' });
@@ -132,3 +133,6 @@ if (!renderer.available) {
 }
 
 console.log('PPT to image runtime regression checks passed');
+} finally {
+  await rm(fixtureDirectory, { recursive: true, force: true });
+}

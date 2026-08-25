@@ -1,14 +1,28 @@
 import { PDFDocument } from 'pdf-lib';
+import * as tauriCore from '@tauri-apps/api/core';
+import * as tauriEvent from '@tauri-apps/api/event';
+
+const tauriCorePromise = Promise.resolve(tauriCore);
+const tauriEventPromise = Promise.resolve(tauriEvent);
 import {
   PDF_EDITOR_LIMITS,
   assertPdfEditorFile,
+  assertPdfEditorMergeSelection,
   assertPdfEditorPageCount,
   assemblePdf,
   assemblePdfWithTextEdits,
   buildPdfName,
-  normalizePageRotation
+  estimateInsertedTextWidth,
+  normalizePageRotation,
+  resolvePdfPageRotation
 } from './pdf-editor-core.js';
 import { resizePdfBoxFromHandle, rotatePdfDeltaToLocal } from './pdf-editor-geometry.js';
+import {
+  compactPdfEditorComponent,
+  pdfEditorPageIdsInDocumentOrder,
+  pdfEditorSnapshotsEqual
+} from './pdf-editor-state.js';
+import { IMAGE_BATCH_LIMITS } from './image-batch-core.js';
 
 const THUMB_CSS_WIDTH = 132;
 const THUMB_CSS_HEIGHT = 176;
@@ -123,6 +137,8 @@ export function initPdfEditorTool({
   const rotateCwBtn = document.getElementById('pdfEditorRotateCw');
   const moveUpBtn = document.getElementById('pdfEditorMoveUp');
   const moveDownBtn = document.getElementById('pdfEditorMoveDown');
+  const duplicateBtn = document.getElementById('pdfEditorDuplicate');
+  const blankPageBtn = document.getElementById('pdfEditorBlankPage');
   const deleteBtn = document.getElementById('pdfEditorDelete');
   const extractBtn = document.getElementById('pdfEditorExtract');
   const selectComponentBtn = document.getElementById('pdfEditorSelectComponent');
@@ -131,6 +147,8 @@ export function initPdfEditorTool({
   const redoBtn = document.getElementById('pdfEditorRedo');
   const pageStrip = document.getElementById('pdfEditorPageStrip');
   const selectedCountEl = document.getElementById('pdfEditorSelectedCount');
+  const selectAllBtn = document.getElementById('pdfEditorSelectAll');
+  const invertSelectionBtn = document.getElementById('pdfEditorInvertSelection');
   const pageIndicator = document.getElementById('pdfEditorPageIndicator');
   const zoomOutBtn = document.getElementById('pdfEditorZoomOut');
   const zoomValueBtn = document.getElementById('pdfEditorZoomValue');
@@ -156,6 +174,7 @@ export function initPdfEditorTool({
   const editModal = document.getElementById('pdfEditorEditModal');
   const editModalOriginal = document.getElementById('pdfEditorEditOriginal');
   const editModalInput = document.getElementById('pdfEditorEditInput');
+  const editSecurityNote = document.getElementById('pdfEditorEditSecurityNote');
   const editModalSave = document.getElementById('pdfEditorEditSave');
   const editModalCancel = document.getElementById('pdfEditorEditCancel');
   const editModalClose = document.getElementById('pdfEditorEditClose');
@@ -254,6 +273,7 @@ export function initPdfEditorTool({
   let historyIndex = -1;
   let historyLock = false;
   let baselineSnapshot = null;
+  let savedSnapshot = null;
   let fontRegularBytes = null;
   let fontSemiboldBytes = null;
 
@@ -262,7 +282,7 @@ export function initPdfEditorTool({
   };
 
   const getInvoke = async () => {
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await tauriCorePromise;
     return invoke;
   };
 
@@ -382,16 +402,39 @@ export function initPdfEditorTool({
     };
   }
 
+  function restoreSelectedComponent(component) {
+    const locator = compactPdfEditorComponent(component);
+    if (!locator || !pages.some(page => page.id === locator.pageId)) return null;
+    if (locator.type === 'text') {
+      const editSegment = textEdits.get(locator.key)?.segment;
+      const line = textLinesCache.get(locator.pageId)?.lines?.[locator.lineIndex];
+      const cachedSegment = Array.isArray(line?.segments) && line.segments.length
+        ? line.segments[locator.segmentIndex] || null
+        : locator.segmentIndex === 0
+          ? line
+          : null;
+      const segment = editSegment || cachedSegment;
+      return segment ? { ...locator, segment: cloneState(segment) } : null;
+    }
+
+    const collection = locator.type === 'inserted-text'
+      ? insertedTexts
+      : locator.type === 'inserted-image'
+        ? insertedImages
+        : insertedShapes;
+    return collection.some(item => item.id === locator.key) ? locator : null;
+  }
+
   function captureEditorSnapshot() {
     return cloneState({
       sourceIds: sources.map(source => source.id),
-      pages,
+      pages: pages.map(({ sourceRotation: _sourceRotation, ...page }) => page),
       selectedIds: Array.from(selectedIds),
       currentId,
       selectionAnchorId,
       editMode,
       componentMode,
-      selectedComponent,
+      selectedComponent: compactPdfEditorComponent(selectedComponent),
       viewMode,
       zoomPercent,
       idCounter,
@@ -417,7 +460,7 @@ export function initPdfEditorTool({
       selectionAnchorId = snapshot.selectionAnchorId || null;
       editMode = Boolean(snapshot.editMode);
       componentMode = Boolean(snapshot.componentMode);
-      selectedComponent = snapshot.selectedComponent ? cloneState(snapshot.selectedComponent) : null;
+      selectedComponent = null;
       viewMode = snapshot.viewMode || 'fit';
       zoomPercent = Number(snapshot.zoomPercent) || 1;
       idCounter = Number.isFinite(Number(snapshot.idCounter)) ? Number(snapshot.idCounter) : idCounter;
@@ -436,6 +479,7 @@ export function initPdfEditorTool({
         };
       });
       insertedShapes = (Array.isArray(snapshot.insertedShapes) ? snapshot.insertedShapes : []).map(item => normalizeInsertedShapeSnapshot(item));
+      selectedComponent = restoreSelectedComponent(snapshot.selectedComponent);
       stopComponentPointerSession();
       componentDragState = null;
       componentRotateState = null;
@@ -478,6 +522,18 @@ export function initPdfEditorTool({
     }
     historyIndex = historyStack.length - 1;
     updateControls();
+  }
+
+  function hasUnsavedChanges() {
+    return Boolean(hasDocument()
+      && savedSnapshot
+      && !pdfEditorSnapshotsEqual(captureEditorSnapshot(), savedSnapshot));
+  }
+
+  function confirmDiscardChanges(action) {
+    if (!hasUnsavedChanges()) return true;
+    const messageKey = action === 'reset' ? 'confirmReset' : 'confirmDiscard';
+    return window.confirm(t(`home.pdfEditor.${messageKey}`));
   }
 
   function canUndo() {
@@ -632,14 +688,26 @@ export function initPdfEditorTool({
     return pages.find(page => page.id === currentId) || pages[0] || null;
   }
 
+  function cacheSourceRotation(model, pdfPage) {
+    if (!model || !pdfPage) return;
+    model.sourceRotation = normalizePageRotation(pdfPage.rotate);
+  }
+
+  function effectivePageRotation(model) {
+    if (!model || !Number.isFinite(Number(model.sourceRotation))) return null;
+    return resolvePdfPageRotation(model.sourceRotation, model.rotation);
+  }
+
+  function pageSupportsContentEditing(model) {
+    return effectivePageRotation(model) === 0;
+  }
+
   function pageStateFor(id) {
     return pageStates.get(id);
   }
 
   function targetIds() {
-    if (selectedIds.size) return Array.from(selectedIds);
-    const page = currentPage();
-    return page ? [page.id] : [];
+    return pdfEditorPageIdsInDocumentOrder(pages, selectedIds, currentId);
   }
 
   function mainSourceName() {
@@ -785,6 +853,7 @@ export function initPdfEditorTool({
       showToast(t('home.pdfEditor.busy'));
       return;
     }
+    if (!confirmDiscardChanges('close')) return;
     closeSuccess(false);
     overlay.classList.remove('visible', 'drag-over');
     dropZone?.classList.remove('visible');
@@ -918,6 +987,7 @@ export function initPdfEditorTool({
     historyStack = [];
     historyIndex = -1;
     baselineSnapshot = null;
+    savedSnapshot = null;
     updateFileCard();
     updateControls();
     syncStageVisibility();
@@ -964,14 +1034,23 @@ export function initPdfEditorTool({
     if (rotateCwBtn) rotateCwBtn.disabled = busy || !has;
     if (moveUpBtn) moveUpBtn.disabled = busy || !has || currentIndex <= 0;
     if (moveDownBtn) moveDownBtn.disabled = busy || !has || currentIndex < 0 || currentIndex >= pages.length - 1;
+    if (duplicateBtn) duplicateBtn.disabled = busy || !has || pages.length + Math.max(1, selectedCount) > PDF_EDITOR_LIMITS.maxPages;
+    if (blankPageBtn) blankPageBtn.disabled = busy || !has || pages.length >= PDF_EDITOR_LIMITS.maxPages;
+    if (selectAllBtn) selectAllBtn.disabled = busy || !has || selectedCount === pages.length;
+    if (invertSelectionBtn) invertSelectionBtn.disabled = busy || !has;
     if (deleteBtn) deleteBtn.disabled = busy || !has || (!hasSelectedComponent && pages.length <= 1);
     if (extractBtn) extractBtn.disabled = busy || !has;
     if (replaceBtn) replaceBtn.disabled = busy;
     if (exportBtn) exportBtn.disabled = busy || !has;
-    if (editTextBtn) editTextBtn.disabled = busy || !has;
-    if (editTextSidebarBtn) editTextSidebarBtn.disabled = busy || !has;
-    if (insertTextBtn) insertTextBtn.disabled = busy || !has;
-    if (insertImageBtn) insertImageBtn.disabled = busy || !has;
+    const sourceRotationKnown = !page || Number.isFinite(Number(page.sourceRotation));
+    const contentEditingAllowed = has && sourceRotationKnown && pageSupportsContentEditing(page);
+    if (editTextBtn) editTextBtn.disabled = busy || !contentEditingAllowed;
+    if (editTextSidebarBtn) editTextSidebarBtn.disabled = busy || !contentEditingAllowed;
+    if (insertTextBtn) insertTextBtn.disabled = busy || !contentEditingAllowed;
+    if (insertImageBtn) insertImageBtn.disabled = busy || !contentEditingAllowed;
+    for (const button of [insertRectBtn, insertEllipseBtn, insertLineBtn]) {
+      if (button) button.disabled = busy || !contentEditingAllowed;
+    }
     if (selectComponentBtn) {
       selectComponentBtn.disabled = busy || !has;
       selectComponentBtn.classList.toggle('is-active', componentMode);
@@ -1037,6 +1116,22 @@ export function initPdfEditorTool({
       ? [anchorIndex, targetIndex]
       : [targetIndex, anchorIndex];
     selectedIds = new Set(pages.slice(start, end + 1).map(page => page.id));
+    updateControls();
+  }
+
+  function selectAllPages() {
+    if (activeOperation || !hasDocument()) return;
+    selectedIds = new Set(pages.map(page => page.id));
+    selectionAnchorId = pages[0]?.id || null;
+    updateControls();
+  }
+
+  function invertPageSelection() {
+    if (activeOperation || !hasDocument()) return;
+    selectedIds = new Set(pages
+      .filter(page => !selectedIds.has(page.id))
+      .map(page => page.id));
+    selectionAnchorId = currentId;
     updateControls();
   }
 
@@ -1244,7 +1339,9 @@ export function initPdfEditorTool({
       if (epoch !== tileEpoch || !pageState.nearby || disposed) return;
       page = await doc.getPage(pageState.model.pageIndex + 1);
       if (epoch !== tileEpoch || !pageState.nearby || disposed) return;
-      const baseViewport = page.getViewport({ scale: 1, rotation: pageState.model.rotation });
+      cacheSourceRotation(pageState.model, page);
+      const displayRotation = effectivePageRotation(pageState.model);
+      const baseViewport = page.getViewport({ scale: 1, rotation: displayRotation });
       const cssScale = Math.min(
         THUMB_CSS_WIDTH / baseViewport.width,
         THUMB_CSS_HEIGHT / baseViewport.height
@@ -1252,7 +1349,7 @@ export function initPdfEditorTool({
       const outputScale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
       const viewport = page.getViewport({
         scale: cssScale * outputScale,
-        rotation: pageState.model.rotation
+        rotation: displayRotation
       });
       canvas = document.createElement('canvas');
       canvas.className = 'pdf-editor-tile-canvas';
@@ -1540,6 +1637,37 @@ export function initPdfEditorTool({
       || null;
   }
 
+  // Keep the replacement frame identical in the preview and export paths.
+  // The visible text can be wider than the source segment, while its PDF
+  // coordinates and rotation pivot remain anchored to the edited segment.
+  function editedTextVisualBox(edit, segment) {
+    const box = edit?.segment?.box || segment?.box || segment?.sourceBox || null;
+    if (!box) return null;
+    const fontSize = Math.max(1, Number(edit?.segment?.fontSize || segment?.fontSize) || 10);
+    const textWidth = (String(edit?.newText ?? '').length + 0.4) * fontSize * 0.58;
+    return {
+      x: Number.isFinite(Number(box.x)) ? Number(box.x) : 0,
+      y: Number.isFinite(Number(box.y)) ? Number(box.y) : 0,
+      width: Math.max(1, Number(box.width) || 1, textWidth),
+      height: Math.max(1, Number(box.height) || fontSize * 1.05)
+    };
+  }
+
+  function insertedTextVisualBox(object) {
+    const fontSize = Math.max(1, Number(object?.fontSize) || 16);
+    const width = Math.max(
+      1,
+      Number(object?.width) || estimateInsertedTextWidth(object?.text, fontSize)
+    );
+    const height = Math.max(1, Number(object?.height) || fontSize * 1.15);
+    return {
+      x: Number(object?.x) || 0,
+      y: (Number(object?.y) || 0) - height * 0.2,
+      width,
+      height
+    };
+  }
+
   function applyRelativeViewportRect(element, rect, parentRect) {
     if (!element || !rect || !parentRect) return;
     element.style.left = (rect.left - parentRect.left) + 'px';
@@ -1548,7 +1676,7 @@ export function initPdfEditorTool({
     element.style.height = Math.max(1, rect.height) + 'px';
   }
 
-  function ensureTextMask(lineElement, key, sourceBox, lineBox, cssViewport) {
+  function ensureTextMask(lineElement, key, sourceBox, lineBox, cssViewport, rotation = 0, rotationBox = sourceBox) {
     if (!lineElement || !sourceBox || !lineBox || !cssViewport) return null;
     let mask = Array.from(lineElement.children).find(child => child.dataset?.maskKey === key) || null;
     if (!mask) {
@@ -1557,11 +1685,38 @@ export function initPdfEditorTool({
       mask.dataset.maskKey = key;
       lineElement.insertBefore(mask, lineElement.firstChild || null);
     }
+    const sourceRect = rectToViewport(cssViewport, sourceBox);
+    const parentRect = rectToViewport(cssViewport, lineBox);
     applyRelativeViewportRect(
       mask,
-      rectToViewport(cssViewport, sourceBox),
-      rectToViewport(cssViewport, lineBox)
+      sourceRect,
+      parentRect
     );
+
+    // Keep the original glyphs covered while also covering the rotated
+    // replacement. CSS uses UI clockwise angles in screen coordinates, so
+    // leave this rotation positive; the export core converts it to PDF's
+    // opposite-sign Cartesian angle at its boundary.
+    const normalizedRotation = ((Number(rotation) || 0) % 360 + 360) % 360;
+    let rotatedMask = Array.from(lineElement.children)
+      .find(child => child.dataset?.maskKey === `${key}:rotated`) || null;
+    if (normalizedRotation === 0) {
+      rotatedMask?.remove();
+      return mask;
+    }
+    if (!rotatedMask) {
+      rotatedMask = document.createElement('div');
+      rotatedMask.className = 'pdf-editor-text-mask pdf-editor-text-mask-rotated';
+      rotatedMask.dataset.maskKey = `${key}:rotated`;
+      lineElement.insertBefore(rotatedMask, mask.nextSibling || null);
+    }
+    // The rotated mask is the replacement visual box itself. Applying the
+    // source rectangle here and rotating it around a different box produces
+    // an offset mask after a move or resize.
+    const replacementRect = rectToViewport(cssViewport, rotationBox || sourceBox);
+    applyRelativeViewportRect(rotatedMask, replacementRect, parentRect);
+    rotatedMask.style.transformOrigin = '50% 50%';
+    rotatedMask.style.transform = `rotate(${normalizedRotation}deg)`;
     return mask;
   }
 
@@ -1603,8 +1758,21 @@ export function initPdfEditorTool({
         const key = `${pageId}:${index}:${segmentIndex}`;
         const edit = textEdits.get(key);
         const segmentData = edit?.segment || segment;
-        const segmentRect = rectToViewport(cssViewport, segmentData.box || line.box);
-        if (edit) ensureTextMask(el, key, sourceTextBox(edit, segment), line.box, cssViewport);
+        const visualBox = edit
+          ? (editedTextVisualBox(edit, segmentData) || segmentData.box || line.box)
+          : (segmentData.box || line.box);
+        const segmentRect = rectToViewport(cssViewport, visualBox);
+        if (edit) {
+          ensureTextMask(
+            el,
+            key,
+            sourceTextBox(edit, segment),
+            line.box,
+            cssViewport,
+            Number(segmentData.rotation) || 0,
+            visualBox
+          );
+        }
         const segmentEl = document.createElement('div');
         segmentEl.className = 'pdf-editor-text-segment';
         segmentEl.dataset.segmentKey = key;
@@ -1618,12 +1786,12 @@ export function initPdfEditorTool({
         applyRelativeViewportRect(segmentEl, segmentRect, rect);
         segmentEl.style.fontSize = Math.max(1, (segmentData.fontSize || line.fontSize) * scale) + 'px';
         segmentEl.style.lineHeight = Math.max(1, segmentRect.height) + 'px';
+        segmentEl.style.transformOrigin = '50% 50%';
         segmentEl.style.transform = `rotate(${Number(segmentData.rotation) || 0}deg)`;
         if (edit) {
           segmentEl.classList.add('is-edited');
           segmentEl.textContent = edit.newText || '';
-          const textWidth = Math.max(segmentRect.width, (String(edit.newText || '').length + 0.4) * Math.max(1, (segmentData.fontSize || line.fontSize) * scale * 0.58));
-          segmentEl.style.width = Math.max(1, textWidth) + 'px';
+          segmentEl.style.width = Math.max(1, segmentRect.width) + 'px';
         } else {
           segmentEl.textContent = segment.text;
         }
@@ -1681,14 +1849,8 @@ export function initPdfEditorTool({
       textLayerEl.appendChild(el);
     }
     for (const object of insertedTexts.filter(item => item.pageId === pageId)) {
-      const width = Math.max(1, Number(object.width) || (object.text.length * object.fontSize * 0.55));
-      const height = Math.max(1, Number(object.fontSize) || 16) * 1.15;
-      const rect = rectToViewport(cssViewport, {
-        x: object.x,
-        y: object.y - height * 0.2,
-        width,
-        height
-      });
+      const visualBox = insertedTextVisualBox(object);
+      const rect = rectToViewport(cssViewport, visualBox);
       const el = document.createElement('div');
       el.className = 'pdf-editor-inserted-text';
       el.dataset.objectId = object.id;
@@ -1706,6 +1868,7 @@ export function initPdfEditorTool({
       el.style.height = Math.max(1, rect.height) + 'px';
       el.style.fontSize = Math.max(1, object.fontSize * scale) + 'px';
       el.style.lineHeight = Math.max(1, rect.height) + 'px';
+      el.style.transformOrigin = '50% 50%';
       el.style.transform = `rotate(${Number(object.rotation) || 0}deg)`;
       el.addEventListener('click', event => {
         event.stopPropagation();
@@ -1843,7 +2006,7 @@ export function initPdfEditorTool({
     if (!insertMode || !pendingInsert || !canvasWrap) return;
     const page = currentPage();
     const cache = currentTextLayerCache();
-    if (!page || !cache || page.rotation % 360 !== 0) return;
+    if (!page || !cache || !pageSupportsContentEditing(page)) return;
     const bounds = canvasWrap.getBoundingClientRect();
     const cssX = Math.max(0, Math.min(bounds.width, event.clientX - bounds.left));
     const cssY = Math.max(0, Math.min(bounds.height, event.clientY - bounds.top));
@@ -2035,7 +2198,8 @@ export function initPdfEditorTool({
     const visible = Boolean(componentMode && selectedComponent && hasDocument());
     componentMenu.hidden = !visible;
     if (componentEditBtn) {
-      componentEditBtn.hidden = visible && selectedComponent?.type !== 'text';
+      componentEditBtn.hidden = visible
+        && !['text', 'inserted-text'].includes(selectedComponent?.type);
     }
     if (visible) requestAnimationFrame(positionComponentMenu);
     syncShapePanel();
@@ -2167,10 +2331,23 @@ export function initPdfEditorTool({
   }
 
   function editSelectedComponent() {
-    if (!selectedComponent || selectedComponent.type !== 'text' || activeOperation) return;
+    if (!selectedComponent || activeOperation) return;
+    if (selectedComponent.type === 'inserted-text') {
+      const object = insertedTexts.find(item => item.id === selectedComponent.key);
+      if (!object) {
+        clearSelectedComponent();
+        return;
+      }
+      openEditModal(object.id, object, object, 'edit-inserted-text');
+      return;
+    }
+    if (selectedComponent.type !== 'text') return;
     const edit = textEdits.get(selectedComponent.key);
     const segment = edit?.segment || selectedComponent.segment;
-    if (!segment) return;
+    if (!segment) {
+      clearSelectedComponent();
+      return;
+    }
     openEditModal(selectedComponent.key, segment, segment);
   }
 
@@ -2361,13 +2538,7 @@ export function initPdfEditorTool({
     }
     if (!object) return null;
     if (component.type === 'inserted-text') {
-      const fontSize = Number(object.fontSize) || 16;
-      return {
-        x: Number(object.x) || 0,
-        y: Number(object.y) || 0,
-        width: Math.max(1, (String(object.text || '').length * fontSize * 0.55)),
-        height: Math.max(1, fontSize * 1.15)
-      };
+      return insertedTextVisualBox(object);
     }
     return {
       x: Number(object.x) || 0,
@@ -2579,20 +2750,28 @@ export function initPdfEditorTool({
       const el = componentElement(component);
       if (!line || !segment || !el) return;
       const lineRect = rectToViewport(cache.cssViewport, line.box);
-      const segmentRect = rectToViewport(cache.cssViewport, segment.box || line.box);
+      const visualBox = edit
+        ? (editedTextVisualBox(edit, segment) || segment.box || line.box)
+        : (segment.box || line.box);
+      const segmentRect = rectToViewport(cache.cssViewport, visualBox);
       applyRelativeViewportRect(el, segmentRect, lineRect);
       el.style.fontSize = Math.max(1, (segment.fontSize || line.fontSize) * cache.scale) + 'px';
       el.style.lineHeight = Math.max(1, segmentRect.height) + 'px';
+      el.style.transformOrigin = '50% 50%';
       el.style.transform = `rotate(${Number(segment.rotation) || 0}deg)`;
       if (edit) {
         el.classList.add('is-edited');
         el.textContent = edit.newText || '';
-        const textWidth = Math.max(
-          segmentRect.width,
-          (String(edit.newText || '').length + 0.4) * Math.max(1, (segment.fontSize || line.fontSize) * cache.scale * 0.58)
+        el.style.width = Math.max(1, segmentRect.width) + 'px';
+        ensureTextMask(
+          el.parentElement,
+          component.key,
+          sourceTextBox(edit, sourceSegment),
+          line.box,
+          cache.cssViewport,
+          Number(segment.rotation) || 0,
+          visualBox
         );
-        el.style.width = Math.max(1, textWidth) + 'px';
-        ensureTextMask(el.parentElement, component.key, sourceTextBox(edit, sourceSegment), line.box, cache.cssViewport);
       }
       positionComponentMenu();
       return;
@@ -2603,9 +2782,7 @@ export function initPdfEditorTool({
     if (!el) return;
     let box;
     if (component.type === 'inserted-text') {
-      const height = Math.max(1, Number(object.fontSize) || 16) * 1.15;
-      const width = Math.max(1, Number(object.width) || (String(object.text || '').length * (Number(object.fontSize) || 16) * 0.55));
-      box = { x: Number(object.x) || 0, y: (Number(object.y) || 0) - height * 0.2, width, height };
+      box = insertedTextVisualBox(object);
     } else {
       box = { x: Number(object.x) || 0, y: Number(object.y) || 0, width: Math.max(1, Number(object.width) || 1), height: Math.max(1, Number(object.height) || 1) };
     }
@@ -2749,7 +2926,7 @@ export function initPdfEditorTool({
         showToast(t('home.pdfEditor.appendNeedsFile'));
         return;
       }
-      if ((page?.rotation || 0) % 360 !== 0) {
+      if (!page || !pageSupportsContentEditing(page)) {
         showToast(t('home.pdfEditor.editTextRotated'));
         return;
       }
@@ -2782,16 +2959,17 @@ export function initPdfEditorTool({
     renderMainPreview();
   }
 
-  function openEditModal(key, segment, fallbackSegment) {
+  function openEditModal(key, segment, fallbackSegment, mode = 'edit') {
     if (!editModal || !editModalInput) return;
     editingLineKey = key;
-    modalMode = 'edit';
+    modalMode = mode;
     const source = segment || fallbackSegment || { text: '' };
     const original = source.text || '';
-    const edit = textEdits.get(key);
+    const edit = mode === 'edit' ? textEdits.get(key) : null;
     editModalInput.value = edit ? edit.newText : original;
     if (editModalOriginal) editModalOriginal.textContent = original;
     if (editModalTitle) editModalTitle.textContent = t('home.pdfEditor.editText');
+    if (editSecurityNote) editSecurityNote.hidden = mode !== 'edit';
     if (editModalOriginalLabel) editModalOriginalLabel.style.display = '';
     if (editModalOriginal) editModalOriginal.style.display = '';
     if (editModalNewLabel) editModalNewLabel.textContent = t('home.pdfEditor.editTextNew');
@@ -2826,7 +3004,7 @@ export function initPdfEditorTool({
   function openInsertTextModal() {
     if (!hasDocument() || activeOperation) return;
     const page = currentPage();
-    if (!page || page.rotation % 360 !== 0) {
+    if (!page || !pageSupportsContentEditing(page)) {
       showToast(t('home.pdfEditor.editTextRotated'));
       return;
     }
@@ -2840,6 +3018,7 @@ export function initPdfEditorTool({
     if (editModalOriginalLabel) editModalOriginalLabel.style.display = 'none';
     if (editModalOriginal) editModalOriginal.style.display = 'none';
     if (editModalNewLabel) editModalNewLabel.textContent = t('home.pdfEditor.insertTextValue');
+    if (editSecurityNote) editSecurityNote.hidden = true;
     if (editModalInput) editModalInput.value = '';
     editModal?.classList.add('visible');
     if (editModal) {
@@ -2852,6 +3031,60 @@ export function initPdfEditorTool({
     requestAnimationFrame(() => editModalInput?.focus());
     updateControls();
     renderMainPreview();
+  }
+
+  function readEncodedImageDimensions(bytes, mimeType) {
+    if (!(bytes instanceof Uint8Array) || bytes.length < 10) return null;
+    const type = String(mimeType || '').toLowerCase();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (type === 'image/png') {
+      if (bytes.length < 24
+        || view.getUint32(0) !== 0x89504e47
+        || view.getUint32(4) !== 0x0d0a1a0a
+        || view.getUint32(12) !== 0x49484452) return null;
+      return { width: view.getUint32(16), height: view.getUint32(20) };
+    }
+    if (type !== 'image/jpeg' && type !== 'image/jpg') return null;
+    if (view.getUint16(0) !== 0xffd8) return null;
+    const frameMarkers = new Set([
+      0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7,
+      0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf
+    ]);
+    let offset = 2;
+    while (offset + 3 < view.byteLength) {
+      while (offset < view.byteLength && view.getUint8(offset) !== 0xff) offset += 1;
+      while (offset < view.byteLength && view.getUint8(offset) === 0xff) offset += 1;
+      if (offset >= view.byteLength) break;
+      const marker = view.getUint8(offset++);
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) continue;
+      if (offset + 1 >= view.byteLength) break;
+      const segmentLength = view.getUint16(offset);
+      if (segmentLength < 2 || offset + segmentLength > view.byteLength) break;
+      if (frameMarkers.has(marker)) {
+        if (segmentLength < 7 || offset + 6 >= view.byteLength) return null;
+        return {
+          height: view.getUint16(offset + 3),
+          width: view.getUint16(offset + 5)
+        };
+      }
+      offset += segmentLength;
+    }
+    return null;
+  }
+
+  function assertImagePixelLimit(dimensions) {
+    const width = Number(dimensions?.width);
+    const height = Number(dimensions?.height);
+    const pixelCount = width * height;
+    if (!Number.isSafeInteger(width)
+      || !Number.isSafeInteger(height)
+      || width < 1
+      || height < 1
+      || !Number.isSafeInteger(pixelCount)
+      || pixelCount > IMAGE_BATCH_LIMITS.maxPixelsPerFile) {
+      throw new Error(`图像分辨率超过 ${IMAGE_BATCH_LIMITS.maxPixelsPerFile.toLocaleString()} 像素限制`);
+    }
+    return { width, height };
   }
 
   async function readImageDimensions(bytes, mimeType) {
@@ -2872,7 +3105,7 @@ export function initPdfEditorTool({
   async function chooseInsertImage() {
     if (!hasDocument() || activeOperation) return;
     const page = currentPage();
-    if (!page || page.rotation % 360 !== 0) {
+    if (!page || !pageSupportsContentEditing(page)) {
       showToast(t('home.pdfEditor.editTextRotated'));
       return;
     }
@@ -2898,7 +3131,7 @@ export function initPdfEditorTool({
   function insertShape(shapeType) {
     if (!hasDocument() || activeOperation) return;
     const page = currentPage();
-    if (!page || page.rotation % 360 !== 0) {
+    if (!page || !pageSupportsContentEditing(page)) {
       showToast(t('home.pdfEditor.editTextRotated'));
       return;
     }
@@ -2937,17 +3170,27 @@ export function initPdfEditorTool({
   async function prepareInsertImage(file) {
     if (!file) return;
     try {
+      const fileSize = await fileSizeFor(file);
+      if (!Number.isSafeInteger(fileSize) || fileSize < 1) {
+        throw new Error('图像文件大小无效');
+      }
+      if (fileSize > IMAGE_BATCH_LIMITS.maxBytesPerFile) {
+        throw new Error(`图像文件超过 ${Math.floor(IMAGE_BATCH_LIMITS.maxBytesPerFile / 1024 / 1024)}MB 限制`);
+      }
       const bytes = await readBytes(file);
       const declaredMime = String(file.type || '').toLowerCase();
       const mimeType = declaredMime || (/\.jpe?g$/i.test(String(file.name || '')) ? 'image/jpeg' : 'image/png');
       if (!['image/png', 'image/jpeg', 'image/jpg'].includes(mimeType)) {
         throw new Error('仅支持 PNG 或 JPEG 图像');
       }
+      const encodedDimensions = readEncodedImageDimensions(bytes, mimeType);
+      if (encodedDimensions) assertImagePixelLimit(encodedDimensions);
       const dimensions = await readImageDimensions(bytes, mimeType);
+      const safeDimensions = assertImagePixelLimit(dimensions);
       const cache = currentTextLayerCache();
       const pageWidth = cache?.cssViewport?.width ? cache.cssViewport.width / (cache.scale || 1) : 612;
       const width = Math.min(240, Math.max(64, pageWidth * 0.4));
-      const height = Math.max(40, width * (dimensions.height / Math.max(1, dimensions.width)));
+      const height = Math.max(40, width * (safeDimensions.height / Math.max(1, safeDimensions.width)));
       const previewUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
       pendingInsert = { type: 'image', bytes, mimeType, width, height, previewUrl };
       insertMode = 'image';
@@ -2978,6 +3221,32 @@ export function initPdfEditorTool({
       closeEditModal();
       showToast(t('home.pdfEditor.insertTextHint'), 6000);
       updateControls();
+      return;
+    }
+    if (modalMode === 'edit-inserted-text') {
+      const objectId = editingLineKey;
+      const object = insertedTexts.find(item => item.id === objectId);
+      if (!object) {
+        closeEditModal();
+        clearSelectedComponent();
+        return;
+      }
+      const newText = String(editModalInput?.value ?? '').trim();
+      if (!newText) {
+        showToast(t('home.pdfEditor.insertTextEmpty'));
+        return;
+      }
+      if (newText === object.text) {
+        closeEditModal();
+        return;
+      }
+      object.text = newText;
+      if (selectedComponent?.type === 'inserted-text' && selectedComponent.key === object.id) {
+        selectedComponent = compactPdfEditorComponent(selectedComponent);
+      }
+      closeEditModal();
+      refreshCurrentTextLayer();
+      commitEditorHistory();
       return;
     }
     if (editingLineKey == null) return;
@@ -3126,7 +3395,14 @@ export function initPdfEditorTool({
       if (epoch !== mainEpoch || disposed) return;
       loadedPage = await doc.getPage(page.pageIndex + 1);
       if (epoch !== mainEpoch || disposed) return;
-      const base = loadedPage.getViewport({ scale: 1, rotation: page.rotation });
+      cacheSourceRotation(page, loadedPage);
+      // The page model is intentionally kept free of cached PDF metadata in
+      // history snapshots. Refresh controls once the current page's source
+      // rotation is known so edit/insert actions do not show a false warning
+      // during the first render or after undo/redo.
+      updateControls();
+      const displayRotation = effectivePageRotation(page);
+      const base = loadedPage.getViewport({ scale: 1, rotation: displayRotation });
       let scale;
       if (viewMode === 'fit') {
         const availWidth = Math.max(220, (canvasScroll?.clientWidth || 800) - 80);
@@ -3136,7 +3412,7 @@ export function initPdfEditorTool({
       }
       updateZoomLabel();
       const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-      const viewport = loadedPage.getViewport({ scale: scale * dpr, rotation: page.rotation });
+      const viewport = loadedPage.getViewport({ scale: scale * dpr, rotation: displayRotation });
       ensureMainCanvas();
       const previousCanvas = mainCanvas;
       const cssWidth = Math.max(1, Math.round(viewport.width / dpr));
@@ -3189,12 +3465,12 @@ export function initPdfEditorTool({
       // against its final CSS viewport rather than the transient preview.
       syncStageVisibility();
 
-      const cssViewport = loadedPage.getViewport({ scale, rotation: page.rotation });
-      const editable = (page.rotation % 360) === 0;
+      const cssViewport = loadedPage.getViewport({ scale, rotation: displayRotation });
+      const editable = pageSupportsContentEditing(page);
       if (editable) {
         try {
           const cachedLines = textLinesCache.get(page.id);
-          let lines = cachedLines?.rotation === page.rotation && Array.isArray(cachedLines.lines)
+          let lines = cachedLines?.rotation === displayRotation && Array.isArray(cachedLines.lines)
             ? cachedLines.lines
             : null;
           if (!lines) {
@@ -3202,7 +3478,7 @@ export function initPdfEditorTool({
             if (epoch !== mainEpoch || disposed) return;
             lines = groupTextItemsIntoLines(content.items).map(buildTextLine);
           }
-          textLinesCache.set(page.id, { lines, scale, cssViewport, rotation: page.rotation, epoch });
+          textLinesCache.set(page.id, { lines, scale, cssViewport, rotation: displayRotation, epoch });
           renderTextLayer(lines, cssViewport, scale, page.id);
         } catch (error) {
           if (epoch === mainEpoch && !disposed) {
@@ -3352,11 +3628,12 @@ export function initPdfEditorTool({
       showToast(t('home.pdfEditor.pdfOnly'));
       return;
     }
+    if (!confirmDiscardChanges('replace')) return;
     const operation = beginOperation('load');
     showProcess('loadingDocument', 3);
+    let stagedDocument = null;
+    let documentCommitted = false;
     try {
-      await resetDocument();
-      assertOperation(operation);
       const size = await fileSizeFor(file);
       assertOperation(operation);
       assertPdfEditorFile(name, size);
@@ -3368,21 +3645,29 @@ export function initPdfEditorTool({
       const wasmUrl = new URL('assets/', document.baseURI).href;
       const loadingTask = pdfjsLib.getDocument({ data: bytes.slice(), wasmUrl, useWasm: true });
       operation.loadingTask = loadingTask;
-      const loadedDocument = await loadingTask.promise;
+      stagedDocument = await loadingTask.promise;
       assertOperation(operation);
-      assertPdfEditorPageCount(loadedDocument.numPages);
+      assertPdfEditorPageCount(stagedDocument.numPages);
       setLocalizedProgress(70, 'preparingPages');
 
-      const source = { id: `src-${++idCounter}`, name, bytes, size, pageCount: loadedDocument.numPages };
-      sources = [source];
-      sourceStore = new Map([[source.id, source]]);
-      pdfDocs = new Map([[source.id, loadedDocument]]);
-      pages = Array.from({ length: loadedDocument.numPages }, (_, index) => ({
-        id: `page-${++idCounter}`,
+      let stagedIdCounter = idCounter;
+      const source = { id: `src-${++stagedIdCounter}`, name, bytes, size, pageCount: stagedDocument.numPages };
+      const stagedPages = Array.from({ length: stagedDocument.numPages }, (_, index) => ({
+        id: `page-${++stagedIdCounter}`,
         sourceId: source.id,
         pageIndex: index,
         rotation: 0
       }));
+
+      await resetDocument();
+      assertOperation(operation);
+      idCounter = stagedIdCounter;
+      sources = [source];
+      sourceStore = new Map([[source.id, source]]);
+      pdfDocs = new Map([[source.id, stagedDocument]]);
+      pages = stagedPages;
+      documentCommitted = true;
+      stagedDocument = null;
       selectedIds = new Set(pages.length ? [pages[0].id] : []);
       currentId = pages[0]?.id || null;
       selectionAnchorId = pages[0]?.id || null;
@@ -3396,10 +3681,14 @@ export function initPdfEditorTool({
       renderMainPreview();
       resetEditorHistory();
       baselineSnapshot = cloneState(historyStack[0]);
+      savedSnapshot = cloneState(historyStack[0]);
       setLocalizedProgress(100, 'loadingDocument');
     } catch (error) {
       const cancelled = operation.cancelled || error instanceof PdfEditorCancelledError;
-      await resetDocument();
+      if (stagedDocument) {
+        try { await stagedDocument.destroy(); } catch (_) {}
+      }
+      if (documentCommitted) await resetDocument();
       if (!disposed) {
         showToast(
           cancelled ? t('home.pdfEditor.loadCancelled') : messageForError(error, 'load'),
@@ -3421,6 +3710,9 @@ export function initPdfEditorTool({
     showProcess('appending', 8);
     try {
       assertPdfEditorFile(name, size);
+      const appendSources = [...sources, { name, size }];
+      const totalBytes = appendSources.reduce((sum, source) => sum + Number(source.size || 0), 0);
+      assertPdfEditorMergeSelection(appendSources, totalBytes);
       setLocalizedProgress(30, 'appending');
       const pdfDoc = await PDFDocument.load(bytes.slice());
       assertOperation(operation);
@@ -3577,6 +3869,162 @@ export function initPdfEditorTool({
     commitEditorHistory();
   }
 
+  function duplicateSelectedPages() {
+    if (activeOperation || !hasDocument()) return;
+    const ids = targetIds();
+    if (!ids.length) return;
+    if (pages.length + ids.length > PDF_EDITOR_LIMITS.maxPages) {
+      showToast(t('home.pdfEditor.tooManyPages'));
+      return;
+    }
+
+    const idsToDuplicate = new Set(ids);
+    const duplicateIds = [];
+    const nextPages = [];
+    const pageCopies = new Map();
+    for (const page of pages) {
+      nextPages.push(page);
+      if (!idsToDuplicate.has(page.id)) continue;
+      const duplicate = {
+        ...page,
+        id: `page-${++idCounter}`
+      };
+      nextPages.push(duplicate);
+      duplicateIds.push(duplicate.id);
+      pageCopies.set(page.id, duplicate.id);
+    }
+
+    const copiedTextEdits = [];
+    for (const [key, edit] of textEdits.entries()) {
+      const sourcePageId = String(key).split(':')[0];
+      const targetPageId = pageCopies.get(sourcePageId);
+      if (!targetPageId) continue;
+      copiedTextEdits.push([
+        `${targetPageId}${String(key).slice(sourcePageId.length)}`,
+        normalizeEditSnapshot(edit)
+      ]);
+    }
+    for (const [key, edit] of copiedTextEdits) textEdits.set(key, edit);
+
+    for (const object of [...insertedTexts]) {
+      const pageId = pageCopies.get(object.pageId);
+      if (!pageId) continue;
+      insertedTexts.push({
+        ...cloneState(object),
+        id: `text-${++idCounter}`,
+        pageId
+      });
+    }
+    for (const object of [...insertedImages]) {
+      const pageId = pageCopies.get(object.pageId);
+      if (!pageId) continue;
+      const imageId = `image-${++idCounter}`;
+      const stored = insertedImageStore.get(object.id);
+      const bytes = stored?.bytes || object.bytes;
+      insertedImageStore.set(imageId, { bytes, mimeType: object.mimeType });
+      insertedImages.push({
+        ...normalizeInsertedImageSnapshot(object),
+        id: imageId,
+        pageId,
+        bytes,
+        previewUrl: bytes?.length
+          ? URL.createObjectURL(new Blob([bytes], { type: object.mimeType || 'image/png' }))
+          : ''
+      });
+    }
+    for (const object of [...insertedShapes]) {
+      const pageId = pageCopies.get(object.pageId);
+      if (!pageId) continue;
+      insertedShapes.push({
+        ...normalizeInsertedShapeSnapshot(object),
+        id: `shape-${++idCounter}`,
+        pageId
+      });
+    }
+
+    pages = nextPages;
+    currentId = duplicateIds.at(-1) || currentId;
+    selectedIds = new Set(duplicateIds);
+    selectionAnchorId = duplicateIds[0] || currentId;
+    clearSelectedComponent();
+    buildTiles();
+    updateFileCard();
+    commitEditorHistory();
+  }
+
+  async function insertBlankPage() {
+    if (activeOperation || !hasDocument()) return;
+    if (pages.length >= PDF_EDITOR_LIMITS.maxPages) {
+      showToast(t('home.pdfEditor.tooManyPages'));
+      return;
+    }
+
+    const operation = beginOperation('append');
+    showProcess('preparingPages', 10);
+    try {
+      const current = currentPage();
+      let width = 612;
+      let height = 792;
+      if (current) {
+        const sourceDoc = await getSourceDoc(current.sourceId);
+        assertOperation(operation);
+        const sourcePage = await sourceDoc.getPage(current.pageIndex + 1);
+        cacheSourceRotation(current, sourcePage);
+        const viewport = sourcePage.getViewport({
+          scale: 1,
+          rotation: effectivePageRotation(current)
+        });
+        width = Math.max(72, Number(viewport.width) || width);
+        height = Math.max(72, Number(viewport.height) || height);
+        try { sourcePage.cleanup(); } catch (_) {}
+      }
+
+      const blankDocument = await PDFDocument.create();
+      blankDocument.addPage([width, height]);
+      const bytes = await blankDocument.save({ useObjectStreams: true });
+      assertOperation(operation);
+      const totalBytes = sources.reduce((sum, source) => sum + Number(source.size || 0), 0) + bytes.length;
+      if (totalBytes > PDF_EDITOR_LIMITS.maxMergeTotalBytes) {
+        throw new Error('PDF inputs exceed the merge size limit');
+      }
+
+      const source = {
+        id: `src-${++idCounter}`,
+        name: 'blank-page.pdf',
+        bytes,
+        size: bytes.length,
+        pageCount: 1
+      };
+      const blankPage = {
+        id: `page-${++idCounter}`,
+        sourceId: source.id,
+        pageIndex: 0,
+        rotation: 0,
+        sourceRotation: 0
+      };
+      sources.push(source);
+      sourceStore.set(source.id, source);
+      const insertAt = Math.max(0, pages.findIndex(page => page.id === currentId) + 1);
+      pages.splice(insertAt, 0, blankPage);
+      currentId = blankPage.id;
+      selectedIds = new Set([blankPage.id]);
+      selectionAnchorId = blankPage.id;
+      clearSelectedComponent();
+      buildTiles();
+      updateFileCard();
+      commitEditorHistory();
+      setLocalizedProgress(100, 'preparingPages');
+    } catch (error) {
+      const cancelled = operation.cancelled || error instanceof PdfEditorCancelledError;
+      showToast(
+        cancelled ? t('home.pdfEditor.cancelled') : messageForError(error, 'append'),
+        cancelled ? 4500 : 9000
+      );
+    } finally {
+      endOperation(operation);
+    }
+  }
+
   function deleteSelected() {
     if (activeOperation || !hasDocument()) return;
     if (selectedComponent) {
@@ -3635,9 +4083,11 @@ export function initPdfEditorTool({
 
   function resetEditorState() {
     if (activeOperation || !hasDocument() || !baselineSnapshot) return;
+    if (!confirmDiscardChanges('reset')) return;
     applyEditorSnapshot(baselineSnapshot);
     resetEditorHistory();
     baselineSnapshot = cloneState(historyStack[0]);
+    savedSnapshot = cloneState(historyStack[0]);
   }
 
   function buildAssembleArgs(ids) {
@@ -3675,8 +4125,8 @@ export function initPdfEditorTool({
     if (fontRegularBytes && fontSemiboldBytes) return;
     try {
       const [regularResponse, semiboldResponse] = await Promise.all([
-        fetch('/assets/fonts/MiSans-Regular.ttf'),
-        fetch('/assets/fonts/MiSans-Semibold.ttf')
+        fetch('/assets/fonts/NotoSansSC-Regular.ttf'),
+        fetch('/assets/fonts/NotoSansSC-Semibold.ttf')
       ]);
       if (!regularResponse.ok || !semiboldResponse.ok) throw new Error('font fetch failed');
       const [regularBytes, semiboldBytes] = await Promise.all([
@@ -3713,6 +4163,10 @@ export function initPdfEditorTool({
         italic: edit.segment.italic,
         rotation: edit.segment.rotation,
         box: edit.baseSegment?.sourceBox || edit.baseSegment?.box || edit.segment.sourceBox || edit.segment.box,
+        textBox: editedTextVisualBox(edit, edit.segment)
+          || edit.segment.box
+          || edit.segment.sourceBox
+          || edit.baseSegment?.box,
         color: edit.segment.color
       });
     }
@@ -3723,16 +4177,21 @@ export function initPdfEditorTool({
     const pageIndexById = new Map(ids.map((id, index) => [id, index]));
     return insertedTexts
       .filter(object => pageIndexById.has(object.pageId))
-      .map(object => ({
-        pageIndex: pageIndexById.get(object.pageId),
-        x: object.x,
-        y: object.y,
-        text: object.text,
-        fontSize: object.fontSize,
-        bold: object.bold,
-        rotation: object.rotation,
-        color: object.color
-      }));
+      .map(object => {
+        const visualBox = insertedTextVisualBox(object);
+        return {
+          pageIndex: pageIndexById.get(object.pageId),
+          x: object.x,
+          y: object.y,
+          width: visualBox.width,
+          height: visualBox.height,
+          text: object.text,
+          fontSize: object.fontSize,
+          bold: object.bold,
+          rotation: object.rotation,
+          color: object.color
+        };
+      });
   }
 
   function buildInsertedImageArgs(ids) {
@@ -3815,6 +4274,7 @@ export function initPdfEditorTool({
       const outputPath = await writePdf(bytes, outputDir, fileName);
       assertOperation(operation);
       setLocalizedProgress(100, 'exporting');
+      savedSnapshot = captureEditorSnapshot();
       showSuccess({ outputDir, outputPath, mode: 'export' }, operation.returnFocus);
     } catch (error) {
       const cancelled = operation.cancelled || error instanceof PdfEditorCancelledError;
@@ -3928,6 +4388,10 @@ export function initPdfEditorTool({
   rotateCwBtn?.addEventListener('click', () => rotateSelected(90), listenerOptions);
   moveUpBtn?.addEventListener('click', () => moveCurrent(-1), listenerOptions);
   moveDownBtn?.addEventListener('click', () => moveCurrent(1), listenerOptions);
+  duplicateBtn?.addEventListener('click', duplicateSelectedPages, listenerOptions);
+  blankPageBtn?.addEventListener('click', () => { void insertBlankPage(); }, listenerOptions);
+  selectAllBtn?.addEventListener('click', selectAllPages, listenerOptions);
+  invertSelectionBtn?.addEventListener('click', invertPageSelection, listenerOptions);
   deleteBtn?.addEventListener('click', deleteSelected, listenerOptions);
   extractBtn?.addEventListener('click', () => { void extractSelected(); }, listenerOptions);
   exportBtn?.addEventListener('click', () => { void exportPdf(); }, listenerOptions);

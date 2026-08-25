@@ -7,8 +7,8 @@ import { buildAiDocPdf } from '../src/ai-doc-pdf-core.js';
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const fontRoot = path.join(projectRoot, 'public', 'assets', 'fonts');
 const [fontRegularBytes, fontBoldBytes] = await Promise.all([
-  readFile(path.join(fontRoot, 'MiSans-Regular.ttf')),
-  readFile(path.join(fontRoot, 'MiSans-Semibold.ttf'))
+  readFile(path.join(fontRoot, 'NotoSansSC-Regular.ttf')),
+  readFile(path.join(fontRoot, 'NotoSansSC-Semibold.ttf'))
 ]);
 
 function region(type, text, y, options = {}) {

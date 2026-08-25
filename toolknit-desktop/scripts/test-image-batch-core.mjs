@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   IMAGE_BATCH_LIMITS,
   ImageBatchError,
+  getImageBatchFailureSummary,
   getImageExtension,
   isSupportedImageCompressionFileName,
   isSupportedImageFileName,
@@ -23,6 +24,23 @@ assert.equal(normalizeImageTargetFormat('svg'), 'SVG');
 assert.throws(() => normalizeImageTargetFormat('tiff'), ImageBatchError);
 assert.equal(normalizeImageCompressionQuality(' LOW '), 'low');
 assert.throws(() => normalizeImageCompressionQuality('maximum'), ImageBatchError);
+
+assert.deepEqual(
+  getImageBatchFailureSummary({
+    fail_count: 3,
+    errors: ['broken.png: invalid data', 'missing.jpg: not found']
+  }, 1),
+  {
+    failCount: 3,
+    visibleErrors: ['broken.png: invalid data'],
+    remainingCount: 2
+  }
+);
+assert.deepEqual(getImageBatchFailureSummary({ fail_count: 0, errors: [] }), {
+  failCount: 0,
+  visibleErrors: [],
+  remainingCount: 0
+});
 
 const selected = validateImageBatchSelection([
   { name: 'one.png', path: 'D:/input/one.png', size: 1024 },

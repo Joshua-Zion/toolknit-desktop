@@ -40,6 +40,19 @@ assert.equal((await PDFDocument.load(outputs[0].bytes)).getPage(0).getRotation()
 assert.equal((await PDFDocument.load(outputs[1].bytes)).getPageCount(), 1);
 assert.deepEqual(progress, [1, 2]);
 
+const formDocument = await PDFDocument.create();
+const formPage = formDocument.addPage([612, 792]);
+const formField = formDocument.getForm().createTextField('split.profile');
+formField.setText('ToolKnit');
+formField.addToPage(formPage, { x: 48, y: 680, width: 220, height: 28 });
+const formOutputs = await splitPdfPages({
+  documents: [{ fileName: 'form.pdf', fileData: await formDocument.save() }],
+  pages: [{ fileIndex: 0, pageIndex: 1 }]
+});
+const flattenedSplit = await PDFDocument.load(formOutputs[0].bytes);
+assert.equal(flattenedSplit.getForm().getFields().length, 0);
+assert.equal(flattenedSplit.getPage(0).node.Annots()?.size() || 0, 0);
+
 assert.equal(createPdfSplitFileName('..\\unsafe/name.pdf', 3), 'name_page_3.pdf');
 assert.throws(() => createPdfSplitFileName('report.pdf', 0));
 assert.throws(() => assertPdfSplitSelection([], 0));

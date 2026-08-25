@@ -469,7 +469,9 @@ $monitors = @(Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID | Wher
     product_code = DecodeWmiText $_.ProductCodeID
     width_cm = if ($basic) { [int]$basic.MaxHorizontalImageSize } else { 0 }
     height_cm = if ($basic) { [int]$basic.MaxVerticalImageSize } else { 0 }
-    connection_code = if ($connection) { [int]$connection.VideoOutputTechnology } else { -1 }
+    connection_code = if ($null -ne $connection -and $null -ne $connection.VideoOutputTechnology) {
+      try { [Int64]$connection.VideoOutputTechnology } catch { [Int64]-1 }
+    } else { [Int64]-1 }
   }
 })
 [ordered]@{ gpus = $gpus; monitors = $monitors } | ConvertTo-Json -Depth 5 -Compress

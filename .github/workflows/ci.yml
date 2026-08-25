@@ -39,6 +39,15 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Rust security auditor
+        run: cargo install cargo-audit --locked --version 0.22.2
+
+      - name: Audit Rust dependencies
+        working-directory: toolknit-desktop/src-tauri
+        # RUSTSEC-2024-0429 affects glib, which is only present in Tauri's
+        # Linux dependency graph. ToolKnit's supported release target is Windows.
+        run: cargo audit --target-os windows --target-arch x86_64 -D unsound -D yanked --ignore RUSTSEC-2024-0429
+
       - name: Install JavaScript dependencies
         run: npm ci
 

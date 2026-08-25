@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   AI_PROVIDER_LIMITS,
   AiProviderError,
+  isPrivateHttpAiProviderUrl,
   isPlaceholderAiApiKey,
   normalizeAiProviderConfig,
   requestAiCompletion
@@ -22,12 +23,66 @@ assert.deepEqual(
   normalizeAiProviderConfig({ url: 'http://localhost:11434/v1/chat/completions', model: 'local-model' }),
   { url: 'http://localhost:11434/v1/chat/completions', model: 'local-model' }
 );
-for (const url of ['http://api.example.test/v1/chat/completions', 'https://user:pass@api.example.test/v1/chat/completions', 'not a URL']) {
+assert.equal(isPrivateHttpAiProviderUrl('http://172.23.20.253:3001/v1/chat/completions'), true);
+assert.equal(isPrivateHttpAiProviderUrl('http://192.168.1.20/v1/chat/completions'), true);
+assert.equal(isPrivateHttpAiProviderUrl('http://8.8.8.8/v1/chat/completions'), false);
+assert.throws(
+  () => normalizeAiProviderConfig({ url: 'http://172.23.20.253:3001/v1/chat/completions', model: 'test-model' }),
+  error => error instanceof AiProviderError && error.code === 'private_http_requires_opt_in'
+);
+assert.deepEqual(
+  normalizeAiProviderConfig({
+    url: 'http://172.23.20.253:3001/v1/chat/completions#ignored',
+    model: ' test-model ',
+    allowPrivateHttp: true
+  }),
+  { url: 'http://172.23.20.253:3001/v1/chat/completions', model: 'test-model' }
+);
+for (const url of ['http://api.example.test/v1/chat/completions', 'http://8.8.8.8/v1/chat/completions']) {
+  assert.throws(
+    () => normalizeAiProviderConfig({ url, model: 'test-model' }),
+    error => error instanceof AiProviderError && error.code === 'insecure_http_not_allowed'
+  );
+}
+for (const url of ['https://user:pass@api.example.test/v1/chat/completions', 'not a URL']) {
   assert.throws(
     () => normalizeAiProviderConfig({ url, model: 'test-model' }),
     error => error instanceof AiProviderError && error.code === 'invalid_config'
   );
 }
+
+let nativeRequest = null;
+assert.equal(await requestAiCompletion({
+  ...request,
+  url: 'http://172.23.20.253:3001/v1/chat/completions',
+  allowPrivateHttp: true,
+  nativeRequestImpl: async value => {
+    nativeRequest = value;
+    return { content: 'LAN response' };
+  }
+}), 'LAN response');
+assert.equal(nativeRequest.url, 'http://172.23.20.253:3001/v1/chat/completions');
+assert.equal(nativeRequest.allowPrivateHttp, true);
+assert.equal(nativeRequest.apiKey, request.apiKey);
+
+await assert.rejects(
+  requestAiCompletion({
+    ...request,
+    url: 'http://172.23.20.253:3001/v1/chat/completions',
+    allowPrivateHttp: true
+  }),
+  error => error instanceof AiProviderError && error.code === 'native_transport_unavailable'
+);
+
+await assert.rejects(
+  requestAiCompletion({
+    ...request,
+    url: 'http://172.23.20.253:3001/v1/chat/completions',
+    allowPrivateHttp: true,
+    nativeRequestImpl: async () => { throw 'ai-provider:http_error:429'; }
+  }),
+  error => error instanceof AiProviderError && error.code === 'http_error' && error.status === 429
+);
 
 assert.equal(isPlaceholderAiApiKey('你的 DeepSeek Key'), true);
 assert.equal(isPlaceholderAiApiKey('<your DeepSeek API key>'), true);

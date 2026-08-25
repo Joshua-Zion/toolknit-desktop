@@ -51,7 +51,7 @@ const packedFiles = new Set(pack.files.map(file => file.path));
 for (const required of ['README.md', 'LICENSE', 'package.json', 'npm-shrinkwrap.json', 'toolknit.mjs']) {
   assert.equal(packedFiles.has(required), true, `published CLI package must include ${required}`);
 }
-for (const required of ['lib/ppt-image-extract-runtime.mjs', 'lib/core/ppt-image-extract-core.js', 'lib/ppt-text-extract-runtime.mjs', 'lib/core/ppt-text-extract-core.js', 'lib/ppt-compress-runtime.mjs', 'lib/core/ppt-compress-core.js', 'lib/ppt-render-runtime.mjs', 'lib/core/ppt-render-core.js', 'lib/ppt-to-pdf-runtime.mjs', 'lib/ppt-to-image-runtime.mjs', 'lib/ppt-outline-runtime.mjs', 'lib/core/ppt-outline-core.js', 'lib/ppt-draft-runtime.mjs', 'lib/core/ppt-draft-core.js']) {
+for (const required of ['lib/core/pdf-document-structure.js', 'lib/ppt-image-extract-runtime.mjs', 'lib/core/ppt-image-extract-core.js', 'lib/ppt-text-extract-runtime.mjs', 'lib/core/ppt-text-extract-core.js', 'lib/ppt-compress-runtime.mjs', 'lib/core/ppt-compress-core.js', 'lib/ppt-render-runtime.mjs', 'lib/core/ppt-render-core.js', 'lib/ppt-to-pdf-runtime.mjs', 'lib/ppt-to-image-runtime.mjs', 'lib/ppt-outline-runtime.mjs', 'lib/core/ppt-outline-core.js', 'lib/ppt-draft-runtime.mjs', 'lib/core/ppt-draft-core.js']) {
   assert.equal(packedFiles.has(required), true, `published CLI package must include ${required}`);
 }
 assert.equal(pack.version, cliPackage.version);

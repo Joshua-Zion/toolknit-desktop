@@ -27,6 +27,15 @@ assert.match(rust, /cdn\.npmmirror\.com\/binaries\/ffmpeg-static\/b6\.1\.1\/ffmp
 assert.match(rust, /const FFMPEG_ARCHIVE_BYTES: u64 = 29_581_307;/, 'FFmpeg download must use the compact compressed binary');
 assert.match(rust, /reqwest::header::RANGE/, 'FFmpeg downloads must support resume');
 assert.match(rust, /FFMPEG_ARCHIVE_SHA256/, 'FFmpeg downloads must be integrity checked');
+assert.match(rust, /TOOLKNIT_FFMPEG_PATH/, 'FFmpeg detection must support an explicit system path');
+assert.match(rust, /Microsoft[\s\S]*WinGet[\s\S]*Links/, 'FFmpeg detection must check the Winget link directory');
+assert.match(rust, /system:scoop/, 'FFmpeg detection must check the Scoop shim directory');
+assert.match(rust, /system:chocolatey/, 'FFmpeg detection must check the Chocolatey bin directory');
+assert.match(rust, /FFMPEG_PROBE_TIMEOUT_MS/, 'FFmpeg candidates must be verified with a bounded process probe');
+assert.match(rust, /fn libreoffice_candidates\(\)/, 'LibreOffice detection must use bounded known-path candidates');
+assert.match(rust, /ProgramFiles\(x86\)/, 'LibreOffice detection must include standard Windows install directories');
+assert.match(main, /isManagedRuntime\(ffmpegRuntimeStatus\)/, 'system FFmpeg installations must not expose ToolKnit delete actions');
+assert.match(main, /isManagedRuntime\(libreOfficeRuntimeStatus\)/, 'system LibreOffice installations must not expose ToolKnit delete actions');
 assert.match(rust, /fn cancel_dependency_downloads\(\)/, 'the native layer must expose dependency cancellation');
 
 for (const locale of [zh, en]) {

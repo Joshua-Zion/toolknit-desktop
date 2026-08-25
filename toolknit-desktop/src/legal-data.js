@@ -40,6 +40,7 @@ const LEGAL_CONTENT_ZH = {
 
       <h3>六、第三方组件与按需依赖</h3>
       <p>本软件使用 Tauri、Rust、PDF.js、pdf-lib、FFmpeg、Whisper、LibreOffice、JSZip、ExcelJS、Chart.js、Lucide 等开源组件或运行时。相关权利归各自权利人所有，具体版本、源码与许可应以仓库依赖清单、锁文件和第三方声明为准。</p>
+      <p>界面默认使用阿里巴巴普惠体 Medium / Bold（Copyright © 2019 Alibaba（中国）有限公司，字体设计：Alibaba Design、汉仪字库）及 Fonarto 2.0 Regular / Bold（Copyright © 2014 Arwan Sutanto / Locomotype，Fonarto 为 Locomotype 商标）。字体权利归各自权利人所有，完整声明见安装包内 <code>assets/fonts/THIRD_PARTY_FONTS.md</code>。用户自行上传替换的字体由用户确认其使用和分发授权。</p>
       <p>FFmpeg、Whisper 模型和 LibreOffice 不随基础安装包全部内置。下载源、网络速度、磁盘空间、系统策略及第三方发布变化都可能影响安装和运行。</p>
 
       <h3>七、输出、AI 内容与责任限制</h3>
@@ -166,6 +167,7 @@ const LEGAL_CONTENT_EN = {
 
       <h3>6. Third-Party Components and Optional Runtimes</h3>
       <p>The software uses open-source components or runtimes including Tauri, Rust, PDF.js, pdf-lib, FFmpeg, Whisper, LibreOffice, JSZip, ExcelJS, Chart.js, and Lucide. Rights remain with their respective owners. Refer to dependency manifests, lockfiles, and third-party notices for authoritative versions and licenses.</p>
+      <p>The default interface uses Alibaba PuHuiTi Medium / Bold (Copyright © 2019 Alibaba (China) Co., Ltd.; font design by Alibaba Design and Hanyi Fonts) and Fonarto 2.0 Regular / Bold (Copyright © 2014 Arwan Sutanto / Locomotype; Fonarto is a Locomotype trademark). Rights remain with their respective owners. See <code>assets/fonts/THIRD_PARTY_FONTS.md</code> in the installation for full notices. Users are responsible for confirming rights to any font they upload as a replacement.</p>
       <p>FFmpeg, Whisper models, and LibreOffice are not all bundled with the base installer. Installation can be affected by the selected source, network speed, disk space, system policy, and upstream releases.</p>
 
       <h3>7. Outputs, AI Content, and Liability</h3>

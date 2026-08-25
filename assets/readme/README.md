@@ -8,6 +8,7 @@ version-labelled, update this file and the README links together.
 | File | Purpose | Recommended export |
 | --- | --- | --- |
 | `hero-v2.webp` | Opening visual shown at the top of the repository | WebP, wide format |
+| `desktop-v21.png` | Rounded ToolKnit Desktop 2.1 product preview | PNG with transparent corners, 1400 x 900 |
 | `web-version.png` | ToolKnit web version preview shown near the support section | PNG, 16:9, 1600 px wide or larger |
 | `donation-support.webp` | Alipay and WeChat donation QR codes | WebP |
 | `supporters-thanks.webp` | Thanks list for supporters | WebP |
