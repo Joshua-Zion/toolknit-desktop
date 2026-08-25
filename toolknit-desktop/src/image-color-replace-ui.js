@@ -7,7 +7,7 @@ import { bindToolPageChrome, mountToolPageBackground, toolTopbarMarkup } from '.
 export function initImageColorReplaceTool({ overlay, notify = (message, options) => window.showToast?.(message, options) }) {
   if (!overlay) throw new Error('color-replace:missing-overlay');
   overlay.innerHTML = `<div class="tool-page-v2-shell color-replace-shell">
-    ${toolTopbarMarkup({ tag: 'IMAGE TOOLS · TOOL PAGE 2.0', title: '智能颜色替换', closeAttr: 'data-cr-close' })}
+    ${toolTopbarMarkup({ tag: 'IMAGE TOOLS · TOOL PAGE 2.1', title: '智能颜色替换', closeAttr: 'data-cr-close' })}
     <main class="tool-page-v2-body color-replace-main">
       <aside class="tool-page-v2-rail color-replace-rail">
         <div class="tool-page-v2-rail-kicker">IMAGE COLOR REPLACER</div><h1>智能颜色<br>替换</h1><p>用感知色差和连通区域精准替换图像颜色，保留边缘与明暗层次。</p>

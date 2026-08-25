@@ -4,7 +4,7 @@
 
 ToolKnit has applied for the SignPath Foundation open-source code-signing program. This policy becomes operational only after that application is approved and the signing workflow is integrated.
 
-ToolKnit Desktop 2.1.0 is **not** signed through SignPath. Its release integrity is verified with the SHA-256 checksum published alongside the installer.
+ToolKnit Desktop 2.1.1 is **not** signed through SignPath. Its release integrity is verified with the SHA-256 checksum published alongside the installer.
 
 ## Signing service and scope
 

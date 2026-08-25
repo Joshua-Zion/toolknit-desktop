@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const releaseTests = [
+  'test:release-version',
   'test:pdf-merge',
   'test:pdf-split',
   'test:pdf-to-image',

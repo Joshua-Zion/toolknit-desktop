@@ -1165,7 +1165,7 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
 
   'developer-tools': {
     title: '开发者工具',
-    html: `<div class="help-doc"><h2>2.1.0 开发者工具</h2><p>这里集中介绍本次新增的本地工具。它们默认在需要时加载，关闭页面后会释放 Worker、Canvas 和临时任务。</p><h3>Markdown 文档编辑器</h3><p>支持 GFM、任务列表、Mermaid、数学公式、目录跳转、草稿恢复，以及 Markdown 和离线 HTML 导出。导出本地图片时会自动整理 assets 目录。</p><h3>智能颜色替换</h3><p>使用吸管选择源色和目标色，可调节感知阈值、边缘柔化、亮度保持和八连通智能保护。预览使用降采样 Worker，导出由 Rust 按原始分辨率完成。</p><h3>Hash &amp; Crypto</h3><p>覆盖常用 Hash、HMAC、国密、AES 文件加密、RSA 和 SM2。旧算法仅用于兼容，敏感输入不会写入历史或本地存储。</p></div>`
+    html: `<div class="help-doc"><h2>2.1 开发者工具</h2><p>这里集中介绍本次新增的本地工具。它们默认在需要时加载，关闭页面后会释放 Worker、Canvas 和临时任务。</p><h3>Markdown 文档编辑器</h3><p>支持 GFM、任务列表、Mermaid、数学公式、目录跳转、草稿恢复，以及 Markdown 和离线 HTML 导出。导出本地图片时会自动整理 assets 目录。</p><h3>智能颜色替换</h3><p>使用吸管选择源色和目标色，可调节感知阈值、边缘柔化、亮度保持和八连通智能保护。预览使用降采样 Worker，导出由 Rust 按原始分辨率完成。</p><h3>Hash &amp; Crypto</h3><p>覆盖常用 Hash、HMAC、国密、AES 文件加密、RSA 和 SM2。旧算法仅用于兼容，敏感输入不会写入历史或本地存储。</p></div>`
   },
   'hardware-tools': {
     title: '硬件工具总览',

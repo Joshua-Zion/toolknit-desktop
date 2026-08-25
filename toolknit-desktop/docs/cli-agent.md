@@ -21,7 +21,7 @@ For a local release archive, install with npm's optional network checks disabled
 
 ```powershell
 npm pack .\cli
-npm install --global --no-audit --no-fund --prefer-offline .\toolknit-cli-2.1.0.tgz
+npm install --global --no-audit --no-fund --prefer-offline .\toolknit-cli-2.1.1.tgz
 ```
 
 ## Command help

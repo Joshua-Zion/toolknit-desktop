@@ -46,7 +46,7 @@ export function initMarkdownEditorTool({ overlay, notify = message => window.sho
   mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral', fontFamily: 'system-ui, sans-serif' });
 
   overlay.innerHTML = `<div class="tool-page-v2-shell md-tool-shell">
-    ${toolTopbarMarkup({ tag: 'MARKDOWN EDITOR · TOOL PAGE 2.0', title: 'Markdown 文档编辑器', closeAttr: 'data-md-close' })}
+    ${toolTopbarMarkup({ tag: 'MARKDOWN EDITOR · TOOL PAGE 2.1', title: 'Markdown 文档编辑器', closeAttr: 'data-md-close' })}
     <main class="tool-page-v2-body md-tool-main">
       <aside class="tool-page-v2-rail md-outline-panel">
         <div class="tool-page-v2-rail-kicker">MARKDOWN STUDIO</div><h1>Markdown<br>文档编辑器</h1><p>实时编辑、预览和导出 Markdown 文档，支持 GFM、Mermaid 与数学公式。</p>
