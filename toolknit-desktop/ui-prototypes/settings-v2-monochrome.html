@@ -5,18 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ToolKnit 2.0 Settings - Monochrome Prototype</title>
     <style>
-      @font-face {
-        font-family: "ToolKnitCN";
-        src: url("/assets/fonts/Alibaba-PuHuiTi-Heavy.ttf") format("truetype");
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "ToolKnitEN";
-        src: url("/assets/fonts/BebasNeue-1.otf") format("opentype");
-        font-display: swap;
-      }
-
       :root {
         color-scheme: dark;
         --bg: #050506;
@@ -29,6 +17,8 @@
         --line-strong: rgba(255, 255, 255, 0.16);
         --white: #f2f2ef;
         --black: #090909;
+        --proto-font-cn: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+        --proto-font-en: "Segoe UI Variable Text", "Segoe UI", Inter, Arial, sans-serif;
       }
 
       * { box-sizing: border-box; }
@@ -42,7 +32,7 @@
       }
 
       body {
-        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
         -webkit-font-smoothing: antialiased;
         text-rendering: geometricPrecision;
         overflow-x: hidden;
@@ -153,7 +143,7 @@
         border: 1px solid var(--line);
         border-radius: 999px;
         color: var(--muted);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 12px;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -161,7 +151,7 @@
 
       .top-meta {
         color: var(--quiet);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -214,7 +204,7 @@
         align-items: center;
         gap: 8px;
         color: var(--muted);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -222,7 +212,7 @@
 
       .poster h1 {
         margin: 16px 0 12px;
-        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
         font-size: 42px;
         line-height: 0.98;
         letter-spacing: 0;
@@ -270,7 +260,7 @@
 
       .poster-meta-row strong {
         color: var(--ink);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 15px;
         letter-spacing: 0.04em;
       }
@@ -326,7 +316,7 @@
         align-items: center;
         gap: 8px;
         color: var(--quiet);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -334,7 +324,7 @@
 
       .setting-title {
         margin: 7px 0 0;
-        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
         font-size: 24px;
         line-height: 1.08;
       }
@@ -526,7 +516,7 @@
 
       .radius-value {
         color: var(--muted);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 12px;
         letter-spacing: 0.06em;
       }
@@ -570,7 +560,7 @@
         justify-content: space-between;
         gap: 16px;
         color: var(--quiet);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -601,11 +591,11 @@
       }
 
       .text-cn, .poster h1, .setting-title, .toggle-copy strong, .toggle-copy span, .link-card {
-        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
       }
 
       .text-en, .poster-kicker, .top-tag, .top-meta, .section-index, .radius-value, .footnote {
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
       }
 
       @media (max-width: 1120px) {

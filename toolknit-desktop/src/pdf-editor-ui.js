@@ -1,4 +1,9 @@
 import { PDFDocument } from 'pdf-lib';
+import * as tauriCore from '@tauri-apps/api/core';
+import * as tauriEvent from '@tauri-apps/api/event';
+
+const tauriCorePromise = Promise.resolve(tauriCore);
+const tauriEventPromise = Promise.resolve(tauriEvent);
 import {
   PDF_EDITOR_LIMITS,
   assertPdfEditorFile,
@@ -277,7 +282,7 @@ export function initPdfEditorTool({
   };
 
   const getInvoke = async () => {
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await tauriCorePromise;
     return invoke;
   };
 

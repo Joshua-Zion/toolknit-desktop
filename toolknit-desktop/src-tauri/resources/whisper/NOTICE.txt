@@ -1,0 +1,12 @@
+whisper.cpp 1.9.1
+
+ToolKnit redistributes selected, unmodified Windows x64 binaries from the
+official whisper.cpp v1.9.1 release archive:
+
+https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.1
+https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-x64.zip
+
+whisper.cpp includes the ggml inference backend used by these binaries.
+whisper.cpp and ggml are licensed under the accompanying MIT License.
+
+Copyright (c) 2023-2026 The ggml authors

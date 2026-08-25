@@ -441,9 +441,18 @@ export async function assemblePdfWithTextEdits({
       };
       // The source glyphs remain unrotated underneath an edited component.
       // Keep that original mask, then add a center-rotated mask for the new
-      // glyphs so neither layer leaks through after a component rotation.
+      // glyphs so neither layer leaks through after a move, resize, or
+      // component rotation. The destination mask is only needed when it is
+      // materially different from the immutable source mask.
       copiedPage.drawRectangle(baseMask);
-      if (uiRotation) {
+      const replacementMaskNeeded = (
+        uiRotation
+        || Math.abs(replacementX - coverX) > 0.001
+        || Math.abs(replacementY - coverY) > 0.001
+        || replacementMaskWidth > maskWidth + 0.001
+        || replacementMaskHeight > coverHeight + 0.001
+      );
+      if (replacementMaskNeeded) {
         copiedPage.drawRectangle({
           x: maskOrigin.x,
           y: maskOrigin.y,

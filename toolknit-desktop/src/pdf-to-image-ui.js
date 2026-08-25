@@ -5,6 +5,11 @@ import {
   assertPdfToImagePageCount,
   planPdfToImageExport
 } from './pdf-to-image-core.js';
+import * as tauriCore from '@tauri-apps/api/core';
+import * as tauriEvent from '@tauri-apps/api/event';
+
+const tauriCorePromise = Promise.resolve(tauriCore);
+const tauriEventPromise = Promise.resolve(tauriEvent);
 
 const PREVIEW_CSS_WIDTH = 232;
 const PREVIEW_CSS_HEIGHT = 300;
@@ -154,7 +159,7 @@ export function initPdfToImageTool({
   };
 
   const getInvoke = async () => {
-    const { invoke } = await import('@tauri-apps/api/core');
+    const { invoke } = await tauriCorePromise;
     return invoke;
   };
 
@@ -988,7 +993,7 @@ export function initPdfToImageTool({
       }
 
       assertOperation(operation);
-      const { listen } = await import('@tauri-apps/api/event');
+      const { listen } = await tauriEventPromise;
       assertOperation(operation);
       const jobId = operation.jobId;
       progressUnlisten = await listen('pdf-to-image-progress', event => {

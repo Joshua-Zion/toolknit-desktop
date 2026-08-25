@@ -116,6 +116,29 @@ const insertedDocument = await PDFDocument.load(inserted);
 assert.equal(insertedDocument.getPageCount(), 1);
 assert.ok(inserted.length > textSource.length);
 
+// A replacement that is moved without rotation still needs an opaque
+// destination mask. Use a deliberately narrow source box and a wide glyph
+// run to prove the mask uses embedded-font metrics plus padding rather than
+// the source box or character-count estimate.
+const movedWideText = await assemblePdfWithTextEdits({
+  sources: [{ name: 'moved-wide-text.pdf', bytes: textSource }],
+  pages: [{ sourceIndex: 0, pageIndex: 0, rotation: 0 }],
+  textEdits: [{
+    pageIndex: 0,
+    baselineX: 200,
+    baselineY: 300,
+    fontSize: 20,
+    text: 'WWW',
+    rotation: 0,
+    box: { x: 100, y: 190, width: 10, height: 20 },
+    textBox: { x: 200, y: 290, width: 10, height: 20 }
+  }]
+});
+const movedWideTextDocument = await PDFDocument.load(movedWideText);
+const movedWideTextContent = pageContentText(movedWideTextDocument);
+assert.match(movedWideTextContent, /1 0 0 1 175\.88 290 cm/);
+assert.match(movedWideTextContent, /58\.24 20 l/);
+
 // Inserted-text rotation must use the same deterministic visual width as the
 // canvas fallback. Using embedded-font metrics here would move a 90-degree
 // component's pivot because the browser overlay cannot measure that font.

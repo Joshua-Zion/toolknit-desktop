@@ -1,7 +1,18 @@
 import en from './locales/en.json' with { type: 'json' };
 import zh from './locales/zh.json' with { type: 'json' };
+import * as tauriCore from '@tauri-apps/api/core';
+
+const tauriCorePromise = Promise.resolve(tauriCore);
 
 const locales = { en, zh };
+const BUILTIN_TRANSLATIONS = {
+  zh: {
+    'home.toolNames.jsonTools': 'JSON 格式化', 'home.toolNames.base64': 'Base64 编解码', 'home.toolNames.urlCodec': 'URL 编解码', 'home.toolNames.uuid': 'UUID 生成器', 'home.toolNames.jwt': 'JWT 查看器'
+  },
+  en: {
+    'home.toolNames.jsonTools': 'JSON Formatter', 'home.toolNames.base64': 'Base64 Codec', 'home.toolNames.urlCodec': 'URL Codec', 'home.toolNames.uuid': 'UUID Generator', 'home.toolNames.jwt': 'JWT Viewer'
+  }
+};
 const STORAGE_KEY = 'toolknit-lang';
 const INSTALLER_LANG_KEY = 'toolknit-installer-lang';
 
@@ -24,7 +35,7 @@ export function onLangChange(cb) {
 // On launch, check if installer language changed (reinstall with different language)
 // If so, apply the new installer language. Otherwise respect user's saved preference.
 const checkInstallLang = () => {
-  import('@tauri-apps/api/core').then(({ invoke }) => {
+  tauriCorePromise.then(({ invoke }) => {
     invoke('get_install_config')
       .then((config) => {
         const lang = config.language || 'zh';
@@ -64,7 +75,7 @@ function get(obj, path) {
 }
 
 export function t(key, vars = {}) {
-  const val = get(locales[currentLang], key) || get(locales.en, key) || key;
+  const val = get(locales[currentLang], key) || BUILTIN_TRANSLATIONS[currentLang]?.[key] || get(locales.en, key) || BUILTIN_TRANSLATIONS.en[key] || key;
   return Object.entries(vars).reduce(
     (str, [k, v]) => str.replace(new RegExp(`\\{${k}\\}`, 'g'), v),
     val
@@ -104,7 +115,7 @@ function setLangInternal(lang) {
   document.body.classList.toggle('lang-zh', normalized === 'zh');
   applyTranslations();
   // Update system tray menu language
-  import('@tauri-apps/api/core').then(({ invoke }) => {
+  tauriCorePromise.then(({ invoke }) => {
     invoke('set_tray_lang', { lang: normalized }).catch(() => {});
   }).catch(() => {});
   // Fire registered callbacks

@@ -3,7 +3,7 @@ export const HELP_CONTENT_EN = {
     title: 'Overview',
     html: `<div class="help-doc">
       <h2>ToolKnit Overview</h2>
-      <p>ToolKnit 2.0 is a <strong>local-first</strong> Windows toolbox with 49 desktop tools across 11 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, cleanup, and hardware work is performed locally by default.</p>
+      <p>ToolKnit 2.1 is a <strong>local-first</strong> Windows toolbox with 60 desktop tools across 12 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, developer, cleanup, and hardware work is performed locally by default.</p>
 
       <h3>Tool Categories</h3>
       <div class="help-tool-grid">
@@ -1123,6 +1123,23 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
     </div>`
   },
 
+  'color-space-compare': {
+    title: 'Color Space Compare',
+    html: `<div class="help-doc">
+      <h2>Color Space Compare</h2>
+      <p>Link OKLCH, OKLab, CIELAB D65, CIELCH D65, RGB, HSL, HSV, and approximate CMYK in real time. Drag any track or enter an exact value to update every other model.</p>
+      <h3>Exact values and track ranges</h3>
+      <p>A converted channel may exceed its visual track. The numeric field keeps the exact value while the handle stays at the edge with a dashed outline; step controls move smoothly from the real value instead of snapping to the boundary.</p>
+      <h3>Gamuts and preview</h3>
+      <p>The page checks sRGB, Display P3, Adobe RGB, and Rec.2020. When a color exceeds sRGB, the screen preview is mapped to a displayable color while copied model values retain the original calculation.</p>
+      <div class="help-note"><p>CIELAB / CIELCH use a D65 white point, unlike the common D50 Lab semantics in CSS Color 4. CMYK is device-independent approximation; production print work should use the target device's ICC profile.</p></div>
+    </div>`
+  },
+
+  'developer-tools': {
+    title: 'Developer Tools',
+    html: `<div class="help-doc"><h2>Developer Tools in 2.1.0</h2><p>This release adds local-first tools that load on demand and release Workers, canvases, and temporary jobs when closed.</p><h3>Markdown Document Editor</h3><p>GFM, task lists, Mermaid, math, outline navigation, draft recovery, and offline Markdown/HTML export are supported. Local images are organized into an assets folder during export.</p><h3>Smart Color Replacement</h3><p>Sample source and target colors, tune perceptual tolerance, feathering, luminance preservation, and 8-connected smart protection. Preview work runs in a Worker; Rust exports at original resolution.</p><h3>Hash &amp; Crypto</h3><p>Includes common hashes, HMAC, SM algorithms, AES file encryption, RSA, and SM2. Legacy algorithms are compatibility-only, and sensitive inputs are not persisted.</p></div>`
+  },
   'hardware-tools': {
     title: 'Hardware Tools Overview',
     html: `<div class="help-doc">
@@ -1174,5 +1191,7 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
     </div>`
   }
 };
+
+HELP_CONTENT_EN['developer-tools'].html += `<h3>Common Developer Utilities</h3><ul><li>JSON formatter: validate, pretty-print, and minify.</li><li>Base64 codec: UTF-8 safe text encoding and decoding.</li><li>URL codec: encode and decode query parameters and path fragments.</li><li>UUID generator: batch RFC 4122 UUID v4 generation.</li><li>JWT viewer: decode Header and Payload locally without signature verification.</li></ul>`;
 
 export default HELP_CONTENT_EN;

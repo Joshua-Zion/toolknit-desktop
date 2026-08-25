@@ -5,6 +5,7 @@ const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'src-tauri', 'resources', 'qpdf');
 const destination = path.join(root, 'cli', 'vendor', 'qpdf');
 const whisperSource = path.join(root, 'src-tauri', 'resources', 'whisper', 'Release');
+const whisperLegalSource = path.join(root, 'src-tauri', 'resources', 'whisper');
 const whisperDestination = path.join(root, 'cli', 'vendor', 'whisper');
 const whisperFiles = [
   'whisper-cli.exe', 'whisper.dll', 'ggml.dll', 'ggml-base.dll',
@@ -12,6 +13,7 @@ const whisperFiles = [
   'ggml-cpu-haswell.dll', 'ggml-cpu-icelake.dll', 'ggml-cpu-sandybridge.dll',
   'ggml-cpu-skylakex.dll', 'ggml-cpu-sse42.dll', 'ggml-cpu-x64.dll'
 ];
+const whisperLegalFiles = ['LICENSE.txt', 'NOTICE.txt'];
 const coreSource = path.join(root, 'src');
 const coreDestination = path.join(root, 'cli', 'lib', 'core');
 const sharedSource = path.join(root, 'shared');
@@ -146,6 +148,11 @@ for (const fileName of whisperFiles) {
   if (!fs.existsSync(filePath)) throw new Error(`whisper resource is missing: ${filePath}`);
   copyFileAtomic(filePath, path.join(whisperDestination, fileName));
 }
+for (const fileName of whisperLegalFiles) {
+  const filePath = path.join(whisperLegalSource, fileName);
+  if (!fs.existsSync(filePath)) throw new Error(`whisper legal notice is missing: ${filePath}`);
+  copyFileAtomic(filePath, path.join(whisperDestination, fileName));
+}
 fs.mkdirSync(coreDestination, { recursive: true });
 for (const fileName of coreFiles) {
   const filePath = path.join(coreSource, fileName);
@@ -171,4 +178,4 @@ for (const fileName of fontFiles) {
   copyFileAtomic(filePath, path.join(fontDestination, fileName));
 }
 releaseStageLockOnce();
-console.log('Staged CLI runtime resources: qpdf, whisper, core modules, shared task contracts, guides, and fonts. FFmpeg is downloaded on demand by ToolKnit Desktop or resolved from PATH.');
+console.log('Staged CLI runtime resources: qpdf, whisper binaries and legal notices, core modules, shared task contracts, guides, and fonts. FFmpeg is downloaded on demand by ToolKnit Desktop or resolved from PATH.');

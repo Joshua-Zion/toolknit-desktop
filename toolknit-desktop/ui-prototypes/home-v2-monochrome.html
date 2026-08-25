@@ -5,18 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ToolKnit 2.0 - Monochrome Home Prototype</title>
     <style>
-      @font-face {
-        font-family: "ToolKnitCN";
-        src: url("/assets/fonts/Alibaba-PuHuiTi-Heavy.ttf") format("truetype");
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "ToolKnitEN";
-        src: url("/assets/fonts/BebasNeue-1.otf") format("opentype");
-        font-display: swap;
-      }
-
       :root {
         color-scheme: dark;
         --bg: #060607;
@@ -29,6 +17,8 @@
         --white: #f2f2ef;
         --black: #0a0a0a;
         --radius: 8px;
+        --proto-font-cn: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+        --proto-font-en: "Segoe UI Variable Text", "Segoe UI", Inter, Arial, sans-serif;
       }
 
       * {
@@ -46,7 +36,7 @@
       }
 
       body {
-        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
         text-rendering: geometricPrecision;
         letter-spacing: 0;
         -webkit-font-smoothing: antialiased;
@@ -78,14 +68,14 @@
       .primary-action span,
       .secondary-action span,
       .manage-favorites span {
-        font-family: "ToolKnitCN", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
         letter-spacing: 0;
       }
 
       .text-en-display,
       .brand-name,
       .hero-title-brand {
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         letter-spacing: 0;
       }
 
@@ -97,18 +87,17 @@
       .github-stat span,
       .section-index,
       .favorite-category,
-      .loop-caption,
-      .loop-badge,
+      .prototype-stage-badge,
       .footer-note,
       .tool-category span,
       .support-copy small {
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         letter-spacing: 0.04em;
         text-transform: uppercase;
       }
 
       .payment-tab {
-        font-family: "ToolKnitCN", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-family: var(--proto-font-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
         letter-spacing: 0;
       }
 
@@ -491,35 +480,22 @@
         backdrop-filter: blur(16px);
       }
 
-      .loop-stage {
+      .prototype-stage {
         position: absolute;
         inset: 20px 24px 24px;
         border-radius: 20px;
         overflow: hidden;
       }
 
-      .loop-video {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center;
-        filter: grayscale(1) contrast(1.1) brightness(0.9) saturate(0);
-        opacity: 1;
-        transform: scale(1.035);
-        pointer-events: none;
-      }
-
-      .loop-stage::before,
-      .loop-stage::after {
+      .prototype-stage::before,
+      .prototype-stage::after {
         content: '';
         position: absolute;
         inset: 0;
         pointer-events: none;
       }
 
-      .loop-stage::before {
+      .prototype-stage::before {
         background:
           radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.03), transparent 26%),
           radial-gradient(circle at 72% 66%, rgba(255, 255, 255, 0.03), transparent 22%),
@@ -527,79 +503,13 @@
         opacity: 0.72;
       }
 
-      .loop-stage::after {
+      .prototype-stage::after {
         background:
           linear-gradient(140deg, rgba(255, 255, 255, 0.024), transparent 36%, rgba(255, 255, 255, 0.01));
         opacity: 0.22;
       }
 
-      .loop-ring {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: min(76%, 360px);
-        aspect-ratio: 1;
-        border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        transform: translate(-50%, -50%);
-      }
-
-      .loop-ring::before,
-      .loop-ring::after {
-        content: '';
-        position: absolute;
-        inset: -14px;
-        border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.04);
-        animation: ringPulse 8s ease-in-out infinite;
-      }
-
-      .loop-ring::after {
-        inset: 16px;
-        animation-delay: -4s;
-      }
-
-      .loop-trace {
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        width: min(88%, 440px);
-        height: 180px;
-        transform: translate(-50%, -50%);
-        border-radius: 999px;
-        background:
-          radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.58), transparent 8%),
-          radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.15), transparent 58%),
-          radial-gradient(circle at 82% 50%, rgba(255, 255, 255, 0.44), transparent 10%);
-        filter: blur(10px);
-        opacity: 0.55;
-        animation: traceFloat 9s ease-in-out infinite;
-      }
-
-      .loop-node {
-        position: absolute;
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background: var(--white);
-        box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.06), 0 0 30px rgba(255, 255, 255, 0.18);
-        animation: nodeOrbit 12s linear infinite;
-      }
-
-      .loop-node::before {
-        content: '';
-        position: absolute;
-        inset: -8px;
-        border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        animation: nodePulse 3.8s ease-in-out infinite;
-      }
-
-      .loop-node-a { left: 18%; top: 30%; animation-duration: 11s; animation-delay: -1s; }
-      .loop-node-b { right: 18%; top: 58%; animation-duration: 14s; animation-delay: -5s; background: #e0e0dc; }
-      .loop-node-c { left: 52%; bottom: 16%; animation-duration: 9s; animation-delay: -3s; width: 11px; height: 11px; }
-
-      .loop-badge {
+      .prototype-stage-badge {
         position: absolute;
         right: 26px;
         top: 26px;
@@ -613,29 +523,6 @@
         color: #c8c8c5;
         font-size: 11px;
         background: rgba(255, 255, 255, 0.02);
-      }
-
-      @keyframes ringPulse {
-        0%, 100% { transform: scale(0.96); opacity: 0.46; }
-        50% { transform: scale(1.05); opacity: 0.9; }
-      }
-
-      @keyframes traceFloat {
-        0%, 100% { transform: translate(-50%, -50%) rotate(-6deg) scale(0.97); opacity: 0.45; }
-        50% { transform: translate(-50%, -50%) rotate(9deg) scale(1.03); opacity: 0.68; }
-      }
-
-      @keyframes nodeOrbit {
-        0% { transform: translate3d(0, 0, 0) rotate(0deg) translateX(0) rotate(0deg); }
-        25% { transform: translate3d(0, 0, 0) rotate(90deg) translateX(6px) rotate(-90deg); }
-        50% { transform: translate3d(0, 0, 0) rotate(180deg) translateX(0) rotate(-180deg); }
-        75% { transform: translate3d(0, 0, 0) rotate(270deg) translateX(-6px) rotate(-270deg); }
-        100% { transform: translate3d(0, 0, 0) rotate(360deg) translateX(0) rotate(-360deg); }
-      }
-
-      @keyframes nodePulse {
-        0%, 100% { transform: scale(0.82); opacity: 0.36; }
-        50% { transform: scale(1.12); opacity: 0.9; }
       }
 
       .github-strip {
@@ -681,7 +568,7 @@
 
       .github-stat strong {
         display: block;
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 24px;
         font-weight: 400;
       }
@@ -1041,7 +928,7 @@
 
       .tool-result-tag {
         color: var(--quiet);
-        font-family: "ToolKnitEN", Impact, "Arial Narrow", sans-serif;
+        font-family: var(--proto-font-en), Impact, "Arial Narrow", sans-serif;
         font-size: 11px;
         letter-spacing: 0.04em;
         text-transform: uppercase;
@@ -1515,12 +1402,9 @@
               </div>
             </div>
 
-            <div class="weave-stage" aria-label="ToolKnit 编织动态标识">
-              <div class="loop-stage" aria-hidden="true">
-                <video class="loop-video" id="loopVideo" muted playsinline preload="auto" aria-hidden="true">
-                  <source src="/assets/backgrounds/home-stage-loop.mp4" type="video/mp4" />
-                </video>
-                <span class="loop-badge">video loop / monochrome</span>
+            <div class="weave-stage" aria-label="ToolKnit 静态预览">
+              <div class="prototype-stage" aria-hidden="true">
+                <span class="prototype-stage-badge">desktop / monochrome</span>
               </div>
             </div>
           </section>
@@ -1886,92 +1770,6 @@
         resizeShader();
         requestAnimationFrame(renderShaderFrame);
         window.addEventListener('resize', resizeShader);
-      }
-
-      const loopVideo = document.getElementById('loopVideo');
-      const loopVideoState = {
-        raf: 0,
-        ready: false,
-        direction: 1,
-        currentTime: 0.02,
-        lastStamp: 0
-      };
-
-      function driveLoopVideo(stamp) {
-        if (!loopVideo || !loopVideoState.ready) return;
-        const duration = Number.isFinite(loopVideo.duration) ? loopVideo.duration : 0;
-        if (duration <= 0.05) {
-          loopVideoState.raf = window.requestAnimationFrame(driveLoopVideo);
-          return;
-        }
-
-        if (!loopVideoState.lastStamp) loopVideoState.lastStamp = stamp;
-        const delta = (stamp - loopVideoState.lastStamp) / 1000;
-        loopVideoState.lastStamp = stamp;
-
-        const speed = 0.88;
-        let nextTime = loopVideoState.currentTime + (delta * speed * loopVideoState.direction);
-        const minTime = 0.02;
-        const maxTime = Math.max(duration - 0.02, minTime);
-
-        if (nextTime >= maxTime) {
-          nextTime = maxTime;
-          loopVideoState.direction = -1;
-        } else if (nextTime <= minTime) {
-          nextTime = minTime;
-          loopVideoState.direction = 1;
-        }
-
-        if (Math.abs(loopVideo.currentTime - nextTime) > 0.01) {
-          try {
-            loopVideo.currentTime = nextTime;
-          } catch {
-            /* ignore seek jitter */
-          }
-        }
-        loopVideoState.currentTime = nextTime;
-        loopVideoState.raf = window.requestAnimationFrame(driveLoopVideo);
-      }
-
-      function startLoopVideo() {
-        if (!loopVideo) return;
-        if (loopVideoState.raf) window.cancelAnimationFrame(loopVideoState.raf);
-        loopVideoState.ready = false;
-        loopVideoState.direction = 1;
-        loopVideoState.currentTime = 0.02;
-        loopVideoState.lastStamp = 0;
-
-        const boot = () => {
-          try {
-            loopVideo.pause();
-            loopVideo.currentTime = 0.02;
-          } catch {
-            /* ignore */
-          }
-          loopVideoState.ready = true;
-          loopVideoState.raf = window.requestAnimationFrame(driveLoopVideo);
-        };
-
-        if (loopVideo.readyState >= 2 && Number.isFinite(loopVideo.duration) && loopVideo.duration > 0) {
-          boot();
-        } else {
-          loopVideo.addEventListener('loadeddata', boot, { once: true });
-        }
-      }
-
-      if (loopVideo) {
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          loopVideo.addEventListener('loadeddata', () => {
-            try {
-              loopVideo.pause();
-              loopVideo.currentTime = 0.02;
-            } catch {
-              /* ignore */
-            }
-          }, { once: true });
-        } else {
-          startLoopVideo();
-        }
       }
 
       const toolsOverlay = document.getElementById('toolsOverlay');

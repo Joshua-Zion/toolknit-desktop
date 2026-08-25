@@ -3,7 +3,7 @@ import { access, link, lstat, mkdir, mkdtemp, realpath, rm, stat, unlink, writeF
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, DOMMatrix, ImageData, Path2D } from '@napi-rs/canvas';
 import { ToolKnitError, throwIfAborted } from './errors.mjs';
 import { inspectPdfInput, readPdfInput } from './fs-safety.mjs';
 
@@ -11,6 +11,12 @@ const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const PROJECT_ROOT = path.resolve(CLI_ROOT, '..');
 const STAGED_CORE_ROOT = path.join(CLI_ROOT, 'lib', 'core');
 const nodeRequire = createRequire(import.meta.url);
+
+function installPdfjsCanvasPrimitives() {
+  for (const [name, value] of Object.entries({ DOMMatrix, ImageData, Path2D })) {
+    if (value) globalThis[name] = value;
+  }
+}
 
 async function fileExists(filePath) {
   try {
@@ -182,8 +188,10 @@ async function renderPageCanvas(sourcePdf, pagePlan, options = {}) {
     }).promise;
     throwIfAborted(options.signal);
     return canvas;
-  } catch {
-    throw new ToolKnitError('PROCESSING_FAILED', `PDF page ${pagePlan.pageNumber} could not be rendered.`);
+  } catch (error) {
+    throw new ToolKnitError('PROCESSING_FAILED', `PDF page ${pagePlan.pageNumber} could not be rendered.`, {
+      details: { renderer: String(error?.message || error || 'unknown-renderer-error') }
+    });
   } finally {
     try { page.cleanup(); } catch {}
   }
@@ -258,6 +266,7 @@ export async function convertPdfToImages(args, options = {}) {
   let loadingTask;
   let temporaryDirectory;
   try {
+    installPdfjsCanvasPrimitives();
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     loadingTask = pdfjsLib.getDocument({
       data: input.bytes.slice(),

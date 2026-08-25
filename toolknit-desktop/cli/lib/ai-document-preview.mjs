@@ -91,10 +91,14 @@ export async function renderAiDocumentPreviews(pdfBytes, renderedControls = []) 
   }
   let loadingTask;
   try {
-    const [pdfjsLib, canvasModule] = await Promise.all([
-      import('pdfjs-dist/legacy/build/pdf.mjs'),
-      import('@napi-rs/canvas')
-    ]);
+    const canvasModule = await import('@napi-rs/canvas');
+    // PDF.js creates Path2D instances while rendering embedded/subset fonts.
+    // Install the matching canvas primitives before PDF.js is evaluated so
+    // native canvas methods receive objects from the same implementation.
+    for (const name of ['DOMMatrix', 'ImageData', 'Path2D']) {
+      if (canvasModule[name]) globalThis[name] = canvasModule[name];
+    }
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const { createCanvas } = canvasModule;
     loadingTask = pdfjsLib.getDocument({
       data: pdfBytes.slice(),

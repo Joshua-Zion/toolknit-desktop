@@ -2223,47 +2223,204 @@ fn ffmpeg_runtime_path() -> Result<std::path::PathBuf, String> {
         "ffmpeg"
     }))
 }
-fn path_ffmpeg() -> Option<std::path::PathBuf> {
-    let name = if cfg!(target_os = "windows") {
+
+#[derive(Clone)]
+struct ResolvedFfmpegRuntime {
+    path: std::path::PathBuf,
+    source: String,
+    version: Option<String>,
+}
+
+static FFMPEG_RUNTIME_CACHE: OnceLock<std::sync::Mutex<Option<ResolvedFfmpegRuntime>>> =
+    OnceLock::new();
+const FFMPEG_PROBE_TIMEOUT_MS: u128 = 2_000;
+
+fn ffmpeg_runtime_cache() -> &'static std::sync::Mutex<Option<ResolvedFfmpegRuntime>> {
+    FFMPEG_RUNTIME_CACHE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn invalidate_ffmpeg_runtime_cache() {
+    if let Ok(mut cache) = ffmpeg_runtime_cache().lock() {
+        *cache = None;
+    }
+}
+
+fn ffmpeg_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
+    let executable = if cfg!(target_os = "windows") {
         "ffmpeg.exe"
     } else {
         "ffmpeg"
     };
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths)
-            .map(|dir| dir.join(name))
-            .find(|candidate| candidate.is_file())
-    })
-}
-
-fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
-    let runtime = ffmpeg_runtime_path()?;
-    if runtime.is_file() {
-        return Ok(runtime);
+    let mut candidates = Vec::new();
+    if let Ok(value) = std::env::var("TOOLKNIT_FFMPEG_PATH") {
+        if !value.trim().is_empty() && !value.contains('\0') {
+            candidates.push((std::path::PathBuf::from(value), "env:TOOLKNIT_FFMPEG_PATH"));
+        }
+    }
+    if let Ok(managed) = ffmpeg_runtime_path() {
+        candidates.push((managed, "managed"));
     }
 
-    // Keep the checked-in fixture available for local debug builds and Rust tests,
-    // but never let a release build silently use it after the managed runtime is removed.
-    #[cfg(debug_assertions)]
+    // These are fixed package-manager links or conventional install paths.
+    // Avoid recursive disk and registry scans: all checks below are cheap file
+    // metadata lookups and cover the common Winget, Scoop and Chocolatey cases.
+    #[cfg(target_os = "windows")]
     {
-        let exe_name = if cfg!(target_os = "windows") {
-            "ffmpeg.exe"
-        } else {
-            "ffmpeg"
-        };
-        let source_resource = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join("ffmpeg")
-            .join(exe_name);
-        if source_resource.is_file() {
-            return Ok(source_resource);
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            candidates.push((
+                std::path::PathBuf::from(local_app_data)
+                    .join("Microsoft")
+                    .join("WinGet")
+                    .join("Links")
+                    .join(executable),
+                "system:winget",
+            ));
+        }
+        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+            candidates.push((
+                std::path::PathBuf::from(user_profile)
+                    .join("scoop")
+                    .join("shims")
+                    .join(executable),
+                "system:scoop",
+            ));
+        }
+        if let Ok(chocolatey) = std::env::var("ChocolateyInstall") {
+            candidates.push((
+                std::path::PathBuf::from(chocolatey)
+                    .join("bin")
+                    .join(executable),
+                "system:chocolatey",
+            ));
+        } else if let Ok(program_data) = std::env::var("ProgramData") {
+            candidates.push((
+                std::path::PathBuf::from(program_data)
+                    .join("chocolatey")
+                    .join("bin")
+                    .join(executable),
+                "system:chocolatey",
+            ));
+        }
+        for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(root) = std::env::var(key) {
+                let root = std::path::PathBuf::from(root);
+                candidates.push((
+                    root.join("ffmpeg").join("bin").join(executable),
+                    "system:windows-install",
+                ));
+                candidates.push((
+                    root.join("FFmpeg").join("bin").join(executable),
+                    "system:windows-install",
+                ));
+            }
         }
     }
 
-    if let Some(system) = path_ffmpeg() {
-        return Ok(system);
+    #[cfg(debug_assertions)]
+    candidates.push((
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("ffmpeg")
+            .join(executable),
+        "debug-resource",
+    ));
+
+    if let Some(paths) = std::env::var_os("PATH") {
+        candidates.extend(
+            std::env::split_paths(&paths).map(|directory| (directory.join(executable), "PATH")),
+        );
     }
-    Err("ffmpeg not installed. Open Settings > FFmpeg Runtime to download it.".to_string())
+    let mut seen = std::collections::BTreeSet::new();
+    candidates
+        .into_iter()
+        .filter(|(path, _)| seen.insert(path.to_string_lossy().to_ascii_lowercase()))
+        .collect()
+}
+
+fn probe_ffmpeg_runtime(
+    path: &std::path::Path,
+    source: &'static str,
+) -> Option<ResolvedFfmpegRuntime> {
+    if !std::fs::metadata(path)
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    let mut command = std::process::Command::new(path);
+    command
+        .arg("-version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = command.spawn().ok()?;
+    let child_id = child.id();
+    let started_at = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started_at.elapsed().as_millis() < FFMPEG_PROBE_TIMEOUT_MS => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            _ => {
+                terminate_conversion_process(child_id);
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    let output = child.wait_with_output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let version = stdout
+        .lines()
+        .chain(stderr.lines())
+        .map(str::trim)
+        .find(|line| line.to_ascii_lowercase().starts_with("ffmpeg version"))
+        .map(str::to_string);
+    Some(ResolvedFfmpegRuntime {
+        path: path.to_path_buf(),
+        source: source.to_string(),
+        version,
+    })
+}
+
+fn resolve_ffmpeg_runtime() -> Option<ResolvedFfmpegRuntime> {
+    if let Ok(cache) = ffmpeg_runtime_cache().lock() {
+        if let Some(runtime) = cache.as_ref() {
+            if std::fs::metadata(&runtime.path)
+                .map(|metadata| metadata.is_file())
+                .unwrap_or(false)
+            {
+                return Some(runtime.clone());
+            }
+        }
+    }
+    for (candidate, source) in ffmpeg_candidates() {
+        if let Some(runtime) = probe_ffmpeg_runtime(&candidate, source) {
+            if let Ok(mut cache) = ffmpeg_runtime_cache().lock() {
+                *cache = Some(runtime.clone());
+            }
+            return Some(runtime);
+        }
+    }
+    None
+}
+
+fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
+    resolve_ffmpeg_runtime()
+        .map(|runtime| runtime.path)
+        .ok_or_else(|| {
+            "ffmpeg not installed. Open Settings > FFmpeg Runtime to download it.".to_string()
+        })
 }
 
 #[tauri::command]
@@ -2279,6 +2436,7 @@ struct FfmpegRuntimeStatus {
     path: Option<String>,
     bytes: u64,
     source: Option<String>,
+    version: Option<String>,
 }
 #[derive(Clone, serde::Serialize)]
 struct FfmpegDownloadProgress {
@@ -2302,17 +2460,17 @@ fn begin_ffmpeg_download() -> Result<FfmpegDownloadGuard, String> {
 
 #[tauri::command]
 fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String> {
-    let path = ffmpeg_runtime_path()?;
-    let installed = path.is_file();
+    let runtime = resolve_ffmpeg_runtime();
+    let path = runtime.as_ref().map(|runtime| runtime.path.as_path());
     Ok(FfmpegRuntimeStatus {
-        installed,
-        path: installed.then(|| cleanup_display_path(&path)),
-        bytes: if installed {
-            std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0)
-        } else {
-            0
-        },
-        source: installed.then(|| "managed".to_string()),
+        installed: runtime.is_some(),
+        path: path.map(cleanup_display_path),
+        bytes: path
+            .and_then(|path| std::fs::metadata(path).ok())
+            .map(|metadata| metadata.len())
+            .unwrap_or(0),
+        source: runtime.as_ref().map(|runtime| runtime.source.clone()),
+        version: runtime.and_then(|runtime| runtime.version),
     })
 }
 
@@ -2550,6 +2708,7 @@ async fn download_ffmpeg_runtime(
                 phase: "complete".to_string(),
             },
         );
+        invalidate_ffmpeg_runtime_cache();
         return get_ffmpeg_runtime_status();
     }
     Err(format!(
@@ -4176,6 +4335,7 @@ fn validate_pdf_encrypt_password(password: &str) -> Result<(), String> {
     {
         return Err("pdf-encrypt:password-unsupported".to_string());
     }
+    invalidate_ffmpeg_runtime_cache();
     Ok(())
 }
 
@@ -6227,6 +6387,32 @@ fn decode_oriented_image(path: &std::path::Path) -> image::ImageResult<image::Dy
     let mut decoded = image::DynamicImage::from_decoder(decoder)?;
     decoded.apply_orientation(orientation);
     Ok(decoded)
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct ImageCropResult {
+    output_path: String,
+    width: u32,
+    height: u32,
+    bytes: u64,
+    format: String,
+}
+
+#[derive(Clone)]
+struct ImageCropOptions {
+    input_path: String,
+    output_dir: String,
+    output_name: Option<String>,
+    crop_x: u32,
+    crop_y: u32,
+    crop_width: u32,
+    crop_height: u32,
+    rotation: u16,
+    flip_horizontal: bool,
+    flip_vertical: bool,
+    format: String,
+    jpeg_quality: u8,
+    background_rgba: String,
 }
 
 fn read_oriented_image(path: &std::path::Path) -> Result<image::DynamicImage, String> {
@@ -9175,6 +9361,664 @@ fn convert_image_batch_blocking(
     })
 }
 
+fn image_crop_format(value: &str) -> Result<(image::ImageFormat, &'static str, String), String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "png" => Ok((image::ImageFormat::Png, ".png", "PNG".to_string())),
+        "jpg" | "jpeg" => Ok((image::ImageFormat::Jpeg, ".jpg", "JPG".to_string())),
+        "webp" => Ok((image::ImageFormat::WebP, ".webp", "WEBP".to_string())),
+        "bmp" => Ok((image::ImageFormat::Bmp, ".bmp", "BMP".to_string())),
+        _ => Err("image-crop:unsupported-format".to_string()),
+    }
+}
+
+fn transformed_crop_dimensions(
+    width: u32,
+    height: u32,
+    rotation: u16,
+) -> Result<(u32, u32), String> {
+    match rotation {
+        0 | 180 => Ok((width, height)),
+        90 | 270 => Ok((height, width)),
+        _ => Err("image-crop:invalid-rotation".to_string()),
+    }
+}
+
+fn validate_image_crop_bounds(
+    options: &ImageCropOptions,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if options.crop_width == 0 || options.crop_height == 0 {
+        return Err("image-crop:invalid-crop".to_string());
+    }
+    let right = options
+        .crop_x
+        .checked_add(options.crop_width)
+        .ok_or_else(|| "image-crop:invalid-crop".to_string())?;
+    let bottom = options
+        .crop_y
+        .checked_add(options.crop_height)
+        .ok_or_else(|| "image-crop:invalid-crop".to_string())?;
+    if right > width || bottom > height {
+        return Err("image-crop:crop-out-of-bounds".to_string());
+    }
+    Ok(())
+}
+
+fn transform_image_for_crop(
+    mut image: image::DynamicImage,
+    rotation: u16,
+    flip_horizontal: bool,
+    flip_vertical: bool,
+) -> Result<image::DynamicImage, String> {
+    image = match rotation {
+        0 => image,
+        90 => image.rotate90(),
+        180 => image.rotate180(),
+        270 => image.rotate270(),
+        _ => return Err("image-crop:invalid-rotation".to_string()),
+    };
+    if flip_horizontal {
+        image = image.fliph();
+    }
+    if flip_vertical {
+        image = image.flipv();
+    }
+    Ok(image)
+}
+
+fn write_image_crop(
+    image: &image::DynamicImage,
+    output_path: &std::path::Path,
+    format: image::ImageFormat,
+    jpeg_quality: u8,
+    background: image::Rgba<u8>,
+) -> Result<(), String> {
+    use image::ImageEncoder;
+    use std::io::BufWriter;
+
+    let file =
+        std::fs::File::create(output_path).map_err(|_| "image-crop:write-failed".to_string())?;
+    let writer = BufWriter::new(file);
+    match format {
+        image::ImageFormat::Jpeg => {
+            let rgb = flatten_image_to_rgb(
+                image,
+                image::Rgb([background[0], background[1], background[2]]),
+            );
+            image::codecs::jpeg::JpegEncoder::new_with_quality(writer, jpeg_quality).write_image(
+                &rgb,
+                rgb.width(),
+                rgb.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+        }
+        image::ImageFormat::Png => image::codecs::png::PngEncoder::new(writer).write_image(
+            image.as_bytes(),
+            image.width(),
+            image.height(),
+            image.color().into(),
+        ),
+        image::ImageFormat::WebP => {
+            let rgba = image.to_rgba8();
+            image::codecs::webp::WebPEncoder::new_lossless(writer).write_image(
+                &rgba,
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+        }
+        image::ImageFormat::Bmp => {
+            drop(writer);
+            image.save_with_format(output_path, image::ImageFormat::Bmp)
+        }
+        _ => unreachable!("validated crop output format"),
+    }
+    .map_err(|_| "image-crop:encode-failed".to_string())
+}
+
+fn crop_image_blocking(options: ImageCropOptions) -> Result<ImageCropResult, String> {
+    let (input, _) = validate_image_batch_input(&options.input_path)
+        .map_err(|_| "image-crop:invalid-input".to_string())?;
+    let output_dir = validate_image_output_dir(&options.output_dir)
+        .map_err(|_| "image-crop:invalid-output-dir".to_string())?;
+    let (format, extension, format_label) = image_crop_format(&options.format)?;
+    if !(1..=100).contains(&options.jpeg_quality) {
+        return Err("image-crop:invalid-quality".to_string());
+    }
+    let background = stitch_background(&options.background_rgba)
+        .map_err(|_| "image-crop:invalid-background".to_string())?;
+    let decoded =
+        decode_oriented_image(&input).map_err(|_| "image-crop:decode-failed".to_string())?;
+    let (transformed_width, transformed_height) =
+        transformed_crop_dimensions(decoded.width(), decoded.height(), options.rotation)?;
+    validate_image_crop_bounds(&options, transformed_width, transformed_height)?;
+    let transformed = transform_image_for_crop(
+        decoded,
+        options.rotation,
+        options.flip_horizontal,
+        options.flip_vertical,
+    )?;
+    let cropped = transformed.crop_imm(
+        options.crop_x,
+        options.crop_y,
+        options.crop_width,
+        options.crop_height,
+    );
+
+    let source_stem = input
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
+    let default_name = format!("{}_crop", source_stem);
+    let output_name = options
+        .output_name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&default_name);
+    normalize_image_stitch_output_name(Some(output_name))
+        .map_err(|_| "image-crop:invalid-output-name".to_string())?;
+
+    let mut temporary = ImageStitchTemporaryFile::new(&output_dir);
+    write_image_crop(
+        &cropped,
+        &temporary.path,
+        format,
+        options.jpeg_quality,
+        background,
+    )?;
+    let output_path =
+        publish_image_stitch_output(&mut temporary, &output_dir, Some(output_name), extension)
+            .map_err(|_| "image-crop:publish-failed".to_string())?;
+    let bytes = std::fs::metadata(&output_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    Ok(ImageCropResult {
+        output_path,
+        width: cropped.width(),
+        height: cropped.height(),
+        bytes,
+        format: format_label,
+    })
+}
+
+#[tauri::command]
+async fn crop_image(
+    input_path: String,
+    output_dir: String,
+    output_name: Option<String>,
+    crop_x: u32,
+    crop_y: u32,
+    crop_width: u32,
+    crop_height: u32,
+    rotation: u16,
+    flip_horizontal: bool,
+    flip_vertical: bool,
+    format: String,
+    jpeg_quality: u8,
+    background_rgba: String,
+) -> Result<ImageCropResult, String> {
+    tokio::task::spawn_blocking(move || {
+        crop_image_blocking(ImageCropOptions {
+            input_path,
+            output_dir,
+            output_name,
+            crop_x,
+            crop_y,
+            crop_width,
+            crop_height,
+            rotation,
+            flip_horizontal,
+            flip_vertical,
+            format,
+            jpeg_quality,
+            background_rgba,
+        })
+    })
+    .await
+    .map_err(|_| "image-crop:worker-failed".to_string())?
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct ColorReplaceResult {
+    output_path: String,
+    width: u32,
+    height: u32,
+    bytes: u64,
+    format: String,
+    changed_pixels: u64,
+}
+
+#[derive(Clone)]
+struct ColorReplaceOptions {
+    app: Option<tauri::AppHandle>,
+    operation_id: Option<String>,
+    input_path: String,
+    output_dir: String,
+    output_name: String,
+    source_rgb: Vec<u8>,
+    target_rgb: Vec<u8>,
+    threshold: f32,
+    seed_x: u32,
+    seed_y: u32,
+    smart: bool,
+    softness: f32,
+    preserve_luminance: bool,
+    format: String,
+    jpeg_quality: u8,
+    cancel_token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+fn color_linear_rgb_table() -> [f32; 256] {
+    std::array::from_fn(|index| {
+        let value = index as f32 / 255.0;
+        if value <= 0.04045 { value / 12.92 } else { ((value + 0.055) / 1.055).powf(2.4) }
+    })
+}
+
+fn color_rgb_to_lab_with_table(rgb: [u8; 3], table: &[f32; 256]) -> [f32; 3] {
+    let linear = |value: u8| table[value as usize];
+    let r = linear(rgb[0]); let g = linear(rgb[1]); let b = linear(rgb[2]);
+    let x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047;
+    let y = r * 0.2126729 + g * 0.7151522 + b * 0.072175;
+    let z = (r * 0.0193339 + g * 0.119192 + b * 0.9503041) / 1.08883;
+    let f = |value: f32| if value > 0.008856 { value.cbrt() } else { 7.787 * value + 16.0 / 116.0 };
+    let fx = f(x); let fy = f(y); let fz = f(z);
+    [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+}
+
+#[cfg(test)]
+fn color_rgb_to_lab(rgb: [u8; 3]) -> [f32; 3] {
+    color_rgb_to_lab_with_table(rgb, &color_linear_rgb_table())
+}
+
+fn color_delta_e(first: [f32; 3], second: [f32; 3]) -> f32 {
+    ((first[0] - second[0]).powi(2) + (first[1] - second[1]).powi(2) + (first[2] - second[2]).powi(2)).sqrt()
+}
+
+fn color_replace_weight(distance: f32, threshold: f32, softness: f32) -> f32 {
+    if distance > threshold { return 0.0; }
+    if softness <= 0.0 { return 1.0; }
+    let feather = (threshold * softness / 100.0).max(0.25);
+    let edge = (threshold - feather).max(0.0);
+    if distance <= edge { return 1.0; }
+    let t = ((threshold - distance) / feather).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn color_replace_format(value: &str) -> Result<(image::ImageFormat, &'static str, String), String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "png" => Ok((image::ImageFormat::Png, ".png", "PNG".to_string())),
+        "jpg" | "jpeg" => Ok((image::ImageFormat::Jpeg, ".jpg", "JPG".to_string())),
+        "webp" => Ok((image::ImageFormat::WebP, ".webp", "WEBP".to_string())),
+        "bmp" => Ok((image::ImageFormat::Bmp, ".bmp", "BMP".to_string())),
+        _ => Err("color-replace:unsupported-format".to_string()),
+    }
+}
+
+fn color_replace_cancelled(options: &ColorReplaceOptions) -> bool {
+    options.cancel_token.as_ref().is_some_and(|token| token.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+fn emit_color_replace_progress(options: &ColorReplaceOptions, phase: &str, percent: f64, processed: usize, total: usize) {
+    if let (Some(app), Some(operation_id)) = (&options.app, &options.operation_id) {
+        let _ = app.emit("tool-operation-progress", ToolOperationProgress {
+            operation_id: operation_id.clone(),
+            phase: phase.to_string(),
+            percent,
+            processed_bytes: processed as u64,
+            total_bytes: total as u64,
+        });
+    }
+}
+
+fn color_replace_blocking(options: ColorReplaceOptions) -> Result<ColorReplaceResult, String> {
+    let (input, _) = validate_image_batch_input(&options.input_path).map_err(|_| "color-replace:invalid-input".to_string())?;
+    let output_dir = validate_image_output_dir(&options.output_dir).map_err(|_| "color-replace:output-dir".to_string())?;
+    let (format, extension, format_label) = color_replace_format(&options.format)?;
+    if options.source_rgb.len() != 3 || options.target_rgb.len() != 3 || !(0.0..=100.0).contains(&options.threshold) || !(0.0..=100.0).contains(&options.softness) || !(1..=100).contains(&options.jpeg_quality) {
+        return Err("color-replace:invalid-options".to_string());
+    }
+    let mut image = decode_oriented_image(&input).map_err(|_| "color-replace:decode-failed".to_string())?.to_rgba8();
+    let width = image.width(); let height = image.height();
+    if options.seed_x >= width || options.seed_y >= height { return Err("color-replace:invalid-seed".to_string()); }
+    let source = [options.source_rgb[0], options.source_rgb[1], options.source_rgb[2]];
+    let target = [options.target_rgb[0], options.target_rgb[1], options.target_rgb[2]];
+    let linear_table = color_linear_rgb_table();
+    let source_lab = color_rgb_to_lab_with_table(source, &linear_table);
+    let pixels = (width as usize).checked_mul(height as usize).ok_or("color-replace:too-large")?;
+    let mut candidates = vec![false; pixels]; let mut weights = vec![0.0_f32; pixels];
+    let progress_step = (pixels / 100).max(1);
+    emit_color_replace_progress(&options, "analyze", 0.0, 0, pixels);
+    for (index, pixel) in image.pixels().enumerate() {
+        if index % 4096 == 0 && color_replace_cancelled(&options) { return Err("tool-operation:cancelled".to_string()); }
+        if pixel[3] == 0 { continue; }
+        let distance = color_delta_e(color_rgb_to_lab_with_table([pixel[0], pixel[1], pixel[2]], &linear_table), source_lab);
+        let weight = color_replace_weight(distance, options.threshold, options.softness);
+        if weight > 0.0 { candidates[index] = true; weights[index] = weight; }
+        if index % progress_step == 0 { emit_color_replace_progress(&options, "analyze", index as f64 / pixels as f64 * 45.0, index, pixels); }
+    }
+    let selected = if options.smart {
+        let mut selected = vec![false; pixels];
+        let seed = (options.seed_y as usize) * width as usize + options.seed_x as usize;
+        if candidates[seed] {
+            let mut queue = std::collections::VecDeque::from([seed]); selected[seed] = true;
+            let mut visited = 0_usize;
+            while let Some(current) = queue.pop_front() {
+                visited += 1;
+                if visited % 4096 == 0 && color_replace_cancelled(&options) { return Err("tool-operation:cancelled".to_string()); }
+                let x = current % width as usize; let y = current / width as usize;
+                for dy in -1_i32..=1 { for dx in -1_i32..=1 {
+                    if dx == 0 && dy == 0 { continue; }
+                    let nx = x as i32 + dx; let ny = y as i32 + dy;
+                    if nx < 0 || ny < 0 || nx >= width as i32 || ny >= height as i32 { continue; }
+                    let next = ny as usize * width as usize + nx as usize;
+                    if candidates[next] && !selected[next] { selected[next] = true; queue.push_back(next); }
+                }}
+            }
+        }
+        selected
+    } else { candidates };
+    emit_color_replace_progress(&options, "replace", 55.0, 0, pixels);
+    let source_lum = f32::from(source[0]) * 0.2126 + f32::from(source[1]) * 0.7152 + f32::from(source[2]) * 0.0722;
+    let mut changed_pixels = 0_u64;
+    for (index, pixel) in image.pixels_mut().enumerate() {
+        if index % 4096 == 0 && color_replace_cancelled(&options) { return Err("tool-operation:cancelled".to_string()); }
+        if !selected[index] { continue; }
+        let current = [pixel[0], pixel[1], pixel[2]];
+        let current_lum = f32::from(current[0]) * 0.2126 + f32::from(current[1]) * 0.7152 + f32::from(current[2]) * 0.0722;
+        let delta = if options.preserve_luminance { current_lum - source_lum } else { 0.0 };
+        let replacement = [f32::from(target[0]) + delta, f32::from(target[1]) + delta, f32::from(target[2]) + delta];
+        let weight = weights[index];
+        pixel[0] = (f32::from(current[0]) + (replacement[0] - f32::from(current[0])) * weight).round().clamp(0.0, 255.0) as u8;
+        pixel[1] = (f32::from(current[1]) + (replacement[1] - f32::from(current[1])) * weight).round().clamp(0.0, 255.0) as u8;
+        pixel[2] = (f32::from(current[2]) + (replacement[2] - f32::from(current[2])) * weight).round().clamp(0.0, 255.0) as u8;
+        changed_pixels += 1;
+        if index % progress_step == 0 { emit_color_replace_progress(&options, "replace", 55.0 + index as f64 / pixels as f64 * 40.0, index, pixels); }
+    }
+    let output_name = normalize_image_stitch_output_name(Some(&options.output_name)).map_err(|_| "color-replace:invalid-output-name".to_string())?;
+    let mut temporary = ImageStitchTemporaryFile::new(&output_dir);
+    if color_replace_cancelled(&options) { return Err("tool-operation:cancelled".to_string()); }
+    emit_color_replace_progress(&options, "write", 96.0, pixels, pixels);
+    write_image_crop(&image::DynamicImage::ImageRgba8(image), &temporary.path, format, options.jpeg_quality, image::Rgba([255, 255, 255, 255]))?;
+    if color_replace_cancelled(&options) { return Err("tool-operation:cancelled".to_string()); }
+    let output_path = publish_image_stitch_output(&mut temporary, &output_dir, Some(&output_name), extension).map_err(|_| "color-replace:publish-failed".to_string())?;
+    let bytes = std::fs::metadata(&output_path).map(|value| value.len()).unwrap_or(0);
+    emit_color_replace_progress(&options, "complete", 100.0, pixels, pixels);
+    Ok(ColorReplaceResult { output_path, width, height, bytes, format: format_label, changed_pixels })
+}
+
+#[tauri::command]
+async fn export_replaced_image(
+    app: tauri::AppHandle, input_path: String, output_dir: String, output_name: String, source_rgb: Vec<u8>, target_rgb: Vec<u8>, threshold: f32, seed_x: u32, seed_y: u32, smart: bool, softness: f32, preserve_luminance: bool, format: String, jpeg_quality: u8, operation_id: Option<String>,
+) -> Result<ColorReplaceResult, String> {
+    let (operation_key, cancel_token) = match operation_id {
+        Some(value) if !value.trim().is_empty() => {
+            let token = register_tool_operation(&value)?;
+            (Some(value), Some(token))
+        }
+        _ => (None, None),
+    };
+    let progress_operation_id = operation_key.clone();
+    let result = tokio::task::spawn_blocking(move || color_replace_blocking(ColorReplaceOptions { app: Some(app), operation_id: progress_operation_id, input_path, output_dir, output_name, source_rgb, target_rgb, threshold, seed_x, seed_y, smart, softness, preserve_luminance, format, jpeg_quality, cancel_token })).await;
+    if let Some(key) = operation_key { finish_tool_operation(&key); }
+    result.map_err(|_| "color-replace:worker-failed".to_string())?
+}
+
+#[derive(Clone, serde::Serialize)]
+struct ToolOperationProgress { operation_id: String, phase: String, percent: f64, processed_bytes: u64, total_bytes: u64 }
+
+static TOOL_OPERATION_CANCELS: OnceLock<std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>> = OnceLock::new();
+
+fn tool_operation_cancels() -> &'static std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>> {
+    TOOL_OPERATION_CANCELS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn validate_tool_operation_id(operation_id: &str) -> Result<(), String> {
+    if operation_id.is_empty() || operation_id.len() > 128 || !operation_id.bytes().all(|value| value.is_ascii_alphanumeric() || matches!(value, b'-' | b'_')) {
+        return Err("tool-operation:invalid-id".to_string());
+    }
+    Ok(())
+}
+
+fn register_tool_operation(operation_id: &str) -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
+    validate_tool_operation_id(operation_id)?;
+    let token = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut jobs = tool_operation_cancels().lock().map_err(|_| "tool-operation:lock".to_string())?;
+    if jobs.insert(operation_id.to_string(), token.clone()).is_some() { return Err("tool-operation:duplicate-id".to_string()); }
+    Ok(token)
+}
+
+fn finish_tool_operation(operation_id: &str) {
+    if let Ok(mut jobs) = tool_operation_cancels().lock() { jobs.remove(operation_id); }
+}
+
+#[tauri::command]
+fn cancel_tool_operation(operation_id: String) -> Result<(), String> {
+    validate_tool_operation_id(&operation_id)?;
+    if let Ok(jobs) = tool_operation_cancels().lock() {
+        if let Some(token) = jobs.get(&operation_id) {
+            token.store(true, std::sync::atomic::Ordering::Relaxed);
+            return Ok(());
+        }
+    }
+    Err("tool-operation:not-found".to_string())
+}
+
+#[derive(Clone, serde::Serialize)]
+struct FileHashResult { digests: std::collections::BTreeMap<String, String>, processed_bytes: u64, total_bytes: u64 }
+
+#[tauri::command]
+async fn hash_file(app: tauri::AppHandle, input_path: String, algorithms: Vec<String>, hmac_key: Option<String>, operation_id: String) -> Result<FileHashResult, String> {
+    let token = register_tool_operation(&operation_id)?;
+    let operation = operation_id.clone();
+    let joined = tokio::task::spawn_blocking(move || {
+        use hmac::Mac;
+        use sha2::Digest;
+        use std::io::Read;
+
+        let selected: std::collections::BTreeSet<String> = algorithms.iter().map(|value| value.to_ascii_lowercase()).collect();
+        const SUPPORTED: [&str; 5] = ["md5", "sha1", "sha256", "sha512", "hmac-sha256"];
+        if selected.is_empty() { return Err("file-hash:no-algorithm".to_string()); }
+        if selected.iter().any(|value| !SUPPORTED.contains(&value.as_str())) { return Err("file-hash:unsupported-algorithm".to_string()); }
+        if hmac_key.as_ref().is_some_and(|value| value.len() > 1024 * 1024) { return Err("file-hash:invalid-hmac-key".to_string()); }
+
+        let path = std::path::PathBuf::from(&input_path);
+        let meta = std::fs::symlink_metadata(&path).map_err(|_| "file-hash:invalid-input".to_string())?;
+        if meta.file_type().is_symlink() || !meta.is_file() { return Err("file-hash:invalid-input".to_string()); }
+        let total = meta.len();
+        let mut file = std::fs::File::open(&path).map_err(|_| "file-hash:read-failed".to_string())?;
+        let mut md5_state = selected.contains("md5").then(md5::Md5::new);
+        let mut sha1_state = selected.contains("sha1").then(sha1::Sha1::new);
+        let mut sha256_state = selected.contains("sha256").then(sha2::Sha256::new);
+        let mut sha512_state = selected.contains("sha512").then(sha2::Sha512::new);
+        let mut hmac_state = if selected.contains("hmac-sha256") {
+            let key = hmac_key.as_deref().filter(|value| !value.is_empty()).ok_or_else(|| "file-hash:invalid-hmac-key".to_string())?;
+            Some(hmac::Hmac::<sha2::Sha256>::new_from_slice(key.as_bytes()).map_err(|_| "file-hash:invalid-hmac-key".to_string())?)
+        } else { None };
+        let mut buffer = vec![0_u8; 1024 * 1024];
+        let mut processed = 0_u64;
+        let mut last_percent = 0_f64;
+        loop {
+            if token.load(std::sync::atomic::Ordering::Relaxed) { return Err("tool-operation:cancelled".to_string()); }
+            let read = file.read(&mut buffer).map_err(|_| "file-hash:read-failed".to_string())?;
+            if read == 0 { break; }
+            let chunk = &buffer[..read];
+            if let Some(state) = md5_state.as_mut() { state.update(chunk); }
+            if let Some(state) = sha1_state.as_mut() { state.update(chunk); }
+            if let Some(state) = sha256_state.as_mut() { state.update(chunk); }
+            if let Some(state) = sha512_state.as_mut() { state.update(chunk); }
+            if let Some(state) = hmac_state.as_mut() { state.update(chunk); }
+            processed += read as u64;
+            let percent = if total == 0 { 100.0 } else { processed as f64 / total as f64 * 100.0 };
+            if percent - last_percent >= 1.0 || processed == total {
+                last_percent = percent;
+                let _ = app.emit("tool-operation-progress", ToolOperationProgress { operation_id: operation.clone(), phase: "hash".to_string(), percent, processed_bytes: processed, total_bytes: total });
+            }
+        }
+        let mut digests = std::collections::BTreeMap::new();
+        if let Some(state) = md5_state { digests.insert("md5".to_string(), hex::encode(state.finalize())); }
+        if let Some(state) = sha1_state { digests.insert("sha1".to_string(), hex::encode(state.finalize())); }
+        if let Some(state) = sha256_state { digests.insert("sha256".to_string(), hex::encode(state.finalize())); }
+        if let Some(state) = sha512_state { digests.insert("sha512".to_string(), hex::encode(state.finalize())); }
+        if let Some(state) = hmac_state { digests.insert("hmac-sha256".to_string(), hex::encode(state.finalize().into_bytes())); }
+        let _ = app.emit("tool-operation-progress", ToolOperationProgress { operation_id: operation, phase: "complete".to_string(), percent: 100.0, processed_bytes: processed, total_bytes: total });
+        Ok(FileHashResult { digests, processed_bytes: processed, total_bytes: total })
+    }).await;
+    finish_tool_operation(&operation_id);
+    joined.map_err(|_| "file-hash:worker-failed".to_string())?
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct TkaesResult { output_path: String, bytes: u64 }
+
+const TKAE_MAGIC: &[u8; 4] = b"TKAE";
+const TKAE_VERSION: u8 = 2;
+const TKAE_CHUNK_SIZE: usize = 1024 * 1024;
+const TKAE_ARGON_MEMORY_KIB: u32 = 19 * 1024;
+const TKAE_ARGON_ITERATIONS: u32 = 2;
+const TKAE_ARGON_LANES: u32 = 1;
+
+fn tkaes_key(password: &str, salt: &[u8], memory_kib: u32, iterations: u32, lanes: u32) -> Result<aes_gcm::Aes256Gcm, String> {
+    if !(8 * 1024..=256 * 1024).contains(&memory_kib) || !(1..=10).contains(&iterations) || !(1..=8).contains(&lanes) {
+        return Err("tkaes:kdf-params".to_string());
+    }
+    let params = argon2::Params::new(memory_kib, iterations, lanes, Some(32)).map_err(|_| "tkaes:kdf-params".to_string())?;
+    let mut key = [0_u8; 32];
+    argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params).hash_password_into(password.as_bytes(), salt, &mut key).map_err(|_| "tkaes:kdf-failed".to_string())?;
+    use aes_gcm::KeyInit;
+    use zeroize::Zeroize;
+    let cipher = aes_gcm::Aes256Gcm::new_from_slice(&key).map_err(|_| "tkaes:key-failed".to_string());
+    key.zeroize();
+    cipher
+}
+
+fn tkaes_nonce(base: &[u8; 12], index: u64) -> [u8; 12] { let mut nonce = *base; let bytes = index.to_le_bytes(); for i in 0..8 { nonce[4 + i] ^= bytes[i]; } nonce }
+fn tkaes_aad(index: u64, length: u32) -> Vec<u8> { let mut aad = Vec::with_capacity(16); aad.extend_from_slice(TKAE_MAGIC); aad.extend_from_slice(&index.to_le_bytes()); aad.extend_from_slice(&length.to_le_bytes()); aad }
+fn publish_tkaes_temp(temp: &std::path::Path, dir: &std::path::Path, stem: &str, extension: &str) -> Result<String, String> { for index in 0..10000_u32 { let suffix = if index == 0 { String::new() } else { format!("_{}", index) }; let path = dir.join(format!("{}{}{}", stem, suffix, extension)); if path.exists() { continue; } match std::fs::rename(temp, &path) { Ok(()) => return Ok(path.to_string_lossy().into_owned()), Err(_) => continue } } Err("tkaes:publish-failed".to_string()) }
+
+fn tkaes_temp_path(dir: &std::path::Path, kind: &str) -> Result<std::path::PathBuf, String> {
+    let mut random = [0_u8; 8];
+    getrandom::getrandom(&mut random).map_err(|_| "tkaes:random-failed".to_string())?;
+    Ok(dir.join(format!(".toolknit-{}-{}-{}.part", kind, std::process::id(), hex::encode(random))))
+}
+
+fn tkaes_encrypted_stem(input: &std::path::Path) -> &str { input.file_name().and_then(|value| value.to_str()).unwrap_or("encrypted") }
+fn tkaes_decrypted_stem(input: &std::path::Path) -> String { let name = input.file_name().and_then(|value| value.to_str()).unwrap_or("decrypted"); if name.to_ascii_lowercase().ends_with(".tkaes") { name[..name.len() - 6].to_string() } else { format!("{}.bin", name) } }
+
+struct TkaesTempGuard { path: std::path::PathBuf, published: bool }
+impl TkaesTempGuard { fn new(path: std::path::PathBuf) -> Self { Self { path, published: false } } fn path(&self) -> &std::path::Path { &self.path } fn mark_published(&mut self) { self.published = true; } }
+impl Drop for TkaesTempGuard { fn drop(&mut self) { if !self.published { let _ = std::fs::remove_file(&self.path); } } }
+
+fn tkaes_encrypt_blocking(app: Option<tauri::AppHandle>, input_path: String, output_dir: String, password: String, operation_id: String, token: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<TkaesResult, String> {
+    use aes_gcm::{aead::{Aead, Payload}, Nonce};
+    use std::io::{Read, Write};
+    let input = std::path::PathBuf::from(input_path);
+    let meta = std::fs::metadata(&input).map_err(|_| "tkaes:invalid-input".to_string())?;
+    if !meta.is_file() { return Err("tkaes:invalid-input".to_string()); }
+    let dir = validate_image_output_dir(&output_dir).map_err(|_| "tkaes:output-dir".to_string())?;
+    let mut salt = [0_u8; 16]; let mut base_nonce = [0_u8; 12];
+    getrandom::getrandom(&mut salt).map_err(|_| "tkaes:random-failed".to_string())?;
+    getrandom::getrandom(&mut base_nonce).map_err(|_| "tkaes:random-failed".to_string())?;
+    let cipher = tkaes_key(&password, &salt, TKAE_ARGON_MEMORY_KIB, TKAE_ARGON_ITERATIONS, TKAE_ARGON_LANES)?;
+    let mut input_file = std::fs::File::open(&input).map_err(|_| "tkaes:read-failed".to_string())?;
+    let stem = tkaes_encrypted_stem(&input);
+    let mut guard = TkaesTempGuard::new(tkaes_temp_path(&dir, "encrypt")?);
+    let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(guard.path()).map_err(|_| "tkaes:temp-failed".to_string())?;
+    output.write_all(TKAE_MAGIC).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&[TKAE_VERSION]).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&(TKAE_CHUNK_SIZE as u32).to_le_bytes()).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&meta.len().to_le_bytes()).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&TKAE_ARGON_MEMORY_KIB.to_le_bytes()).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&TKAE_ARGON_ITERATIONS.to_le_bytes()).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&TKAE_ARGON_LANES.to_le_bytes()).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&salt).map_err(|_| "tkaes:write-failed".to_string())?;
+    output.write_all(&base_nonce).map_err(|_| "tkaes:write-failed".to_string())?;
+    let mut buffer = vec![0_u8; TKAE_CHUNK_SIZE]; let mut index = 0_u64; let mut processed = 0_u64;
+    loop {
+        if token.load(std::sync::atomic::Ordering::Relaxed) { return Err("tool-operation:cancelled".to_string()); }
+        let read = input_file.read(&mut buffer).map_err(|_| "tkaes:read-failed".to_string())?;
+        if read == 0 { break; }
+        let aad = tkaes_aad(index, read as u32); let nonce = tkaes_nonce(&base_nonce, index);
+        let encrypted = cipher.encrypt(Nonce::from_slice(&nonce), Payload { msg: &buffer[..read], aad: &aad }).map_err(|_| "tkaes:encrypt-failed".to_string())?;
+        output.write_all(&(read as u32).to_le_bytes()).map_err(|_| "tkaes:write-failed".to_string())?;
+        output.write_all(&encrypted).map_err(|_| "tkaes:write-failed".to_string())?;
+        processed += read as u64; index += 1;
+        if let Some(app) = &app { let _ = app.emit("tool-operation-progress", ToolOperationProgress { operation_id: operation_id.clone(), phase: "encrypt".to_string(), percent: processed as f64 / meta.len().max(1) as f64 * 100.0, processed_bytes: processed, total_bytes: meta.len() }); }
+    }
+    output.sync_all().map_err(|_| "tkaes:write-failed".to_string())?; drop(output);
+    let output_path = publish_tkaes_temp(guard.path(), &dir, stem, ".tkaes")?; guard.mark_published();
+    Ok(TkaesResult { bytes: std::fs::metadata(&output_path).map(|value| value.len()).unwrap_or(0), output_path })
+}
+
+fn read_tkaes_u32(file: &mut std::fs::File) -> Result<u32, String> { use std::io::Read; let mut bytes = [0_u8; 4]; file.read_exact(&mut bytes).map_err(|_| "tkaes:invalid-container".to_string())?; Ok(u32::from_le_bytes(bytes)) }
+
+fn tkaes_decrypt_blocking(app: Option<tauri::AppHandle>, input_path: String, output_dir: String, password: String, operation_id: String, token: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Result<TkaesResult, String> {
+    use aes_gcm::{aead::{Aead, Payload}, Nonce};
+    use std::io::{Read, Write};
+    let input = std::path::PathBuf::from(input_path); let dir = validate_image_output_dir(&output_dir).map_err(|_| "tkaes:output-dir".to_string())?;
+    let mut file = std::fs::File::open(&input).map_err(|_| "tkaes:read-failed".to_string())?;
+    let mut magic = [0_u8; 4]; file.read_exact(&mut magic).map_err(|_| "tkaes:invalid-container".to_string())?;
+    if &magic != TKAE_MAGIC { return Err("tkaes:invalid-container".to_string()); }
+    let mut version = [0_u8; 1]; file.read_exact(&mut version).map_err(|_| "tkaes:invalid-container".to_string())?;
+    if ![1, TKAE_VERSION].contains(&version[0]) { return Err("tkaes:unsupported-version".to_string()); }
+    let chunk_size = read_tkaes_u32(&mut file)? as usize;
+    if chunk_size == 0 || chunk_size > 16 * 1024 * 1024 { return Err("tkaes:invalid-container".to_string()); }
+    let mut length_buf = [0_u8; 8]; file.read_exact(&mut length_buf).map_err(|_| "tkaes:invalid-container".to_string())?; let total = u64::from_le_bytes(length_buf);
+    let (memory_kib, iterations, lanes) = if version[0] == 1 { (TKAE_ARGON_MEMORY_KIB, TKAE_ARGON_ITERATIONS, TKAE_ARGON_LANES) } else { (read_tkaes_u32(&mut file)?, read_tkaes_u32(&mut file)?, read_tkaes_u32(&mut file)?) };
+    let mut salt = [0_u8; 16]; let mut base_nonce = [0_u8; 12];
+    file.read_exact(&mut salt).map_err(|_| "tkaes:invalid-container".to_string())?; file.read_exact(&mut base_nonce).map_err(|_| "tkaes:invalid-container".to_string())?;
+    let cipher = tkaes_key(&password, &salt, memory_kib, iterations, lanes)?;
+    let stem = tkaes_decrypted_stem(&input); let mut guard = TkaesTempGuard::new(tkaes_temp_path(&dir, "decrypt")?);
+    let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(guard.path()).map_err(|_| "tkaes:temp-failed".to_string())?;
+    let mut processed = 0_u64; let mut index = 0_u64;
+    while processed < total {
+        if token.load(std::sync::atomic::Ordering::Relaxed) { return Err("tool-operation:cancelled".to_string()); }
+        let plain_len = read_tkaes_u32(&mut file)? as usize;
+        if plain_len == 0 || plain_len > chunk_size || processed + plain_len as u64 > total { return Err("tkaes:invalid-container".to_string()); }
+        let mut encrypted = vec![0_u8; plain_len + 16]; file.read_exact(&mut encrypted).map_err(|_| "tkaes:invalid-container".to_string())?;
+        let nonce = tkaes_nonce(&base_nonce, index); let aad = tkaes_aad(index, plain_len as u32);
+        let plain = cipher.decrypt(Nonce::from_slice(&nonce), Payload { msg: &encrypted, aad: &aad }).map_err(|_| "tkaes:authentication-failed".to_string())?;
+        output.write_all(&plain).map_err(|_| "tkaes:write-failed".to_string())?; processed += plain.len() as u64; index += 1;
+        if let Some(app) = &app { let _ = app.emit("tool-operation-progress", ToolOperationProgress { operation_id: operation_id.clone(), phase: "decrypt".to_string(), percent: processed as f64 / total.max(1) as f64 * 100.0, processed_bytes: processed, total_bytes: total }); }
+    }
+    if file.read(&mut [0_u8; 1]).map_err(|_| "tkaes:read-failed".to_string())? != 0 { return Err("tkaes:trailing-data".to_string()); }
+    output.sync_all().map_err(|_| "tkaes:write-failed".to_string())?; drop(output);
+    let output_path = publish_tkaes_temp(guard.path(), &dir, &stem, "")?; guard.mark_published();
+    Ok(TkaesResult { bytes: std::fs::metadata(&output_path).map(|value| value.len()).unwrap_or(0), output_path })
+}
+
+#[tauri::command]
+async fn encrypt_tkaes_file(app: tauri::AppHandle, input_path: String, output_dir: String, password: String, operation_id: String) -> Result<TkaesResult, String> {
+    if password.is_empty() { return Err("tkaes:password-required".to_string()); }
+    let token = register_tool_operation(&operation_id)?; let cleanup_id = operation_id.clone();
+    let joined = tokio::task::spawn_blocking(move || tkaes_encrypt_blocking(Some(app), input_path, output_dir, password, operation_id, token)).await;
+    finish_tool_operation(&cleanup_id);
+    joined.map_err(|_| "tkaes:worker-failed".to_string())?
+}
+
+#[tauri::command]
+async fn decrypt_tkaes_file(app: tauri::AppHandle, input_path: String, output_dir: String, password: String, operation_id: String) -> Result<TkaesResult, String> {
+    if password.is_empty() { return Err("tkaes:password-required".to_string()); }
+    let token = register_tool_operation(&operation_id)?; let cleanup_id = operation_id.clone();
+    let joined = tokio::task::spawn_blocking(move || tkaes_decrypt_blocking(Some(app), input_path, output_dir, password, operation_id, token)).await;
+    finish_tool_operation(&cleanup_id);
+    joined.map_err(|_| "tkaes:worker-failed".to_string())?
+}
+
+#[derive(Clone, serde::Serialize)]
+struct RsaLegacyKeyPair { public_key: String, private_key: String }
+
+fn generate_rsa_legacy_keypair_blocking(key_size: u32) -> Result<RsaLegacyKeyPair, String> { use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey}; if ![512, 1024, 2048, 4096].contains(&key_size) { return Err("crypto:rsa-size".to_string()); } let mut rng = rsa::rand_core::OsRng; let private = RsaPrivateKey::new(&mut rng, key_size as usize).map_err(|_| "crypto:rsa-keygen".to_string())?; let public = RsaPublicKey::from(&private); Ok(RsaLegacyKeyPair { public_key: public.to_public_key_pem(rsa::pkcs8::LineEnding::LF).map_err(|_| "crypto:rsa-key-export".to_string())?, private_key: private.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF).map_err(|_| "crypto:rsa-key-export".to_string())?.to_string() }) }
+
+#[tauri::command]
+async fn generate_rsa_legacy_keypair(key_size: u32) -> Result<RsaLegacyKeyPair, String> { tokio::task::spawn_blocking(move || generate_rsa_legacy_keypair_blocking(key_size)).await.map_err(|_| "crypto:rsa-worker-failed".to_string())? }
+
+fn rsa_legacy_operation_blocking(operation: String, input: String, public_key: String, private_key: String) -> Result<String, String> { use rsa::{pkcs1v15::Pkcs1v15Encrypt, pkcs8::{DecodePrivateKey, DecodePublicKey}, RsaPrivateKey, RsaPublicKey}; let mut rng = rsa::rand_core::OsRng; if operation == "encrypt" { let public = RsaPublicKey::from_public_key_pem(&public_key).map_err(|_| "crypto:rsa-public-key".to_string())?; let encrypted = public.encrypt(&mut rng, Pkcs1v15Encrypt, input.as_bytes()).map_err(|_| "crypto:rsa-encrypt".to_string())?; Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encrypted)) } else if operation == "decrypt" { let private = RsaPrivateKey::from_pkcs8_pem(&private_key).map_err(|_| "crypto:rsa-private-key".to_string())?; let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, input).map_err(|_| "crypto:rsa-ciphertext".to_string())?; let plain = private.decrypt(Pkcs1v15Encrypt, &bytes).map_err(|_| "crypto:rsa-decrypt".to_string())?; String::from_utf8(plain).map_err(|_| "crypto:rsa-utf8".to_string()) } else { Err("crypto:invalid-operation".to_string()) } }
+
+#[tauri::command]
+async fn rsa_legacy_operation(operation: String, input: String, public_key: String, private_key: String) -> Result<String, String> { tokio::task::spawn_blocking(move || rsa_legacy_operation_blocking(operation, input, public_key, private_key)).await.map_err(|_| "crypto:rsa-worker-failed".to_string())? }
+
 fn convert_image_batch_blocking_with_progress<F>(
     input_paths: Vec<String>,
     output_dir: String,
@@ -11914,6 +12758,35 @@ fn write_unique_file_pair(
         });
     }
     Err("Unable to reserve paired output file names".to_string())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MarkdownBundleAsset { file_name: String, bytes: Vec<u8> }
+
+#[derive(serde::Serialize)]
+struct MarkdownBundleResult { directory: String, markdown_path: String, asset_count: usize }
+
+#[tauri::command]
+fn export_markdown_bundle(output_root: String, base_name: String, markdown_bytes: Vec<u8>, assets: Vec<MarkdownBundleAsset>) -> Result<MarkdownBundleResult, String> {
+    use std::io::Write;
+    if output_root.trim().is_empty() || output_root.contains('\0') || markdown_bytes.len() > 20 * 1024 * 1024 || assets.len() > 100 { return Err("markdown:invalid-export".to_string()); }
+    let root = std::path::PathBuf::from(output_root).join("Markdown"); is_path_safe(&root)?; std::fs::create_dir_all(&root).map_err(|_| "markdown:output-dir".to_string())?;
+    let clean = base_name.trim().replace(['<','>','"','/','\\','|','?','*',':'], "-").trim_end_matches([' ','.']).to_string(); let clean = if clean.is_empty() { "toolknit-document".to_string() } else { clean.chars().take(80).collect::<String>() };
+    let mut asset_names = std::collections::BTreeSet::new(); let mut asset_bytes = 0usize;
+    for asset in &assets { if asset.file_name.is_empty() || asset.file_name.contains(['\\','/','\0']) || asset.file_name == "." || asset.file_name == ".." || asset.bytes.len() > 20 * 1024 * 1024 || !asset_names.insert(asset.file_name.clone()) { return Err("markdown:invalid-asset".to_string()); } asset_bytes = asset_bytes.checked_add(asset.bytes.len()).ok_or("markdown:invalid-assets")?; if asset_bytes > 100 * 1024 * 1024 { return Err("markdown:assets-too-large".to_string()); } }
+    for index in 0..10_000_u32 {
+        let suffix = if index == 0 { String::new() } else { format!("_{}", index) }; let directory = root.join(format!("{}{}", clean, suffix)); if directory.exists() { continue; }
+        let temporary = root.join(format!(".{}.part.{}", clean, std::process::id())); let _ = std::fs::remove_dir_all(&temporary); std::fs::create_dir_all(temporary.join("assets")).map_err(|_| "markdown:temp-dir".to_string())?;
+        let write_result = (|| -> Result<(), String> {
+            let mut markdown = std::fs::File::create(temporary.join(format!("{}.md", clean))).map_err(|_| "markdown:write-failed".to_string())?; markdown.write_all(&markdown_bytes).map_err(|_| "markdown:write-failed".to_string())?; markdown.sync_all().map_err(|_| "markdown:write-failed".to_string())?;
+            for asset in &assets { if asset.file_name.is_empty() || asset.file_name.contains(['\\','/','\0']) || asset.bytes.len() > 20 * 1024 * 1024 { return Err("markdown:invalid-asset".to_string()); } let path=temporary.join("assets").join(&asset.file_name); let mut file=std::fs::File::create(path).map_err(|_| "markdown:asset-write-failed".to_string())?; file.write_all(&asset.bytes).map_err(|_| "markdown:asset-write-failed".to_string())?; file.sync_all().map_err(|_| "markdown:asset-write-failed".to_string())?; }
+            Ok(())
+        })();
+        if let Err(error) = write_result { let _=std::fs::remove_dir_all(&temporary); return Err(error); }
+        match std::fs::rename(&temporary, &directory) { Ok(()) => return Ok(MarkdownBundleResult { markdown_path: directory.join(format!("{}.md", clean)).to_string_lossy().into_owned(), directory: directory.to_string_lossy().into_owned(), asset_count: assets.len() }), Err(_) => { let _=std::fs::remove_dir_all(&temporary); continue; } }
+    }
+    Err("markdown:publish-failed".to_string())
 }
 
 #[cfg(test)]
@@ -15255,6 +16128,179 @@ async fn convert_ppt_to_pdf(
     result
 }
 
+#[cfg(test)]
+mod image_crop_tests {
+    use super::*;
+    use image::{GenericImageView, ImageEncoder};
+
+    fn crop_test_directory(label: &str) -> std::path::PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-crop-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    fn crop_options(
+        input: &std::path::Path,
+        output: &std::path::Path,
+        format: &str,
+    ) -> ImageCropOptions {
+        ImageCropOptions {
+            input_path: input.to_string_lossy().into_owned(),
+            output_dir: output.to_string_lossy().into_owned(),
+            output_name: Some(format!("crop-{format}")),
+            crop_x: 0,
+            crop_y: 0,
+            crop_width: 2,
+            crop_height: 2,
+            rotation: 0,
+            flip_horizontal: false,
+            flip_vertical: false,
+            format: format.to_string(),
+            jpeg_quality: 96,
+            background_rgba: "#FFFFFFFF".to_string(),
+        }
+    }
+
+    fn write_crop_exif_jpeg(path: &std::path::Path, image: &image::RgbImage, orientation: u16) {
+        let mut exif = vec![0_u8; 26];
+        exif[0..2].copy_from_slice(b"II");
+        exif[2..4].copy_from_slice(&42_u16.to_le_bytes());
+        exif[4..8].copy_from_slice(&8_u32.to_le_bytes());
+        exif[8..10].copy_from_slice(&1_u16.to_le_bytes());
+        exif[10..12].copy_from_slice(&0x0112_u16.to_le_bytes());
+        exif[12..14].copy_from_slice(&3_u16.to_le_bytes());
+        exif[14..18].copy_from_slice(&1_u32.to_le_bytes());
+        exif[18..20].copy_from_slice(&orientation.to_le_bytes());
+        let file = std::fs::File::create(path).unwrap();
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(file, 100);
+        encoder.set_exif_metadata(exif).unwrap();
+        encoder
+            .encode(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn crop_rejects_out_of_bounds_rectangles() {
+        let mut options = crop_options(
+            std::path::Path::new("unused.png"),
+            std::path::Path::new("unused"),
+            "png",
+        );
+        options.crop_x = 9;
+        options.crop_width = 2;
+        assert_eq!(
+            validate_image_crop_bounds(&options, 10, 10),
+            Err("image-crop:crop-out-of-bounds".to_string())
+        );
+        options.crop_width = 0;
+        assert_eq!(
+            validate_image_crop_bounds(&options, 10, 10),
+            Err("image-crop:invalid-crop".to_string())
+        );
+    }
+
+    #[test]
+    fn crop_transform_order_is_rotate_then_flip_then_crop() {
+        let source = image::RgbaImage::from_fn(2, 3, |x, y| {
+            let colors = [
+                [[255, 0, 0, 255], [0, 255, 0, 255]],
+                [[0, 0, 255, 255], [255, 255, 0, 255]],
+                [[255, 0, 255, 255], [0, 255, 255, 255]],
+            ];
+            image::Rgba(colors[y as usize][x as usize])
+        });
+        let transformed =
+            transform_image_for_crop(image::DynamicImage::ImageRgba8(source), 90, true, false)
+                .unwrap();
+        assert_eq!(transformed.dimensions(), (3, 2));
+        assert_eq!(transformed.get_pixel(0, 0), image::Rgba([255, 0, 0, 255]));
+        assert_eq!(transformed.get_pixel(0, 1), image::Rgba([0, 255, 0, 255]));
+    }
+
+    #[test]
+    fn crop_exports_all_formats_and_never_overwrites() {
+        let directory = crop_test_directory("formats");
+        let input = directory.join("source.png");
+        image::RgbaImage::from_fn(4, 4, |x, y| {
+            image::Rgba([
+                (x * 50) as u8,
+                (y * 50) as u8,
+                120,
+                if x == 0 { 0 } else { 255 },
+            ])
+        })
+        .save(&input)
+        .unwrap();
+
+        for format in ["png", "jpg", "webp", "bmp"] {
+            let options = crop_options(&input, &directory, format);
+            let first = crop_image_blocking(options.clone()).unwrap();
+            let second = crop_image_blocking(options).unwrap();
+            assert_ne!(first.output_path, second.output_path);
+            assert_eq!(
+                image::open(&first.output_path).unwrap().dimensions(),
+                (2, 2)
+            );
+            assert!(first.bytes > 0);
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn crop_jpeg_uses_requested_background_for_transparency() {
+        let directory = crop_test_directory("background");
+        let input = directory.join("transparent.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([0, 0, 0, 0]))
+            .save(&input)
+            .unwrap();
+        let mut options = crop_options(&input, &directory, "jpg");
+        options.background_rgba = "#20A060FF".to_string();
+        let result = crop_image_blocking(options).unwrap();
+        let pixel = image::open(result.output_path)
+            .unwrap()
+            .to_rgb8()
+            .get_pixel(0, 0)
+            .0;
+        assert!((i16::from(pixel[0]) - 32).abs() < 16);
+        assert!((i16::from(pixel[1]) - 160).abs() < 16);
+        assert!((i16::from(pixel[2]) - 96).abs() < 16);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn crop_coordinates_follow_exif_oriented_pixels() {
+        let directory = crop_test_directory("exif");
+        let input = directory.join("orientation-6.jpg");
+        let source = image::RgbImage::from_fn(64, 32, |x, y| match (x < 32, y < 16) {
+            (true, true) => image::Rgb([255, 0, 0]),
+            (false, true) => image::Rgb([0, 255, 0]),
+            (true, false) => image::Rgb([0, 0, 255]),
+            (false, false) => image::Rgb([255, 255, 0]),
+        });
+        write_crop_exif_jpeg(&input, &source, 6);
+        let mut options = crop_options(&input, &directory, "png");
+        options.crop_width = 12;
+        options.crop_height = 12;
+        let result = crop_image_blocking(options).unwrap();
+        let pixel = image::open(result.output_path).unwrap().to_rgb8().get_pixel(4, 4).0;
+        assert!(pixel[2] > 200 && pixel[0] < 40 && pixel[1] < 40);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
 #[tauri::command]
 fn reveal_in_folder(path: String) -> Result<(), String> {
     // Legacy frontend builds used this command name for output actions. Keep
@@ -15322,6 +16368,106 @@ fn open_recycle_bin() -> Result<(), String> {
     }
 }
 
+#[cfg(test)]
+mod image_color_replace_tests {
+    use super::*;
+
+    #[test]
+    fn perceptual_distance_and_feather_are_bounded() {
+        let white = color_rgb_to_lab([255, 255, 255]);
+        assert_eq!(color_delta_e(white, white), 0.0);
+        assert_eq!(color_replace_weight(0.0, 20.0, 24.0), 1.0);
+        assert_eq!(color_replace_weight(21.0, 20.0, 24.0), 0.0);
+        assert!((0.0..=1.0).contains(&color_replace_weight(19.0, 20.0, 24.0)));
+    }
+
+    #[test]
+    fn smart_and_global_exports_match_the_frontend_fixture() {
+        let suffix = hex::encode({ let mut value = [0_u8; 8]; getrandom::getrandom(&mut value).unwrap(); value });
+        let root = std::env::temp_dir().join(format!("toolknit-color-replace-test-{}", suffix));
+        let output = root.join("output");
+        std::fs::create_dir_all(&root).unwrap();
+        let input = root.join("fixture.png");
+        let bytes = vec![
+            255,255,255,255, 255,255,255,255, 0,0,0,255, 255,255,255,255,
+            255,255,255,255, 255,255,255,255, 0,0,0,255, 255,255,255,255,
+            0,0,0,255,       0,0,0,255,       0,0,0,255, 255,255,255,255,
+        ];
+        image::RgbaImage::from_raw(4, 3, bytes).unwrap().save(&input).unwrap();
+        let options = |smart, name: &str| ColorReplaceOptions {
+            app: None,
+            operation_id: None,
+            input_path: input.to_string_lossy().into_owned(),
+            output_dir: output.to_string_lossy().into_owned(),
+            output_name: name.to_string(),
+            source_rgb: vec![255, 255, 255],
+            target_rgb: vec![0, 0, 255],
+            threshold: 2.0,
+            seed_x: 0,
+            seed_y: 0,
+            smart,
+            softness: 0.0,
+            preserve_luminance: false,
+            format: "png".to_string(),
+            jpeg_quality: 92,
+            cancel_token: None,
+        };
+        let smart = color_replace_blocking(options(true, "smart")).unwrap();
+        let global = color_replace_blocking(options(false, "global")).unwrap();
+        assert_eq!(smart.changed_pixels, 4);
+        assert_eq!(global.changed_pixels, 7);
+        let smart_pixels = image::open(smart.output_path).unwrap().to_rgba8();
+        assert_eq!(smart_pixels.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        assert_eq!(smart_pixels.get_pixel(3, 2).0, [255, 255, 255, 255]);
+        let global_pixels = image::open(global.output_path).unwrap().to_rgba8();
+        assert_eq!(global_pixels.get_pixel(3, 2).0, [0, 0, 255, 255]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod crypto_tool_tests {
+    use super::*;
+
+    #[test]
+    fn tkaes_header_helpers_are_deterministic_and_nonce_is_per_chunk() {
+        let base = [7_u8; 12];
+        assert_ne!(tkaes_nonce(&base, 0), tkaes_nonce(&base, 1));
+        assert_eq!(&tkaes_aad(3, 42)[..4], TKAE_MAGIC);
+        assert_eq!(tkaes_aad(3, 42).len(), 16);
+        assert_eq!(TKAE_VERSION, 2);
+        assert_eq!(tkaes_encrypted_stem(std::path::Path::new("document.pdf")), "document.pdf");
+        assert_eq!(tkaes_decrypted_stem(std::path::Path::new("document.pdf.tkaes")), "document.pdf");
+        assert!(validate_tool_operation_id("123e4567-e89b-12d3-a456-426614174000").is_ok());
+        assert!(validate_tool_operation_id("../invalid").is_err());
+    }
+
+    #[test]
+    fn tkaes_round_trip_preserves_name_and_rejects_wrong_password() {
+        let suffix = hex::encode({ let mut value = [0_u8; 8]; getrandom::getrandom(&mut value).unwrap(); value });
+        let root = std::env::temp_dir().join(format!("toolknit-tkaes-test-{}", suffix));
+        let encrypted_dir = root.join("encrypted");
+        let decrypted_dir = root.join("decrypted");
+        let rejected_dir = root.join("rejected");
+        std::fs::create_dir_all(&root).unwrap();
+        let input = root.join("document.txt");
+        let payload = b"ToolKnit authenticated file container\n".repeat(64);
+        std::fs::write(&input, &payload).unwrap();
+        let token = || std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        let encrypted = tkaes_encrypt_blocking(None, input.to_string_lossy().into_owned(), encrypted_dir.to_string_lossy().into_owned(), "correct horse battery staple".to_string(), "test-encrypt".to_string(), token()).unwrap();
+        assert!(encrypted.output_path.ends_with("document.txt.tkaes"));
+        let decrypted = tkaes_decrypt_blocking(None, encrypted.output_path.clone(), decrypted_dir.to_string_lossy().into_owned(), "correct horse battery staple".to_string(), "test-decrypt".to_string(), token()).unwrap();
+        assert!(decrypted.output_path.ends_with("document.txt"));
+        assert_eq!(std::fs::read(&decrypted.output_path).unwrap(), payload);
+
+        let rejected = tkaes_decrypt_blocking(None, encrypted.output_path, rejected_dir.to_string_lossy().into_owned(), "wrong password".to_string(), "test-reject".to_string(), token());
+        assert_eq!(rejected.unwrap_err(), "tkaes:authentication-failed");
+        assert!(std::fs::read_dir(&rejected_dir).map(|mut entries| entries.next().is_none()).unwrap_or(true));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -15361,6 +16507,7 @@ pub fn run() {
             write_file_bytes,
             write_unique_file_bytes,
             write_unique_file_pair,
+            export_markdown_bundle,
             write_file_chunk,
             begin_icon_archive_write,
             append_icon_archive_chunk,
@@ -15404,6 +16551,14 @@ pub fn run() {
             cancel_dependency_downloads,
             convert_image_batch,
             compress_image_batch,
+            crop_image,
+            export_replaced_image,
+            hash_file,
+            cancel_tool_operation,
+            encrypt_tkaes_file,
+            decrypt_tkaes_file,
+            generate_rsa_legacy_keypair,
+            rsa_legacy_operation,
             inspect_image_stitch_inputs,
             create_image_stitch_pdf_session,
             write_image_stitch_pdf_page,

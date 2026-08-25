@@ -56,6 +56,8 @@
       "resources/qpdf/vcruntime140_1.dll",
       "resources/qpdf/NOTICE.txt",
       "resources/qpdf/LICENSE.html",
+      "resources/whisper/NOTICE.txt",
+      "resources/whisper/LICENSE.txt",
       "resources/whisper/Release/whisper-cli.exe",
       "resources/whisper/Release/whisper.dll",
       "resources/whisper/Release/ggml.dll",

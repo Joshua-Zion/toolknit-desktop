@@ -6,7 +6,7 @@ export const HELP_CONTENT = {
     title: '功能概览',
     html: `<div class="help-doc">
       <h2>ToolKnit 功能概览</h2>
-      <p>ToolKnit 2.0 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 11 个分类、49 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、清理和硬件处理默认在本机完成。</p>
+      <p>ToolKnit 2.1 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 12 个分类、60 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、开发者、清理和硬件处理默认在本机完成。</p>
 
       <h3>工具分类一览</h3>
       <div class="help-tool-grid">
@@ -1150,6 +1150,23 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
     </div>`
   },
 
+  'color-space-compare': {
+    title: '颜色空间对比',
+    html: `<div class="help-doc">
+      <h2>颜色空间对比</h2>
+      <p>在 OKLCH、OKLab、CIELAB D65、CIELCH D65、RGB、HSL、HSV 和近似 CMYK 之间实时联动。拖动任意轨道或输入精确数值，其余空间会立即更新。</p>
+      <h3>精确值与轨道范围</h3>
+      <p>颜色换算后的真实通道值可能超出可视轨道范围。此时数值框保留真实值，轨道手柄停在边缘并显示虚线；微调按钮会从真实值平滑回退，不会突然跳到边界。</p>
+      <h3>色域与预览</h3>
+      <p>页面同时检查 sRGB、Display P3、Adobe RGB 和 Rec.2020。超出 sRGB 时，屏幕预览会映射到可显示范围，但复制的颜色模型数值仍保留原始计算结果。</p>
+      <div class="help-note"><p>CIELAB / CIELCH 使用 D65 白点，与 CSS Color 4 常见的 D50 Lab 语义不同；CMYK 为设备无关近似，正式印刷请使用对应设备的 ICC 色彩配置。</p></div>
+    </div>`
+  },
+
+  'developer-tools': {
+    title: '开发者工具',
+    html: `<div class="help-doc"><h2>2.1.0 开发者工具</h2><p>这里集中介绍本次新增的本地工具。它们默认在需要时加载，关闭页面后会释放 Worker、Canvas 和临时任务。</p><h3>Markdown 文档编辑器</h3><p>支持 GFM、任务列表、Mermaid、数学公式、目录跳转、草稿恢复，以及 Markdown 和离线 HTML 导出。导出本地图片时会自动整理 assets 目录。</p><h3>智能颜色替换</h3><p>使用吸管选择源色和目标色，可调节感知阈值、边缘柔化、亮度保持和八连通智能保护。预览使用降采样 Worker，导出由 Rust 按原始分辨率完成。</p><h3>Hash &amp; Crypto</h3><p>覆盖常用 Hash、HMAC、国密、AES 文件加密、RSA 和 SM2。旧算法仅用于兼容，敏感输入不会写入历史或本地存储。</p></div>`
+  },
   'hardware-tools': {
     title: '硬件工具总览',
     html: `<div class="help-doc">
@@ -1201,6 +1218,8 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
     </div>`
   }
 };
+
+HELP_CONTENT['developer-tools'].html += `<h3>开发者常用工具</h3><ul><li>JSON 格式化：校验、Pretty Print 与 Minify。</li><li>Base64 编解码：按 UTF-8 处理中文文本。</li><li>URL 编解码：处理查询参数和路径片段。</li><li>UUID 生成：批量生成随机 UUID v4。</li><li>JWT 查看：只解析 Header 和 Payload，不验证签名。</li></ul>`;
 
 export function getHelpContent() {
   return getLang() === 'zh' ? HELP_CONTENT : HELP_CONTENT_EN;

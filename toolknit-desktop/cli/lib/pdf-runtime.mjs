@@ -642,11 +642,14 @@ export async function enhancePdfFile(args) {
 
   let loadingTask;
   try {
-    const [pdfjsLib, canvasModule, enhancementModule] = await Promise.all([
-      import('pdfjs-dist/legacy/build/pdf.mjs'),
+    const [canvasModule, enhancementModule] = await Promise.all([
       import('@napi-rs/canvas'),
       importPdfCore('pdf-enhance-engine.js')
     ]);
+    for (const name of ['DOMMatrix', 'ImageData', 'Path2D']) {
+      if (canvasModule[name]) globalThis[name] = canvasModule[name];
+    }
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const { createCanvas } = canvasModule;
     const { enhanceRgbaImage } = enhancementModule;
     loadingTask = pdfjsLib.getDocument({

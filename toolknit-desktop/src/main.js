@@ -6,6 +6,7 @@
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
       import typingWordsData from './data/typing-words.json';
       import { HELP_CONTENT, getHelpContent } from './help-data.js';
+      import { SUPPORT_JOURNAL_ENTRIES } from './support-journal-data.js';
       import { getLegalContent } from './legal-data.js';
       import { AiProviderError, normalizeAiProviderConfig, requestAiCompletion } from './ai-provider-core.js';
       import {
@@ -118,6 +119,21 @@
       import { createDefaultVideoGifSelection, normalizeVideoGifRequest, validateVideoGifInput, videoGifTimeLabel } from './video-gif-core.js';
       import { calculateImageStitchLayout, normalizeImageStitchRequest } from './image-stitch-core.js';
       import {
+        cropStatesEqual,
+        constrainCropToRatio,
+        displayPointToSource,
+        exportCropRect,
+        fitCropToRatio,
+        flipCropRect,
+        moveCropRect,
+        normalizeRotation,
+        resizeCropRect,
+        rotateCropRect,
+        snapCropToCenter,
+        sourceRectToDisplay,
+        transformedImageSize
+      } from './image-crop-core.js';
+      import {
         PPT_RENDER_LIMITS,
         createPptToPdfFileName,
         inspectPptxRenderBytes,
@@ -175,6 +191,11 @@
       import { initPdfEditorTool } from './pdf-editor-ui.js';
       import JSZip from 'jszip';
       import { TaskRunner } from '../shared/task-runtime.mjs';
+      import * as tauriCore from '@tauri-apps/api/core';
+      import * as tauriEvent from '@tauri-apps/api/event';
+
+      const tauriCorePromise = Promise.resolve(tauriCore);
+      const tauriEventPromise = Promise.resolve(tauriEvent);
 
       // Keep custom tool menus, but preserve native editing menus in text fields.
       document.addEventListener('contextmenu', (e) => {
@@ -206,28 +227,22 @@
       const UI_SOUND_STORAGE_KEY = 'toolknit.ui-sound.v1';
       const UI_SOUND_STYLES = Object.freeze({
         '1': Object.freeze({
-          click: Object.freeze([{ frequency: 520, endFrequency: 690, duration: 0.095, volume: 0.24, waveform: 'sine' }]),
           touch: Object.freeze([{ frequency: 360, endFrequency: 430, duration: 0.065, volume: 0.14, waveform: 'sine' }]),
           slide: Object.freeze([{ frequency: 285, endFrequency: 330, duration: 0.045, volume: 0.08, waveform: 'sine' }]),
-          hover: Object.freeze([{ frequency: 440, endFrequency: 470, duration: 0.04, volume: 0.05, waveform: 'sine' }])
+          hover: Object.freeze([{ frequency: 440, endFrequency: 470, duration: 0.04, volume: 0.1, waveform: 'sine' }])
         }),
         '2': Object.freeze({
-          click: Object.freeze([
-            { frequency: 610, endFrequency: 760, duration: 0.075, volume: 0.2, waveform: 'triangle' },
-            { frequency: 920, endFrequency: 980, duration: 0.045, volume: 0.055, waveform: 'sine' }
-          ]),
           touch: Object.freeze([{ frequency: 430, endFrequency: 510, duration: 0.055, volume: 0.12, waveform: 'triangle' }]),
           slide: Object.freeze([{ frequency: 330, endFrequency: 390, duration: 0.04, volume: 0.07, waveform: 'triangle' }]),
-          hover: Object.freeze([{ frequency: 520, endFrequency: 550, duration: 0.035, volume: 0.045, waveform: 'triangle' }])
+          hover: Object.freeze([{ frequency: 520, endFrequency: 550, duration: 0.035, volume: 0.09, waveform: 'triangle' }])
         }),
         '3': Object.freeze({
-          click: Object.freeze([{ frequency: 245, endFrequency: 360, duration: 0.105, volume: 0.17, waveform: 'square' }]),
           touch: Object.freeze([{ frequency: 190, endFrequency: 250, duration: 0.07, volume: 0.1, waveform: 'square' }]),
           slide: Object.freeze([{ frequency: 150, endFrequency: 205, duration: 0.05, volume: 0.065, waveform: 'square' }]),
-          hover: Object.freeze([{ frequency: 280, endFrequency: 305, duration: 0.038, volume: 0.04, waveform: 'square' }])
+          hover: Object.freeze([{ frequency: 280, endFrequency: 305, duration: 0.038, volume: 0.08, waveform: 'square' }])
         })
       });
-      const UI_SOUND_MIN_INTERVALS = Object.freeze({ click: 34, touch: 55, slide: 42, hover: 115 });
+      const UI_SOUND_MIN_INTERVALS = Object.freeze({ touch: 55, slide: 42, hover: 115 });
 
       function readUiSoundState() {
         let parsed = null;
@@ -291,7 +306,7 @@
         return uiSoundContext;
       }
 
-      function playUiSound(kind = 'click', { userGesture = false, styleOverride = null, force = false } = {}) {
+      function playUiSound(kind = 'hover', { userGesture = false, styleOverride = null, force = false } = {}) {
         if ((!uiSoundState.enabled && !force) || !UI_SOUND_STYLES[styleOverride || uiSoundState.style]?.[kind]) return false;
         const now = performance.now();
         const minInterval = UI_SOUND_MIN_INTERVALS[kind] || 40;
@@ -356,17 +371,20 @@
 
       function initUiSoundEvents() {
         if (isScreenPickerWindow) return;
+        // WebView/browser autoplay policy requires a real user gesture before
+        // an AudioContext may run. Unlock silently on the first normal press so
+        // later hover feedback does not depend on clicking a specific control.
+        document.addEventListener('pointerdown', event => {
+          const target = event.target instanceof Element ? event.target : null;
+          if (target?.closest('.no-ui-sound')) return;
+          ensureUiSoundContext({ userGesture: true });
+        }, { capture: true, passive: true });
         document.addEventListener('pointerover', event => {
           const target = isUiSoundInteractive(event.target);
           if (!target || target.matches(':disabled,[aria-disabled="true"],.no-ui-sound') || (event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) return;
           // Hover never creates an AudioContext; it becomes active after the first gesture.
           playUiSound('hover');
         }, { passive: true });
-        document.addEventListener('click', event => {
-          const target = isUiSoundInteractive(event.target);
-          if (!target || target.matches(':disabled,[aria-disabled="true"],.no-ui-sound')) return;
-          playUiSound('click', { userGesture: true });
-        }, true);
         document.addEventListener('pointerdown', event => {
           const target = event.target instanceof Element ? event.target.closest('input[type="range"], [draggable="true"], [data-sound-slide], .audio-clip-handle') : null;
           if (!target || target.matches(':disabled,[aria-disabled="true"],.no-ui-sound')) return;
@@ -410,8 +428,8 @@
         getState: () => ({ ...uiSoundState }),
         setEnabled: enabled => setUiSoundState({ enabled }),
         setStyle: style => setUiSoundState({ style }),
-        play: (kind = 'click', options = {}) => playUiSound(kind, { ...options, userGesture: true }),
-        preview: style => playUiSound('click', { styleOverride: String(style || uiSoundState.style), userGesture: true, force: true })
+        play: (kind = 'hover', options = {}) => playUiSound(kind, { ...options, userGesture: true }),
+        preview: style => playUiSound('hover', { styleOverride: String(style || uiSoundState.style), userGesture: true, force: true })
       });
       initUiSoundEvents();
       if (isScreenPickerWindow) {
@@ -452,8 +470,8 @@
         let nextSampleAt = 0;
         let sampling = false;
 
-        const { invoke } = await import('@tauri-apps/api/core');
-        const { emitTo, listen } = await import('@tauri-apps/api/event');
+        const { invoke } = await tauriCorePromise;
+        const { emitTo, listen } = await tauriEventPromise;
 
         const emit = (name, payload) => {
           return emitTo('main', name, payload).catch(error => console.error('[screen-picker] emit failed', name, error));
@@ -717,7 +735,7 @@
         nativeWindowRadiusQueue = nativeWindowRadiusQueue
           .catch(() => undefined)
           .then(async () => {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             await invoke('set_window_corner_radius', { radius });
           })
           .catch(error => {
@@ -977,7 +995,6 @@
         '.audio-clip-success-overlay',
         '.pdf-preview-drawer',
         '.donation-overlay',
-        '.feedback-drawer',
         '.transcription-model-overlay',
         '.transcription-gate-overlay',
         '.pdf-editor-edit-modal',
@@ -1214,12 +1231,12 @@
           let source = current.src;
           if (!source && isTauri && current.path) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               source = await invoke('get_custom_background_media_url', { path: current.path });
             } catch (error) {
               console.error('Failed to resolve custom background:', error);
               try {
-                const { invoke } = await import('@tauri-apps/api/core');
+                const { invoke } = await tauriCorePromise;
                 await invoke('log_custom_background_event', { event: `resolve-failed:${String(error?.message || error)}` });
               } catch { /* logging is best effort */ }
               source = '';
@@ -1306,7 +1323,7 @@
           if (!ok) {
             try {
               if (isTauri) {
-                import('@tauri-apps/api/core').then(({ invoke }) => invoke('log_custom_background_event', {
+                tauriCorePromise.then(({ invoke }) => invoke('log_custom_background_event', {
                   event: `media-error:${role}:${config.name || config.path || config.type}`
                 })).catch(() => {});
               }
@@ -1556,6 +1573,14 @@
         return null;
       }
 
+      // Lazy 2.1 pages mount their own background host when opened. Reusing
+      // this lifecycle keeps custom image/video backgrounds shared and makes
+      // sure the plasma RAF and media node are released when a page closes.
+      window.toolknitToolBackground = {
+        mount: container => initStandardToolPlasma(container),
+        dispose: dispose => disposeStandardToolPlasma(dispose)
+      };
+
       const OUTPUT_ROOT_KEY = 'toolknit.output-root.v1';
 
       async function applyWindowResizeSetting(enabled = readWindowResizeSetting()) {
@@ -1604,7 +1629,7 @@
       async function syncConfiguredOutputRoot() {
         if (!isTauri) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const savedInBrowser = configuredOutputRoot();
           let savedInApp = await invoke('get_output_root');
           // Migrate the earlier browser-only setting once, then always use the native record.
@@ -1631,7 +1656,7 @@
         let configuredRoot = configuredOutputRoot();
         if (isTauri) {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const savedInApp = await invoke('get_output_root');
             configuredRoot = typeof savedInApp === 'string' ? savedInApp.trim() : '';
             if (configuredRoot) localStorage.setItem(OUTPUT_ROOT_KEY, configuredRoot);
@@ -1646,7 +1671,7 @@
         }
         if (!isTauri) return '~/Downloads/ToolKnit/' + subFolder;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const defaultRoot = await invoke('get_default_output_root');
           return joinOutputSubFolder(defaultRoot, subFolder);
         } catch (e) {
@@ -1680,7 +1705,7 @@
         const targetPath = String(outputPath).trim();
         if (!targetPath) return false;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: targetPath });
           return true;
         } catch (error) {
@@ -2248,7 +2273,7 @@
       async function ensureFfmpegAvailable() {
         if (!isTauri) return false;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           return await invoke('check_ffmpeg');
         } catch (e) {
           console.error('FFmpeg check failed:', e);
@@ -2271,7 +2296,7 @@
         if (!storagePathDisplay) return;
         if (!isTauri) { storagePathDisplay.textContent = '~/Downloads/ToolKnit'; return; }
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const customRoot = await invoke('get_output_root');
           if (typeof customRoot === 'string' && customRoot.trim()) {
             localStorage.setItem(OUTPUT_ROOT_KEY, customRoot);
@@ -2291,7 +2316,7 @@
           const { open } = await import('@tauri-apps/plugin-dialog');
           const selected = await open({ directory: true, multiple: false, title: '选择 ToolKnit 输出位置' });
           if (!selected || Array.isArray(selected)) return;
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('set_output_root', { outputDir: selected });
           localStorage.setItem(OUTPUT_ROOT_KEY, selected);
           await refreshStoragePath();
@@ -2305,7 +2330,7 @@
         openStorageFolder.addEventListener('click', async () => {
           if (!isTauri) return;
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const customRoot = await invoke('get_output_root');
             const defaultRoot = await invoke('get_default_output_root');
             await invoke('open_path', { path: customRoot || defaultRoot });
@@ -2461,7 +2486,7 @@
         let src = metadata.src || '';
         try {
           if (!src && isTauri && metadata.path) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             src = await invoke('get_custom_background_media_url', { path: metadata.path });
           }
           if (!src) throw new Error('Background source is unavailable');
@@ -2560,8 +2585,8 @@
           if (!selected || Array.isArray(selected)) return;
           const jobId = `background-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
           const [{ invoke }, { listen }] = await Promise.all([
-            import('@tauri-apps/api/core'),
-            import('@tauri-apps/api/event')
+            tauriCorePromise,
+            tauriEventPromise
           ]);
           setCustomBackgroundImportState(true, {
             percent: type === 'video' ? 6 : 10,
@@ -2618,7 +2643,7 @@
         if (customBackgroundImportBusy) return;
         try {
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             await invoke('clear_custom_background');
           }
           saveCustomBackgroundMetadata(null);
@@ -2645,6 +2670,7 @@
       });
       const customFontSlots = [...document.querySelectorAll('[data-font-slot]')];
       const customFontAssets = new Map();
+      let customFontMetadataParserPromise = null;
       let activeRuntimeFontFaces = [];
       let customFontBusySlot = '';
 
@@ -2666,7 +2692,7 @@
           const upload = slotElement.querySelector('[data-font-upload]');
           const reset = slotElement.querySelector('[data-font-reset]');
           const busy = customFontBusySlot === slot;
-          if (summary) summary.textContent = asset?.fileName || CUSTOM_FONT_DEFAULTS[slot]?.name || '';
+          if (summary) summary.textContent = asset?.displayName || asset?.fileName || CUSTOM_FONT_DEFAULTS[slot]?.name || '';
           slotElement.classList.toggle('is-custom', Boolean(asset));
           slotElement.classList.toggle('is-busy', busy);
           if (upload) upload.disabled = Boolean(customFontBusySlot);
@@ -2683,12 +2709,33 @@
 
       async function resolveCustomFontSource(asset) {
         if (!asset?.path) return '';
-        const { convertFileSrc } = await import('@tauri-apps/api/core');
+        const { convertFileSrc } = await tauriCorePromise;
         return convertFileSrc(asset.path);
       }
 
-      async function applyCustomInterfaceFonts() {
-        if (!customFontAssets.size) {
+      async function enrichCustomFontAsset(asset, invoke) {
+        if (!asset?.path || typeof invoke !== 'function') return asset;
+        try {
+          if (!customFontMetadataParserPromise) {
+            customFontMetadataParserPromise = import('./font-metadata.js').then(module => module.default || module.parseFontMetadata);
+          }
+          const parseFontMetadata = await customFontMetadataParserPromise;
+          if (typeof parseFontMetadata !== 'function') return asset;
+          const rawBytes = await invoke('read_file_bytes_limited', {
+            path: asset.path,
+            maxBytes: 40 * 1024 * 1024
+          });
+          const metadata = await parseFontMetadata(normalizeDesktopBytes(rawBytes));
+          if (!metadata?.displayName) return asset;
+          return { ...asset, ...metadata };
+        } catch (error) {
+          console.warn('Unable to read custom font metadata:', error);
+          return asset;
+        }
+      }
+
+      async function applyCustomInterfaceFonts(fontAssets = customFontAssets) {
+        if (!fontAssets.size) {
           removeRuntimeFontFaces();
           setInterfaceFontFamilies(false);
           window.dispatchEvent(new Event('toolknit-interface-font-change'));
@@ -2696,8 +2743,8 @@
         }
         const loadedFaces = [];
         for (const [slot, defaults] of Object.entries(CUSTOM_FONT_DEFAULTS)) {
-          const source = customFontAssets.has(slot)
-            ? await resolveCustomFontSource(customFontAssets.get(slot))
+          const source = fontAssets.has(slot)
+            ? await resolveCustomFontSource(fontAssets.get(slot))
             : defaults.path;
           if (!source) throw new Error('Custom font source is unavailable');
           const face = new FontFace(
@@ -2710,8 +2757,8 @@
         }
         for (const slot of ['cn-bold', 'en-bold']) {
           const defaults = CUSTOM_FONT_DEFAULTS[slot];
-          const source = customFontAssets.has(slot)
-            ? await resolveCustomFontSource(customFontAssets.get(slot))
+          const source = fontAssets.has(slot)
+            ? await resolveCustomFontSource(fontAssets.get(slot))
             : defaults.path;
           const face = new FontFace(
             slot === 'cn-bold' ? 'ToolKnitRuntimeCnHeading' : 'ToolKnitRuntimeEnHeading',
@@ -2731,18 +2778,23 @@
 
       async function refreshCustomFonts() {
         if (!isTauri) {
+          await applyCustomInterfaceFonts(new Map());
           customFontAssets.clear();
           renderCustomFontSlots();
           return;
         }
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         const assets = await invoke('list_custom_fonts');
-        customFontAssets.clear();
-        (Array.isArray(assets) ? assets : []).forEach(asset => {
+        const validAssets = (Array.isArray(assets) ? assets : []).filter(asset => CUSTOM_FONT_DEFAULTS[String(asset?.slot || '')]);
+        const enrichedAssets = await Promise.all(validAssets.map(asset => enrichCustomFontAsset(asset, invoke)));
+        const nextAssets = new Map();
+        enrichedAssets.forEach(asset => {
           const slot = String(asset?.slot || '');
-          if (CUSTOM_FONT_DEFAULTS[slot]) customFontAssets.set(slot, asset);
+          if (CUSTOM_FONT_DEFAULTS[slot]) nextAssets.set(slot, asset);
         });
-        await applyCustomInterfaceFonts();
+        await applyCustomInterfaceFonts(nextAssets);
+        customFontAssets.clear();
+        nextAssets.forEach((asset, slot) => customFontAssets.set(slot, asset));
         renderCustomFontSlots();
       }
 
@@ -2763,7 +2815,7 @@
             filters: [{ name: 'Font', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]
           });
           if (!selected || Array.isArray(selected)) return;
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('import_custom_font', { slot, sourcePath: selected });
           await refreshCustomFonts();
           window.showToast?.(t('settings.fontUploadSuccess'));
@@ -2781,7 +2833,7 @@
         customFontBusySlot = slot;
         renderCustomFontSlots();
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('reset_custom_font', { slot });
           await refreshCustomFonts();
           window.showToast?.(t('settings.fontRestoreSuccess'));
@@ -2837,6 +2889,7 @@
       }
 
       async function getLocalAppVersion() {
+        if (!isTauri) return APP_VERSION_FALLBACK;
         try {
           const { getVersion } = await import('@tauri-apps/api/app');
           const version = await getVersion();
@@ -2907,7 +2960,7 @@
           return;
         }
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const info = await invoke('get_screen_picker_shortcut');
           screenPickerShortcutLabel.textContent = info?.value || info?.default || 'Ctrl+Shift+C';
         } catch (error) {
@@ -2970,7 +3023,7 @@
           event.stopPropagation();
           stopScreenPickerRecording();
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             await invoke('set_screen_picker_shortcut', { shortcut: next });
             await refreshScreenPickerShortcut();
             showToast(t('settings.screenPickerShortcutSaved'));
@@ -2985,7 +3038,7 @@
       screenPickerShortcutReset?.addEventListener('click', async () => {
         if (!isTauri) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const info = await invoke('get_screen_picker_shortcut');
           await invoke('set_screen_picker_shortcut', { shortcut: info?.default || 'Ctrl+Shift+C' });
           stopScreenPickerRecording();
@@ -3127,7 +3180,7 @@
               const use = document.createElement('button');
               use.type = 'button'; use.className = 'settings-btn'; use.textContent = t('home.transcription.useModel');
               use.addEventListener('click', async () => {
-                const { invoke } = await import('@tauri-apps/api/core');
+                const { invoke } = await tauriCorePromise;
                 await invoke('set_current_transcription_model', { modelId: model.id });
                 await refreshTranscriptionModels();
               });
@@ -3136,7 +3189,7 @@
             const remove = document.createElement('button');
             remove.type = 'button'; remove.className = 'settings-btn'; remove.textContent = t('home.transcription.deleteModel');
             remove.addEventListener('click', async () => {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('delete_transcription_model', { modelId: model.id });
               await refreshTranscriptionModels();
             });
@@ -3148,7 +3201,7 @@
               try {
                 transcriptionModelProgress.set(model.id, { phase: 'downloading', downloaded_bytes: 0, total_bytes: model.bytes });
                 renderTranscriptionModels();
-                const { invoke } = await import('@tauri-apps/api/core');
+                const { invoke } = await tauriCorePromise;
                 await invoke('download_transcription_model', { modelId: model.id, source: resolvedModelDownloadSource() });
                 transcriptionModelProgress.delete(model.id);
                 await refreshTranscriptionModels();
@@ -3176,7 +3229,7 @@
       async function refreshTranscriptionModels() {
         if (!isTauri) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           transcriptionModels = await invoke('list_transcription_models');
           updateOfflineModelSummary();
           renderTranscriptionModels();
@@ -3211,7 +3264,7 @@
       if (isTauri) {
         void refreshTranscriptionModels();
         (async () => {
-          const { listen } = await import('@tauri-apps/api/event');
+          const { listen } = await tauriEventPromise;
           await listen('transcription-model-download-progress', event => {
             const progress = event.payload;
             if (!progress?.model_id) return;
@@ -3241,10 +3294,28 @@
         return `${(bytes / (1024 ** index)).toFixed(index < 2 ? 0 : 1)} ${units[index]}`;
       }
 
+      function isManagedRuntime(status) {
+        return status?.source === 'managed';
+      }
+
+      function detectedRuntimeLabel(status) {
+        if (!status?.installed) return '';
+        if (!isManagedRuntime(status)) return getLang() === 'en' ? 'Detected system dependency' : '已检测到系统依赖';
+        const size = formatRuntimeBytes(status.bytes);
+        return size === '--'
+          ? (getLang() === 'en' ? 'Installed' : '已安装')
+          : (getLang() === 'en' ? `Installed (${size})` : `已安装 (${size})`);
+      }
+
+      function runtimeMetadata(status) {
+        if (!status?.installed) return '';
+        return [status.version, displayFilesystemPath(status.path)].filter(Boolean).join(' · ');
+      }
+
       function updateFfmpegRuntimeSummary() {
         if (!ffmpegRuntimeSummary) return;
         ffmpegRuntimeSummary.textContent = ffmpegRuntimeStatus?.installed
-          ? (getLang() === 'en' ? `Installed (${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)})` : `已安装 (${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)})`)
+          ? detectedRuntimeLabel(ffmpegRuntimeStatus)
           : t('settings.ffmpegRuntimeEmpty');
       }
 
@@ -3256,7 +3327,7 @@
         const name = document.createElement('div'); name.className = 'transcription-model-name'; name.textContent = 'FFmpeg';
         const meta = document.createElement('div'); meta.className = 'transcription-model-meta';
         meta.textContent = ffmpegRuntimeStatus?.installed
-          ? `${formatRuntimeBytes(ffmpegRuntimeStatus.bytes)} - ${displayFilesystemPath(ffmpegRuntimeStatus.path)}`
+          ? runtimeMetadata(ffmpegRuntimeStatus)
           : (getLang() === 'en' ? 'Required for audio and video tools' : '音频、视频工具所需的本地运行时');
         info.append(name, meta);
         const actions = document.createElement('div'); actions.className = 'transcription-model-actions';
@@ -3267,19 +3338,22 @@
             ? (getLang() === 'en' ? 'Installing' : '正在安装')
             : `${Math.min(100, Math.round((ffmpegRuntimeProgress.downloaded_bytes || 0) / total * 100))}%`;
           actions.append(progress);
-        } else if (ffmpegRuntimeStatus?.installed) {
+        } else if (ffmpegRuntimeStatus?.installed && isManagedRuntime(ffmpegRuntimeStatus)) {
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'settings-btn'; remove.textContent = getLang() === 'en' ? 'Delete' : '删除';
           remove.addEventListener('click', async () => {
-            try { const { invoke } = await import('@tauri-apps/api/core'); await invoke('delete_ffmpeg_runtime'); await refreshFfmpegRuntime(); }
+            try { const { invoke } = await tauriCorePromise; await invoke('delete_ffmpeg_runtime'); await refreshFfmpegRuntime(); }
             catch (error) { window.showToast?.(String(error?.message || error)); }
           });
           actions.append(remove);
+        } else if (ffmpegRuntimeStatus?.installed) {
+          const detected = document.createElement('span'); detected.className = 'transcription-model-current'; detected.textContent = detectedRuntimeLabel(ffmpegRuntimeStatus);
+          actions.append(detected);
         } else {
           const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-btn'; install.textContent = getLang() === 'en' ? 'Download' : '下载';
           install.addEventListener('click', async () => {
             try {
               ffmpegRuntimeProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: 0 }; renderFfmpegRuntime();
-              const { invoke } = await import('@tauri-apps/api/core'); await invoke('download_ffmpeg_runtime', { source: resolvedFfmpegDownloadSource() });
+              const { invoke } = await tauriCorePromise; await invoke('download_ffmpeg_runtime', { source: resolvedFfmpegDownloadSource() });
               ffmpegRuntimeProgress = null; await refreshFfmpegRuntime();
             } catch (error) { ffmpegRuntimeProgress = null; renderFfmpegRuntime(); window.showToast?.(String(error?.message || error)); }
           });
@@ -3296,7 +3370,7 @@
 
       async function refreshFfmpegRuntime() {
         if (!isTauri) return;
-        try { const { invoke } = await import('@tauri-apps/api/core'); ffmpegRuntimeStatus = await invoke('get_ffmpeg_runtime_status'); updateFfmpegRuntimeSummary(); renderFfmpegRuntime(); }
+        try { const { invoke } = await tauriCorePromise; ffmpegRuntimeStatus = await invoke('get_ffmpeg_runtime_status'); updateFfmpegRuntimeSummary(); renderFfmpegRuntime(); }
         catch (error) { console.error('Cannot read FFmpeg runtime:', error); }
       }
       function openFfmpegRuntimeManager() { if (!ffmpegRuntimeOverlay) return; ffmpegRuntimeOverlay.classList.add('visible'); ffmpegRuntimeOverlay.setAttribute('aria-hidden', 'false'); void refreshFfmpegRuntime(); }
@@ -3310,7 +3384,7 @@
       });
       if (isTauri) {
         void refreshFfmpegRuntime();
-        (async () => { const { listen } = await import('@tauri-apps/api/event'); await listen('ffmpeg-runtime-download-progress', event => { ffmpegRuntimeProgress = event.payload; renderFfmpegRuntime(); updateDependencyGateProgress('ffmpeg', event.payload); }); })().catch(error => console.error('Cannot listen for FFmpeg runtime download:', error));
+        (async () => { const { listen } = await tauriEventPromise; await listen('ffmpeg-runtime-download-progress', event => { ffmpegRuntimeProgress = event.payload; renderFfmpegRuntime(); updateDependencyGateProgress('ffmpeg', event.payload); }); })().catch(error => console.error('Cannot listen for FFmpeg runtime download:', error));
       }
 
       // LibreOffice is an optional, separately managed PPT rendering runtime.
@@ -3359,7 +3433,7 @@
         }
         if (libreOfficeRuntimeAvailabilityPromise) return libreOfficeRuntimeAvailabilityPromise;
         libreOfficeRuntimeAvailabilityPromise = (async () => {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           try {
             const available = normalizeLibreOfficeAvailability(await invoke('is_libreoffice_runtime_available'));
             cacheLibreOfficeAvailability(available);
@@ -3386,7 +3460,7 @@
       function updateLibreOfficeRuntimeSummary() {
         if (!libreOfficeRuntimeSummary) return;
         libreOfficeRuntimeSummary.textContent = libreOfficeRuntimeStatus?.installed
-          ? (getLang() === 'en' ? `Installed (${formatRuntimeBytes(libreOfficeRuntimeStatus.bytes)})` : `已安装 (${formatRuntimeBytes(libreOfficeRuntimeStatus.bytes)})`)
+          ? detectedRuntimeLabel(libreOfficeRuntimeStatus)
           : t('settings.libreOfficeRuntimeEmpty');
       }
 
@@ -3398,7 +3472,7 @@
         const name = document.createElement('div'); name.className = 'transcription-model-name'; name.textContent = 'LibreOffice';
         const meta = document.createElement('div'); meta.className = 'transcription-model-meta';
         meta.textContent = libreOfficeRuntimeStatus?.installed
-          ? `${formatRuntimeBytes(libreOfficeRuntimeStatus.bytes)} - ${displayFilesystemPath(libreOfficeRuntimeStatus.path)}`
+          ? runtimeMetadata(libreOfficeRuntimeStatus)
           : (getLang() === 'en' ? 'Required for PPT to PDF and PPT to image' : 'PPT 转 PDF、PPT 转图像所需的本地运行时');
         info.append(name, meta);
         const actions = document.createElement('div'); actions.className = 'transcription-model-actions';
@@ -3409,27 +3483,30 @@
             ? (getLang() === 'en' ? 'Installing' : '正在安装')
             : `${Math.min(100, Math.round((libreOfficeRuntimeProgress.downloaded_bytes || 0) / total * 100))}%`;
           actions.append(status);
-        } else if (libreOfficeRuntimeStatus?.installed) {
+        } else if (libreOfficeRuntimeStatus?.installed && isManagedRuntime(libreOfficeRuntimeStatus)) {
           const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'settings-btn'; remove.textContent = getLang() === 'en' ? 'Delete' : '删除';
           remove.addEventListener('click', async () => {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('delete_libreoffice_runtime');
-              libreOfficeRuntimeStatus = { installed: false, bytes: 0, path: null, source: null, version: null };
-              libreOfficeRuntimeStatusAt = Date.now();
-              cacheLibreOfficeAvailability(false, libreOfficeRuntimeStatusAt);
-              updateLibreOfficeRuntimeSummary();
-              renderLibreOfficeRuntime();
+              libreOfficeRuntimeStatus = null;
+              libreOfficeRuntimeStatusAt = 0;
+              libreOfficeRuntimeAvailable = null;
+              libreOfficeRuntimeAvailabilityAt = 0;
+              await refreshLibreOfficeRuntime({ force: true });
             }
             catch (error) { window.showToast?.(String(error?.message || error)); }
           });
           actions.append(remove);
+        } else if (libreOfficeRuntimeStatus?.installed) {
+          const detected = document.createElement('span'); detected.className = 'transcription-model-current'; detected.textContent = detectedRuntimeLabel(libreOfficeRuntimeStatus);
+          actions.append(detected);
         } else {
           const install = document.createElement('button'); install.type = 'button'; install.className = 'settings-btn'; install.textContent = getLang() === 'en' ? 'Download' : '下载';
           install.addEventListener('click', async () => {
             try {
               libreOfficeRuntimeProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: 0 }; renderLibreOfficeRuntime();
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const status = await invoke('download_libreoffice_runtime', { source: resolvedLibreOfficeDownloadSource() });
               libreOfficeRuntimeProgress = null;
               if (status && typeof status === 'object') {
@@ -3465,7 +3542,7 @@
         if (libreOfficeRuntimeStatusPromise) return libreOfficeRuntimeStatusPromise;
         libreOfficeRuntimeStatusPromise = (async () => {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const status = await invoke('get_libreoffice_runtime_status');
             libreOfficeRuntimeStatus = status;
             libreOfficeRuntimeStatusAt = Date.now();
@@ -3492,7 +3569,7 @@
       if (isTauri) {
         // The settings panel performs the detailed refresh on demand. Do not
         // start a recursive runtime-directory scan during app bootstrap.
-        (async () => { const { listen } = await import('@tauri-apps/api/event'); await listen('libreoffice-runtime-download-progress', event => { libreOfficeRuntimeProgress = event.payload; renderLibreOfficeRuntime(); updateDependencyGateProgress('libreoffice', event.payload); }); })().catch(error => console.error('Cannot listen for PPT runtime download:', error));
+        (async () => { const { listen } = await tauriEventPromise; await listen('libreoffice-runtime-download-progress', event => { libreOfficeRuntimeProgress = event.payload; renderLibreOfficeRuntime(); updateDependencyGateProgress('libreoffice', event.payload); }); })().catch(error => console.error('Cannot listen for PPT runtime download:', error));
       }
 
       function resolvedLibreOfficeDownloadSource() {
@@ -3637,7 +3714,7 @@
           },
           onCancel: async () => {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('cancel_dependency_downloads');
             } catch (error) {
               console.error('Cannot cancel dependency download:', error);
@@ -3646,7 +3723,7 @@
         });
         state.runner = runner;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await runner.run(async ({ report, throwIfCancelled }) => {
             report(0, t('home.dependencies.downloadingAll'), { phase: 'prepare' });
             if (state.needsFfmpeg) {
@@ -3796,7 +3873,7 @@
 
       async function openTranscriptionTool() {
         if (!isTauri) { window.showToast?.(t('home.transcription.desktopOnly')); return; }
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         const [engineReady, ffmpegReady] = await Promise.all([invoke('check_transcription_engine'), ensureFfmpegAvailable()]);
         if (!engineReady) { window.showToast?.(t('home.transcription.engineUnavailable')); return; }
         await refreshTranscriptionModels();
@@ -3867,7 +3944,7 @@
       }
 
       async function readTranscriptionText(path) {
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         const bytes = await invoke('read_file_bytes_limited', { path, maxBytes: 10 * 1024 * 1024 });
         return new TextDecoder('utf-8').decode(Uint8Array.from(bytes));
       }
@@ -3977,7 +4054,7 @@
         const rawTxtName = result.raw_txt_path.split(/[\\/]/).pop() || 'transcript.txt';
         const srtName = rawSrtName.replace(/\.srt$/i, '_refined.srt');
         const txtName = rawTxtName.replace(/\.txt$/i, '_refined.txt');
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         const written = await invoke('write_unique_file_pair', {
           directory: outputDir,
           firstFileName: srtName,
@@ -4028,7 +4105,7 @@
           item.addEventListener('dblclick', async () => {
             if (!isTauri || !filePath) return;
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('open_path', { path: filePath });
             } catch (error) {
               console.error('Cannot open transcription output file:', error);
@@ -4053,7 +4130,7 @@
       transcriptionOpenFolderBtn?.addEventListener('click', async () => {
         if (!isTauri || !transcriptionOutputDir) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: transcriptionOutputDir });
         } catch (error) {
           console.error('Cannot open transcription output folder:', error);
@@ -4077,7 +4154,7 @@
       transcriptionSuccessOpenFolder?.addEventListener('click', async () => {
         if (!isTauri || !transcriptionOutputDir) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: transcriptionOutputDir });
         } catch (error) {
           console.error('Cannot open transcription output folder:', error);
@@ -4094,8 +4171,8 @@
         let unlisten = null;
         let completion = null;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const { listen } = await import('@tauri-apps/api/event');
+          const { invoke } = await tauriCorePromise;
+          const { listen } = await tauriEventPromise;
           unlisten = await listen('transcription-progress', event => {
             const progress = event.payload;
             if (!progress) return;
@@ -4310,6 +4387,7 @@
 
       const feedbackOverlay = document.getElementById('feedbackOverlay');
       const feedbackBack = document.getElementById('feedbackBack');
+      const feedbackSettings = document.getElementById('feedbackV2Settings');
       const feedbackBtn = document.getElementById('feedbackBtn');
       const lightraysBg = document.getElementById('lightraysBg');
       let lightraysInstance = null;
@@ -4338,7 +4416,6 @@
       function closeFeedbackOverlay() {
         if (!feedbackOverlay) return;
         feedbackOverlay.classList.remove('visible');
-        closeFeedbackDrawer();
         if (lightraysInstance) {
           lightraysInstance.destroy();
           lightraysInstance = null;
@@ -4362,6 +4439,10 @@
         feedbackBack.addEventListener('click', () => {
           closeFeedbackOverlay();
         });
+      }
+
+      if (feedbackSettings && feedbackOverlay) {
+        feedbackSettings.addEventListener('click', closeFeedbackOverlay);
       }
 
       // Audio Convert Tool Page
@@ -4591,7 +4672,7 @@
             renderHardwareOverviewError(hwText('desktopOnlyTitle'), hwText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwareOverviewData = await invoke('get_hardware_overview');
           renderHardwareOverview(hardwareOverviewData);
           hardwareOverviewScannedAt = new Date();
@@ -4830,7 +4911,7 @@
         if (hardwareCpuMemoryLiveLoading || !hardwareCpuMemoryData || !hardwareCpuMemoryOverlay?.classList.contains('visible') || !isTauri) return;
         hardwareCpuMemoryLiveLoading = true;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const live = await invoke('get_cpu_memory_live_stats');
           hardwareCpuMemoryData = { ...hardwareCpuMemoryData, current: { ...(hardwareCpuMemoryData.current || {}), ...live } };
           renderCpuMemoryInfo(hardwareCpuMemoryData);
@@ -4865,7 +4946,7 @@
             renderCpuMemoryError(cpuMemoryText('desktopOnlyTitle'), cpuMemoryText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwareCpuMemoryData = await invoke('get_cpu_memory_info');
           renderCpuMemoryInfo(hardwareCpuMemoryData);
           updateCpuMemoryUpdatedAt();
@@ -5117,7 +5198,7 @@
             renderGpuDisplayError(gpuDisplayText('desktopOnlyTitle'), gpuDisplayText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwareGpuDisplayData = await invoke('get_gpu_display_info');
           renderGpuDisplayInfo(hardwareGpuDisplayData);
           updateGpuDisplayUpdatedAt();
@@ -5302,7 +5383,7 @@
             renderMainboardError(mainboardText('desktopOnlyTitle'), mainboardText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwareMainboardData = await invoke('get_mainboard_firmware_info');
           renderMainboardInfo(hardwareMainboardData);
           mainboardUpdatedAt();
@@ -5488,7 +5569,7 @@
             renderStorageError(storageText('desktopOnlyTitle'), storageText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwareStorageData = await invoke('get_storage_health_info');
           renderStorageInfo(hardwareStorageData);
           storageUpdatedAt();
@@ -5639,7 +5720,7 @@
             renderNetworkDevicesError(networkDevicesText('desktopOnlyTitle'), networkDevicesText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwareNetworkDevicesData = await invoke('get_network_devices_info');
           renderNetworkDevicesInfo(hardwareNetworkDevicesData);
           networkDevicesUpdatedAt();
@@ -5842,7 +5923,7 @@
             renderPowerSensorsError(powerSensorsText('desktopOnlyTitle'), powerSensorsText('desktopOnlyDesc'));
             return;
           }
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           hardwarePowerSensorsData = await invoke('get_power_sensors_info');
           renderPowerSensorsInfo(hardwarePowerSensorsData);
           powerSensorsUpdatedAt();
@@ -5980,7 +6061,7 @@
           throw new Error('ppt-render:invalid-extension');
         }
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const rawBytes = await invoke('read_file_bytes_limited', {
             path: file.path,
             maxBytes: PPT_RENDER_LIMITS.maxInputBytes
@@ -6205,7 +6286,7 @@
           if (!selectedFile || !manifest) throw new Error('ppt-render:invalid-input');
           if (!isTauri || !selectedFile.path) throw new Error('ppt-render:desktop-only');
           await ensurePptRuntimeAvailable();
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const outputDir = await getOutputDir(outputCategory);
           const baseName = sanitizePptRenderBaseName(manifest.base_name || selectedFile.name || selectedFile.path || 'presentation.pptx');
           return invoke('convert_ppt_to_pdf', {
@@ -6293,7 +6374,7 @@
         successOpenFolder?.addEventListener('click', async () => {
           if (!isTauri || !lastOutputPath) return;
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             await invoke('open_path', { path: lastOutputPath });
           } catch (error) {
             console.error('Open PPT output folder failed:', error);
@@ -6513,7 +6594,7 @@
           throw new Error('ppt-image-extract:invalid_extension');
         }
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const rawBytes = await invoke('read_file_bytes_limited', {
             path: file.path,
             maxBytes: PPT_IMAGE_EXTRACT_LIMITS.maxInputBytes
@@ -6787,7 +6868,7 @@
         const root = await getOutputDir('PPT_Images');
         const folderBase = `${sanitizePptImageBaseName(baseName)}_ppt_images`;
         if (!isTauri) return pptImagesJoinPath(root, folderBase);
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         for (let counter = 0; counter < 1000; counter++) {
           const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
           const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
@@ -6818,7 +6899,7 @@
           const baseName = sanitizePptImageBaseName(pptImagesFile?.name || pptImagesFile?.path || pptImagesManifest.source_name);
           const outputs = [];
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getPptImagesOutputDirectory(baseName);
             for (let index = 0; index < plan.selected_images.length; index++) {
               const item = plan.selected_images[index];
@@ -6974,7 +7055,7 @@
       pptImagesSuccessOpenFolder?.addEventListener('click', async () => {
         if (!isTauri || !pptImagesLastOutputPath) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: pptImagesLastOutputPath });
         } catch (error) {
           console.error('Open PPT images output folder failed:', error);
@@ -7156,7 +7237,7 @@
           throw new Error('ppt-text-extract:invalid_extension');
         }
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const rawBytes = await invoke('read_file_bytes_limited', {
             path: file.path,
             maxBytes: PPT_TEXT_EXTRACT_LIMITS.maxInputBytes
@@ -7366,7 +7447,7 @@
         const root = await getOutputDir('PPT_Text');
         const folderBase = `${sanitizePptTextBaseName(baseName)}_ppt_text`;
         if (!isTauri) return pptImagesJoinPath(root, folderBase);
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         for (let counter = 0; counter < 1000; counter++) {
           const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
           const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
@@ -7454,7 +7535,7 @@
           }
           const encoder = new TextEncoder();
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getPptTextOutputDirectory(baseName);
             setPptTextProgress(76, pptTextText('writing'));
             for (const format of pptTextOutputFormats(result.format)) {
@@ -7563,7 +7644,7 @@
       pptTextSuccessOpenFolder?.addEventListener('click', async () => {
         if (!isTauri || !pptTextLastOutputPath) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: pptTextLastOutputPath });
         } catch (error) {
           console.error('Open PPT text output folder failed:', error);
@@ -7745,7 +7826,7 @@
           throw new Error('ppt-compress:invalid_extension');
         }
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const rawBytes = await invoke('read_file_bytes_limited', {
             path: file.path,
             maxBytes: PPT_COMPRESS_LIMITS.maxInputBytes
@@ -8026,7 +8107,7 @@
         const root = await getOutputDir('PPT_Compress');
         const folderBase = `${sanitizePptCompressBaseName(baseName)}_ppt_compress`;
         if (!isTauri) return pptImagesJoinPath(root, folderBase);
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         for (let counter = 0; counter < 1000; counter++) {
           const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
           const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
@@ -8062,7 +8143,7 @@
             output_file: pptCompressOutputFileName(baseName)
           };
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getPptCompressOutputDirectory(baseName);
             publicResult.output_dir = outputDir;
             publicResult.output_path = pptImagesJoinPath(outputDir, publicResult.output_file);
@@ -8162,7 +8243,7 @@
       pptCompressSuccessOpenFolder?.addEventListener('click', async () => {
         if (!isTauri || !pptCompressLastOutputPath) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: pptCompressLastOutputPath });
         } catch (error) {
           console.error('Open PPT compression output folder failed:', error);
@@ -8542,7 +8623,7 @@
         const root = await getOutputDir('PPT_Outline');
         const folderBase = `${sanitizePptOutlineBaseName(baseName)}_ppt_outline`;
         if (!isTauri) return pptImagesJoinPath(root, folderBase);
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         for (let counter = 0; counter < 1000; counter++) {
           const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
           const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
@@ -8641,7 +8722,7 @@
           generated_at: publicResult.generated_at
         };
         if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           for (const [fileName, bytes, kind] of [
             ['outline.md', encoder.encode(markdown), 'markdown'],
             ['outline.json', encoder.encode(outlineJson), 'json']
@@ -8750,7 +8831,7 @@
       pptOutlineSuccessOpenFolder?.addEventListener('click', async () => {
         if (!isTauri || !pptOutlineLastOutputPath) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: pptOutlineLastOutputPath });
         } catch (error) {
           console.error('Open PPT outline output folder failed:', error);
@@ -9048,7 +9129,7 @@
         }
         let text = '';
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const rawBytes = await invoke('read_file_bytes_limited', {
             path: file.path,
             maxBytes: 4 * 1024 * 1024
@@ -9193,7 +9274,7 @@
         const root = await getOutputDir('PPT_Draft');
         const folderBase = `${sanitizePptDraftBaseName(baseName)}_ppt_draft`;
         if (!isTauri) return pptImagesJoinPath(root, folderBase);
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         for (let counter = 0; counter < 1000; counter++) {
           const candidate = pptImagesJoinPath(root, counter ? `${folderBase}_${counter}` : folderBase);
           const exists = await invoke('exists_path', { path: candidate }).catch(() => false);
@@ -9941,7 +10022,7 @@
           manifest_path: pptImagesJoinPath(outputDir, 'manifest.json')
         };
         if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           for (const [fileName, bytes, kind] of [
             [pptxFile, draft.bytes, 'pptx'],
             ['outline.json', encoder.encode(outlineJson), 'json'],
@@ -10212,7 +10293,7 @@
       pptDraftSuccessOpenFolder?.addEventListener('click', async () => {
         if (!isTauri || !pptDraftLastOutputPath) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: pptDraftLastOutputPath });
         } catch (error) {
           console.error('Open PPT draft output folder failed:', error);
@@ -10398,7 +10479,7 @@
         largeFileCleanupSetDriveSpace(null);
         largeFileCleanupUpdateSummary();
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const space = await invoke('get_cleanup_drive_space', { rootPath });
           if (runId !== largeFileCleanupDriveSpaceRunId) return;
           largeFileCleanupSetDriveSpace(space);
@@ -10756,7 +10837,7 @@
       async function openLargeFileCleanupCandidateFolder(candidate) {
         if (!candidate?.path) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_path', { path: candidate.path });
         } catch (error) {
           console.error('Open cleanup candidate folder failed:', error);
@@ -11041,7 +11122,7 @@
         largeFileCleanupAiProgressTotal = 0;
         largeFileCleanupRenderTable();
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const result = await invoke('scan_large_files', {
             rootPath: args.rootPath,
             minSizeMb: args.minSizeMb,
@@ -11287,7 +11368,7 @@
         if (!window.confirm(confirmMessage)) return;
         largeFileCleanupSetBusy(true, 'delete');
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const result = await invoke('move_files_to_recycle_bin', {
             paths: selected.map(item => item.path)
           });
@@ -11338,7 +11419,7 @@
       largeFileCleanupModeGroup?.addEventListener('click', largeFileCleanupModeChipHandler);
       largeFileCleanupSuccessOpenFolder?.addEventListener('click', async () => {
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_recycle_bin');
         } catch (error) {
           console.error('Open recycle bin failed:', error);
@@ -11472,7 +11553,7 @@
 
       async function cDriveCleanupInvoke(name, args) {
         if (!isTauri) throw new Error('desktop-only');
-        const { invoke } = await import('@tauri-apps/api/core');
+        const { invoke } = await tauriCorePromise;
         return args === undefined ? invoke(name) : invoke(name, args);
       }
 
@@ -11960,7 +12041,7 @@
         if (audioConvertProcessBarFill) audioConvertProcessBarFill.style.width = '0%';
         processingAudio = false;
         if (isTauri && wasProcessing) {
-          import('@tauri-apps/api/core')
+          tauriCorePromise
             .then(({ invoke }) => invoke('cancel_convert'))
             .catch((error) => console.error('Cancel failed:', error));
         }
@@ -11984,8 +12065,8 @@
         if (isTauri) {
           let unlisten = null;
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            const { listen } = await import('@tauri-apps/api/event');
+            const { invoke } = await tauriCorePromise;
+            const { listen } = await tauriEventPromise;
 
             const finalOutputDir = await getOutputDir('Audio');
 
@@ -12159,6 +12240,564 @@
             render();
           });
         });
+      }
+
+      // ===== Image Crop Tool =====
+      const imageCropOverlay = document.getElementById('imageCropOverlay');
+      const imageCropCanvas = document.getElementById('imageCropCanvas');
+      const imageCropStageShell = document.getElementById('imageCropStageShell');
+      const imageCropEmpty = document.getElementById('imageCropEmpty');
+      const imageCropPick = document.getElementById('imageCropPick');
+      const imageCropExport = document.getElementById('imageCropExport');
+      const imageCropProcessing = document.getElementById('imageCropProcessing');
+      const imageCropSnapIndicator = document.getElementById('imageCropSnapIndicator');
+      const imageCropSelectionSize = document.getElementById('imageCropSelectionSize');
+      const imageCropFileMeta = document.getElementById('imageCropFileMeta');
+      const imageCropOutputName = document.getElementById('imageCropOutputName');
+      const imageCropQuality = document.getElementById('imageCropQuality');
+      const imageCropQualityValue = document.getElementById('imageCropQualityValue');
+      const imageCropQualityWrap = document.getElementById('imageCropQualityWrap');
+      const imageCropBackgroundWrap = document.getElementById('imageCropBackgroundWrap');
+      const imageCropBackground = document.getElementById('imageCropBackground');
+      const imageCropGuide = document.getElementById('imageCropGuide');
+      const imageCropSpiralDirection = document.getElementById('imageCropSpiralDirection');
+      const imageCropSnap = document.getElementById('imageCropSnap');
+      const imageCropUndo = document.getElementById('imageCropUndo');
+      const imageCropRedo = document.getElementById('imageCropRedo');
+      const imageCropPlasmaBg = document.getElementById('imageCropPlasmaBg');
+      let imageCropPlasmaInstance = null;
+      let imageCropResizeObserver = null;
+      let imageCropImage = null;
+      let imageCropObjectUrl = '';
+      let imageCropSource = null;
+      let imageCropRect = null;
+      let imageCropDisplayRect = null;
+      let imageCropRotation = 0;
+      let imageCropFlipHorizontal = false;
+      let imageCropFlipVertical = false;
+      let imageCropRatio = 'free';
+      let imageCropFormat = 'png';
+      let imageCropSpiralRotation = 0;
+      let imageCropInteraction = null;
+      let imageCropSnapState = { x: false, y: false };
+      let imageCropHistory = [];
+      let imageCropHistoryIndex = -1;
+      let imageCropFrame = 0;
+      let imageCropBusy = false;
+      let imageCropLastOutputPath = '';
+      let imageCropLifecycleId = 0;
+      let imageCropLoadId = 0;
+
+      function currentImageCropSize() {
+        if (!imageCropSource) return { width: 1, height: 1 };
+        return transformedImageSize(imageCropSource.width, imageCropSource.height, imageCropRotation);
+      }
+
+      function imageCropRatioValue() {
+        if (imageCropRatio === 'free') return null;
+        const size = currentImageCropSize();
+        if (imageCropRatio === 'original') return size.width / size.height;
+        if (imageCropRatio === 'custom') {
+          const width = Math.max(1, Number(document.getElementById('imageCropRatioWidth')?.value) || 1);
+          const height = Math.max(1, Number(document.getElementById('imageCropRatioHeight')?.value) || 1);
+          return width / height;
+        }
+        const [width, height] = imageCropRatio.split(':').map(Number);
+        return width > 0 && height > 0 ? width / height : null;
+      }
+
+      function imageCropSnapshot() {
+        return {
+          rect: imageCropRect ? { ...imageCropRect } : null,
+          rotation: imageCropRotation,
+          flipHorizontal: imageCropFlipHorizontal,
+          flipVertical: imageCropFlipVertical
+        };
+      }
+
+      function updateImageCropHistoryButtons() {
+        if (imageCropUndo) imageCropUndo.disabled = imageCropHistoryIndex <= 0 || imageCropBusy;
+        if (imageCropRedo) imageCropRedo.disabled = imageCropHistoryIndex < 0 || imageCropHistoryIndex >= imageCropHistory.length - 1 || imageCropBusy;
+      }
+
+      function pushImageCropHistory() {
+        if (!imageCropRect) return;
+        const snapshot = imageCropSnapshot();
+        const current = imageCropHistory[imageCropHistoryIndex];
+        if (current && cropStatesEqual(current, snapshot)) return;
+        imageCropHistory.splice(imageCropHistoryIndex + 1);
+        imageCropHistory.push(snapshot);
+        if (imageCropHistory.length > 60) imageCropHistory.shift();
+        imageCropHistoryIndex = imageCropHistory.length - 1;
+        updateImageCropHistoryButtons();
+      }
+
+      function applyImageCropSnapshot(snapshot) {
+        if (!snapshot?.rect) return;
+        imageCropRect = { ...snapshot.rect };
+        imageCropRotation = normalizeRotation(snapshot.rotation);
+        imageCropFlipHorizontal = Boolean(snapshot.flipHorizontal);
+        imageCropFlipVertical = Boolean(snapshot.flipVertical);
+        imageCropSnapState = { x: false, y: false };
+        scheduleImageCropRender();
+        updateImageCropHistoryButtons();
+      }
+
+      function imageCropGuideLines(context, crop) {
+        const guide = imageCropGuide?.value || 'thirds';
+        if (guide === 'none') return;
+        const x = crop.x;
+        const y = crop.y;
+        const width = crop.width;
+        const height = crop.height;
+        context.save();
+        context.beginPath();
+        context.rect(x, y, width, height);
+        context.clip();
+        context.strokeStyle = 'rgba(255,255,255,.58)';
+        context.lineWidth = 1;
+        const line = (x1, y1, x2, y2) => { context.moveTo(x1, y1); context.lineTo(x2, y2); };
+        context.beginPath();
+        if (guide === 'thirds') {
+          line(x + width / 3, y, x + width / 3, y + height); line(x + width * 2 / 3, y, x + width * 2 / 3, y + height);
+          line(x, y + height / 3, x + width, y + height / 3); line(x, y + height * 2 / 3, x + width, y + height * 2 / 3);
+        } else if (guide === 'golden') {
+          const short = .381966;
+          line(x + width * short, y, x + width * short, y + height); line(x + width * (1 - short), y, x + width * (1 - short), y + height);
+          line(x, y + height * short, x + width, y + height * short); line(x, y + height * (1 - short), x + width, y + height * (1 - short));
+        } else if (guide === 'crosshair') {
+          line(x + width / 2, y, x + width / 2, y + height); line(x, y + height / 2, x + width, y + height / 2);
+          const radius = Math.min(width, height) * .08; context.moveTo(x + width / 2 + radius, y + height / 2); context.arc(x + width / 2, y + height / 2, radius, 0, Math.PI * 2);
+        } else if (guide === 'diagonals') {
+          line(x, y, x + width, y + height); line(x + width, y, x, y + height);
+        } else if (guide === 'grid') {
+          for (let index = 1; index < 4; index += 1) { line(x + width * index / 4, y, x + width * index / 4, y + height); line(x, y + height * index / 4, x + width, y + height * index / 4); }
+        } else if (guide === 'safe-area') {
+          context.rect(x + width * .05, y + height * .05, width * .9, height * .9);
+          context.rect(x + width * .1, y + height * .1, width * .8, height * .8);
+        }
+        context.stroke();
+        if (guide === 'spiral') {
+          const golden = 1.61803398875;
+          context.translate(x + width / 2, y + height / 2);
+          context.rotate(imageCropSpiralRotation * Math.PI / 2);
+          context.beginPath();
+          const radius = Math.min(width, height) * .025;
+          for (let angle = 0; angle <= Math.PI * 4.5; angle += .05) {
+            const value = radius * Math.pow(golden, angle / (Math.PI / 2));
+            const pointX = Math.cos(angle) * value;
+            const pointY = Math.sin(angle) * value;
+            if (angle === 0) context.moveTo(pointX, pointY); else context.lineTo(pointX, pointY);
+          }
+          context.stroke();
+        }
+        context.restore();
+      }
+
+      function renderImageCropCanvas() {
+        imageCropFrame = 0;
+        if (!imageCropCanvas || !imageCropStageShell || !imageCropImage || !imageCropRect) return;
+        const width = Math.max(1, imageCropCanvas.clientWidth);
+        const height = Math.max(1, imageCropCanvas.clientHeight);
+        const ratio = Math.min(2, window.devicePixelRatio || 1);
+        const pixelWidth = Math.round(width * ratio);
+        const pixelHeight = Math.round(height * ratio);
+        if (imageCropCanvas.width !== pixelWidth || imageCropCanvas.height !== pixelHeight) {
+          imageCropCanvas.width = pixelWidth;
+          imageCropCanvas.height = pixelHeight;
+        }
+        const context = imageCropCanvas.getContext('2d');
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.clearRect(0, 0, width, height);
+        const imageSize = currentImageCropSize();
+        const padding = Math.min(34, Math.max(14, Math.min(width, height) * .05));
+        const scale = Math.min((width - padding * 2) / imageSize.width, (height - padding * 2) / imageSize.height);
+        const displayWidth = imageSize.width * scale;
+        const displayHeight = imageSize.height * scale;
+        imageCropDisplayRect = { x: (width - displayWidth) / 2, y: (height - displayHeight) / 2, width: displayWidth, height: displayHeight };
+
+        context.save();
+        context.translate(width / 2, height / 2);
+        context.scale(scale * (imageCropFlipHorizontal ? -1 : 1), scale * (imageCropFlipVertical ? -1 : 1));
+        context.rotate(imageCropRotation * Math.PI / 180);
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(imageCropImage, -imageCropSource.width / 2, -imageCropSource.height / 2, imageCropSource.width, imageCropSource.height);
+        context.restore();
+
+        const crop = sourceRectToDisplay(imageCropRect, imageCropDisplayRect, imageSize);
+        context.save();
+        context.fillStyle = 'rgba(0,0,0,.62)';
+        context.beginPath();
+        context.rect(imageCropDisplayRect.x, imageCropDisplayRect.y, imageCropDisplayRect.width, imageCropDisplayRect.height);
+        context.rect(crop.x, crop.y, crop.width, crop.height);
+        context.fill('evenodd');
+        context.restore();
+
+        if (imageCropSnapState.x || imageCropSnapState.y) {
+          context.save();
+          context.strokeStyle = 'rgba(255,255,255,.42)';
+          context.setLineDash([3, 5]);
+          context.beginPath();
+          if (imageCropSnapState.x) { context.moveTo(imageCropDisplayRect.x + imageCropDisplayRect.width / 2, imageCropDisplayRect.y); context.lineTo(imageCropDisplayRect.x + imageCropDisplayRect.width / 2, imageCropDisplayRect.y + imageCropDisplayRect.height); }
+          if (imageCropSnapState.y) { context.moveTo(imageCropDisplayRect.x, imageCropDisplayRect.y + imageCropDisplayRect.height / 2); context.lineTo(imageCropDisplayRect.x + imageCropDisplayRect.width, imageCropDisplayRect.y + imageCropDisplayRect.height / 2); }
+          context.stroke(); context.restore();
+        }
+
+        imageCropGuideLines(context, crop);
+        context.save();
+        context.strokeStyle = 'rgba(255,255,255,.96)';
+        context.lineWidth = 1.5;
+        context.strokeRect(crop.x + .75, crop.y + .75, Math.max(0, crop.width - 1.5), Math.max(0, crop.height - 1.5));
+        const handles = [[crop.x, crop.y], [crop.x + crop.width / 2, crop.y], [crop.x + crop.width, crop.y], [crop.x, crop.y + crop.height / 2], [crop.x + crop.width, crop.y + crop.height / 2], [crop.x, crop.y + crop.height], [crop.x + crop.width / 2, crop.y + crop.height], [crop.x + crop.width, crop.y + crop.height]];
+        context.fillStyle = '#fff';
+        context.strokeStyle = 'rgba(0,0,0,.7)';
+        handles.forEach(([handleX, handleY]) => { context.fillRect(handleX - 3.5, handleY - 3.5, 7, 7); context.strokeRect(handleX - 3.5, handleY - 3.5, 7, 7); });
+        context.restore();
+        const exported = exportCropRect(imageCropRect, imageSize);
+        if (imageCropSelectionSize) imageCropSelectionSize.textContent = `${exported.width} × ${exported.height} px · ${imageCropFormat.toUpperCase()}`;
+      }
+
+      function scheduleImageCropRender() {
+        if (!imageCropFrame && imageCropOverlay?.classList.contains('visible')) imageCropFrame = requestAnimationFrame(renderImageCropCanvas);
+      }
+
+      function imageCropHitTest(point) {
+        if (!imageCropRect || !imageCropDisplayRect) return null;
+        const crop = sourceRectToDisplay(imageCropRect, imageCropDisplayRect, currentImageCropSize());
+        const threshold = 11;
+        const nearX = Math.abs(point.x - crop.x) <= threshold ? 'w' : Math.abs(point.x - crop.x - crop.width) <= threshold ? 'e' : '';
+        const nearY = Math.abs(point.y - crop.y) <= threshold ? 'n' : Math.abs(point.y - crop.y - crop.height) <= threshold ? 's' : '';
+        if (nearX && point.y >= crop.y - threshold && point.y <= crop.y + crop.height + threshold) return nearY + nearX;
+        if (nearY && point.x >= crop.x - threshold && point.x <= crop.x + crop.width + threshold) return nearY + nearX;
+        if (point.x >= crop.x && point.x <= crop.x + crop.width && point.y >= crop.y && point.y <= crop.y + crop.height) return 'move';
+        return null;
+      }
+
+      function imageCropPointerPoint(event) {
+        const bounds = imageCropCanvas.getBoundingClientRect();
+        return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+      }
+
+      imageCropCanvas?.addEventListener('pointerdown', event => {
+        if (imageCropBusy || !imageCropDisplayRect || !imageCropRect) return;
+        const point = imageCropPointerPoint(event);
+        const handle = imageCropHitTest(point);
+        if (!handle) return;
+        event.preventDefault();
+        imageCropCanvas.setPointerCapture(event.pointerId);
+        imageCropInteraction = { pointerId: event.pointerId, handle, start: displayPointToSource(point, imageCropDisplayRect, currentImageCropSize()), rect: { ...imageCropRect } };
+        imageCropCanvas.classList.toggle('is-moving', handle === 'move');
+        imageCropCanvas.classList.toggle('is-resizing', handle !== 'move');
+      });
+
+      imageCropCanvas?.addEventListener('pointermove', event => {
+        const point = imageCropPointerPoint(event);
+        if (!imageCropInteraction) {
+          const handle = imageCropHitTest(point);
+          imageCropCanvas.style.cursor = handle === 'move' ? 'move' : handle ? `${handle === 'ne' || handle === 'sw' ? 'nesw' : handle === 'n' || handle === 's' ? 'ns' : handle === 'e' || handle === 'w' ? 'ew' : 'nwse'}-resize` : 'default';
+          return;
+        }
+        const sourcePoint = displayPointToSource(point, imageCropDisplayRect, currentImageCropSize());
+        const deltaX = sourcePoint.x - imageCropInteraction.start.x;
+        const deltaY = sourcePoint.y - imageCropInteraction.start.y;
+        const imageSize = currentImageCropSize();
+        if (imageCropInteraction.handle === 'move') {
+          imageCropRect = moveCropRect(imageCropInteraction.rect, deltaX, deltaY, imageSize);
+          if (imageCropSnap?.checked && !event.altKey) {
+            const displayScale = imageCropDisplayRect.width / imageSize.width;
+            const snapped = snapCropToCenter(imageCropRect, imageSize, displayScale, imageCropSnapState);
+            imageCropRect = snapped.rect;
+            imageCropSnapState = snapped.snapped;
+          } else imageCropSnapState = { x: false, y: false };
+        } else {
+          imageCropRect = resizeCropRect(imageCropInteraction.rect, imageCropInteraction.handle, deltaX, deltaY, imageSize, imageCropRatioValue());
+          imageCropSnapState = { x: false, y: false };
+        }
+        imageCropSnapIndicator?.classList.toggle('visible', imageCropSnapState.x || imageCropSnapState.y);
+        scheduleImageCropRender();
+      });
+
+      function finishImageCropPointer(event) {
+        if (!imageCropInteraction || (event.pointerId !== undefined && event.pointerId !== imageCropInteraction.pointerId)) return;
+        imageCropInteraction = null;
+        imageCropSnapState = { x: false, y: false };
+        imageCropSnapIndicator?.classList.remove('visible');
+        imageCropCanvas?.classList.remove('is-moving', 'is-resizing');
+        pushImageCropHistory();
+        scheduleImageCropRender();
+      }
+      imageCropCanvas?.addEventListener('pointerup', finishImageCropPointer);
+      imageCropCanvas?.addEventListener('pointercancel', finishImageCropPointer);
+      imageCropCanvas?.addEventListener('lostpointercapture', finishImageCropPointer);
+
+      imageCropCanvas?.addEventListener('keydown', event => {
+        if (!imageCropRect || imageCropBusy || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        imageCropRect = moveCropRect(imageCropRect, event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0, event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0, currentImageCropSize());
+        pushImageCropHistory();
+        scheduleImageCropRender();
+      });
+
+      function clearImageCropSource() {
+        imageCropLoadId += 1;
+        if (imageCropObjectUrl) URL.revokeObjectURL(imageCropObjectUrl);
+        imageCropObjectUrl = '';
+        if (imageCropImage) imageCropImage.src = '';
+        imageCropImage = null;
+        imageCropSource = null;
+        imageCropRect = null;
+        imageCropDisplayRect = null;
+        imageCropHistory = [];
+        imageCropHistoryIndex = -1;
+        imageCropStageShell?.classList.remove('has-image');
+        if (imageCropExport) imageCropExport.disabled = true;
+        if (imageCropFileMeta) imageCropFileMeta.textContent = '精确构图，原始分辨率本地导出';
+        if (imageCropSelectionSize) imageCropSelectionSize.textContent = '等待载入图片';
+        updateImageCropHistoryButtons();
+      }
+
+      async function loadImageCropSource(source) {
+        if (!source || imageCropBusy) return;
+        const requestId = ++imageCropLoadId;
+        const lifecycleId = imageCropLifecycleId;
+        let localObjectUrl = '';
+        try {
+          let previewUrl;
+          let path = '';
+          let name = source.name || '';
+          let width;
+          let height;
+          if (typeof source === 'string') {
+            path = source;
+            name = path.split(/[\\/]/).pop() || path;
+            const { invoke } = await tauriCorePromise;
+            const [inspected] = await invoke('inspect_image_stitch_inputs', { inputPaths: [path] });
+            if (requestId !== imageCropLoadId || lifecycleId !== imageCropLifecycleId) return;
+            if (!inspected) throw new Error('无法读取图片');
+            previewUrl = inspected.preview_data_url || inspected.previewDataUrl || inspected.thumbnail_data_url || inspected.thumbnailDataUrl;
+            width = inspected.width;
+            height = inspected.height;
+          } else {
+            if (!/^image\//.test(source.type || '')) throw new Error('请选择图片文件');
+            localObjectUrl = URL.createObjectURL(source);
+            previewUrl = localObjectUrl;
+          }
+          const image = new Image();
+          await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('图片解码失败')); image.src = previewUrl; });
+          if (requestId !== imageCropLoadId || lifecycleId !== imageCropLifecycleId || !imageCropOverlay?.classList.contains('visible')) {
+            image.src = '';
+            if (localObjectUrl) URL.revokeObjectURL(localObjectUrl);
+            return;
+          }
+          if (localObjectUrl) {
+            if (imageCropObjectUrl) URL.revokeObjectURL(imageCropObjectUrl);
+            imageCropObjectUrl = localObjectUrl;
+            localObjectUrl = '';
+          }
+          imageCropImage = image;
+          imageCropSource = { path, name, width: Number(width) || image.naturalWidth, height: Number(height) || image.naturalHeight };
+          imageCropRotation = 0;
+          imageCropFlipHorizontal = false;
+          imageCropFlipVertical = false;
+          imageCropRatio = 'free';
+          document.querySelectorAll('#imageCropRatioGrid [data-ratio]').forEach(button => button.classList.toggle('active', button.dataset.ratio === 'free'));
+          document.getElementById('imageCropCustomRatio').hidden = true;
+          imageCropRect = fitCropToRatio(currentImageCropSize(), null, .88);
+          imageCropHistory = [imageCropSnapshot()];
+          imageCropHistoryIndex = 0;
+          imageCropStageShell?.classList.add('has-image');
+          if (imageCropExport) imageCropExport.disabled = !path;
+          if (imageCropFileMeta) imageCropFileMeta.textContent = `${name} · ${imageCropSource.width} × ${imageCropSource.height} px`;
+          if (imageCropOutputName) imageCropOutputName.value = `${name.replace(/\.[^.]+$/, '')}_crop`;
+          document.getElementById('imageCropPickLabel').textContent = '替换图片';
+          updateImageCropHistoryButtons();
+          scheduleImageCropRender();
+          imageCropCanvas?.focus({ preventScroll: true });
+        } catch (error) {
+          if (localObjectUrl) URL.revokeObjectURL(localObjectUrl);
+          if (requestId !== imageCropLoadId || lifecycleId !== imageCropLifecycleId) return;
+          console.error('Image crop load failed:', error);
+          window.showToast?.(`无法载入图片：${String(error?.message || error).replace('image-stitch:', '')}`);
+        }
+      }
+
+      async function pickImageCropSource() {
+        if (imageCropBusy) return;
+        const lifecycleId = imageCropLifecycleId;
+        if (isTauri) {
+          const { open } = await import('@tauri-apps/plugin-dialog');
+          const selected = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] }] });
+          if (lifecycleId !== imageCropLifecycleId || !imageCropOverlay?.classList.contains('visible')) return;
+          if (typeof selected === 'string') await loadImageCropSource(selected);
+          return;
+        }
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/jpeg,image/png,image/webp,image/bmp,image/gif';
+        input.addEventListener('change', () => { if (input.files?.[0]) void loadImageCropSource(input.files[0]); }, { once: true });
+        input.click();
+      }
+
+      function openImageCropOverlay() {
+        if (!imageCropOverlay) return;
+        imageCropLifecycleId += 1;
+        imageCropOverlay.classList.add('visible');
+        imageCropOverlay.setAttribute('aria-hidden', 'false');
+        if (imageCropPlasmaBg && !imageCropPlasmaInstance) imageCropPlasmaInstance = initStandardToolPlasma(imageCropPlasmaBg);
+        if (!imageCropResizeObserver && imageCropStageShell) {
+          imageCropResizeObserver = new ResizeObserver(scheduleImageCropRender);
+          imageCropResizeObserver.observe(imageCropStageShell);
+        }
+        scheduleImageCropRender();
+        if (typeof createIcons === 'function') createIcons({ icons });
+      }
+
+      function closeImageCropOverlay() {
+        if (!imageCropOverlay || imageCropBusy) return;
+        imageCropLifecycleId += 1;
+        imageCropOverlay.classList.remove('visible');
+        imageCropOverlay.setAttribute('aria-hidden', 'true');
+        if (imageCropFrame) cancelAnimationFrame(imageCropFrame);
+        imageCropFrame = 0;
+        imageCropResizeObserver?.disconnect();
+        imageCropResizeObserver = null;
+        if (imageCropPlasmaInstance) { imageCropPlasmaInstance(); imageCropPlasmaInstance = null; }
+        clearImageCropSource();
+        imageCropLastOutputPath = '';
+        document.getElementById('imageCropSuccessOverlay')?.classList.remove('visible');
+        document.getElementById('imageCropPickLabel').textContent = '选择图片';
+      }
+
+      document.querySelectorAll('.audio-list-item[data-tool="image-crop"]').forEach(item => {
+        item.addEventListener('click', openImageCropOverlay);
+        item.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openImageCropOverlay(); } });
+      });
+      document.getElementById('imageCropBack')?.addEventListener('click', closeImageCropOverlay);
+      imageCropPick?.addEventListener('click', pickImageCropSource);
+      imageCropEmpty?.addEventListener('click', pickImageCropSource);
+
+      document.getElementById('imageCropRatioGrid')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-ratio]');
+        if (!button || imageCropBusy) return;
+        imageCropRatio = button.dataset.ratio;
+        document.querySelectorAll('#imageCropRatioGrid [data-ratio]').forEach(item => item.classList.toggle('active', item === button));
+        document.getElementById('imageCropCustomRatio').hidden = imageCropRatio !== 'custom';
+        if (imageCropRect) { imageCropRect = fitCropToRatio(currentImageCropSize(), imageCropRatioValue(), .88); pushImageCropHistory(); scheduleImageCropRender(); }
+      });
+
+      ['imageCropRatioWidth', 'imageCropRatioHeight'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+        if (imageCropRatio === 'custom' && imageCropRect) { imageCropRect = fitCropToRatio(currentImageCropSize(), imageCropRatioValue(), .88); pushImageCropHistory(); scheduleImageCropRender(); }
+      }));
+
+      document.querySelector('.image-crop-icon-tools')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-crop-transform]');
+        if (!button || !imageCropRect || imageCropBusy) return;
+        const action = button.dataset.cropTransform;
+        const size = currentImageCropSize();
+        if (action === 'rotate-left' || action === 'rotate-right') {
+          const direction = action === 'rotate-left' ? 270 : 90;
+          const rotated = rotateCropRect(imageCropRect, size, direction);
+          imageCropRect = rotated.rect;
+          imageCropRotation = normalizeRotation(imageCropRotation + direction);
+          [imageCropFlipHorizontal, imageCropFlipVertical] = [imageCropFlipVertical, imageCropFlipHorizontal];
+          if (imageCropRatio !== 'free') imageCropRect = constrainCropToRatio(imageCropRect, currentImageCropSize(), imageCropRatioValue());
+        } else if (action === 'flip-horizontal') {
+          imageCropRect = flipCropRect(imageCropRect, size, 'horizontal'); imageCropFlipHorizontal = !imageCropFlipHorizontal;
+        } else if (action === 'flip-vertical') {
+          imageCropRect = flipCropRect(imageCropRect, size, 'vertical'); imageCropFlipVertical = !imageCropFlipVertical;
+        } else if (action === 'reset') {
+          imageCropRotation = 0; imageCropFlipHorizontal = false; imageCropFlipVertical = false;
+          imageCropRect = fitCropToRatio(currentImageCropSize(), imageCropRatioValue(), .88);
+        }
+        pushImageCropHistory(); scheduleImageCropRender();
+      });
+
+      imageCropUndo?.addEventListener('click', () => { if (imageCropHistoryIndex > 0) { imageCropHistoryIndex -= 1; applyImageCropSnapshot(imageCropHistory[imageCropHistoryIndex]); } });
+      imageCropRedo?.addEventListener('click', () => { if (imageCropHistoryIndex < imageCropHistory.length - 1) { imageCropHistoryIndex += 1; applyImageCropSnapshot(imageCropHistory[imageCropHistoryIndex]); } });
+      imageCropGuide?.addEventListener('change', () => { imageCropSpiralDirection.hidden = imageCropGuide.value !== 'spiral'; scheduleImageCropRender(); });
+      imageCropSpiralDirection?.addEventListener('click', () => { imageCropSpiralRotation = (imageCropSpiralRotation + 1) % 4; scheduleImageCropRender(); });
+      imageCropSnap?.addEventListener('change', () => { imageCropSnapState = { x: false, y: false }; imageCropSnapIndicator?.classList.remove('visible'); scheduleImageCropRender(); });
+      imageCropQuality?.addEventListener('input', () => { if (imageCropQualityValue) imageCropQualityValue.textContent = imageCropQuality.value; });
+
+      document.getElementById('imageCropFormat')?.addEventListener('click', event => {
+        const button = event.target.closest('[data-format]');
+        if (!button || imageCropBusy) return;
+        imageCropFormat = button.dataset.format;
+        document.querySelectorAll('#imageCropFormat [data-format]').forEach(item => item.classList.toggle('active', item === button));
+        const jpeg = imageCropFormat === 'jpg';
+        imageCropQualityWrap.hidden = !jpeg;
+        imageCropBackgroundWrap.hidden = !jpeg;
+        scheduleImageCropRender();
+      });
+
+      function imageCropErrorMessage(error) {
+        const code = String(error?.message || error || '');
+        if (code.includes('invalid-output-name')) return '文件名包含 Windows 不允许的字符，请修改后重试。';
+        if (code.includes('crop-out-of-bounds')) return '裁剪区域超出图片边界，请重置裁剪框后重试。';
+        if (code.includes('invalid-input') || code.includes('decode-failed')) return '无法读取这张图片，文件可能已损坏或格式不受支持。';
+        if (code.includes('output-dir') || code.includes('publish-failed')) return '无法写入输出目录，请检查存储设置和磁盘权限。';
+        return `导出失败：${code.replace('image-crop:', '')}`;
+      }
+
+      imageCropExport?.addEventListener('click', async () => {
+        if (!imageCropSource?.path || !imageCropRect || imageCropBusy) return;
+        imageCropBusy = true;
+        imageCropProcessing?.classList.add('visible');
+        imageCropExport.disabled = true;
+        updateImageCropHistoryButtons();
+        try {
+          const crop = exportCropRect(imageCropRect, currentImageCropSize());
+          const { invoke } = await tauriCorePromise;
+          const result = await invoke('crop_image', {
+            inputPath: imageCropSource.path,
+            outputDir: await getOutputDir('Images/Image Crop'),
+            outputName: imageCropOutputName?.value.trim() || null,
+            cropX: crop.x, cropY: crop.y, cropWidth: crop.width, cropHeight: crop.height,
+            rotation: imageCropRotation,
+            flipHorizontal: imageCropFlipHorizontal,
+            flipVertical: imageCropFlipVertical,
+            format: imageCropFormat,
+            jpegQuality: Number(imageCropQuality?.value) || 92,
+            backgroundRgba: `${imageCropBackground?.value || '#ffffff'}FF`
+          });
+          imageCropLastOutputPath = result.output_path || result.outputPath || '';
+          document.getElementById('imageCropSuccessMeta').textContent = `${result.format} · ${formatFileSize(Number(result.bytes) || 0)}`;
+          document.getElementById('imageCropSuccessSize').textContent = `${result.width} × ${result.height} px`;
+          document.getElementById('imageCropSuccessPath').textContent = displayFilesystemPath(imageCropLastOutputPath);
+          document.getElementById('imageCropSuccessOverlay')?.classList.add('visible');
+        } catch (error) {
+          console.error('Image crop export failed:', error);
+          window.showToast?.(imageCropErrorMessage(error));
+        } finally {
+          imageCropBusy = false;
+          imageCropProcessing?.classList.remove('visible');
+          imageCropExport.disabled = !imageCropSource?.path;
+          updateImageCropHistoryButtons();
+        }
+      });
+
+      document.getElementById('imageCropSuccessOk')?.addEventListener('click', () => document.getElementById('imageCropSuccessOverlay')?.classList.remove('visible'));
+      document.getElementById('imageCropOpenFolder')?.addEventListener('click', () => {
+        if (imageCropLastOutputPath) openOutputFolder(imageCropLastOutputPath).catch(() => {});
+        document.getElementById('imageCropSuccessOverlay')?.classList.remove('visible');
+      });
+
+      if (imageCropOverlay && isTauri) {
+        (async () => {
+          const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+          await getCurrentWebview().onDragDropEvent(async event => {
+            if (!imageCropOverlay.classList.contains('visible') || imageCropBusy) return;
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') document.getElementById('imageCropDropZone')?.classList.add('visible');
+            else if (payload.type === 'leave') document.getElementById('imageCropDropZone')?.classList.remove('visible');
+            else if (payload.type === 'drop') {
+              document.getElementById('imageCropDropZone')?.classList.remove('visible');
+              const path = (payload.paths || []).find(value => /\.(?:jpe?g|png|webp|bmp|gif)$/i.test(value));
+              if (path) await loadImageCropSource(path);
+            }
+          });
+        })().catch(error => console.error('Cannot register image crop drag and drop:', error));
       }
 
       // ===== Image Convert Tool =====
@@ -12389,7 +13028,7 @@
         if (imageConvertProcessBarFill) imageConvertProcessBarFill.style.width = '0%';
         processingImage = false;
         if (isTauri && wasProcessing) {
-          import('@tauri-apps/api/core')
+          tauriCorePromise
             .then(({ invoke }) => invoke('cancel_convert'))
             .catch((error) => console.error('Cancel failed:', error));
         }
@@ -12414,8 +13053,8 @@
         if (isTauri) {
           let unlisten = null;
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            const { listen } = await import('@tauri-apps/api/event');
+            const { invoke } = await tauriCorePromise;
+            const { listen } = await tauriEventPromise;
 
             const finalOutputDir = await getOutputDir('Images');
 
@@ -12741,7 +13380,7 @@
         if (imageCompressProcessBarFill) imageCompressProcessBarFill.style.width = '0%';
         processingImageCompress = false;
         if (isTauri && wasProcessing) {
-          import('@tauri-apps/api/core')
+          tauriCorePromise
             .then(({ invoke }) => invoke('cancel_convert'))
             .catch((error) => console.error('Cancel failed:', error));
         }
@@ -12766,8 +13405,8 @@
         if (isTauri) {
           let unlisten = null;
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            const { listen } = await import('@tauri-apps/api/event');
+            const { invoke } = await tauriCorePromise;
+            const { listen } = await tauriEventPromise;
 
             const finalOutputDir = await getOutputDir('Images');
 
@@ -13038,7 +13677,7 @@
         try {
           let sourceSize = Number(file?.size);
           if (isTauri && file?.path) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             sourceSize = Number(await invoke('get_file_size', { path: file.path }));
           }
           assertIconSource(file, sourceSize);
@@ -13101,7 +13740,7 @@
 
       async function readIconGenSource(file) {
         if (isTauri && file?.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           try {
             const prepared = await invoke('prepare_icon_source_image', { path: file.path });
             const rawBytes = prepared?.bytes;
@@ -13310,7 +13949,7 @@
           if (isTauri) {
             let archiveSessionId = null;
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const outputDir = await getOutputDir('Icons');
               const fileName = `icons_${Date.now()}.zip`;
               archiveSessionId = await invoke('begin_icon_archive_write', { directory: outputDir, fileName });
@@ -13330,7 +13969,7 @@
               lastIconGenDownloadDir = savedPath;
             } catch (e) {
               if (archiveSessionId !== null) {
-                const { invoke } = await import('@tauri-apps/api/core');
+                const { invoke } = await tauriCorePromise;
                 await invoke('discard_icon_archive_write', { sessionId: archiveSessionId }).catch(() => {});
               }
               console.error('Tauri icon archive save failed:', e);
@@ -13404,7 +14043,7 @@
       if (iconGenOpenFolder) {
         iconGenOpenFolder.addEventListener('click', () => {
           if (isTauri && lastIconGenDownloadDir) {
-            import('@tauri-apps/api/core').then(({ invoke }) => {
+            tauriCorePromise.then(({ invoke }) => {
               const dir = outputParentFolder(lastIconGenDownloadDir);
               invoke('open_path', { path: dir }).catch(e => console.error('Open folder error', e));
             }).catch(e => console.error('Core import error', e));
@@ -13634,7 +14273,7 @@
         if (videoConvertProcessText) videoConvertProcessText.textContent = t('home.videoConvert.processing');
         processingVideo = false;
         if (isTauri && wasProcessing) {
-          import('@tauri-apps/api/core')
+          tauriCorePromise
             .then(({ invoke }) => invoke('cancel_convert'))
             .catch((error) => console.error('Video cancellation failed:', error));
         }
@@ -13661,8 +14300,8 @@
 
         let unlisten = null;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          const { listen } = await import('@tauri-apps/api/event');
+          const { invoke } = await tauriCorePromise;
+          const { listen } = await tauriEventPromise;
           const inputPaths = selectedVideoFiles.map(file => file.path).filter(Boolean);
           if (inputPaths.length !== selectedVideoFiles.length) {
             throw new Error(t('common.filePathsNotAvailableShort'));
@@ -13859,7 +14498,7 @@
       async function discardImageStitchPdfSession(sessionId) {
         imageStitchPdfSessions = imageStitchPdfSessions.filter(session => session.id !== sessionId);
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('discard_image_stitch_pdf_session', { sessionId });
         } catch (error) {
           console.warn('Cannot clean image stitch PDF session:', error);
@@ -13881,7 +14520,7 @@
         }
         await Promise.all(sessions.map(async (session) => {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             await invoke('discard_image_stitch_pdf_session', { sessionId: session.id });
           } catch (error) {
             console.warn('Cannot clean image stitch PDF session:', error);
@@ -13982,7 +14621,7 @@
           return false;
         }
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const inspected = await invoke('inspect_image_stitch_inputs', { inputPaths: paths });
           imageStitchFiles.push(...inspected.map(item => ({
             path: item.path,
@@ -14043,7 +14682,7 @@
         let session = null;
         let keepSession = false;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           imageStitchImportingPdf = true;
           imageStitchPdfImportCancelled = false;
           imageStitchProgressFill.style.width = '2%';
@@ -14175,7 +14814,7 @@
 
       async function ensureImageStitchProgressListener() {
         if (imageStitchProgressUnlisten) return;
-        const { listen } = await import('@tauri-apps/api/event');
+        const { listen } = await tauriEventPromise;
         imageStitchProgressUnlisten = await listen('image-stitch-progress', (event) => {
           const payload = event.payload || {};
           if (payload.jobId && imageStitchJobId && payload.jobId !== imageStitchJobId) return;
@@ -14212,7 +14851,7 @@
         setImageStitchBusy(true);
         try {
           await ensureImageStitchProgressListener();
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const settings = imageStitchSettings();
           const result = await invoke('stitch_images', {
             inputPaths: imageStitchFiles.map(file => file.path),
@@ -14248,7 +14887,7 @@
           return;
         }
         imageStitchCancelRequested = true;
-        import('@tauri-apps/api/core').then(({ invoke }) => invoke('cancel_convert')).catch(() => {});
+        tauriCorePromise.then(({ invoke }) => invoke('cancel_convert')).catch(() => {});
       });
       document.getElementById('imageStitchSuccessOk')?.addEventListener('click', () => document.getElementById('imageStitchSuccessOverlay')?.classList.remove('visible'));
       document.getElementById('imageStitchOpenFolder')?.addEventListener('click', () => { if (lastImageStitchOutputPath) openOutputFolder(lastImageStitchOutputPath).catch(() => {}); document.getElementById('imageStitchSuccessOverlay')?.classList.remove('visible'); });
@@ -14364,7 +15003,7 @@
         request.image?.classList.add('is-loading');
         (async () => {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const result = await invoke('render_video_preview_frame', {
               inputPath: request.inputPath,
               timestampMs: request.timestampMs
@@ -14518,7 +15157,7 @@
         videoFramePreviewClipLoading = true;
         updateVideoFramePreviewToggle();
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const result = await invoke('render_video_preview_clip', {
             inputPath: videoFrameFile.path,
             startMs: range.startMs,
@@ -14635,7 +15274,7 @@
         try {
           const file = { name: selected.split(/[\\/]/).pop() || selected, path: selected, size: 0 };
           validateVideoFrameInput(file);
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const probe = await invoke('probe_video', { inputPath: selected });
           const duration = Number(probe?.duration);
           if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长。');
@@ -14709,7 +15348,7 @@
         if (videoFrameSuccessPath) videoFrameSuccessPath.textContent = displayFilesystemPath(lastVideoFrameOutputPath);
         videoFrameSuccessOverlay?.classList.add('visible');
       }
-      videoFrameCancelBtn?.addEventListener('click', () => import('@tauri-apps/api/core').then(({ invoke }) => invoke('cancel_convert')).catch(() => {}));
+      videoFrameCancelBtn?.addEventListener('click', () => tauriCorePromise.then(({ invoke }) => invoke('cancel_convert')).catch(() => {}));
       videoFrameSuccessOk?.addEventListener('click', closeVideoFrameSuccess);
       videoFrameOpenFolder?.addEventListener('click', () => { if (lastVideoFrameOutputPath) openOutputFolder(lastVideoFrameOutputPath).catch(() => {}); closeVideoFrameSuccess(); });
       videoFrameExport?.addEventListener('click', async () => {
@@ -14720,7 +15359,7 @@
         videoFrameProcessMask?.classList.add('visible');
         let unlisten;
         try {
-          const [{ invoke }, { listen }] = await Promise.all([import('@tauri-apps/api/core'), import('@tauri-apps/api/event')]);
+          const [{ invoke }, { listen }] = await Promise.all([tauriCorePromise, tauriEventPromise]);
           unlisten = await listen('video-frame-progress', event => {
             const progress = Math.max(0, Math.min(1, Number(event.payload?.progress) || 0));
             if (videoFrameProcessBarFill) videoFrameProcessBarFill.style.width = `${Math.max(8, progress * 100)}%`;
@@ -14953,7 +15592,7 @@
         videoGifPreviewPlaybackLoading = true;
         updateVideoGifPreviewToggle();
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const result = await invoke('render_video_preview_clip', {
             inputPath: videoGifFile.path,
             startMs: videoGifStartMs,
@@ -15052,7 +15691,7 @@
         try {
           const file = localVideoFile(selected);
           validateVideoGifInput(file);
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const probe = await invoke('probe_video', { inputPath: selected });
           const duration = Number(probe?.duration);
           if (!Number.isFinite(duration) || duration <= 0) throw new Error('无法读取视频时长。');
@@ -15127,7 +15766,7 @@
       function closeVideoGifSuccess() { videoGifSuccessOverlay?.classList.remove('visible'); }
       videoGifSuccessOk?.addEventListener('click', closeVideoGifSuccess);
       videoGifOpenFolder?.addEventListener('click', () => { if (lastVideoGifOutputPath) openOutputFolder(lastVideoGifOutputPath).catch(() => {}); closeVideoGifSuccess(); });
-      videoGifCancelBtn?.addEventListener('click', () => import('@tauri-apps/api/core').then(({ invoke }) => invoke('cancel_convert')).catch(() => {}));
+      videoGifCancelBtn?.addEventListener('click', () => tauriCorePromise.then(({ invoke }) => invoke('cancel_convert')).catch(() => {}));
       videoGifExport?.addEventListener('click', async () => {
         if (!videoGifFile?.path || !isTauri || videoGifProcessing) return;
         let settings;
@@ -15137,7 +15776,7 @@
         if (videoGifProcessBarFill) videoGifProcessBarFill.style.width = '8%';
         let unlisten;
         try {
-          const [{ invoke }, { listen }] = await Promise.all([import('@tauri-apps/api/core'), import('@tauri-apps/api/event')]);
+          const [{ invoke }, { listen }] = await Promise.all([tauriCorePromise, tauriEventPromise]);
           unlisten = await listen('video-gif-progress', event => { const progress = Math.max(0, Math.min(1, Number(event.payload?.progress) || 0)); if (videoGifProcessBarFill) videoGifProcessBarFill.style.width = `${Math.max(8, progress * 100)}%`; if (videoGifProcessText) videoGifProcessText.textContent = event.payload?.phase === 'publish' ? '正在发布 GIF...' : '正在生成调色板与 GIF...'; });
           const result = await invoke('extract_video_gif', { inputPath: videoGifFile.path, outputDir: await getOutputDir('Videos'), startMs: settings.start_ms, endMs: settings.end_ms, frameRate: settings.frame_rate, width: settings.width, quality: settings.quality });
           lastVideoGifOutputPath = result.output_path || result.outputPath || '';
@@ -15437,7 +16076,7 @@
         if (!runId) return;
         let analysisStarted = false;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const byteLength = Number(await invoke('get_file_size', { path: filePath }));
           assertBpmInputSize(byteLength);
           if (!isCurrentBpmRun(runId)) return;
@@ -16066,7 +16705,7 @@
         if (audioClipProcessMask) audioClipProcessMask.classList.remove('visible');
         if (audioClipProcessBarFill) audioClipProcessBarFill.style.width = '0%';
         if (wasExporting && isTauri) {
-          import('@tauri-apps/api/core')
+          tauriCorePromise
             .then(({ invoke }) => invoke('cancel_convert'))
             .catch(() => {});
         }
@@ -16234,7 +16873,7 @@
             fileName = filePathOrFile.split(/[/\\]/).pop() || filePathOrFile;
             audioClipProcessBarFill.style.width = '50%';
             if (!isTauri) throw new AudioClipError('invalid_input', 'Desktop file paths are unavailable in a browser.');
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const size = Number(await invoke('get_file_size', { path: filePathOrFile }));
             assertAudioClipInput({ name: fileName, size });
             if (!isCurrentClipLoad(loadId)) return;
@@ -16248,7 +16887,7 @@
             fileName = filePathOrFile?.name || '';
             assertAudioClipInput(filePathOrFile);
             if (isTauri && filePathOrFile.path) {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               sourcePath = filePathOrFile.path;
               const size = Number(await invoke('get_file_size', { path: sourcePath }));
               assertAudioClipInput({ name: fileName, size });
@@ -16675,7 +17314,7 @@
           audioClipProcessMask.classList.add('visible');
 
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getOutputDir('Audio');
             if (!isCurrentClipExport(runId)) return;
 
@@ -16849,7 +17488,7 @@
         if (audioExtractProcessMask) audioExtractProcessMask.classList.remove('visible');
         if (audioExtractProcessBarFill) audioExtractProcessBarFill.style.width = '0%';
         if (wasProcessing && isTauri) {
-          import('@tauri-apps/api/core')
+          tauriCorePromise
             .then(({ invoke }) => invoke('cancel_convert'))
             .catch(() => {});
         }
@@ -16978,7 +17617,7 @@
           let fileSize = suppliedSize;
           let invoke = null;
           if (isTauri) {
-            ({ invoke } = await import('@tauri-apps/api/core'));
+            ({ invoke } = await tauriCorePromise);
             fileSize = Number(await invoke('get_file_size', { path: filePath }));
           }
           assertAudioExtractInput({ name: fileName, size: fileSize });
@@ -17053,8 +17692,8 @@
         let unlisten = null;
         try {
           if (!isTauri) throw new Error('audio-extract:desktop-only');
-          const { invoke } = await import('@tauri-apps/api/core');
-          const { listen } = await import('@tauri-apps/api/event');
+          const { invoke } = await tauriCorePromise;
+          const { listen } = await tauriEventPromise;
           const finalOutputDir = await getOutputDir('Audio');
           if (!isCurrentAudioExtractRun(runId)) return;
 
@@ -17213,7 +17852,7 @@
         audioExtractSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && extractState.outputPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = extractState.outputPath.replace(/[/\\][^/\\]+$/, '');
               await invoke('open_path', { path: folder });
             } catch (e) {
@@ -17271,105 +17910,6 @@
           const file = e.dataTransfer.files[0];
           if (file && file.type.startsWith('video/')) {
             loadVideoFile(file.name, file.size);
-          }
-        });
-      }
-
-      // Feedback drawer
-      const feedbackDrawer = document.getElementById('feedbackDrawer');
-      const feedbackDrawerBackdrop = document.getElementById('feedbackDrawerBackdrop');
-      const feedbackDrawerClose = document.getElementById('feedbackDrawerClose');
-      const feedbackCta = document.getElementById('feedbackCta');
-      const feedbackForm = document.getElementById('feedbackForm');
-      const feedbackFormCancel = document.getElementById('feedbackFormCancel');
-      const feedbackFormSubmit = document.getElementById('feedbackFormSubmit');
-      const feedbackName = document.getElementById('feedbackName');
-      const feedbackEmail = document.getElementById('feedbackEmail');
-      const feedbackTitle = document.getElementById('feedbackTitle');
-      const feedbackContent = document.getElementById('feedbackContent');
-
-      function openFeedbackDrawer() {
-        if (feedbackDrawer) feedbackDrawer.classList.add('open');
-      }
-
-      function closeFeedbackDrawer() {
-        if (feedbackDrawer) feedbackDrawer.classList.remove('open');
-      }
-
-      function resetFeedbackForm() {
-        if (feedbackForm) feedbackForm.reset();
-      }
-
-      if (feedbackCta) {
-        feedbackCta.addEventListener('click', () => {
-          openFeedbackDrawer();
-        });
-      }
-
-      if (feedbackDrawerClose) {
-        feedbackDrawerClose.addEventListener('click', () => {
-          closeFeedbackDrawer();
-        });
-      }
-
-      if (feedbackDrawerBackdrop) {
-        feedbackDrawerBackdrop.addEventListener('click', () => {
-          closeFeedbackDrawer();
-        });
-      }
-
-      if (feedbackFormCancel) {
-        feedbackFormCancel.addEventListener('click', () => {
-          closeFeedbackDrawer();
-          resetFeedbackForm();
-        });
-      }
-
-      if (feedbackForm) {
-        feedbackForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          if (!feedbackForm.checkValidity()) return;
-
-          const payload = {
-            title: feedbackTitle ? feedbackTitle.value.trim().slice(0, 160) : '',
-            content: feedbackContent ? feedbackContent.value.trim().slice(0, 6000) : ''
-          };
-          const nameVal = feedbackName ? feedbackName.value.trim() : '';
-          const githubVal = feedbackEmail ? feedbackEmail.value.trim() : '';
-          if (nameVal) payload.name = nameVal;
-          if (githubVal) payload.github = githubVal;
-
-          if (feedbackFormSubmit) feedbackFormSubmit.disabled = true;
-
-          try {
-            const isChinese = getLang() === 'zh';
-            const issueBody = [
-              isChinese ? '## 问题或建议' : '## Issue or suggestion',
-              '',
-              payload.content,
-              '',
-              isChinese ? '## 提交信息' : '## Reporter details',
-              '',
-              `- ${isChinese ? 'ToolKnit 版本' : 'ToolKnit version'}: 2.1.0`,
-              payload.name ? `- ${isChinese ? '称呼' : 'Name'}: ${payload.name}` : '',
-              payload.github ? `- GitHub: ${payload.github}` : '',
-              '',
-              isChinese
-                ? '> 此页面由 ToolKnit 桌面端生成。提交前可继续补充复现步骤、截图和示例文件。'
-                : '> This draft was generated by ToolKnit Desktop. Add reproduction steps, screenshots, or sample files before submitting.'
-            ].filter(Boolean).join('\n');
-            const issueUrl = new URL(`https://github.com/${GITHUB_REPOSITORY}/issues/new`);
-            issueUrl.searchParams.set('title', payload.title);
-            issueUrl.searchParams.set('body', issueBody);
-            await openExternalUrl(issueUrl.toString());
-            closeFeedbackDrawer();
-            resetFeedbackForm();
-            window.showToast(t('home.feedbackPage.submitSuccess'));
-          } catch (error) {
-            console.error('Unable to open feedback issue draft:', error);
-            window.showToast(t('home.feedbackPage.submitError'));
-          } finally {
-            if (feedbackFormSubmit) feedbackFormSubmit.disabled = false;
           }
         });
       }
@@ -17852,7 +18392,8 @@
 
       const HOME_LINKS = {
         website: 'https://toolknit.com',
-        github: 'https://github.com/ZihangDong/toolknit-desktop'
+        github: 'https://github.com/ZihangDong/toolknit-desktop',
+        feedback: 'https://github.com/ZihangDong/toolknit-desktop/issues'
       };
 
       async function openExternalUrl(url) {
@@ -17862,7 +18403,7 @@
         }
         if (isTauri) {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             await invoke('open_url', { url });
           } catch (err) {
             console.error('Failed to open URL:', err);
@@ -17889,7 +18430,351 @@
       const donationOverlay = document.getElementById('donationOverlay');
       const donationDialog = donationOverlay?.querySelector('.donation-dialog');
       const donationScroll = donationOverlay?.querySelector('.donation-scroll');
+      const donationJournalReader = document.getElementById('donationJournalReader');
+      const donationJournalDate = document.getElementById('donationJournalDate');
+      const donationJournalReaderCount = document.getElementById('donationJournalReaderCount');
+      const donationJournalReaderTitle = document.getElementById('donationJournalReaderTitle');
+      const donationJournalReaderBody = document.getElementById('donationJournalReaderBody');
+      const donationJournalReaderHint = document.getElementById('donationJournalReaderHint');
+      const donationJournalProgressBar = document.getElementById('donationJournalProgressBar');
+      const donationJournalStatus = document.getElementById('donationJournalStatus');
       let donationReturnFocus = null;
+
+      /* Legacy remote/list renderer retained in source history; the local
+         translated reader below is the only active journal implementation.
+      const DONATION_JOURNAL_FALLBACK = [
+        ['Aug 5, 2026', 'Background Remover: Safer Local AI, Better Editing & Flexible Export', 'A safer local-AI workflow with explicit model downloads, mask refinement, transparent previews and full-resolution export.', true],
+        ['Aug 1, 2026', 'Whiteboard V3, Desktop Momentum & a Huge Milestone', 'Whiteboard V3 rebuilt the drawing workspace around dependable selection, recovery, layering and responsive tools.', true],
+        ['Jul 30, 2026', 'Image Stitcher Release & Tool Directory Baseline', 'A new local image stitcher and a careful release checklist made the public directory easier to trust.', true],
+        ['Jul 26, 2026', 'Every Tool Page Now Runs on ToolKnit’s New Architecture', 'After six weeks of page-by-page work, the tool collection moved to one shared bilingual architecture.', true],
+        ['Jul 2, 2026', 'ToolKnit Desktop v1.0', 'The first native Windows client arrived with Rust, Tauri and an offline-first local workflow.', true],
+        ['Jun 26, 2026', '100 Days of ToolKnit', 'A small homepage celebration for the first one hundred days of building the project in public.', true],
+        ['Jun 20, 2026', 'Desktop EXE Client Announced', 'The desktop client moved from an idea to a working PDF suite demo and a concrete release plan.', true],
+        ['Jun 11, 2026', 'Developer’s Journal', 'A quiet note from the middle of the migration: progress was measured in small fixes that made the next page easier.', true],
+        ['Jun 6, 2026', 'Developer’s Journal - Cyber Reunion', 'A personal pause between releases, and a reminder that software is also made of memories and people.', true],
+        ['Jun 4, 2026 · 18:40', 'Developer’s Journal', 'An evening entry about the decisions behind the architecture and the cost of keeping every tool private.', true],
+        ['Jun 4, 2026 · 08:30', 'A Personal Note', 'A short morning note from the developer before another day of shipping small, useful tools.', true],
+        ['May 13, 2026', 'The Botanical Garden Edition', 'A slower release day, with documentation, consistency checks and a note from the developer.', true]
+      ];
+
+      // Keep the complete public timeline available when the web changelog is
+      // unavailable to the desktop webview (the site intentionally has no CORS
+      // header). Online responses replace these concise local summaries.
+      const DONATION_JOURNAL_INDEX = `
+Aug 18, 2026|Analytics Counters: Safer Concurrent Updates
+Aug 17, 2026|Search Quality: Clearer Promises, More Useful Pages
+Aug 17, 2026|ToolKnit Desktop v2.0: 49 Local Tools, Nearing 500 Stars
+Aug 14, 2026|Homepage Navigation: A Stable, Shake-Free Sticky Filter Rail
+Aug 10, 2026|Sitewide SEO Reliability Audit
+Aug 9, 2026|Homepage Catalog: Faster Browsing for Large Tool Libraries
+Aug 6, 2026|Performance Pass: Smoother Local Processing Across Four Tools
+Aug 5, 2026|Background Remover: Safer Local AI, Better Editing & Flexible Export|note
+Aug 4, 2026|ToolKnit Desktop v1.2 Page Refresh
+Aug 2, 2026|Daily Planner Polish & Strict Image and PDF Target Sizes|note
+Aug 1, 2026|Whiteboard V3, Desktop Momentum & a Huge Milestone|note
+Jul 31, 2026|Homepage Translation Cache Fix
+Jul 30, 2026|Image Stitcher Release & Tool Directory Baseline|note
+Jul 27, 2026|PDF & Image Workflow Security, Search Cleanup & Production Fixes|note
+Jul 26, 2026|Every Tool Page Now Runs on ToolKnit's New Architecture|note
+Jul 25, 2026|FMHY Recognition & Bilingual Migration Progress|note
+Jul 23, 2026|New Architecture Consistency, FAQ Coverage & Cache Cleanup|note
+Jul 21, 2026|New Tool: Text to Speech - 69 AI Neural Voices, Server-Side Architecture
+Jul 19, 2026|iOS Safari Download Fix, Newline Character Bug Fix & Chinese Search Support|note
+Jul 14, 2026|Merge PDF Major Upgrade - Page Selector, Custom Filename, Homepage Light Mode Fixes & New Blog|note
+Jul 13, 2026|Ask Fate Full Overhaul & Whiteboard Enhancement - Multi-Mode Oracle, Shape Fill, Layer Manager & Dark Canvas|note
+Jul 8, 2026|Dice Roller Major Upgrade - Batch Auto-Roll, Game Presets, CSV Export & Full-Site SEO Data Refresh|note
+Jul 6, 2026|Breathing Relaxation + Sitemap Overhaul + Full-Site Encoding & SEO Repair - 90 Tools, Best SEO Yet|note
+Jul 5, 2026|Quit Smoking Tracker & Bilingual Migration Milestone - 55 Tools Now EN + Chinese|note
+Jul 3, 2026|New Tool: Emoji Finder - Search & Copy 560+ Emojis|note
+Jul 2, 2026|ToolKnit Desktop v1.0 - A Native Windows Client Built with Rust & Tauri|note
+Jun 28, 2026|Bilingual Migration Halfway Done - PDF, Image, Video, Audio & Text Suites Complete|note
+Jun 26, 2026|100 Days of ToolKnit - Fireworks on the Homepage|note
+Jun 23, 2026|Text Animation Maker, True MP4 Export & Drawer Refinement
+Jun 20, 2026|Desktop EXE Client Announced - PDF Suite Demo 0.1 & Web Migration Milestone|note
+Jun 17, 2026|Silk Screen, Image Tools & Audio Tools Migration - Metronome + WAV to MP3 Bilingual
+Jun 16, 2026|All 4 AI Tools Fully Migrated - Image Tools Next & Developer's Journal|note
+Jun 15, 2026|AI Ex-Partner Chat & Background Remover Bilingual Migration, Library Manager Launch
+Jun 13, 2026|Image Tools Bilingual Migration & Mic/Camera Permissions Fix
+Jun 12, 2026|New Architecture, Two New Tools & PDF Suite Rebuilt
+Jun 11, 2026|Developer's Journal|note
+Jun 11, 2026|Lyric Visualizer, Live Photo Frame Removed & Bilingual i18n
+Jun 10, 2026|Spin the Dare, Live Photo Frame (Beta), Bilingual UI & AI Pixel Art GIF Reverted
+Jun 9, 2026|AI Life Trajectory Predictor, Silk Screen Filter, AI Pixel Art GIF Removed & MIDI Sustain Fix
+Jun 8, 2026|AI Text Adventure RPG Systems, Architecture Overhaul & AI Tools Category
+Jun 7, 2026|Meeting Cost Calculator, MIDI Keyboard & Dev Fixes
+Jun 6, 2026|Developer's Journal - Cyber Reunion|note
+Jun 6, 2026|AI Ex-Partner Chat, Screenshot OCR Overhaul & Tool Count -> 76
+Jun 4, 2026|Emotional Neglect Test & Tool Count -> 75 & New Category: Self-Test
+Jun 4, 2026|The Great Tool Audit - 25 Tools Inspected, Major Speed Upgrades
+Jun 4, 2026 - 18:40|Developer's Journal|note
+Jun 4, 2026 - 08:30|A Personal Note|note
+Jun 3, 2026|Noise Generator, Hash Generator & Tool Count -> 74
+Jun 2, 2026|Item Locator, ASCII Art, ASCII Banner & Tool Count -> 72
+Jun 1, 2026|BPM Detector, Circle Crop, Video Screenshot & Architecture Overhaul
+May 28, 2026|CSV Chart Maker Launch, Pixel Art Presets & Export Polish
+May 26, 2026|Tool Page Cleanup, Status Analytics Fixes & Privacy Hardening
+May 25, 2026|Long-Tail Blog Expansion, Schema Cleanup & Homepage Footer Fixes
+May 24, 2026|Flashcard Maker Launch & Signature Maker Preview Fix
+May 23, 2026|Signature Maker, Metronome, Homepage Polish & SEO Sweep
+May 19, 2026|The AI to PNG & Second Milestone Edition
+May 19, 2026|The Homepage Simplification
+May 17, 2026|The Haircut & Housekeeping Edition
+May 15, 2026|The World Holidays Edition
+May 13, 2026|The Botanical Garden Edition|note
+May 12, 2026|The Rest Day Edition
+May 10 - 11, 2026|The Overtime & Power Outage Edition
+May 9, 2026|50+ Tools - A Midnight Milestone
+May 8, 2026|7 New Tools - Biggest Single-Day Drop Yet
+May 7, 2026|Background Remover - AI-Powered Image Background Removal
+May 3 - 6, 2026|The Black & White Reset - A Full-Site Visual & Architectural Overhaul
+April 30, 2026|Coin Flip, Dice Roller & Legal Pages Refresh
+April 28, 2026|CPS Test & SEO Refresh
+April 21, 2026|Aim Trainer & Login System Removal
+April 14, 2026|Image Resizer & Lorem Ipsum Generator
+April 12, 2026|Pixel Art Converter & Video to Audio
+April 11, 2026|Keystroke Counter & Changelog Page
+April 9, 2026|QR Code Generator & SEO Improvements
+April 7, 2026|Reaction Time Test
+April 4, 2026|Keyboard Tester & Random Spinner
+April 1, 2026|Creative Tools: Drawing Board, What to Eat & Ask Fate
+March 29, 2026|Image Crop & Grid Splitter
+March 26, 2026|Time Tools: Stopwatch, Timer & World Clock
+March 23, 2026|Text Tools & Audio Converters
+March 20, 2026|Video Tools & Image Format Converters
+March 18, 2026|Launch Day
+      `.trim().split('\n').map((line, index) => {
+        const [date, title, marker] = line.split('|');
+        return {
+          date,
+          title,
+          summary: marker === 'note' ? 'Developer journal entry - a personal note from the work behind ToolKnit.' : 'Public release note from the ToolKnit development timeline.',
+          isNote: marker === 'note',
+          number: index + 1
+        };
+      });
+
+      function donationJournalText(value) {
+        return String(value || '').replace(/\s+/g, ' ').trim();
+      }
+
+      function normalizeDonationJournalEntries(html) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        return Array.from(doc.querySelectorAll('.changelog-entry')).map((entry, index) => {
+          const date = donationJournalText(entry.querySelector('.entry-date')?.textContent);
+          const title = donationJournalText(entry.querySelector('.entry-title')?.textContent) || 'ToolKnit update';
+          const body = entry.querySelector('.entry-body');
+          const bodyText = donationJournalText(body?.textContent);
+          const paragraph = donationJournalText(body?.querySelector('p')?.textContent) || bodyText;
+          const isNote = /developer.{0,4}(note|journal)|a note from the developer/i.test(bodyText);
+          return {
+            date,
+            title,
+            summary: paragraph.length > 260 ? `${paragraph.slice(0, 257)}...` : paragraph,
+            isNote,
+            number: index + 1
+          };
+        }).filter(entry => entry.title && entry.date);
+      }
+
+      function renderDonationJournal(entries, source = 'offline') {
+        if (!donationJournalList) return;
+        donationJournalList.replaceChildren();
+        entries.forEach((entry, index) => {
+          const article = document.createElement('article');
+          article.className = `donation-journal-entry${entry.isNote ? ' is-note' : ''}`;
+          const meta = document.createElement('div');
+          meta.className = 'donation-journal-meta';
+          const number = document.createElement('span');
+          number.className = 'donation-journal-number';
+          number.textContent = String(entry.number || index + 1).padStart(2, '0');
+          const date = document.createElement('time');
+          date.textContent = entry.date;
+          meta.append(number, date);
+          const title = document.createElement('h4');
+          title.textContent = entry.title;
+          const summary = document.createElement('p');
+          summary.textContent = entry.summary;
+          article.append(meta, title, summary);
+          donationJournalList.append(article);
+        });
+        if (donationJournalCount) donationJournalCount.textContent = source === 'remote' ? String(entries.length) : '81';
+        if (donationJournalStatus) {
+          donationJournalStatus.textContent = source === 'remote'
+            ? `${entries.length} ${getLang() === 'zh' ? '条记录，按时间倒序排列' : 'entries, newest first'}`
+            : 'Offline: showing selected journal notes / 81';
+        }
+        if (typeof createIcons === 'function') createIcons({ icons });
+      }
+
+      function loadDonationJournal() {
+        if (donationJournalPromise) return donationJournalPromise;
+        donationJournalPromise = fetch('https://toolknit.com/changelog.html', { mode: 'cors' })
+          .then(response => {
+            if (!response.ok) throw new Error(`Changelog request failed: ${response.status}`);
+            return response.text();
+          })
+          .then(html => {
+            const entries = normalizeDonationJournalEntries(html);
+            if (entries.length < 20) throw new Error('Incomplete changelog response');
+            renderDonationJournal(entries, 'remote');
+          })
+          .catch(() => {
+            renderDonationJournal(DONATION_JOURNAL_INDEX);
+          });
+        return donationJournalPromise;
+      }
+
+      */
+
+      // The support page uses a shuffle bag so every translated developer note
+      // appears once before the sequence is reshuffled. RAF keeps the progress
+      // indicator accurate when the reader is paused or the window is hidden.
+      let donationJournalOrder = [];
+      let donationJournalIndex = -1;
+      let donationJournalTimer = null;
+      let donationJournalRaf = null;
+      let donationJournalTransitionTimer = null;
+      let donationJournalPaused = false;
+      let donationJournalStartedAt = 0;
+      let donationJournalElapsed = 0;
+      let donationJournalWasPlayingBeforeHidden = false;
+      const DONATION_JOURNAL_DURATION_MS = 15_000;
+
+      function shuffleDonationJournalOrder() {
+        const previousIndex = donationJournalIndex >= 0 ? donationJournalOrder[donationJournalIndex] : -1;
+        donationJournalOrder = Array.from({ length: SUPPORT_JOURNAL_ENTRIES.length }, (_, index) => index);
+        for (let index = donationJournalOrder.length - 1; index > 0; index -= 1) {
+          const swapIndex = Math.floor(Math.random() * (index + 1));
+          [donationJournalOrder[index], donationJournalOrder[swapIndex]] = [donationJournalOrder[swapIndex], donationJournalOrder[index]];
+        }
+        if (donationJournalOrder.length > 1 && donationJournalOrder[0] === previousIndex) {
+          [donationJournalOrder[0], donationJournalOrder[1]] = [donationJournalOrder[1], donationJournalOrder[0]];
+        }
+        donationJournalIndex = -1;
+      }
+
+      function stopDonationJournalPlayback() {
+        if (donationJournalTimer !== null) window.clearTimeout(donationJournalTimer);
+        if (donationJournalTransitionTimer !== null) window.clearTimeout(donationJournalTransitionTimer);
+        if (donationJournalRaf !== null) window.cancelAnimationFrame(donationJournalRaf);
+        donationJournalTimer = null;
+        donationJournalTransitionTimer = null;
+        donationJournalRaf = null;
+        donationJournalStartedAt = 0;
+        donationJournalElapsed = 0;
+        donationJournalPaused = false;
+        donationJournalWasPlayingBeforeHidden = false;
+        donationJournalProgressBar?.style.setProperty('width', '0%');
+        donationJournalReader?.classList.remove('is-paused', 'is-entering', 'is-leaving');
+        donationJournalReader?.setAttribute('aria-pressed', 'false');
+        if (donationJournalReaderHint) donationJournalReaderHint.textContent = '点击文字暂停 · 再次点击继续播放';
+      }
+
+      function renderDonationJournalEntry(entry, orderPosition) {
+        if (!entry || !donationJournalReader) return;
+        donationJournalReader.classList.remove('is-entering');
+        donationJournalReader.classList.add('is-leaving');
+        if (donationJournalTransitionTimer !== null) window.clearTimeout(donationJournalTransitionTimer);
+        donationJournalTransitionTimer = window.setTimeout(() => {
+          donationJournalTransitionTimer = null;
+          donationJournalDate.textContent = entry.date || '';
+          donationJournalReaderCount.textContent = `${String(orderPosition + 1).padStart(2, '0')} / ${SUPPORT_JOURNAL_ENTRIES.length}`;
+          donationJournalReaderTitle.textContent = entry.title || '';
+          donationJournalReaderBody.replaceChildren();
+          (Array.isArray(entry.paragraphs) ? entry.paragraphs : []).forEach(paragraphText => {
+            const paragraph = document.createElement('p');
+            paragraph.textContent = paragraphText;
+            donationJournalReaderBody.append(paragraph);
+          });
+          donationJournalReader.classList.remove('is-leaving');
+          donationJournalReader.classList.add('is-entering');
+          window.requestAnimationFrame(() => donationJournalReader.classList.remove('is-entering'));
+        }, 180);
+      }
+
+      function scheduleNextDonationJournalEntry() {
+        if (!donationOverlay?.classList.contains('visible') || donationJournalPaused) return;
+        if (!donationJournalOrder.length || donationJournalIndex >= donationJournalOrder.length - 1) shuffleDonationJournalOrder();
+        donationJournalIndex += 1;
+        const entry = SUPPORT_JOURNAL_ENTRIES[donationJournalOrder[donationJournalIndex]];
+        renderDonationJournalEntry(entry, donationJournalIndex);
+        donationJournalElapsed = 0;
+        donationJournalStartedAt = performance.now();
+        donationJournalProgressBar?.style.setProperty('width', '0%');
+        if (donationJournalTimer !== null) window.clearTimeout(donationJournalTimer);
+        donationJournalTimer = window.setTimeout(() => {
+          donationJournalTimer = null;
+          scheduleNextDonationJournalEntry();
+        }, DONATION_JOURNAL_DURATION_MS);
+      }
+
+      function donationJournalProgressTick(now) {
+        if (!donationJournalStartedAt || donationJournalPaused || !donationOverlay?.classList.contains('visible')) return;
+        donationJournalElapsed = Math.min(DONATION_JOURNAL_DURATION_MS, now - donationJournalStartedAt);
+        donationJournalProgressBar?.style.setProperty('width', `${(donationJournalElapsed / DONATION_JOURNAL_DURATION_MS) * 100}%`);
+        donationJournalRaf = window.requestAnimationFrame(donationJournalProgressTick);
+      }
+
+      function pauseDonationJournalPlayback() {
+        if (donationJournalPaused) return;
+        donationJournalElapsed = donationJournalStartedAt ? Math.min(DONATION_JOURNAL_DURATION_MS, performance.now() - donationJournalStartedAt) : 0;
+        donationJournalPaused = true;
+        donationJournalReader?.classList.add('is-paused');
+        donationJournalReader?.setAttribute('aria-pressed', 'true');
+        if (donationJournalTimer !== null) window.clearTimeout(donationJournalTimer);
+        if (donationJournalRaf !== null) window.cancelAnimationFrame(donationJournalRaf);
+        donationJournalTimer = null;
+        donationJournalRaf = null;
+        if (donationJournalReaderHint) donationJournalReaderHint.textContent = '已暂停 · 再次点击继续播放';
+      }
+
+      function resumeDonationJournalPlayback() {
+        if (!donationJournalPaused) return;
+        donationJournalPaused = false;
+        donationJournalStartedAt = performance.now() - donationJournalElapsed;
+        donationJournalReader?.classList.remove('is-paused');
+        donationJournalReader?.setAttribute('aria-pressed', 'false');
+        if (donationJournalReaderHint) donationJournalReaderHint.textContent = '点击文字暂停 · 再次点击继续播放';
+        donationJournalTimer = window.setTimeout(() => {
+          donationJournalTimer = null;
+          scheduleNextDonationJournalEntry();
+        }, Math.max(0, DONATION_JOURNAL_DURATION_MS - donationJournalElapsed));
+        donationJournalRaf = window.requestAnimationFrame(donationJournalProgressTick);
+      }
+
+      function toggleDonationJournalPlayback() {
+        if (donationJournalPaused) resumeDonationJournalPlayback();
+        else pauseDonationJournalPlayback();
+      }
+
+      function startDonationJournalPlayback() {
+        if (!donationJournalReader || !SUPPORT_JOURNAL_ENTRIES.length) return;
+        stopDonationJournalPlayback();
+        shuffleDonationJournalOrder();
+        if (donationJournalStatus) donationJournalStatus.textContent = `${SUPPORT_JOURNAL_ENTRIES.length} 篇开发者手记 · 随机循环播放`;
+        scheduleNextDonationJournalEntry();
+        donationJournalRaf = window.requestAnimationFrame(donationJournalProgressTick);
+      }
+
+      donationJournalReader?.addEventListener('click', toggleDonationJournalPlayback);
+      donationJournalReader?.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleDonationJournalPlayback();
+        }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (!donationOverlay?.classList.contains('visible')) return;
+        if (document.hidden) {
+          donationJournalWasPlayingBeforeHidden = !donationJournalPaused;
+          if (donationJournalWasPlayingBeforeHidden) pauseDonationJournalPlayback();
+        } else if (donationJournalWasPlayingBeforeHidden) {
+          donationJournalWasPlayingBeforeHidden = false;
+          resumeDonationJournalPlayback();
+        }
+      });
 
       function openDonationOverlay() {
         if (!donationOverlay) return;
@@ -17898,6 +18783,7 @@
         donationOverlay.classList.add('visible');
         donationOverlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('donation-open');
+        startDonationJournalPlayback();
         window.requestAnimationFrame(() => {
           if (donationScroll) donationScroll.scrollTop = 0;
           donationDialog?.focus({ preventScroll: true });
@@ -17909,6 +18795,7 @@
         donationOverlay.classList.remove('visible');
         donationOverlay.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('donation-open');
+        stopDonationJournalPlayback();
         if (donationReturnFocus?.isConnected) donationReturnFocus.focus({ preventScroll: true });
         donationReturnFocus = null;
       }
@@ -18083,10 +18970,67 @@
       const homeScrollContainer = document.querySelector('.main-content');
       const homeToolSearch = document.getElementById('homeToolSearch');
       const homeToolGrid = document.getElementById('homeToolGrid');
+      const homeToolLoadMore = document.getElementById('homeToolLoadMore');
+      const homeToolLoadMoreSummary = document.getElementById('homeToolLoadMoreSummary');
+      const homeToolLoadMoreButton = document.getElementById('homeToolLoadMoreButton');
       const backToTop = document.getElementById('backToTop');
       const homeCategoryChips = Array.from(document.querySelectorAll('[data-home-category]'));
+      const HOME_TOOL_PAGE_SIZE = 12;
       let activeHomeCategory = 'all';
+      let homeVisibleToolCount = HOME_TOOL_PAGE_SIZE;
       let homeScrollUiRaf = 0;
+      const homeWaterCardState = new WeakMap();
+
+      function getHomeWaterCard(target) {
+        const card = target?.closest?.('.tool-result-card, .favorite-item');
+        return card?.closest?.('.app.is-v2-home') ? card : null;
+      }
+
+      function updateHomeWaterCard(card, event) {
+        if (!card || (event.pointerType && event.pointerType !== 'mouse')) return;
+        const rect = card.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const state = homeWaterCardState.get(card) || { x: 50, y: 50, raf: 0 };
+        const x = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+        const y = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100));
+        const dx = x - state.x;
+        const dy = y - state.y;
+        const distance = Math.min(1, Math.hypot(dx, dy) / 18);
+        if (Math.abs(dx) + Math.abs(dy) > 0.01) {
+          state.angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        }
+        state.x = x;
+        state.y = y;
+        state.speed = distance;
+        homeWaterCardState.set(card, state);
+        if (state.raf) return;
+        state.raf = requestAnimationFrame(() => {
+          card.style.setProperty('--water-x', `${state.x}%`);
+          card.style.setProperty('--water-y', `${state.y}%`);
+          card.style.setProperty('--water-angle', `${state.angle || 0}deg`);
+          card.style.setProperty('--water-stretch', `${(1 + (state.speed || 0) * 0.28).toFixed(3)}`);
+          state.raf = 0;
+        });
+      }
+
+      if (homeScrollContainer) {
+        homeScrollContainer.addEventListener('pointerover', event => {
+          const card = getHomeWaterCard(event.target);
+          if (!card || (event.pointerType && event.pointerType !== 'mouse')) return;
+          if (event.relatedTarget && card.contains(event.relatedTarget)) return;
+          card.dataset.waterActive = 'true';
+          updateHomeWaterCard(card, event);
+        });
+        homeScrollContainer.addEventListener('pointermove', event => {
+          const card = getHomeWaterCard(event.target);
+          if (card) updateHomeWaterCard(card, event);
+        }, { passive: true });
+        homeScrollContainer.addEventListener('pointerout', event => {
+          const card = getHomeWaterCard(event.target);
+          if (!card || (event.relatedTarget && card.contains(event.relatedTarget))) return;
+          card.dataset.waterActive = 'false';
+        });
+      }
 
       function getHomeCategoryGroup(sectionCategory) {
         switch (sectionCategory) {
@@ -18114,9 +19058,29 @@
           case 'creative': return 'CREATIVE / UTILITY';
           case 'ai': return 'AI / FORGE';
           case 'hardware': return 'HARDWARE / READONLY';
+          case 'developer': return 'DEVELOPER / LOCAL';
           case 'cleanup': return 'CLEAN / AI';
           default: return String(sectionCategory || '').toUpperCase();
         }
+      }
+
+      function getHomeCategoryTag(sectionCategory) {
+        const tagKeys = {
+          pdf: 'home.toolNames.pdfCategoryTag',
+          ppt: 'home.toolNames.pptCategoryTag',
+          image: 'home.toolNames.imageCategoryTag',
+          audio: 'home.toolNames.audioCategoryTag',
+          video: 'home.toolNames.videoCategoryTag',
+          text: 'home.toolNames.textCategoryTag',
+          calculator: 'home.toolNames.calcCategoryTag',
+          creative: 'home.toolNames.creativeCategoryTag',
+          ai: 'home.toolNames.aiCategoryTag',
+          hardware: 'home.toolNames.hardwareCategoryTag',
+          developer: 'home.toolNames.developerCategoryTag',
+          cleanup: 'home.toolNames.cleanupCategoryTag'
+        };
+        const key = tagKeys[sectionCategory];
+        return key ? t(key) : getHomeCategoryLabel(sectionCategory);
       }
 
       function collectHomeTools() {
@@ -18157,8 +19121,9 @@
         });
       }
 
-      function renderHomeTools() {
+      function renderHomeTools({ resetPagination = false } = {}) {
         if (!homeToolSearch || !homeToolGrid) return;
+        if (resetPagination) homeVisibleToolCount = HOME_TOOL_PAGE_SIZE;
         const query = homeToolSearch.value.trim().toLowerCase();
         const visibleTools = collectHomeTools().filter(tool => {
           const matchesCategory = activeHomeCategory === 'all' || tool.homeCategory === activeHomeCategory;
@@ -18166,13 +19131,16 @@
         });
 
         if (!visibleTools.length) {
-          homeToolGrid.innerHTML = '<div class="tool-result-empty">没有找到匹配的工具</div>';
+          homeToolGrid.innerHTML = `<div class="tool-result-empty">${escapeHtml(t('home.noToolsFound'))}</div>`;
+          if (homeToolLoadMore) homeToolLoadMore.hidden = true;
           if (typeof createIcons === 'function') createIcons({ icons });
           return;
         }
 
-        homeToolGrid.innerHTML = visibleTools.map(tool => `
-          <button class="tool-result-card" type="button" data-home-tool="${escapeHtml(tool.toolId)}">
+        const shownTools = visibleTools.slice(0, homeVisibleToolCount);
+        homeToolGrid.innerHTML = shownTools.map(tool => `
+          <button class="tool-result-card" type="button" data-home-tool="${escapeHtml(tool.toolId)}" data-tool-category="${escapeHtml(tool.homeCategory)}">
+            <span class="card-water-layer" aria-hidden="true"><span class="card-water-ripple"></span></span>
             <span class="tool-result-top">
               <span class="tool-result-icon">${tool.iconHtml || '<i data-lucide="sparkles"></i>'}</span>
               <span class="tool-result-tag">${escapeHtml(tool.tag)}</span>
@@ -18184,9 +19152,23 @@
           </button>
         `).join('');
 
+        const remaining = Math.max(0, visibleTools.length - shownTools.length);
+        if (homeToolLoadMore) homeToolLoadMore.hidden = remaining === 0;
+        if (homeToolLoadMoreSummary) {
+          const summary = t('home.loadMoreSummary', { shown: shownTools.length, total: visibleTools.length });
+          homeToolLoadMoreSummary.textContent = remaining > 0
+            ? `${summary} · ${t('home.loadMoreRemaining', { remaining })}`
+            : summary;
+        }
+        if (homeToolLoadMoreButton) {
+          homeToolLoadMoreButton.disabled = remaining === 0;
+          const label = t('home.loadMore');
+          homeToolLoadMoreButton.querySelector('[data-i18n="home.loadMore"]')?.replaceChildren(document.createTextNode(label));
+        }
+
         if (typeof createIcons === 'function') createIcons({ icons });
         homeToolGrid.querySelectorAll('[data-home-tool]').forEach(card => {
-          const tool = visibleTools.find(item => item.toolId === card.dataset.homeTool);
+          const tool = shownTools.find(item => item.toolId === card.dataset.homeTool);
           card.addEventListener('click', () => launchToolFromHome(card.dataset.homeTool));
           card.addEventListener('contextmenu', event => {
             event.preventDefault();
@@ -18204,15 +19186,49 @@
         button.addEventListener('click', openDonationOverlay);
       });
 
+      function decorateHomeCategoryChip(chip) {
+        const labelHost = chip.querySelector(':scope > span');
+        const label = labelHost?.textContent?.trim();
+        if (!labelHost || !label || labelHost.classList.contains('category-chip-label')) return;
+        const createLayer = className => {
+          const layer = document.createElement('span');
+          layer.className = className;
+          Array.from(label).forEach((character, index) => {
+            const letter = document.createElement('span');
+            letter.style.setProperty('--category-letter-duration', `${Math.min(660, 420 + index * 120)}ms`);
+            letter.textContent = character === ' ' ? '\u00a0' : character;
+            layer.appendChild(letter);
+          });
+          return layer;
+        };
+        chip.setAttribute('aria-label', label);
+        labelHost.className = 'category-chip-label';
+        labelHost.setAttribute('aria-hidden', 'true');
+        labelHost.replaceChildren(
+          createLayer('category-chip-text category-chip-text-outgoing'),
+          createLayer('category-chip-text category-chip-text-incoming')
+        );
+      }
+
+      homeCategoryChips.forEach(decorateHomeCategoryChip);
+      homeCategoryChips.forEach(chip => chip.setAttribute('aria-pressed', String(chip.classList.contains('is-active'))));
       homeCategoryChips.forEach(chip => {
         chip.addEventListener('click', () => {
           activeHomeCategory = chip.dataset.homeCategory || 'all';
-          homeCategoryChips.forEach(item => item.classList.toggle('is-active', item === chip));
-          renderHomeTools();
+          homeCategoryChips.forEach(item => {
+            const isActive = item === chip;
+            item.classList.toggle('is-active', isActive);
+            item.setAttribute('aria-pressed', String(isActive));
+          });
+          renderHomeTools({ resetPagination: true });
         });
       });
 
-      homeToolSearch?.addEventListener('input', renderHomeTools);
+      homeToolSearch?.addEventListener('input', () => renderHomeTools({ resetPagination: true }));
+      homeToolLoadMoreButton?.addEventListener('click', () => {
+        homeVisibleToolCount += HOME_TOOL_PAGE_SIZE;
+        renderHomeTools();
+      });
       homeScrollContainer?.addEventListener('scroll', () => {
         markHomeV2Scrolling();
         if (homeScrollUiRaf) return;
@@ -18529,7 +19545,7 @@
         const { PDF_SPLIT_LIMITS, assertPdfSplitSelection } = await import('./pdf-split-core.js');
         let totalBytes = 0;
         if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           for (const file of selectedPdfSplitFiles) {
             if (!file.path) throw new Error(`Missing path for ${file.name}`);
             totalBytes += Number(await invoke('get_file_size', { path: file.path }));
@@ -18543,7 +19559,7 @@
 
       async function readPdfSplitFileData(file) {
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const bytes = await invoke('read_file_bytes', { path: file.path });
           if (Array.isArray(bytes)) return Uint8Array.from(bytes);
           if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
@@ -18743,7 +19759,7 @@
         const failures = [];
         const outputDir = isTauri ? await getPdfSplitOutputDir() : '~/Downloads';
         let invoke = null;
-        if (isTauri) ({ invoke } = await import('@tauri-apps/api/core'));
+        if (isTauri) ({ invoke } = await tauriCorePromise);
 
         await splitPdfPages({
           documents: pdfSplitLoadedDocs,
@@ -18872,7 +19888,7 @@
         pdfSplitSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfSplitSavedFolder) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('open_path', { path: lastPdfSplitSavedFolder });
             } catch (error) {
               console.error('[PDF Split] Open folder error:', error);
@@ -19036,7 +20052,7 @@
         const file = selectedPdfRotateFiles[0];
         if (!file) throw new Error('No PDF file is selected');
         const totalBytes = isTauri && file.path
-          ? Number(await (await import('@tauri-apps/api/core')).invoke('get_file_size', { path: file.path }))
+          ? Number(await (await tauriCorePromise).invoke('get_file_size', { path: file.path }))
           : Number(file.size || 0);
         assertPdfRotateSelection(selectedPdfRotateFiles, totalBytes, PDF_ROTATE_LIMITS);
         return PDF_ROTATE_LIMITS;
@@ -19044,7 +20060,7 @@
 
       async function readPdfRotateFileData(file) {
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const bytes = await invoke('read_file_bytes', { path: file.path });
           if (Array.isArray(bytes)) return Uint8Array.from(bytes);
           if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes);
@@ -19419,7 +20435,7 @@
 
       async function savePdfRotateBytes(bytes, fileName) {
         if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           return invoke('write_unique_file_bytes', {
             directory: await getPdfRotateOutputDir(),
             fileName,
@@ -19547,7 +20563,7 @@
         pdfRotateSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfRotateSavedPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = lastPdfRotateSavedPath.replace(/[/\\][^/\\]+$/, '').replace(/\//g, '\\');
               await invoke('open_path', { path: folder });
             } catch (e) {
@@ -19703,7 +20719,7 @@
         const file = selectedPdfEncryptFiles[0];
         if (!file) throw new Error('No PDF file is selected');
         const totalBytes = isTauri && file.path
-          ? Number(await (await import('@tauri-apps/api/core')).invoke('get_file_size', { path: file.path }))
+          ? Number(await (await tauriCorePromise).invoke('get_file_size', { path: file.path }))
           : Number(file.size || 0);
         assertPdfEncryptSelection(selectedPdfEncryptFiles, totalBytes, PDF_ENCRYPT_LIMITS);
       }
@@ -19949,7 +20965,7 @@
           let savedPath;
           if (isTauri) {
             if (!file.path) throw new Error('pdf-encrypt:invalid-pdf');
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             setPdfEncryptProgress(35, t('home.pdfEncrypt.encrypting'));
             savedPath = await invoke('encrypt_pdf', {
               inputPath: file.path,
@@ -20024,7 +21040,7 @@
         pdfEncryptSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfEncryptSavedPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = lastPdfEncryptSavedPath.replace(/[/\\][^/\\]+$/, '').replace(/\//g, '\\');
               await invoke('open_path', { path: folder });
             } catch (e) {
@@ -20142,7 +21158,7 @@
         const file = selectedPdfDecryptFiles[0];
         if (!file) throw new Error('No PDF file is selected');
         const totalBytes = isTauri && file.path
-          ? Number(await (await import('@tauri-apps/api/core')).invoke('get_file_size', { path: file.path }))
+          ? Number(await (await tauriCorePromise).invoke('get_file_size', { path: file.path }))
           : Number(file.size || 0);
         assertPdfDecryptSelection(selectedPdfDecryptFiles, totalBytes, PDF_DECRYPT_LIMITS);
       }
@@ -20350,7 +21366,7 @@
           if (!isTauri) throw new Error('pdf-decrypt:desktop-only');
           const file = selectedPdfDecryptFiles[0];
           setPdfDecryptProgress(40, t('home.pdfDecrypt.decrypting'));
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const savedPath = await invoke('decrypt_pdf', { inputPath: file.path, password, outputDir: await getOutputDir('PDF_Decrypt') });
           setPdfDecryptProgress(100, t('home.pdfDecrypt.decrypting'));
           showPdfDecryptSuccess(savedPath, 1);
@@ -20402,7 +21418,7 @@
         pdfDecryptSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfDecryptSavedPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = lastPdfDecryptSavedPath.replace(/[/\\][^/\\]+$/, '').replace(/\//g, '\\');
               await invoke('open_path', { path: folder });
             } catch (e) {
@@ -20854,7 +21870,7 @@
             const enhanceCore = await import('./pdf-enhance-core.js');
             let file = selectedPdfEnhanceFiles[0];
             if (isTauri && file.path) {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               file = { ...file, size: await invoke('get_file_size', { path: file.path }) };
               selectedPdfEnhanceFiles = [file];
             }
@@ -20863,7 +21879,7 @@
 
             let fileData;
             if (isTauri && file.path) {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const rawBytes = await invoke('read_file_bytes', { path: file.path });
               if (Array.isArray(rawBytes)) {
                 fileData = Uint8Array.from(rawBytes);
@@ -20959,7 +21975,7 @@
             const outputFileName = enhanceCore.createPdfEnhanceFileName(file.name);
 
             if (isTauri) {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const outputDir = await getOutputDir('Enhance');
               pdfEnhanceWriteSessionId = await invoke('begin_pdf_enhance_write', {
                 directory: outputDir,
@@ -21001,7 +22017,7 @@
           } finally {
             if (pdfEnhanceWriteSessionId !== null && isTauri) {
               try {
-                const { invoke } = await import('@tauri-apps/api/core');
+                const { invoke } = await tauriCorePromise;
                 await invoke('discard_pdf_enhance_write', { sessionId: pdfEnhanceWriteSessionId });
               } catch (_) {}
             }
@@ -21030,7 +22046,7 @@
         pdfEnhanceSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfEnhanceSavedPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = lastPdfEnhanceSavedPath.replace(/[/\\][^/\\]+$/, '').replace(/\//g, '\\');
               await invoke('open_path', { path: folder });
             } catch (e) {
@@ -21285,7 +22301,7 @@
             signal,
             allowPrivateHttp,
             nativeRequestImpl: async request => {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               return invoke('request_private_ai_completion', { request });
             }
           });
@@ -23838,7 +24854,7 @@
           let dataUrl;
           if (isTauri && file.path) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const fileSize = Number(await invoke('get_file_size', { path: file.path }));
               if (!Number.isSafeInteger(fileSize) || fileSize < 0 || fileSize > AI_DOC_LIMITS.maxImageBytes) {
                 addAiDocChatMsg('ai', t('home.aiDoc.imageTooLarge', { max: 10 }));
@@ -23990,7 +25006,7 @@
           }
 
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getOutputDir('AI_Doc');
             const fileName = `ai_doc_${Date.now()}.pdf`;
             const outputPath = await invoke('write_unique_file_bytes', {
@@ -24113,7 +25129,7 @@
         aiDocSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && aiDocLastExportPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = aiDocLastExportPath.replace(/[/\\][^/\\]+$/, '').replace(/\//g, '\\');
               await invoke('open_path', { path: folder });
             } catch (err) {
@@ -25461,7 +26477,7 @@
 
           const pdfBytes = await pdfDoc.save();
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getOutputDir('AI_Table');
             const fileName = `ai_table_${Date.now()}.pdf`;
             const outputPath = await invoke('write_unique_file_bytes', {
@@ -25486,7 +26502,7 @@
 
       async function saveAiTableBlob(blob, fileName) {
         if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const arrayBuffer = await blob.arrayBuffer();
           const outputDir = await getOutputDir('AI_Table');
           const outputPath = await invoke('write_unique_file_bytes', {
@@ -25523,7 +26539,7 @@
       if (aiTableSuccessOpenFolder) aiTableSuccessOpenFolder.addEventListener('click', async () => {
         if (isTauri && aiTableLastExportPath) {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const folder = aiTableLastExportPath.replace(/[/\\][^/\\]+$/, '').replace(/\//g, '\\');
             await invoke('open_path', { path: folder });
           } catch (err) { console.error('[AI Table] Open folder error:', err); }
@@ -25794,23 +26810,28 @@
       async function listenForScreenColorResults() {
         if (!isTauri || isScreenPickerWindow || screenPickerListening) return;
         screenPickerListening = true;
+        const pendingUnlistens = [];
         try {
-          const { listen } = await import('@tauri-apps/api/event');
-          screenPickerUnlistens.push(await listen('screen-color-picked', event => {
+          const { listen } = await tauriEventPromise;
+          pendingUnlistens.push(await listen('screen-color-picked', event => {
             openColorExtractorForShortcutResult(event?.payload);
           }));
-          screenPickerUnlistens.push(await listen('screen-picker-ready', () => {
+          pendingUnlistens.push(await listen('screen-picker-ready', () => {
             updateColorExtractorStatus(t('home.colorExtractor.screenReady'));
             if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
           }));
-          screenPickerUnlistens.push(await listen('screen-picker-cancelled', () => {
+          pendingUnlistens.push(await listen('screen-picker-cancelled', () => {
             updateColorExtractorStatus(getLang() === 'zh' ? '已取消取色' : 'Sampling cancelled');
             if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
           }));
-          screenPickerUnlistens.push(await listen('screen-picker-closed', () => {
+          pendingUnlistens.push(await listen('screen-picker-closed', () => {
             if (colorExtractorScreenStartBtn) colorExtractorScreenStartBtn.disabled = false;
           }));
+          screenPickerUnlistens.push(...pendingUnlistens);
         } catch (error) {
+          await Promise.all(pendingUnlistens.map(unlisten => {
+            try { return unlisten?.(); } catch { return null; }
+          }));
           screenPickerListening = false;
           console.error('[Color Extractor] Cannot listen for screen color:', error);
         }
@@ -25838,7 +26859,7 @@
         updateColorExtractorStatus(getLang() === 'zh' ? '正在启动取色器…' : 'Starting picker…');
         try {
           await listenForScreenColorResults();
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('open_screen_color_picker');
           // The overlay window emits `screen-picker-ready` when it is ready.
           // Keep a fallback so the UI is never left permanently on "starting…"
@@ -25859,7 +26880,7 @@
       async function closeNativeScreenPicker() {
         if (!isTauri) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           await invoke('close_screen_color_picker');
         } catch (error) {
           console.warn('[Color Extractor] Cannot close native screen picker:', error);
@@ -25933,7 +26954,7 @@
 
       async function emitScreenPickerEvent(name, payload) {
         try {
-          const { emitTo } = await import('@tauri-apps/api/event');
+          const { emitTo } = await tauriEventPromise;
           await emitTo('main', name, payload);
         } catch (error) {
           console.error('[Color Extractor] Cannot emit screen picker event:', error);
@@ -25954,7 +26975,7 @@
       async function runScreenPickerSample() {
         if (!isScreenPickerWindow || screenPickerWindowLocked) return;
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const sample = await invoke('screen_color_sample');
           if (screenPickerWindowLocked) return;
           screenPickerLatestSample = sample;
@@ -26028,8 +27049,8 @@
         (async () => {
           try {
             const [{ invoke }, { listen }] = await Promise.all([
-              import('@tauri-apps/api/core'),
-              import('@tauri-apps/api/event')
+              tauriCorePromise,
+              tauriEventPromise
             ]);
             screenPickerOpenUnlisten = await listen('screen-picker-opened', event => {
               restartScreenPickerSampling(event?.payload);
@@ -26368,7 +27389,7 @@
         // In Tauri mode, read file bytes via backend to ensure data accessibility
         if (isTauri && file.path) {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const fileSize = Number(await invoke('get_file_size', { path: file.path }));
             assertColorExtractorFile(file, fileSize);
             const rawBytes = await invoke('read_file_bytes', { path: file.path });
@@ -27020,7 +28041,7 @@
         const name = String(file?.name || file?.path || '').trim();
         if (!textStatsSupportedName(name)) throw new Error('text-stats:unsupported-file');
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           return normalizeDesktopBytes(await invoke('read_file_bytes_limited', {
             path: file.path,
             maxBytes: TEXT_STATS_LIMITS.maxDocumentBytes
@@ -27257,7 +28278,7 @@
         const fileName = `${safeBase}-统计报告.md`;
         try {
           if (isTauri) {
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             const outputDir = await getOutputDir('Text_Stats');
             const outputPath = await invoke('write_unique_file_bytes', {
               directory: outputDir,
@@ -29556,7 +30577,7 @@
 
       async function getPdfMergeFileSize(file) {
         if (isTauri && file.path) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const size = await invoke('get_file_size', { path: file.path });
           if (!Number.isSafeInteger(size) || size < 0) {
             throw new Error(`Invalid file size for ${file.name}`);
@@ -29805,7 +30826,7 @@
             let fileData;
 
             if (isTauri && file.path) {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const bytes = await invoke('read_file_bytes', { path: file.path });
               if (Array.isArray(bytes)) {
                 fileData = Uint8Array.from(bytes);
@@ -30123,7 +31144,7 @@
         // Keep merge exports in the same configured output root as every other desktop tool.
         let outputPath;
         if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
+          const { invoke } = await tauriCorePromise;
           const outputDir = await getOutputDir('PDF_Merge');
           outputPath = await invoke('write_unique_file_bytes', {
             directory: outputDir,
@@ -30174,7 +31195,7 @@
         pdfMergeSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && pdfMergeSuccessPath.textContent) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               const folder = pdfMergeSuccessPath.textContent
                 .replace(/[/\\][^/\\]+$/, '')
                 .replace(/\//g, '\\');
@@ -30386,7 +31407,7 @@
               const fileList = await Promise.all(filePaths.map(async path => {
                 let size = 0;
                 try {
-                  const { invoke } = await import('@tauri-apps/api/core');
+                  const { invoke } = await tauriCorePromise;
                   size = await invoke('get_file_size', { path });
                 } catch (e) {}
                 return { name: path.split(/[\\/]/).pop() || path, path, size };
@@ -30411,7 +31432,7 @@
                 const fileList = await Promise.all(selected.map(async path => {
                   let size = 0;
                   try {
-                    const { invoke } = await import('@tauri-apps/api/core');
+                    const { invoke } = await tauriCorePromise;
                     size = await invoke('get_file_size', { path });
                   } catch (e) {}
                   return { name: path.split(/[\\/]/).pop() || path, path, size };
@@ -30444,7 +31465,7 @@
 
           try {
             const { assertPdfCompressSelection, summarizePdfCompressResults } = await import('./pdf-compress-core.js');
-            const { invoke } = await import('@tauri-apps/api/core');
+            const { invoke } = await tauriCorePromise;
             assertPdfCompressSelection(selectedPdfCompressFiles);
             if (!isTauri) throw new Error('pdf-compress:desktop-only');
 
@@ -30578,7 +31599,7 @@
           if (pdfCompressResults.length === 0) return;
           if (isTauri && pdfCompressResults.some(result => result.outputPath)) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('open_path', { path: pdfCompressOutputDir });
             } catch (err) {
               console.error('[PDF Compress] Open output folder error:', err);
@@ -30633,7 +31654,7 @@
         pdfCompressSuccessOpenFolder.addEventListener('click', async () => {
           if (isTauri && lastPdfCompressSavedPath) {
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
+              const { invoke } = await tauriCorePromise;
               await invoke('open_path', { path: lastPdfCompressSavedPath });
             } catch (e) {
               console.error('[PDF Compress] Reveal error:', e);
@@ -30775,6 +31796,10 @@
       function syncFavoritesManageState() {
         const container = document.getElementById('favoritesContent');
         container?.classList.toggle('is-managing', favoritesManageMode);
+        container?.querySelectorAll('[data-remove-favorite]').forEach(button => {
+          button.tabIndex = favoritesManageMode ? 0 : -1;
+          button.setAttribute('aria-hidden', String(!favoritesManageMode));
+        });
         manageFavoritesBtn?.classList.toggle('is-active', favoritesManageMode);
         manageFavoritesBtn?.setAttribute('aria-pressed', String(favoritesManageMode));
       }
@@ -30806,14 +31831,16 @@
           const info = resolveHomeToolInfo(f);
           const removeLabel = t('home.favRemove');
           return `
-          <article class="favorite-item" role="button" tabindex="0" data-tool="${escapeHtml(info.toolId)}" data-category="${escapeHtml(info.category || '')}">
-            <span class="favorite-icon">${info.iconHtml}</span>
-            <span>
+           <article class="favorite-item" role="button" tabindex="0" data-tool="${escapeHtml(info.toolId)}" data-category="${escapeHtml(info.category || '')}">
+            <span class="card-water-layer" aria-hidden="true"><span class="card-water-ripple"></span></span>
+            <span class="favorite-top">
+              <span class="favorite-icon">${info.iconHtml}</span>
+              <span class="favorite-category">${escapeHtml(getHomeCategoryTag(info.category))}</span>
+            </span>
+            <span class="favorite-copy">
               <span class="favorite-name">${escapeHtml(info.name)}</span>
               <span class="favorite-desc">${escapeHtml(info.desc || '')}</span>
-              <span class="favorite-category">${escapeHtml(getHomeCategoryLabel(info.category))}</span>
             </span>
-            <span class="favorite-arrow"><i data-lucide="arrow-up-right"></i></span>
             <button class="favorite-remove-btn" type="button" data-remove-favorite="${escapeHtml(info.toolId)}" aria-label="${escapeHtml(removeLabel)}" title="${escapeHtml(removeLabel)}">
               <i data-lucide="x"></i>
             </button>
@@ -30830,6 +31857,7 @@
             launchToolFromHome(toolId);
           });
           el.addEventListener('keydown', event => {
+            if (event.target.closest?.('[data-remove-favorite]')) return;
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
             launchToolFromHome(el.dataset.tool);
@@ -30862,4 +31890,114 @@
       // Re-render on language change
       onLangChange(() => {
         renderFavorites();
+      });
+
+      // ===== Lazy feature tools (2.1) =====
+      const lazyFeatureTools = {
+        'markdown-editor': {
+          overlayId: 'markdownEditorOverlay',
+          load: () => import('./markdown-editor-ui.js'),
+          init: 'initMarkdownEditorTool'
+        },
+        'image-color-replace': {
+          overlayId: 'imageColorReplaceOverlay',
+          load: () => import('./image-color-replace-ui.js'),
+          init: 'initImageColorReplaceTool'
+        },
+        'color-space-compare': {
+          overlayId: 'colorSpaceCompareOverlay',
+          load: () => import('./color-space-compare-ui.js'),
+          init: 'initColorSpaceCompareTool'
+        },
+        'hash-crypto': {
+          overlayId: 'cryptoToolOverlay',
+          load: () => import('./crypto-tool-ui.js'),
+          init: 'initCryptoTool'
+        },
+        'json-tools': {
+          instanceKey: 'developer-toolbox',
+          overlayId: 'developerToolboxOverlay',
+          load: () => import('./developer-toolbox-ui.js'),
+          init: 'initDeveloperToolbox'
+        },
+        'base64': {
+          instanceKey: 'developer-toolbox',
+          overlayId: 'developerToolboxOverlay',
+          load: () => import('./developer-toolbox-ui.js'),
+          init: 'initDeveloperToolbox'
+        },
+        'url-codec': {
+          instanceKey: 'developer-toolbox',
+          overlayId: 'developerToolboxOverlay',
+          load: () => import('./developer-toolbox-ui.js'),
+          init: 'initDeveloperToolbox'
+        },
+        'uuid': {
+          instanceKey: 'developer-toolbox',
+          overlayId: 'developerToolboxOverlay',
+          load: () => import('./developer-toolbox-ui.js'),
+          init: 'initDeveloperToolbox'
+        },
+        'jwt': {
+          instanceKey: 'developer-toolbox',
+          overlayId: 'developerToolboxOverlay',
+          load: () => import('./developer-toolbox-ui.js'),
+          init: 'initDeveloperToolbox'
+        }
+      };
+      const lazyFeatureInstances = new Map();
+      const lazyFeaturePromises = new Map();
+      let activeLazyFeature = null;
+      let lazyFeatureOpenRequest = 0;
+
+      async function openLazyFeatureTool(toolId) {
+        const spec = lazyFeatureTools[toolId];
+        if (!spec) return;
+        const requestId = ++lazyFeatureOpenRequest;
+        try {
+          const instanceKey = spec.instanceKey || toolId;
+          let instance = lazyFeatureInstances.get(instanceKey);
+          if (!instance) {
+            let pending = lazyFeaturePromises.get(instanceKey);
+            if (!pending) {
+              pending = spec.load().then(module => {
+                const initializer = module[spec.init];
+                if (typeof initializer !== 'function') throw new Error(`Missing ${spec.init}`);
+                const created = initializer({
+                  overlay: document.getElementById(spec.overlayId),
+                  notify: (message, options) => window.showToast?.(message, options)
+                });
+                lazyFeatureInstances.set(instanceKey, created);
+                return created;
+              }).finally(() => lazyFeaturePromises.delete(instanceKey));
+              lazyFeaturePromises.set(instanceKey, pending);
+            }
+            instance = await pending;
+          }
+          if (requestId !== lazyFeatureOpenRequest) return;
+          if (activeLazyFeature && activeLazyFeature !== instance) activeLazyFeature.close?.();
+          activeLazyFeature = instance;
+          instance.open?.(toolId);
+        } catch (error) {
+          console.error(`Cannot open ${toolId}:`, error);
+          window.showToast?.(getLang() === 'zh' ? `工具加载失败：${String(error?.message || error)}` : `Failed to load tool: ${String(error?.message || error)}`);
+        }
+      }
+
+      Object.keys(lazyFeatureTools).forEach(toolId => {
+        document.querySelectorAll(`.audio-list-item[data-tool="${toolId}"]`).forEach(item => {
+          item.addEventListener('click', () => void openLazyFeatureTool(toolId));
+          item.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            void openLazyFeatureTool(toolId);
+          });
+        });
+      });
+
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || !activeLazyFeature) return;
+        lazyFeatureOpenRequest += 1;
+        activeLazyFeature.close?.();
+        activeLazyFeature = null;
       });
