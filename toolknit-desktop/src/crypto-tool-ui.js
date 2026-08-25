@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createIcons, icons } from 'lucide';
-import { CRYPTO_MAX_TEXT_CHARS, CRYPTO_PREFERENCES_KEY, LEGACY_ALGORITHMS, randomHex } from './crypto-tool-core.js';
+import { CRYPTO_MAX_TEXT_CHARS, CRYPTO_PREFERENCES_KEY, LEGACY_ALGORITHMS, exportRsaLegacyKeyComponents, randomHex } from './crypto-tool-core.js';
 import { bindToolPageChrome, mountToolPageBackground, toolTopbarMarkup } from './tool-page-shell.js';
 
 const TOOLS=[
@@ -24,7 +24,10 @@ const CRYPTO_ERROR_MESSAGES={
   'crypto:key-required':'请输入密钥',
   'crypto:invalid-mode':'当前算法不支持所选模式',
   'crypto:invalid-padding':'当前算法不支持所选填充方式',
+  'crypto:invalid-operation':'当前加密操作无效',
+  'crypto:invalid-scheme':'当前 RSA 加密方案无效',
   'crypto:block-length':'输入长度必须是分组大小的整数倍',
+  'crypto:invalid-pem':'RSA 密钥必须使用标准 PEM 格式',
   'crypto:rsa-size':'不支持所选 RSA 密钥位数',
   'crypto:rsa-public-key':'RSA 公钥格式无效',
   'crypto:rsa-private-key':'RSA 私钥格式无效',
@@ -32,6 +35,8 @@ const CRYPTO_ERROR_MESSAGES={
   'crypto:rsa-encrypt':'RSA 加密失败，请检查明文长度和公钥',
   'crypto:rsa-decrypt':'RSA 解密失败，请检查密文、私钥和加密方案',
   'crypto:rsa-utf8':'RSA 解密结果不是有效的 UTF-8 文本',
+  'crypto:rsa-platform':'PKCS#1 v1.5 兼容模式仅支持 Windows 桌面版',
+  'crypto:rsa-provider':'Windows 密码服务当前不可用',
   'file-hash:no-algorithm':'请至少选择一种摘要算法',
   'file-hash:unsupported-algorithm':'包含不支持的文件摘要算法',
   'file-hash:invalid-hmac-key':'请输入 HMAC-SHA256 密钥',
@@ -161,8 +166,8 @@ export function initCryptoTool({overlay,notify=message=>window.showToast?.(messa
   function run(){const data=payload();if(active==='rsa'&&data.scheme==='pkcs1'){void runNativeRsa(data);return;}post('run',data);}
   function schedule(){if(!HASH_IDS.has(active))return;clearTimeout(timer);timer=setTimeout(()=>run(),160);}
   function clearSecrets(){for(const selector of ['[data-crypto-input]','[data-crypto-output]','[data-crypto-key]','[data-crypto-iv]','[data-public-key]','[data-private-key]','[data-file-password]','[data-file-password-confirm]']){const field=q(selector);if(field)field.value='';}}
-  async function generateKeys(){const scheme=option('scheme','oaep');const size=Number(option('keySize','2048'));if(active==='rsa'&&scheme==='oaep'&&size===512){showError('crypto:rsa-oaep-size');return;}if(active==='rsa'&&scheme==='pkcs1'){const requestView=viewId;setBusy(true,'正在生成 RSA 密钥...');try{const pair=await invoke('generate_rsa_legacy_keypair',{keySize:size});if(requestView!==viewId)return;const publicField=q('[data-public-key]');const privateField=q('[data-private-key]');if(publicField&&privateField){publicField.value=pair.public_key||pair.publicKey;privateField.value=pair.private_key||pair.privateKey;addLog('RSA keygen',true);}}catch(error){if(requestView===viewId)showError(error);}finally{if(requestView===viewId)setBusy(false);}return;}post(active==='rsa'?'generate-rsa':'generate-sm2',active==='rsa'?{size,scheme}:{})}
-  async function runNativeRsa(data){const requestView=viewId;setBusy(true);try{const result=await invoke('rsa_legacy_operation',{operation:data.operation,input:data.input,publicKey:data.publicKey,privateKey:data.privateKey});if(requestView!==viewId)return;const output=q('[data-crypto-output]');if(output)output.value=result;addLog('RSA PKCS#1 v1.5',true);}catch(error){if(requestView===viewId){showError(error);addLog('RSA PKCS#1 v1.5',false);}}finally{if(requestView===viewId)setBusy(false);}}
+  async function generateKeys(){const scheme=option('scheme','oaep');const size=Number(option('keySize','2048'));if(active==='rsa'&&scheme==='oaep'&&size===512){showError('crypto:rsa-oaep-size');return;}post(active==='rsa'?'generate-rsa':'generate-sm2',active==='rsa'?{size,scheme}:{})}
+  async function runNativeRsa(data){const requestView=viewId;let key=null;setBusy(true);try{if(data.input.length>CRYPTO_MAX_TEXT_CHARS)throw new Error('crypto:input-too-large');key=await exportRsaLegacyKeyComponents(data.operation,data.publicKey,data.privateKey);if(requestView!==viewId)return;const result=await invoke('rsa_legacy_operation',{operation:data.operation,input:data.input,key});if(requestView!==viewId)return;const output=q('[data-crypto-output]');if(output)output.value=result;addLog('RSA PKCS#1 v1.5',true);}catch(error){if(requestView===viewId){showError(error);addLog('RSA PKCS#1 v1.5',false);}}finally{if(key)Object.keys(key).forEach(field=>{key[field]='';});if(requestView===viewId)setBusy(false);}}
   function keyBytes(){return {aes:[16,24,32],des:[8],'3des':[24],sm4:[16],chacha20:[32],trivium:[10]}[active]||[16];}function ivBytes(){return {aes:16,des:8,'3des':8,sm4:16,chacha20:12,trivium:10}[active]||8;}
   async function chooseFile(){const path=await open({multiple:false,filters:active==='aes'&&q('[data-file-operation="decrypt"]')?.classList.contains('is-active')?[{name:'ToolKnit AES',extensions:['tkaes']}]:undefined});if(typeof path==='string'){filePath=path;q('[data-file-name]').textContent=path.split(/[\\/]/).pop();}}
   async function runFile(){if(!filePath)return notify('请先选择文件。');if(fileOperationId)return;const operationId=crypto.randomUUID();const requestView=viewId;const operationType=active==='file-hash'?'File Hash':'AES File';fileOperationId=operationId;const cancel=q('[data-file-cancel]');const runButton=q('[data-file-run]');cancel.disabled=false;runButton.disabled=true;try{if(active==='file-hash'){const algorithms=Array.from(overlay.querySelectorAll('.crypto-hash-checks input:checked')).map(input=>input.value);if(!algorithms.length)throw new Error('file-hash:no-algorithm');const result=await invoke('hash_file',{inputPath:filePath,algorithms,hmacKey:q('[data-file-hmac-key] input')?.value||null,operationId});if(requestView!==viewId||fileOperationId!==operationId)return;q('[data-crypto-output]').value=Object.entries(result.digests||{}).map(([key,value])=>`${key.toUpperCase()}\n${value}`).join('\n\n');addLog('File Hash',true);}else{const decrypt=q('[data-file-operation="decrypt"]')?.classList.contains('is-active');const password=q('[data-file-password]').value;if(!password)throw new Error('tkaes:password-required');if(!decrypt&&password!==q('[data-file-password-confirm]').value)throw new Error('两次密码不一致');const root=await outputRoot();if(requestView!==viewId||fileOperationId!==operationId)return;const command=decrypt?'decrypt_tkaes_file':'encrypt_tkaes_file';const result=await invoke(command,{inputPath:filePath,outputDir:`${root}\\Encrypted`,password,operationId});if(requestView!==viewId||fileOperationId!==operationId)return;notify(`文件处理完成：${result.output_path||result.outputPath}`);addLog(command,true);q('[data-file-password]').value='';q('[data-file-password-confirm]')&&(q('[data-file-password-confirm]').value='');}}catch(error){if(requestView===viewId&&fileOperationId===operationId){const cancelled=String(error?.message||error).includes('tool-operation:cancelled');if(!cancelled)showError(error);else setBusy(false,'操作已取消');addLog(operationType,false);}}finally{if(fileOperationId===operationId)fileOperationId='';if(requestView===viewId){cancel.disabled=true;runButton.disabled=false;}}}

@@ -229,24 +229,53 @@ export function runSymmetricCipher(algorithm, operation, options) {
   return formatBytes(output,options.outputFormat || (operation==='encrypt'?'base64':'text'),options.upper);
 }
 
-function pemToDer(pem) { return base64ToBytes(String(pem).replace(/-----[^-]+-----/g,'').replace(/\s+/g,'')); }
+function pemToDer(pem,label) {
+  const text=assertCryptoText(pem).trim();
+  const begin=`-----BEGIN ${label}-----`;
+  const end=`-----END ${label}-----`;
+  if(!text.startsWith(begin)||!text.endsWith(end))throw new Error('crypto:invalid-pem');
+  const body=text.slice(begin.length,-end.length).trim();
+  if(!body||!/^[A-Za-z0-9+/=\s]+$/.test(body))throw new Error('crypto:invalid-pem');
+  return base64ToBytes(body);
+}
 function derToPem(der,label){const base64=bytesToBase64(new Uint8Array(der));return `-----BEGIN ${label}-----\n${base64.match(/.{1,64}/g).join('\n')}\n-----END ${label}-----`;}
 
 export async function generateRsaKeyPair(size=2048,scheme='oaep') {
   const bits=Number(size);
-  if(scheme==='pkcs1'||bits===512) throw new Error('crypto:rsa-pkcs1-native-only');
-  if(![1024,2048,4096].includes(bits)) throw new Error('crypto:rsa-size');
+  if(!['oaep','pkcs1'].includes(scheme))throw new Error('crypto:invalid-scheme');
+  if(![512,1024,2048,4096].includes(bits)) throw new Error('crypto:rsa-size');
+  if(scheme==='oaep'&&bits===512)throw new Error('crypto:rsa-oaep-size');
   const pair=await crypto.subtle.generateKey({name:'RSA-OAEP',modulusLength:bits,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['encrypt','decrypt']);
-  return {publicKey:derToPem(await crypto.subtle.exportKey('spki',pair.publicKey),'PUBLIC KEY'),privateKey:derToPem(await crypto.subtle.exportKey('pkcs8',pair.privateKey),'PRIVATE KEY'),scheme:'oaep'};
+  return {publicKey:derToPem(await crypto.subtle.exportKey('spki',pair.publicKey),'PUBLIC KEY'),privateKey:derToPem(await crypto.subtle.exportKey('pkcs8',pair.privateKey),'PRIVATE KEY'),scheme};
+}
+
+export async function exportRsaLegacyKeyComponents(operation,publicKey,privateKey) {
+  if(!['encrypt','decrypt'].includes(operation))throw new Error('crypto:invalid-operation');
+  const encrypt=operation==='encrypt';
+  const errorCode=encrypt?'crypto:rsa-public-key':'crypto:rsa-private-key';
+  try{
+    const key=encrypt
+      ?await crypto.subtle.importKey('spki',pemToDer(publicKey,'PUBLIC KEY'),{name:'RSA-OAEP',hash:'SHA-256'},true,['encrypt'])
+      :await crypto.subtle.importKey('pkcs8',pemToDer(privateKey,'PRIVATE KEY'),{name:'RSA-OAEP',hash:'SHA-256'},true,['decrypt']);
+    const jwk=await crypto.subtle.exportKey('jwk',key);
+    if(jwk.kty!=='RSA'||typeof jwk.n!=='string'||typeof jwk.e!=='string')throw new Error(errorCode);
+    if(encrypt)return {n:jwk.n,e:jwk.e};
+    if(typeof jwk.p!=='string'||typeof jwk.q!=='string')throw new Error(errorCode);
+    return {n:jwk.n,e:jwk.e,p:jwk.p,q:jwk.q};
+  }catch(caught){
+    if(caught?.message==='crypto:input-too-large')throw caught;
+    throw new Error(errorCode);
+  }
 }
 
 export async function runRsa(operation, input, publicKey, privateKey, scheme='oaep') {
   if(scheme==='pkcs1') throw new Error('crypto:rsa-pkcs1-native-only');
+  if(!['encrypt','decrypt'].includes(operation))throw new Error('crypto:invalid-operation');
   if(operation==='encrypt'){
-    const key=await crypto.subtle.importKey('spki',pemToDer(publicKey),{name:'RSA-OAEP',hash:'SHA-256'},false,['encrypt']);
+    const key=await crypto.subtle.importKey('spki',pemToDer(publicKey,'PUBLIC KEY'),{name:'RSA-OAEP',hash:'SHA-256'},false,['encrypt']);
     return bytesToBase64(new Uint8Array(await crypto.subtle.encrypt({name:'RSA-OAEP'},key,encoder.encode(String(input)))));
   }
-  const key=await crypto.subtle.importKey('pkcs8',pemToDer(privateKey),{name:'RSA-OAEP',hash:'SHA-256'},false,['decrypt']);
+  const key=await crypto.subtle.importKey('pkcs8',pemToDer(privateKey,'PRIVATE KEY'),{name:'RSA-OAEP',hash:'SHA-256'},false,['decrypt']);
   return decoder.decode(await crypto.subtle.decrypt({name:'RSA-OAEP'},key,base64ToBytes(input)));
 }
 

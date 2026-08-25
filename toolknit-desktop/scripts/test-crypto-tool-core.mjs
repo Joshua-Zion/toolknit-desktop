@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { generateRsaKeyPair, generateSm2KeyPair, hashText, hmacMd5, md4Hex, runRsa, runSm2, runSymmetricCipher, triviumXor } from '../src/crypto-tool-core.js';
+import { exportRsaLegacyKeyComponents, generateRsaKeyPair, generateSm2KeyPair, hashText, hmacMd5, md4Hex, runRsa, runSm2, runSymmetricCipher, triviumXor } from '../src/crypto-tool-core.js';
 
 assert.equal(hashText('md2','abc'),'da853b0d3f88d99b30283a69e6ded6bb');
 assert.equal(md4Hex('abc'),'a448017aaf21d8525fc10ae87aa6729d');
@@ -43,4 +43,22 @@ assert.equal(runSm2('decrypt',sm2Cipher,sm2.publicKey,sm2.privateKey,1),'ToolKni
 const rsa=await generateRsaKeyPair(1024,'oaep');
 const rsaCipher=await runRsa('encrypt','ToolKnit RSA',rsa.publicKey,rsa.privateKey);
 assert.equal(await runRsa('decrypt',rsaCipher,rsa.publicKey,rsa.privateKey),'ToolKnit RSA');
+await assert.rejects(()=>generateRsaKeyPair(512,'oaep'),/crypto:rsa-oaep-size/);
+
+const legacyRsa=await generateRsaKeyPair(512,'pkcs1');
+assert.equal(legacyRsa.scheme,'pkcs1');
+const legacyPublic=await exportRsaLegacyKeyComponents('encrypt',legacyRsa.publicKey,legacyRsa.privateKey);
+const legacyPrivate=await exportRsaLegacyKeyComponents('decrypt',legacyRsa.publicKey,legacyRsa.privateKey);
+assert.deepEqual(Object.keys(legacyPublic).sort(),['e','n']);
+assert.deepEqual(Object.keys(legacyPrivate).sort(),['e','n','p','q']);
+assert.ok(Object.values(legacyPublic).every(value=>typeof value==='string'&&value.length>0));
+assert.ok(Object.values(legacyPrivate).every(value=>typeof value==='string'&&value.length>0));
+await assert.rejects(
+  ()=>exportRsaLegacyKeyComponents('encrypt',legacyRsa.privateKey,legacyRsa.privateKey),
+  /crypto:rsa-public-key/
+);
+await assert.rejects(
+  ()=>exportRsaLegacyKeyComponents('decrypt',legacyRsa.publicKey,legacyRsa.publicKey),
+  /crypto:rsa-private-key/
+);
 console.log('crypto tool core tests passed');

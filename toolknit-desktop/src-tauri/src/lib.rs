@@ -5,6 +5,7 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
+mod rsa_legacy_windows;
 mod system_cleanup;
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
@@ -10006,19 +10007,6 @@ async fn decrypt_tkaes_file(app: tauri::AppHandle, input_path: String, output_di
     joined.map_err(|_| "tkaes:worker-failed".to_string())?
 }
 
-#[derive(Clone, serde::Serialize)]
-struct RsaLegacyKeyPair { public_key: String, private_key: String }
-
-fn generate_rsa_legacy_keypair_blocking(key_size: u32) -> Result<RsaLegacyKeyPair, String> { use rsa::{pkcs8::EncodePrivateKey, pkcs8::EncodePublicKey, RsaPrivateKey, RsaPublicKey}; if ![512, 1024, 2048, 4096].contains(&key_size) { return Err("crypto:rsa-size".to_string()); } let mut rng = rsa::rand_core::OsRng; let private = RsaPrivateKey::new(&mut rng, key_size as usize).map_err(|_| "crypto:rsa-keygen".to_string())?; let public = RsaPublicKey::from(&private); Ok(RsaLegacyKeyPair { public_key: public.to_public_key_pem(rsa::pkcs8::LineEnding::LF).map_err(|_| "crypto:rsa-key-export".to_string())?, private_key: private.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF).map_err(|_| "crypto:rsa-key-export".to_string())?.to_string() }) }
-
-#[tauri::command]
-async fn generate_rsa_legacy_keypair(key_size: u32) -> Result<RsaLegacyKeyPair, String> { tokio::task::spawn_blocking(move || generate_rsa_legacy_keypair_blocking(key_size)).await.map_err(|_| "crypto:rsa-worker-failed".to_string())? }
-
-fn rsa_legacy_operation_blocking(operation: String, input: String, public_key: String, private_key: String) -> Result<String, String> { use rsa::{pkcs1v15::Pkcs1v15Encrypt, pkcs8::{DecodePrivateKey, DecodePublicKey}, RsaPrivateKey, RsaPublicKey}; let mut rng = rsa::rand_core::OsRng; if operation == "encrypt" { let public = RsaPublicKey::from_public_key_pem(&public_key).map_err(|_| "crypto:rsa-public-key".to_string())?; let encrypted = public.encrypt(&mut rng, Pkcs1v15Encrypt, input.as_bytes()).map_err(|_| "crypto:rsa-encrypt".to_string())?; Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encrypted)) } else if operation == "decrypt" { let private = RsaPrivateKey::from_pkcs8_pem(&private_key).map_err(|_| "crypto:rsa-private-key".to_string())?; let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, input).map_err(|_| "crypto:rsa-ciphertext".to_string())?; let plain = private.decrypt(Pkcs1v15Encrypt, &bytes).map_err(|_| "crypto:rsa-decrypt".to_string())?; String::from_utf8(plain).map_err(|_| "crypto:rsa-utf8".to_string()) } else { Err("crypto:invalid-operation".to_string()) } }
-
-#[tauri::command]
-async fn rsa_legacy_operation(operation: String, input: String, public_key: String, private_key: String) -> Result<String, String> { tokio::task::spawn_blocking(move || rsa_legacy_operation_blocking(operation, input, public_key, private_key)).await.map_err(|_| "crypto:rsa-worker-failed".to_string())? }
-
 fn convert_image_batch_blocking_with_progress<F>(
     input_paths: Vec<String>,
     output_dir: String,
@@ -16557,8 +16545,7 @@ pub fn run() {
             cancel_tool_operation,
             encrypt_tkaes_file,
             decrypt_tkaes_file,
-            generate_rsa_legacy_keypair,
-            rsa_legacy_operation,
+            rsa_legacy_windows::rsa_legacy_operation,
             inspect_image_stitch_inputs,
             create_image_stitch_pdf_session,
             write_image_stitch_pdf_page,

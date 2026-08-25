@@ -3,7 +3,7 @@ name = "toolknit-desktop"
 version = "2.1.0"
 description = "ToolKnit Desktop App"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.88"
 
 [lib]
 name = "toolknit_desktop_lib"
@@ -16,7 +16,7 @@ tauri-build = { version = "2.6.2", features = [] }
 base64 = "0.22.1"
 hex = "0.4"
 tauri = { version = "2.11.2", features = ["custom-protocol", "tray-icon", "protocol-asset"] }
-tauri-plugin-log = "2"
+tauri-plugin-log = "2.9.0"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1.0", features = ["derive"] }
@@ -35,10 +35,9 @@ md-5 = "0.10"
 hmac = "0.12"
 aes-gcm = "0.10"
 argon2 = "0.5"
-rsa = "0.9"
 flate2 = "1"
 getrandom = "0.2"
 zeroize = "1"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.54", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_SystemInformation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi"] }
+windows = { version = "0.54", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_SystemInformation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi"] }
