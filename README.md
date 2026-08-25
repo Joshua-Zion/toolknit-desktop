@@ -1,13 +1,13 @@
 <div align="center">
 
-<img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop 2.0 — ToolKnit spider web hero" width="100%" />
+<img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop — ToolKnit spider web hero" width="100%" />
 
-<h1>ToolKnit Desktop 2.0</h1>
+<h1>ToolKnit Desktop 2.1</h1>
 
 <p><strong>本地文件工作台 · 桌面端、网页端与 AI Agent 工作流</strong></p>
 
 <p>
-  把 PDF、PPT、图像、音频、视频、文本和 AI 内容工作，收拢到一套清晰、可靠、可复用的工具体系里。
+  把 PDF、PPT、图像、音视频、Markdown、开发者工具和 AI 内容工作，收拢到一套清晰、可靠、可复用的工具体系里。
 </p>
 
 <p>
@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/2.0.0-正式版-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.0.0" />
+  <img src="https://img.shields.io/badge/2.1.0-正式版-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.1.0" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -45,27 +45,84 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
       <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
-      <sub>2.0 正式安装包发布后，会同步更新 Release 入口。</sub>
+      <sub>2.1.0 安装包、校验文件和版本说明会同步到 Release。</sub>
     </td>
   </tr>
 </table>
 
-## ToolKnit 2.0
+## ToolKnit 2.1
 
-ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把常用文件处理、AI 内容生产、专业文档工作流和 IDE Agent 自动化放在同一个产品体系里。
+ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把常用文件处理、图像与 Markdown 创作、开发者工具、AI 内容生产、专业文档工作流和 IDE Agent 自动化放在同一个产品体系里。
 
 同一份本地文件可以被桌面端预览、被 CLI 批处理、被 MCP Agent 调用，并且拥有明确的输入、输出、进度、错误和安全边界。
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>49</h3><strong>桌面工具</strong></td>
-    <td align="center"><h3>11</h3><strong>功能分类</strong></td>
+    <td align="center"><h3>60</h3><strong>桌面工具</strong></td>
+    <td align="center"><h3>12</h3><strong>功能分类</strong></td>
     <td align="center"><h3>46</h3><strong>MCP 能力</strong></td>
     <td align="center"><h3>3</h3><strong>工作方式</strong></td>
     <td align="center"><h3>Windows</h3><strong>首发平台</strong></td>
     <td align="center"><h3>Local-first</h3><strong>隐私策略</strong></td>
   </tr>
 </table>
+
+## 2.1.0 新功能
+
+2.1.0 新增 11 项桌面工具，并围绕自定义背景、玻璃拟态交互、依赖复用、任务生命周期和失败恢复完成一轮系统升级。新工具继续遵循本地优先原则，重型编辑器与算法模块按需加载，离开页面后会释放 Worker、Canvas、监听器和临时资源。
+
+<table cellpadding="16" cellspacing="0">
+  <tr>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/MARKDOWN-Document%20Studio-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Markdown Document Studio" /></p>
+      <h3>Markdown 文档编辑器</h3>
+      <p>分屏编辑与实时预览 GFM、Mermaid 和数学公式，支持标题大纲、本地草稿以及 Markdown / 自包含 HTML 导出。</p>
+    </td>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/IMAGE-Crop%20%26%20Color-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image crop and color tools" /></p>
+      <h3>图像裁剪与智能颜色替换</h3>
+      <p>提供多种比例、构图辅助线、居中吸附和原图导出；通过吸管、阈值、柔化与智能区域保护精确替换颜色。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/COLOR-8%20Spaces-db2777?style=for-the-badge" alt="Eight color spaces" /></p>
+      <h3>颜色空间对比</h3>
+      <p>联动查看 8 种颜色空间，检测 sRGB、Display P3、Adobe RGB 与 Rec.2020 色域，并通过可视化轨道观察分量变化。</p>
+    </td>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/DEVELOPER-Local%20Toolbox-475569?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Local developer toolbox" /></p>
+      <h3>开发者工具分类</h3>
+      <p>新增 JSON 格式化、Base64、URL 编解码、UUID v4 批量生成和 JWT 查看，输入与结果只保留在当前会话。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/CRYPTO-17%20Modules-7c3aed?style=for-the-badge" alt="Hash and Crypto workbench" /></p>
+      <h3>Hash &amp; Crypto</h3>
+      <p>覆盖摘要、文件 Hash、HMAC、对称和非对称算法等 17 个模块；旧算法明确标注兼容用途，敏感数据不写入历史。</p>
+    </td>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/WORKSPACE-Custom%20Background-0f766e?style=for-the-badge" alt="Custom background workspace" /></p>
+      <h3>自定义背景与玻璃工作台</h3>
+      <p>支持图片或视频壁纸，首页、分类与工具页面统一玻璃拟态语言；卡片使用克制的水膜波纹反馈，并强化复杂背景下的可读性。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/PDF-Safer%20Editing-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Safer PDF editing" /></p>
+      <h3>PDF 编辑与安全输出</h3>
+      <p>加入页面复制、空白页、批量选择和可重复文字编辑，并在关闭、替换和重置前保护未导出修改。</p>
+    </td>
+    <td width="50%" valign="top">
+      <p><img src="https://img.shields.io/badge/RUNTIME-Reuse%20Local%20Dependencies-2563eb?style=for-the-badge" alt="Reuse local dependencies" /></p>
+      <h3>依赖复用与性能治理</h3>
+      <p>优先检测电脑上已有的 FFmpeg 与 LibreOffice；预览任务降采样并可淘汰过期结果，页面关闭时主动释放后台资源。</p>
+    </td>
+  </tr>
+</table>
+
+<p align="center"><sub>颜色空间换算核心基于 <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">Joshua-Zion 的 PR #23</a> 受控移植与扩展，对应提交保留共同作者署名。</sub></p>
 
 ## 三种工作方式
 
@@ -94,7 +151,7 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 
 ## 完整功能目录
 
-下面按桌面端的 11 个分类列出全部 49 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
+下面按桌面端的 12 个分类列出全部 60 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF 文档工具 · 9 项</h3></td></tr>
@@ -113,12 +170,12 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 支持逐页渲染、页码选择、PNG/JPG/WebP 输出、素材去重、标题正文备注提取、Markdown/TXT/JSON 导出、媒体清理，以及从主题和资料生成结构化大纲与可编辑 PPTX 草稿。PPT 渲染运行时按需下载。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 5 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 6 项</h3></td></tr>
 </table>
 
-`图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器` · `配色提取器`
+`图像裁剪` · `智能颜色替换` · `图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器`
 
-支持 JPG、PNG、WebP、BMP、GIF、SVG 互转，批量压缩，横向 / 纵向 / 无缝拼接图片或 PDF 页面，生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP，以及输出 HEX、RGB、HSL 主色和色卡比例。
+支持常用比例与构图辅助线裁剪、区域保护颜色替换、JPG / PNG / WebP / BMP / GIF / SVG 互转、批量压缩、横向 / 纵向 / 无缝拼接图片或 PDF 页面，以及生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">音频工具 · 4 项</h3></td></tr>
@@ -137,12 +194,12 @@ ToolKnit Desktop 2.0 是一套面向 Windows 的本地文件工作台。它把�
 支持 MP4、AVI、MKV、MOV、WebM、FLV、WMV、TS、M4V 等格式转换，按精确时间点导出 PNG/JPG 单帧，以及从 30 秒以内片段生成调色板优化 GIF。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">文本与转写 · 3 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">文本与转写 · 4 项</h3></td></tr>
 </table>
 
-`音视频提取文字` · `文本统计器` · `文本格式化`
+`Markdown 文档编辑器` · `音视频提取文字` · `文本统计器` · `文本格式化`
 
-Whisper 模型下载到本机后，可离线识别中英文音频和视频并输出 TXT、SRT、JSON；文本统计提供字符、词、行、段落、句子、标点和阅读时间数据；格式化工具用于整理纯文本内容。
+Markdown 编辑器提供 GFM、Mermaid、数学公式、标题大纲、草稿恢复与离线导出；Whisper 模型下载到本机后，可离线识别中英文音频和视频并输出 TXT、SRT、JSON；文本统计和格式化工具用于检查与整理纯文本内容。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/UTILITY-Calculator-2563eb?style=for-the-badge" alt="Calculator utility" /></td><td align="right" style="border:0;"><h3 align="right">计算器工具 · 5 项</h3></td></tr>
@@ -153,20 +210,20 @@ Whisper 模型下载到本机后，可离线识别中英文音频和视频并输
 覆盖健康估算、Unix 时间戳转换、房贷月供、单利 / 复利计算和安全随机密码生成，适合在桌面端随手完成小型计算。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Typing%20Studio-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Typing Studio" /></td><td align="right" style="border:0;"><h3 align="right">创意工具 · 1 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20%26%20Typing-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color and typing tools" /></td><td align="right" style="border:0;"><h3 align="right">创意工具 · 3 项</h3></td></tr>
 </table>
 
-`打字测试器`
+`配色提取器` · `颜色空间对比` · `打字测试器`
 
-提供中英文打字练习、计时、速度、正确率和结果统计。配色提取属于图像工具，避免同一能力在目录中重复计算。
+支持提取图片主色与色卡比例、联动比较 8 种颜色空间并检测常见色域，以及中英文打字练习、计时、速度、正确率和结果统计。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">清理工具 · 1 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">清理工具 · 2 项</h3></td></tr>
 </table>
 
-`AI 大文件清理`
+`AI 大文件清理` · `C 盘清理`
 
-先在本机扫描大文件，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索；删除前逐项确认，最终移入回收站，不读取或上传文件内容。
+大文件清理先在本机扫描，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索；C 盘清理按风险级别检查可安全释放的系统空间。删除前逐项确认，最终移入回收站，不读取或上传文件内容。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI 工作台 · 4 项</h3></td></tr>
@@ -184,19 +241,27 @@ AI 文档支持多页 PDF、可编辑工程文件、编号图、预览、检查�
 
 只读查看 Windows、设备型号、CPU、内存、显卡、显示器、主板、BIOS、安全启动、TPM、虚拟化、磁盘、网络和电源传感器信息；CPU 与内存页面还提供实时状态刷新。
 
+<table width="100%" border="0" cellpadding="0" cellspacing="0">
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/DEVELOPER-Local%20Toolbox-475569?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Local Developer Toolbox" /></td><td align="right" style="border:0;"><h3 align="right">开发者工具 · 6 项</h3></td></tr>
+</table>
+
+`JSON 格式化` · `Base64 编解码` · `URL 编解码` · `UUID 生成器` · `JWT 查看器` · `Hash & Crypto`
+
+在本机完成 JSON 校验与压缩、UTF-8 Base64、URL 参数处理、UUID v4 批量生成、JWT Header / Payload 查看，以及摘要、文件 Hash、HMAC、对称与非对称算法工作流。敏感输入不进入持久历史，关闭页面后清理当前会话。
+
 ## 本地优先与隐私边界
 
 <img src="https://img.shields.io/badge/LOCAL-默认本地-0f766e?style=for-the-badge" alt="Local first" /> **默认本地**：桌面端的 PDF、PPT、图像、音频、视频、文本、计算器、硬件和清理工具在设备本地运行，源文件不会上传到 ToolKnit 服务器。
 
 <img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿或转写后的 `refine` 时，相关文字才会发送到你配置的模型服务。
 
-<img src="https://img.shields.io/badge/RUNTIME-按需依赖-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **按需依赖**：FFmpeg、Whisper 模型和 PPT 渲染运行时按需下载，支持依赖检测、校验和镜像源选择。
+<img src="https://img.shields.io/badge/RUNTIME-按需依赖-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **按需依赖**：优先复用本机已有的 FFmpeg 与 LibreOffice；Whisper 模型和缺失运行时按需下载，支持依赖检测、校验和镜像源选择。
 
 CLI 和 MCP 默认要求明确输入与输出路径，不覆盖已有文件；密码等敏感输入不会写入日志、输出 JSON、文件名或 Agent 回复。
 
 ## 技术栈
 
-ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、桌面端、CLI 和 MCP 共用清晰的输入输出边界。
+ToolKnit 2.1 采用轻量桌面容器与本地文件引擎组合，网页端、桌面端、CLI 和 MCP 共用清晰的输入输出边界。
 
 <table cellpadding="10" cellspacing="0">
   <tr>
@@ -227,6 +292,16 @@ ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、�
     </td>
   </tr>
   <tr>
+    <td><strong>编辑与算法</strong></td>
+    <td>
+      <img src="https://img.shields.io/badge/CodeMirror-6-111827?style=for-the-badge" alt="CodeMirror 6" />
+      <img src="https://img.shields.io/badge/Markdown--it-GFM-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Markdown it" />
+      <img src="https://img.shields.io/badge/Mermaid-Diagrams-ff3670?style=for-the-badge" alt="Mermaid" />
+      <img src="https://img.shields.io/badge/KaTeX-Math-0f766e?style=for-the-badge" alt="KaTeX" />
+      <img src="https://img.shields.io/badge/Noble-Crypto-7c3aed?style=for-the-badge" alt="Noble cryptography" />
+    </td>
+  </tr>
+  <tr>
     <td><strong>媒体与运行时</strong></td>
     <td>
       <img src="https://img.shields.io/badge/FFmpeg-Audio%20%2F%20Video-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
@@ -249,10 +324,10 @@ ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、�
 ## 产品预览
 
 <p align="center">
-  <img src="toolknit-desktop/docs/assets/readme-home.png" alt="ToolKnit Desktop workbench preview" width="100%" />
+  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop 2.1 custom wallpaper and glass workbench" width="100%" />
 </p>
 
-<p align="center"><sub>2.0 工作台首页预览 · 最终发布截图会随正式版本同步更新</sub></p>
+<p align="center"><sub>2.1 工作台首页 · 自定义壁纸 · 玻璃拟态卡片 · 统一搜索与分类导航</sub></p>
 
 <p align="center"><strong>ToolKnit.com 网页端 · 开箱即用</strong></p>
 <a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>
@@ -290,9 +365,11 @@ ToolKnit 2.0 采用轻量桌面容器与本地文件引擎组合，网页端、�
 
 ### 安装 Windows 桌面端
 
-从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。2.0 正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
+从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。2.1.0 正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
 
-当前版本仍处于 2.0 发布准备阶段，正式安装包发布前请以仓库 Release 页面为准。
+正式安装包发布前请以仓库 Release 页面为准，并在运行前核对同页提供的 SHA-256 校验值。
+
+**代码签名状态：** 2.1.0 尚未使用 SignPath 签名流程。项目已申请 SignPath Foundation 的开源代码签名支持；获批并完成集成后，后续版本将按照[代码签名政策](CODE_SIGNING_POLICY.md)签名。
 
 ### 从源码运行
 
@@ -352,6 +429,8 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 </p>
 
 <p align="center"><sub>头像墙来自 GitHub 贡献记录；社区名单根据公开 Issue 记录手工维护。</sub></p>
+
+<p align="center"><strong>2.1.0 核心贡献：</strong>感谢 <a href="https://github.com/Joshua-Zion">Joshua-Zion</a> 在 <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> 提供颜色空间转换核心与交互思路。</p>
 
 <table cellpadding="12" cellspacing="0">
   <tr>
@@ -415,5 +494,5 @@ ToolKnit Desktop 和 CLI/MCP 源代码采用 [Apache License 2.0](LICENSE) 开�
 该协议不授予 ToolKnit 名称、Logo、视觉标识、域名、官网、托管网页服务、服务账号或其他独立运营产品的使用权。详见 [NOTICE](NOTICE)。
 
 <p align="center">
-  <sub>ToolKnit Desktop 2.0 · Local-first tools for real work</sub>
+  <sub>ToolKnit Desktop 2.1 · Local-first tools for real work</sub>
 </p>
