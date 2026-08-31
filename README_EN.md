@@ -2,7 +2,7 @@
 
 <img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop — ToolKnit spider web hero" width="100%" />
 
-<h1>ToolKnit Desktop 2.1</h1>
+<h1>ToolKnit Desktop 2.3</h1>
 
 <p><strong>Local file workbench · Desktop, web, and AI Agent workflows</strong></p>
 
@@ -18,7 +18,7 @@
 
 <p>
   <a href="README.md"><img src="https://img.shields.io/badge/Language-Simplified%20Chinese-475569?style=for-the-badge&labelColor=334155" alt="Simplified Chinese README" /></a>
-  <img src="https://img.shields.io/badge/2.1.1-Official%20release-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.1.1 official release" />
+  <img src="https://img.shields.io/badge/2.3.0-Current%20release-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.0 current release" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-Files%20stay%20local-0f766e?style=for-the-badge" alt="Local-first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -46,20 +46,20 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>Use the desktop app</strong></p>
       <p>A local-first Windows app for long-running file work, offline processing, and visual editing.</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>View desktop downloads</strong></a></p>
-      <sub>The 2.1.1 installer, checksum, and release notes are published through GitHub Releases.</sub>
+      <sub>The 2.3.0 installer, SHA-256 checksum, and release notes are published through GitHub Releases.</sub>
     </td>
   </tr>
 </table>
 
-## ToolKnit 2.1
+## ToolKnit 2.3
 
-ToolKnit Desktop 2.1 is a local file workbench for Windows. It brings everyday file processing, image and Markdown creation, developer tools, AI content production, professional document workflows, and IDE Agent automation into one product system.
+ToolKnit Desktop 2.3 is a local file workbench for Windows. It brings everyday file processing, image and Markdown creation, developer tools, AI content production, professional document workflows, and IDE Agent automation into one product system.
 
 The same local file can be previewed in the desktop app, batch-processed by the CLI, or called by an MCP Agent, with explicit input, output, progress, error, and safety boundaries.
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>60</h3><strong>Desktop tools</strong></td>
+    <td align="center"><h3>65</h3><strong>Desktop tools</strong></td>
     <td align="center"><h3>12</h3><strong>Categories</strong></td>
     <td align="center"><h3>46</h3><strong>MCP capabilities</strong></td>
     <td align="center"><h3>3</h3><strong>Ways to work</strong></td>
@@ -68,7 +68,21 @@ The same local file can be previewed in the desktop app, batch-processed by the 
   </tr>
 </table>
 
-## What's new in the 2.1 series
+## What's new in 2.3
+
+V2.3 adds five desktop tools and strengthens update handling, dependency downloads, administrator relaunch, rounded-corner rendering, and tool-page interactions:
+
+- `Teleprompter`: smooth scrolling, mirroring, focus mode, and sentence-level voice following driven by Windows speech recognition or ToolKnit offline recognition.
+- `Add PDF Page Numbers`: page ranges, numbering styles, starting values, text templates, position and appearance previews, with page numbers written as vector instructions.
+- `Crop PDF`: visual selection, precise margins, shared or per-page adjustments, and lossless cropping by changing PDF page boundaries.
+- `Background Removal`: transparent-background generation with an on-demand local model, edge refinement, background preview, and source-resolution export.
+- `Excel to PDF`: batch XLSX, XLS, and ODS conversion through a ToolKnit-managed local LibreOffice runtime, including WPS workbook compatibility.
+
+The release also hardens real-world Windows behavior: idle-time GitHub Release checks can be deferred without uploading usage data; the installer carries the WebView2 bootstrapper; dependency downloads, installation-stage messaging, and administrator relaunch are more reliable; tool navigation, export dialogs, and rounded-corner rendering are consistent; and a compatible PDF.js build fixes PDF loading on older WebView2 runtimes.
+
+The desktop app, Tauri bundle, Rust crate, and `@toolknit/cli` share version `2.3.0`. Release checks cover the 65-tool desktop help map, 46 MCP capabilities, frontend regressions, and Rust tests.
+
+### Foundation from the 2.1 series
 
 The 2.1 series adds 11 desktop tools and delivers a broader upgrade across custom backgrounds, glass interactions, local dependency reuse, task lifecycle management, and failure recovery. Heavy editors and algorithm modules load on demand, while Workers, canvases, listeners, and temporary resources are released when a tool closes.
 
@@ -152,15 +166,15 @@ The 2.1 series adds 11 desktop tools and delivers a broader upgrade across custo
 
 ## Complete tool catalog
 
-The 12 desktop categories below contain all 60 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
+The 12 desktop categories below contain all 65 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF tools · 9</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF tools · 12</h3></td></tr>
 </table>
 
-`PDF Merge` · `PDF Split` · `PDF to Image` · `PDF Editor` · `PDF Page Rotate` · `PDF Encrypt` · `PDF Decrypt` · `PDF Compress` · `PDF Enhance`
+`PDF Merge` · `PDF Split` · `Add PDF Page Numbers` · `Crop PDF` · `PDF to Image` · `PDF Editor` · `PDF Page Rotate` · `PDF Encrypt` · `PDF Decrypt` · `PDF Compress` · `PDF Enhance` · `Excel to PDF`
 
-Supports drag sorting, page-by-page preview, page selection, rotation, text replacement, text and image insertion, append merge, password protection, scanned-document enhancement, and multiple compression levels. PDFs, passwords, and exported results are processed locally by default.
+Supports drag sorting, page-by-page preview, selected-page export, page numbering, lossless cropping, rotation, text replacement, text and image insertion, append merge, password protection, scanned-document enhancement, multiple compression levels, and local workbook rendering. PDFs, workbooks, passwords, and exported results are processed locally by default.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PPT-Presentation%20Studio-d24726?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white" alt="PPT Presentation Studio" /></td><td align="right" style="border:0;"><h3 align="right">PPT tools · 7</h3></td></tr>
@@ -171,12 +185,12 @@ Supports drag sorting, page-by-page preview, page selection, rotation, text repl
 Supports page rendering, page selection, PNG/JPG/WebP output, duplicate asset filtering, title/body/notes extraction, Markdown/TXT/JSON export, media cleanup, and structured outlines plus editable PPTX drafts generated from a brief and source material. The PPT rendering runtime is downloaded on demand.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">Image tools · 6</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">Image tools · 7</h3></td></tr>
 </table>
 
-`Image Crop` · `Smart Color Replace` · `Image Format Converter` · `Image Compressor` · `Long Image Stitcher` · `Icon Generator`
+`Image Crop` · `Smart Color Replace` · `Background Removal` · `Image Format Converter` · `Image Compressor` · `Long Image Stitcher` · `Icon Generator`
 
-Supports ratio presets and composition guides for cropping, connected-region color replacement, JPG/PNG/WebP/BMP/GIF/SVG conversion, batch compression, horizontal/vertical/seamless stitching of images or PDF pages, and multi-size PNG, ICO, and SVG icon generation with ZIP output.
+Supports ratio presets and composition guides for cropping, connected-region color replacement, local-model background removal, JPG/PNG/WebP/BMP/GIF/SVG conversion, batch compression, horizontal/vertical/seamless stitching of images or PDF pages, and multi-size PNG, ICO, and SVG icon generation with ZIP output.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">Audio tools · 4</h3></td></tr>
@@ -195,12 +209,12 @@ Supports MP3, AAC, WAV, FLAC, ALAC, OGG, WMA, and other formats, offline BPM ana
 Supports MP4, AVI, MKV, MOV, WebM, FLV, WMV, TS, M4V, and other formats, exact-time PNG/JPG frame export, and palette-optimized GIF creation from clips up to 30 seconds.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">Text and transcription · 4</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">Text and transcription · 5</h3></td></tr>
 </table>
 
-`Markdown Document Editor` · `Audio/Video Transcription` · `Text Statistics` · `Text Formatter`
+`Markdown Document Editor` · `Audio/Video Transcription` · `Teleprompter` · `Text Statistics` · `Text Formatter`
 
-The Markdown editor provides GFM, Mermaid, math, a heading outline, draft recovery, and offline export. After downloading a Whisper model locally, the app can transcribe Chinese and English audio/video offline and export TXT, SRT, and JSON. Text Statistics and Text Formatter help inspect and clean up plain text.
+The Markdown editor provides GFM, Mermaid, math, a heading outline, draft recovery, and offline export. After downloading a Whisper model locally, the app can transcribe Chinese and English audio/video offline and export TXT, SRT, and JSON; the same local recognition can drive teleprompter voice following. Text Statistics and Text Formatter help inspect and clean up plain text.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/UTILITY-Calculator-2563eb?style=for-the-badge" alt="Calculator utility" /></td><td align="right" style="border:0;"><h3 align="right">Calculator tools · 5</h3></td></tr>
@@ -262,7 +276,7 @@ CLI and MCP require explicit input and output paths by default and do not overwr
 
 ## Technology stack
 
-ToolKnit 2.1 combines a lightweight desktop container with local file engines. The web app, desktop app, CLI, and MCP share clear input/output boundaries.
+ToolKnit 2.3 combines a lightweight desktop container with local file engines. The web app, desktop app, CLI, and MCP share clear input/output boundaries.
 
 <table cellpadding="10" cellspacing="0">
   <tr>
@@ -307,7 +321,7 @@ ToolKnit 2.1 combines a lightweight desktop container with local file engines. T
     <td>
       <img src="https://img.shields.io/badge/FFmpeg-Audio%20%2F%20Video-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
       <img src="https://img.shields.io/badge/Whisper-Offline%20Transcription-111827?style=for-the-badge" alt="Whisper" />
-      <img src="https://img.shields.io/badge/LibreOffice-PPT%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
+      <img src="https://img.shields.io/badge/LibreOffice-Office%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
       <img src="https://img.shields.io/badge/Three.js-3D%20Effects-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js" />
     </td>
   </tr>
@@ -325,10 +339,10 @@ ToolKnit 2.1 combines a lightweight desktop container with local file engines. T
 ## Product previews
 
 <p align="center">
-  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop 2.1 custom wallpaper and glass workbench" width="100%" />
+  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop custom wallpaper and glass workbench" width="100%" />
 </p>
 
-<p align="center"><sub>2.1 workbench home · Custom wallpaper · Glass cards · Unified search and category navigation</sub></p>
+<p align="center"><sub>ToolKnit workbench home · Custom wallpaper · Glass cards · Unified search and category navigation</sub></p>
 
 <p align="center"><strong>ToolKnit.com web version · ready to use</strong></p>
 <a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>
@@ -366,9 +380,9 @@ Open [ToolKnit.com](https://toolknit.com) to start using the web tools without i
 
 ### Install the Windows desktop app
 
-Download the installer from [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases). The 2.1.1 installer, checksum files, and release notes are kept on the Release page. Verify the SHA-256 checksum before running the installer.
+Get the 2.3.0 installer, release notes, and matching `.sha256` file from [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases). Download only from this repository's Release page and verify the SHA-256 checksum before running the installer.
 
-**Code-signing status:** Version 2.1.1 does not use the SignPath signing workflow. The project has applied for SignPath Foundation open-source code-signing support; once approved and integrated, future versions will follow the [code-signing policy](CODE_SIGNING_POLICY.md).
+**Code-signing status:** Version 2.3.0 is not yet Authenticode-signed, so Windows may display an “Unknown publisher” or SmartScreen prompt. Confirm the download source and SHA-256 checksum before continuing. Future signed releases will follow the [code-signing policy](CODE_SIGNING_POLICY.md).
 
 ### Run from source
 
@@ -448,7 +462,9 @@ ToolKnit's code, documentation, tests, design, and issue reports are built throu
 
 ## Support the project
 
-If ToolKnit helps your work, a one-time donation supports testing devices, dependency mirrors, documentation maintenance, and future development. Support is not a paid outsourcing promise; it helps the project remain open, clean, maintainable, and continuously updated.
+Keeping ToolKnit free and continuously updated currently costs the author more than CNY 500 per month for AI-assisted development and testing alone, paid out of pocket. Carrying that cost alone is becoming difficult. If ToolKnit helps your work, a one-time donation supports AI testing, compatibility devices, dependency mirrors, documentation maintenance, and future development.
+
+After confirmation, supporters may join the ToolKnit preview group to test upcoming builds and submit feature ideas. The group is for discussion, testing, and collecting requirements; a donation is not a purchase of functionality and does not guarantee implementation or priority.
 
 <p align="center">
   <img src="assets/readme/donation-support.webp" alt="Alipay and WeChat donation QR codes for ToolKnit" width="100%" />
@@ -494,5 +510,5 @@ ToolKnit Desktop and the CLI/MCP source code are released under the [Apache Lice
 The license does not grant rights to the ToolKnit name, logos, visual identity, domains, official website, hosted web services, service accounts, or other independently operated products. See [NOTICE](NOTICE).
 
 <p align="center">
-  <sub>ToolKnit Desktop 2.1 · Local-first tools for real work</sub>
+  <sub>ToolKnit Desktop 2.3 · Local-first tools for real work</sub>
 </p>

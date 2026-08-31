@@ -3,16 +3,16 @@ export const HELP_CONTENT_EN = {
     title: 'Overview',
     html: `<div class="help-doc">
       <h2>ToolKnit Overview</h2>
-      <p>ToolKnit 2.1 is a <strong>local-first</strong> Windows toolbox with 60 desktop tools across 12 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, developer, cleanup, and hardware work is performed locally by default.</p>
+      <p>ToolKnit 2.3 is a <strong>local-first</strong> Windows toolbox with 65 desktop tools across 12 categories and 46 capabilities exposed to IDE Agents through CLI / MCP. PDF, PPT, image, media, text, calculator, creative, developer, cleanup, and hardware work is performed locally by default.</p>
 
       <h3>Tool Categories</h3>
       <div class="help-tool-grid">
-        <div class="help-tool-card"><div class="help-tool-card-name">PDF Tools</div><div class="help-tool-card-desc">Merge, split, export images, rotate, encrypt, decrypt, compress, enhance, edit</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">PDF Tools</div><div class="help-tool-card-desc">Edit, merge, split, add page numbers, export images, rotate, encrypt, decrypt, compress, enhance text, and convert Excel to PDF</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">PPT Tools</div><div class="help-tool-card-desc">PDF/image export, asset and text extraction, compression, AI outlines and monochrome drafts</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Image Tools</div><div class="help-tool-card-desc">Conversion, compression, stitching, icon generation, image and screen color picking</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Audio Tools</div><div class="help-tool-card-desc">Format conversion, BPM detection, clipping, video audio extraction</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Video Tools</div><div class="help-tool-card-desc">Format conversion, full-resolution frame export, GIF clips up to 30 seconds</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">Text Tools</div><div class="help-tool-card-desc">Audio/video transcription, text statistics, text formatting</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">Text Tools</div><div class="help-tool-card-desc">Audio/video transcription, teleprompter, text statistics, text formatting</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Calculator</div><div class="help-tool-card-desc">Body fat, timestamp, mortgage, interest, password generation</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Creative Tools</div><div class="help-tool-card-desc">Color extraction, typing test</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">Cleanup Tools</div><div class="help-tool-card-desc">Large-file scanning, AI metadata suggestions, Recycle Bin cleanup</div></div>
@@ -61,7 +61,7 @@ export const HELP_CONTENT_EN = {
       <p>No optional component is forced on first launch. Related tools prompt for an on-demand install: FFmpeg is about 29 MB, the recommended Whisper Small model about 465 MB, and the LibreOffice download about 356 MB. After download reaches 100%, verification, extraction, or installation may still be running.</p>
 
       <div class="help-note">
-        <p>FFmpeg, Whisper, and LibreOffice support Auto, Official, or China mirror sources. LibreOffice is used only by PPT to PDF and PPT to Image. A rare offline Windows installation without WebView2 must go online once to install Microsoft Edge WebView2 Runtime.</p>
+        <p>FFmpeg, Whisper, and LibreOffice support Auto, Official, or China mirror sources. LibreOffice powers Excel to PDF, PPT to PDF, and PPT to Image. A rare offline Windows installation without WebView2 must go online once to install Microsoft Edge WebView2 Runtime.</p>
       </div>
     </div>`
   },
@@ -85,7 +85,7 @@ export const HELP_CONTENT_EN = {
       <p>Audio conversion, clipping, audio extraction, video conversion, frame export, GIF export, and transcription preparation require FFmpeg. It is no longer bundled into the installer. Install it from Auto, Official, or China mirror here, or accept the dependency prompt when entering a supported tool.</p>
 
       <h3>LibreOffice Runtime</h3>
-      <p>LibreOffice is used only by PPT to PDF and PPT to Image. Choose Auto, Official, or China mirror; after download, allow verification and extraction to finish. Conversion then works offline.</p>
+      <p>LibreOffice powers Excel to PDF, PPT to PDF, and PPT to Image. Choose Auto, Official, or China mirror; after download, allow verification and extraction to finish. Conversion then works offline.</p>
 
       <h3>Window, Sound, and Shortcut</h3>
       <p>Configure resize behavior and small, large, or custom corner radius. Maximized windows remove rounding and cover the screen; rounding returns after restore. Global sounds have a master switch and three styles. Screen Color Picker defaults to <code>Ctrl+Shift+C</code>, can be customized or reset, minimizes the main window while picking, and returns the selected color to the Color Extractor.</p>
@@ -166,6 +166,52 @@ export const HELP_CONTENT_EN = {
       <div class="help-note">
         <p>Every output file contains one original page. Each run accepts up to 25 files, 150 MB of input, and 200 preview pages.</p>
       </div>
+    </div>`
+  },
+
+  'pdf-page-number': {
+    title: 'Add PDF Page Numbers',
+    html: `<div class="help-doc">
+      <h2>Add PDF Page Numbers</h2>
+      <p>Expand one multi-page PDF or several PDFs into one page sequence, preview the final numbering, then export one merged PDF or a ZIP containing one PDF per page.</p>
+      <h3>Manage Pages</h3>
+      <ol class="help-steps">
+        <li>Click “Add PDFs” or drag files onto the tool. One session accepts up to 25 files, 150 MB, and 200 pages</li>
+        <li>Click a page to preview it and use checkboxes, Ctrl, or Shift to select multiple pages</li>
+        <li>Drag the handle on a page to set final order, or remove individual and selected pages; at least one page always remains</li>
+        <li>Use “Undo deletion” to restore the page sequence from immediately before the latest deletion</li>
+      </ol>
+      <h3>Numbering and Export</h3>
+      <ul>
+        <li>Apply numbering to all, odd, even, custom-range, or selected pages, with an option to skip cover pages</li>
+        <li>Use continuous numbering or restart for each source file, then choose a start value, step, and text template</li>
+        <li>Choose a nine-position anchor, fine offsets, and text, circle, pill, label, or bar styling</li>
+        <li>Export one merged PDF in the order shown on the left, or create individual page PDFs in a ZIP archive</li>
+      </ul>
+      <div class="help-note"><p>Page numbers are written as vector PDF content, so source pages are not rasterized. Decrypt protected files first with PDF Decrypt. Source files stay unchanged and never leave this device.</p></div>
+    </div>`
+  },
+
+  'pdf-crop': {
+    title: 'PDF Crop',
+    html: `<div class="help-doc">
+      <h2>PDF Crop</h2>
+      <p>Draw the area to keep on each page or enter exact margins, then export one multi-page PDF or a ZIP containing one PDF per page. The tool accepts one PDF at a time and never modifies the source file.</p>
+      <h3>Crop Areas and Scope</h3>
+      <ol class="help-steps">
+        <li>Click “Choose PDF” or drag one PDF onto the tool, then use the bottom thumbnails to switch pages</li>
+        <li>The default “All Pages” scope applies the same normalized crop rectangle to every page after you draw or adjust it</li>
+        <li>Switch to “Current Page” when a drag, move, or eight-handle resize should affect only the page in the preview</li>
+        <li>Draw directly on an uncropped page, or choose “Draw Again” before replacing an existing crop area</li>
+      </ol>
+      <h3>Exact Adjustments and Export</h3>
+      <ul>
+        <li>Enter top, right, bottom, and left margins in millimeters or PDF points, with optional linked values</li>
+        <li>Reset only the current page or every page; Undo and Redo retain the most recent crop history</li>
+        <li>Export one multi-page PDF in original order, or create individual page PDFs in a ZIP archive</li>
+        <li>Zooming, fitting the preview, and changing pages never change crop state</li>
+      </ul>
+      <div class="help-note"><p>Cropping changes PDF page bounds without rasterizing page content. It is not secure redaction because out-of-bounds content may remain in the file structure. Use a true redaction tool for sensitive information. Each run supports one PDF up to 150 MB and 500 pages; decrypt protected PDFs first.</p></div>
     </div>`
   },
 
@@ -324,6 +370,38 @@ export const HELP_CONTENT_EN = {
         <li>Limits: 150 MB input, 500 pages</li>
         <li>Text replacement requires an embedded text layer; scanned or image-only PDFs are not supported</li>
         <li>Files are processed locally and never uploaded</li>
+      </ul>
+    </div>`
+  },
+
+  'excel-to-pdf': {
+    title: 'Excel to PDF',
+    html: `<div class="help-doc">
+      <h2>Excel to PDF</h2>
+      <p>Use the local LibreOffice rendering runtime to convert Excel workbooks into PDFs for sharing, printing, and archiving. Source files are never modified or uploaded.</p>
+
+      <h3>How to Use</h3>
+      <ol class="help-steps">
+        <li>Upload or drop one or more <code>XLSX</code>, <code>XLS</code>, or <code>ODS</code> workbooks</li>
+        <li>Choose all worksheets or visible worksheets only</li>
+        <li>Set page orientation, paper size, and scaling</li>
+        <li>Click "Start Conversion"; each workbook produces a separate PDF</li>
+        <li>Open the output folder to view the PDF files and <code>manifest.json</code></li>
+      </ol>
+
+      <h3>Page and Worksheet Rules</h3>
+      <ul>
+        <li>"All worksheets" includes hidden sheets. Choose "Visible worksheets only" when hidden content must stay out of the PDF</li>
+        <li>Orientation supports source settings, portrait, and landscape. Paper size supports automatic, A4, and US Letter</li>
+        <li>"Fit to pages" scales content to reduce horizontal clipping, while "Original scale" stays closer to the workbook's print settings</li>
+      </ul>
+
+      <h3>Notes</h3>
+      <ul>
+        <li>Up to 20 files per batch and 200 MB per file</li>
+        <li>First use installs the roughly 356 MB LibreOffice runtime on demand; conversion works offline afterward</li>
+        <li>Missing local fonts can change pagination, row height, or text width</li>
+        <li>Complex macros, external data connections, and interactive controls do not remain interactive in PDF output</li>
       </ul>
     </div>`
   },
@@ -623,6 +701,11 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
   'video-gif': {
     title: 'Video to GIF',
     html: `<div class="help-doc"><h2>Video to GIF</h2><p>Select a start and end frame from a local video to create a palette-optimized looping GIF up to 30 seconds long.</p><h3>How to Use</h3><ol class="help-steps"><li>Open Video Tools, choose Video to GIF, and upload or drag in one video</li><li>After upload, the range defaults to the first up-to-30 seconds; adjust both points with the timeline or frame-step buttons. The solid white segment is the exported range</li><li>Choose FPS, width, and quality. For smaller files, try 6/8 FPS, 360/480px, and Small or Tiny quality</li><li>Use the preview-play button to loop only the selected clip; pause keeps the current frame. Then export the GIF</li></ol><div class="help-note"><p>The start and end must be explicit and no more than 30 seconds apart. FFmpeg runs locally and never changes the source. An IDE Agent must ask for exact times rather than guessing a highlight.</p></div></div>`
+  },
+
+  'teleprompter': {
+    title: 'Teleprompter',
+    html: `<div class="help-doc"><h2>Teleprompter</h2><p>Paste a script or read TXT, Markdown, DOCX, or PDF, then scroll it in a high-contrast prompt view. You can adjust speed, font size, horizontal/vertical mirroring, and Focus Mode.</p><h3>Standard scrolling</h3><ol class="help-steps"><li>Type or read a script; click any sentence to jump directly to it</li><li>Set the speed and font size, and enable mirroring when using a camera rig</li><li>Start playback; the guide panel folds away while the prompt is running</li></ol><h3>Sentence-level voice following</h3><ul><li><strong>Automatic</strong>: uses the reliable ToolKnit offline engine on desktop and system recognition on the web</li><li><strong>Windows System Recognition</strong>: depends on Windows speech services; ToolKnit switches to offline recognition if it never starts or returns no result</li><li><strong>ToolKnit Offline Recognition</strong>: microphone chunks stay on the device. If no model is installed, the dependency download dialog opens and resumes after verification</li></ul><p>Completing the current sentence advances to the next one. Identical consecutive lines move once per final result, and long unpunctuated scripts are split into followable chunks. Shortcuts: <code>Space</code> play/pause, <code>Left</code>/<code>Right</code> change sentence, <code>+</code>/<code>-</code> change speed, <code>R</code> reset, and <code>F</code> toggle Focus Mode.</p><div class="help-note"><p>If neither recognition engine can work, playback visibly falls back to standard auto-scrolling instead of freezing. Closing the tool, pausing playback, or switching engines stops the microphone, cancels unfinished inference, and releases the model session.</p></div></div>`
   },
 
   'text-stats': {
@@ -1017,7 +1100,7 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q: What are Whisper and LibreOffice used for?</div>
-        <div class="help-faq-a">A: Whisper models run local audio/video transcription; the recommended Small model is about 465 MB. LibreOffice is used only by PPT to PDF and PPT to Image; its download is about 356 MB. Both are optional.</div>
+        <div class="help-faq-a">A: Whisper models run local audio/video transcription; the recommended Small model is about 465 MB. LibreOffice powers Excel to PDF, PPT to PDF, and PPT to Image; its download is about 356 MB. Both are optional.</div>
       </div>
 
       <div class="help-faq-item">
@@ -1138,7 +1221,7 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
 
   'developer-tools': {
     title: 'Developer Tools',
-    html: `<div class="help-doc"><h2>Developer Tools in 2.1</h2><p>This release adds local-first tools that load on demand and release Workers, canvases, and temporary jobs when closed.</p><h3>Markdown Document Editor</h3><p>GFM, task lists, Mermaid, math, outline navigation, draft recovery, and offline Markdown/HTML export are supported. Local images are organized into an assets folder during export.</p><h3>Smart Color Replacement</h3><p>Sample source and target colors, tune perceptual tolerance, feathering, luminance preservation, and 8-connected smart protection. Preview work runs in a Worker; Rust exports at original resolution.</p><h3>Hash &amp; Crypto</h3><p>Includes common hashes, HMAC, SM algorithms, AES file encryption, RSA, and SM2. Legacy algorithms are compatibility-only, and sensitive inputs are not persisted.</p></div>`
+    html: `<div class="help-doc"><h2>Developer Tools in 2.3</h2><p>This release adds local-first tools that load on demand and release Workers, canvases, and temporary jobs when closed.</p><h3>Markdown Document Editor</h3><p>GFM, task lists, Mermaid, math, outline navigation, draft recovery, and offline Markdown/HTML export are supported. Local images are organized into an assets folder during export.</p><h3>Smart Color Replacement</h3><p>Sample source and target colors, tune perceptual tolerance, feathering, luminance preservation, and 8-connected smart protection. Preview work runs in a Worker; Rust exports at original resolution.</p><h3>Hash &amp; Crypto</h3><p>Includes common hashes, HMAC, SM algorithms, AES file encryption, RSA, and SM2. Legacy algorithms are compatibility-only, and sensitive inputs are not persisted.</p></div>`
   },
   'hardware-tools': {
     title: 'Hardware Tools Overview',

@@ -163,7 +163,7 @@ Call ToolKnit MCP's toolknit_ppt_to_image to export slides 1 through 3 of this p
 When the user asks “make a PPT outline from these notes” or “plan an 8-slide talk,” the Agent should call `toolknit_ppt_outline`. This tool does not read PPTX and does not generate PPTX. It generates `outline.md`, `outline.json`, and `manifest.json` from the supplied text. If the source notes come from project files, read and summarize the text first, then pass the concise brief as `prompt`. Never put API keys in the prompt.
 
 ```text
-Call ToolKnit MCP's toolknit_ppt_outline to generate an 8-slide Chinese PPT outline from the product notes I provided. The audience is open-source users, and the purpose is to help them understand ToolKnit 2.0's local-first and AI Agent capabilities and want to try it. Save into this workspace's toolknit-output folder. Resolve the output directory to an absolute path first and do not overwrite existing outputs. Report the outline.md, outline.json, manifest.json paths and missing-info list.
+Call ToolKnit MCP's toolknit_ppt_outline to generate an 8-slide Chinese PPT outline from the product notes I provided. The audience is open-source users, and the purpose is to help them understand ToolKnit 2.3's local-first and AI Agent capabilities and want to try it. Save into this workspace's toolknit-output folder. Resolve the output directory to an absolute path first and do not overwrite existing outputs. Report the outline.md, outline.json, manifest.json paths and missing-info list.
 ```
 
 ```text

@@ -20,6 +20,13 @@ const root = new URL('..', import.meta.url);
 const indexHtml = await readFile(new URL('index.html', root), 'utf8');
 const zh = JSON.parse(await readFile(new URL('src/locales/zh.json', root), 'utf8'));
 const en = JSON.parse(await readFile(new URL('src/locales/en.json', root), 'utf8'));
+const builtinI18nKeys = new Set([
+  'home.toolNames.jsonTools',
+  'home.toolNames.base64',
+  'home.toolNames.urlCodec',
+  'home.toolNames.uuid',
+  'home.toolNames.jwt',
+]);
 
 function valuesForAttribute(html, attribute) {
   return [...html.matchAll(new RegExp(`${attribute}="([^"]+)"`, 'g'))]
@@ -32,6 +39,19 @@ function getPath(object, path) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+const staticI18nKeys = unique([
+  ...valuesForAttribute(indexHtml, 'data-i18n'),
+  ...valuesForAttribute(indexHtml, 'data-i18n-title'),
+  ...valuesForAttribute(indexHtml, 'data-i18n-aria-label'),
+  ...valuesForAttribute(indexHtml, 'data-i18n-placeholder'),
+  ...valuesForAttribute(indexHtml, 'data-i18n-html'),
+]);
+for (const key of staticI18nKeys) {
+  if (builtinI18nKeys.has(key)) continue;
+  assert.notEqual(getPath(zh, key), undefined, `Chinese translation is missing: ${key}`);
+  assert.notEqual(getPath(en, key), undefined, `English translation is missing: ${key}`);
 }
 
 const helpSections = unique(valuesForAttribute(indexHtml, 'data-help-section'));
@@ -58,6 +78,8 @@ for (const key of helpNavI18n) {
 const toolToHelp = new Map([
   ['pdf-merge', 'pdf-merge'],
   ['pdf-split', 'pdf-split'],
+  ['pdf-page-number', 'pdf-page-number'],
+  ['pdf-crop', 'pdf-crop'],
   ['pdf-to-image', 'pdf-to-image'],
   ['pdf-rotate', 'pdf-rotate'],
   ['pdf-encrypt', 'pdf-encrypt'],
@@ -65,6 +87,7 @@ const toolToHelp = new Map([
   ['pdf-compress', 'pdf-compress'],
   ['pdf-enhance', 'pdf-enhance'],
   ['pdf-editor', 'pdf-editor'],
+  ['excel-to-pdf', 'excel-to-pdf'],
   ['ppt-to-pdf', 'ppt-tools'],
   ['ppt-to-image', 'ppt-tools'],
   ['ppt-images', 'ppt-tools'],
@@ -74,6 +97,7 @@ const toolToHelp = new Map([
   ['ppt-draft', 'ppt-tools'],
   ['image-convert', 'img-convert'],
   ['image-crop', 'img-convert'],
+  ['bg-removal', 'img-convert'],
   ['image-compress', 'img-compress'],
   ['image-stitch', 'image-stitch'],
   ['icon-gen', 'icon-gen'],
@@ -85,6 +109,7 @@ const toolToHelp = new Map([
   ['video-frame', 'video-frame'],
   ['video-gif', 'video-gif'],
   ['transcription', 'transcription'],
+  ['teleprompter', 'teleprompter'],
   ['text-stats', 'text-stats'],
   ['text-format', 'text-format'],
   ['bmi-calc', 'bmi-calc'],
@@ -119,6 +144,7 @@ const toolToHelp = new Map([
 ]);
 
 const desktopTools = unique(valuesForAttribute(indexHtml, 'data-tool'));
+assert.equal(desktopTools.length, 65, 'V2.3 desktop catalog must contain exactly 65 unique tools.');
 for (const tool of desktopTools) {
   const section = toolToHelp.get(tool);
   assert.ok(section, `Desktop tool has no help mapping: ${tool}`);
@@ -170,4 +196,4 @@ for (const [locale, content, localeData] of [
   assert.doesNotMatch(localeData.home.toolNames.pptToImageMeta, /(?:长图|long[- ]image)/i, `${locale} PPT-to-image list metadata must not advertise long-image export.`);
 }
 
-console.log(`Help center contract passed: ${helpSections.length} visible sections, ${desktopTools.length} desktop tools.`);
+console.log(`Help center contract passed: ${helpSections.length} visible sections, ${desktopTools.length} desktop tools, ${staticI18nKeys.length} static translation keys.`);

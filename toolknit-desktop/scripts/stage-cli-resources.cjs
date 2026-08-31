@@ -54,6 +54,7 @@ const coreFiles = [
   'video-gif-core.js',
   'image-stitch-core.js',
   'text-stats-core.js',
+  'teleprompter-core.js',
   'color-extractor-core.js',
   'bpm-detect-core.js',
   'ai-doc-core.js',

@@ -6,6 +6,13 @@
     <title>ToolKnit Desktop</title>
     <link rel="stylesheet" href="./src/styles.css">
     <link rel="stylesheet" href="./src/tool-page-v2-final.css">
+    <link rel="stylesheet" href="./src/pdf-page-number.css">
+    <link rel="stylesheet" href="./src/pdf-crop.css">
+    <link rel="stylesheet" href="./src/teleprompter.css">
+    <link rel="stylesheet" href="./src/tool-custom-select.css">
+    <link rel="stylesheet" href="./src/tool-waveform-slider.css">
+    <link rel="stylesheet" href="./src/bg-removal.css">
+    <link rel="stylesheet" href="./src/tool-nav-unified.css">
     <script>
       if (new URLSearchParams(window.location.search).get('screen-picker') === '1') {
         document.documentElement.dataset.screenPicker = '1';
@@ -62,7 +69,7 @@
                 <i data-lucide="arrow-left"></i>
                 <span data-i18n="settings.back">返回首页</span>
               </button>
-              <span class="settings-v2-top-tag">ToolKnit 2.1 Settings</span>
+              <span class="settings-v2-top-tag">ToolKnit 2.3 Settings</span>
             </div>
             <div class="home-v2-top-actions settings-v2-top-actions">
               <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -93,7 +100,7 @@
               <p data-i18n="settings.centerDesc">管理 AI 密钥、依赖、存储和窗口外观。所有设置只保存在本机。</p>
               <div class="settings-v2-poster-note" data-i18n="settings.posterNote">高级黑是唯一的视觉基底；图片和视频背景只作为可选的氛围层。</div>
               <div class="settings-v2-poster-meta">
-                <div><span data-i18n="settings.versionInfo">版本信息</span><strong id="settings-version">v2.1.1</strong></div>
+                <div><span data-i18n="settings.versionInfo">版本信息</span><strong id="settings-version">v2.3.0</strong></div>
                 <div><span data-i18n="settings.storageMeta">保存位置</span><strong>LOCAL</strong></div>
                 <div><span data-i18n="settings.visualMeta">视觉方向</span><strong>MONOCHROME</strong></div>
               </div>
@@ -196,7 +203,7 @@
                   <div class="settings-v2-background-preview-grid" aria-hidden="true"></div>
                   <div class="settings-v2-background-preview-copy"><i data-lucide="image-plus"></i><span data-i18n="settings.customBackgroundEmpty">尚未选择背景</span></div>
                 </div>
-                <div class="settings-v2-background-summary" id="settingsBackgroundSummary" data-i18n="settings.customBackgroundEmptyHint">默认使用高级黑动画层</div>
+                <div class="settings-v2-background-summary" id="settingsBackgroundSummary" data-i18n="settings.customBackgroundEmptyHint">默认使用纯黑背景</div>
                 <div class="settings-v2-background-import" id="settingsBackgroundImportStatus" role="status" aria-live="polite" hidden>
                   <span class="settings-v2-background-import-label" id="settingsBackgroundImportLabel" data-i18n="settings.backgroundImportPreparing">正在准备导入背景...</span>
                   <progress class="settings-v2-background-import-track" id="settingsBackgroundImportTrack" value="0" max="100" aria-describedby="settingsBackgroundImportLabel">0%</progress>
@@ -243,6 +250,37 @@
                 <p class="settings-v2-hint" data-i18n="settings.versionUpdateHint">通过 GitHub Releases 获取最新版本号，并与本地版本比对。</p>
                 <button class="settings-v2-btn settings-v2-update-open" id="openReleasePageBtn" type="button" hidden><i data-lucide="download"></i><span data-i18n="settings.openReleasePage">前往 GitHub 下载最新版</span></button>
               </article>
+
+              <article class="settings-v2-card span-6 settings-v2-matting-card">
+                <div class="settings-v2-head"><div><div class="settings-v2-index">12 / MATTING</div><h2 data-i18n="settings.mattingManagerTitle">抠图模型管理</h2></div></div>
+                <div class="settings-v2-row">
+                  <div class="settings-v2-path" id="mattingModelStatus">--</div>
+                  <button class="settings-v2-btn settings-v2-btn-primary" id="manageMattingModelsBtn" type="button"><i data-lucide="sliders-horizontal"></i><span data-i18n="settings.mattingManage">管理模型</span></button>
+                </div>
+                <p class="settings-v2-hint" data-i18n="settings.mattingManagerHint">抠图模型供背景移除与证件照工具使用，可独立下载、切换或删除。</p>
+              </article>
+
+              <div class="transcription-model-overlay" id="mattingModelOverlay" aria-hidden="true">
+                <div class="transcription-model-panel v2-transcription-model-panel" role="dialog" aria-modal="true" aria-labelledby="mattingModelTitle">
+                  <div class="transcription-model-header">
+                    <div>
+                      <span class="tools-eyebrow" data-i18n="settings.mattingEyebrow">Matting Models</span>
+                      <h2 id="mattingModelTitle" data-i18n="settings.mattingManagerTitle">抠图模型管理</h2>
+                    </div>
+                    <button class="pdf-page-workspace-close" type="button" id="mattingModelClose" data-i18n-aria-label="common.close" aria-label="关闭"><i data-lucide="x"></i></button>
+                  </div>
+                  <p class="transcription-model-intro" data-i18n="settings.mattingModelIntro">模型按需下载至本机，仅在本机运行；下载源可切换为官方或国内镜像。</p>
+                  <div class="transcription-source-row" role="group" data-i18n-aria-label="home.transcription.sourceLabel">
+                    <span data-i18n="home.transcription.sourceLabel">下载源</span>
+                    <div class="audio-convert-format-options" id="mattingSourceOptions">
+                      <button type="button" class="audio-convert-format-option active" data-source="auto" data-i18n="home.transcription.sourceAuto">自动</button>
+                      <button type="button" class="audio-convert-format-option" data-source="official" data-i18n="home.transcription.sourceOfficial">官方</button>
+                      <button type="button" class="audio-convert-format-option" data-source="china" data-i18n="home.transcription.sourceChina">国内镜像</button>
+                    </div>
+                  </div>
+                  <div class="transcription-model-list" id="mattingModelList"></div>
+                </div>
+              </div>
 
               <article class="settings-v2-card span-12">
                 <div class="settings-v2-head"><div><div class="settings-v2-index">12 / WINDOW</div><h2 data-i18n="settings.windowAppearance">窗口外观</h2></div></div>
@@ -355,7 +393,7 @@
         <div class="help-nav" id="helpNav">
 <div class="help-nav-group">
   <div class="help-nav-group-title">Developer Tools</div>
-  <div class="help-nav-item" data-help-section="developer-tools">2.1 新功能</div>
+  <div class="help-nav-item" data-help-section="developer-tools">开发者工具</div>
 </div>
 <div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.gettingStarted">快速开始</div>
@@ -373,6 +411,8 @@
             <div class="help-nav-group-title" data-i18n="help.group.pdfTools">PDF 工具</div>
             <div class="help-nav-item" data-help-section="pdf-merge" data-i18n="help.nav.pdfMerge">PDF 合并</div>
             <div class="help-nav-item" data-help-section="pdf-split" data-i18n="help.nav.pdfSplit">PDF 拆分</div>
+            <div class="help-nav-item" data-help-section="pdf-page-number" data-i18n="help.nav.pdfPageNumber">PDF 加页码</div>
+            <div class="help-nav-item" data-help-section="pdf-crop" data-i18n="help.nav.pdfCrop">PDF 裁剪</div>
             <div class="help-nav-item" data-help-section="pdf-to-image" data-i18n="help.nav.pdfToImage">PDF 转图像</div>
             <div class="help-nav-item" data-help-section="pdf-rotate" data-i18n="help.nav.pdfRotate">PDF 旋转</div>
             <div class="help-nav-item" data-help-section="pdf-encrypt" data-i18n="help.nav.pdfEncrypt">PDF 加密</div>
@@ -380,6 +420,7 @@
             <div class="help-nav-item" data-help-section="pdf-compress" data-i18n="help.nav.pdfCompress">PDF 压缩</div>
             <div class="help-nav-item" data-help-section="pdf-enhance" data-i18n="help.nav.pdfEnhance">PDF 文字增强</div>
             <div class="help-nav-item" data-help-section="pdf-editor" data-i18n="help.nav.pdfEditor">PDF 编辑器</div>
+            <div class="help-nav-item" data-help-section="excel-to-pdf" data-i18n="help.nav.excelToPdf">Excel 转 PDF</div>
           </div>
           <div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.pptTools">PPT 工具</div>
@@ -408,6 +449,7 @@
           <div class="help-nav-group">
             <div class="help-nav-group-title" data-i18n="help.group.textTools">文本工具</div>
             <div class="help-nav-item" data-help-section="transcription" data-i18n="help.nav.transcription">音视频提取文字</div>
+            <div class="help-nav-item" data-help-section="teleprompter" data-i18n="help.nav.teleprompter">提词器</div>
             <div class="help-nav-item" data-help-section="text-stats" data-i18n="help.nav.textStats">文本统计器</div>
             <div class="help-nav-item" data-help-section="text-format" data-i18n="help.nav.textFormat">文本格式化</div>
           </div>
@@ -498,7 +540,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="settings-v2-top-tag">ToolKnit 2.1 Feedback</span>
+          <span class="settings-v2-top-tag">ToolKnit 2.3 Feedback</span>
         </div>
         <div class="home-v2-top-actions settings-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website" data-i18n-title="home.webVersion" data-i18n-aria-label="home.webVersion" title="网页版" aria-label="网页版">
@@ -548,7 +590,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag audio-convert-v2-top-tag">AUDIO TOOLS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag audio-convert-v2-top-tag">AUDIO TOOLS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -660,7 +702,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">SYSTEM · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">SYSTEM · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -727,7 +769,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">CPU / MEMORY · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">CPU / MEMORY · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -794,7 +836,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">GPU / DISPLAY · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">GPU / DISPLAY · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -861,7 +903,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">BOARD · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">BOARD · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -928,7 +970,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">STORAGE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">STORAGE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -995,7 +1037,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">DEVICES · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">DEVICES · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1062,7 +1104,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">POWER · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">POWER · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1129,7 +1171,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">CLEANUP STUDIO · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">CLEANUP STUDIO · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1320,7 +1362,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag transcription-v2-top-tag">TEXT TOOLS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag transcription-v2-top-tag">TEXT TOOLS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1500,8 +1542,8 @@
       <div class="audio-convert-drop-zone pdf-merge-v2-drop-zone" id="imageCropDropZone"><span class="drop-hint">松手即可载入图片</span></div>
       <header class="pdf-merge-v2-topbar">
         <div class="pdf-merge-v2-topbar-left">
-          <button class="settings-v2-back settings-back pdf-merge-v2-back" id="imageCropBack" type="button" title="返回首页">
-            <i data-lucide="arrow-left"></i><span>返回首页</span>
+          <button class="settings-v2-back settings-back pdf-merge-v2-back" id="imageCropBack" type="button" title="返回">
+            <i data-lucide="arrow-left"></i><span data-i18n="settings.back">返回</span>
           </button>
           <span class="pdf-merge-v2-top-tag">IMAGE TOOLS · CROP STUDIO</span>
         </div>
@@ -1615,7 +1657,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag image-convert-v2-top-tag">IMAGE TOOLS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag image-convert-v2-top-tag">IMAGE TOOLS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1729,7 +1771,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag image-compress-v2-top-tag">IMAGE TOOLS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag image-compress-v2-top-tag">IMAGE TOOLS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1840,7 +1882,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag icon-gen-v2-top-tag">IMAGE TOOLS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag icon-gen-v2-top-tag">IMAGE TOOLS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -1940,7 +1982,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">VIDEO CONVERTER · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">VIDEO CONVERTER · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2053,9 +2095,9 @@
         <div class="settings-v2-topbar-left pdf-merge-v2-topbar-left">
           <button class="settings-v2-back settings-back pdf-merge-v2-back" id="videoFrameBack" type="button" title="返回首页">
             <i data-lucide="arrow-left"></i>
-            <span>返回首页</span>
+            <span data-i18n="settings.back">返回</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">FRAME CAPTURE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">FRAME CAPTURE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2169,7 +2211,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag image-stitch-v2-top-tag">IMAGE STITCH · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag image-stitch-v2-top-tag">IMAGE STITCH · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2307,9 +2349,9 @@
         <div class="settings-v2-topbar-left pdf-merge-v2-topbar-left">
           <button class="settings-v2-back settings-back pdf-merge-v2-back" id="videoGifBack" type="button" title="返回首页">
             <i data-lucide="arrow-left"></i>
-            <span>返回首页</span>
+            <span data-i18n="settings.back">返回</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">GIF STUDIO · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">GIF STUDIO · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2423,7 +2465,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag bpm-detect-v2-top-tag">BPM DETECTOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag bpm-detect-v2-top-tag">BPM DETECTOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2573,7 +2615,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">AUDIO CLIP · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">AUDIO CLIP · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2768,7 +2810,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">AUDIO EXTRACTOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">AUDIO EXTRACTOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -2940,7 +2982,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PDF MERGER · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PDF MERGER · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -3142,7 +3184,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-split-v2-top-tag">PDF SPLITTER · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-split-v2-top-tag">PDF SPLITTER · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -3334,7 +3376,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-to-image-v2-top-tag">PDF TO IMAGE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-to-image-v2-top-tag">PDF TO IMAGE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -3551,6 +3593,379 @@
     </div>
 
     <!-- PDF Editor Tool Page -->
+    <!-- PDF Page Number Tool -->
+    <div class="pdf-merge-overlay pdf-merge-v2 pdf-page-number-v2" id="pdfPageNumberOverlay" role="dialog" aria-modal="true" aria-labelledby="pdfPageNumberTitle" aria-hidden="true" inert>
+      <div class="plasma-bg pdf-merge-v2-bg" id="pdfPageNumberPlasmaBg"></div>
+      <div class="audio-convert-drop-zone pdf-merge-v2-drop-zone" id="pdfPageNumberDropZone">
+        <span class="drop-hint" data-i18n="home.pdfPageNumber.dropHint">松手即可添加 PDF</span>
+      </div>
+      <input id="pdfPageNumberFileInput" type="file" accept="application/pdf,.pdf" multiple hidden>
+      <header class="pdf-merge-v2-topbar pdf-page-number-topbar">
+        <div class="pdf-merge-v2-topbar-left">
+          <button class="settings-v2-back settings-back pdf-merge-v2-back" id="pdfPageNumberBack" type="button" data-i18n-title="settings.back" title="返回首页">
+            <i data-lucide="arrow-left"></i>
+            <span data-i18n="settings.back">返回首页</span>
+          </button>
+          <span class="pdf-merge-v2-top-tag">PDF PAGE NUMBER · TOOL PAGE 2.3</span>
+        </div>
+        <div class="home-v2-top-actions pdf-merge-v2-top-actions">
+          <button class="home-v2-nav-link" type="button" data-home-link="website">
+            <i data-lucide="globe-2"></i>
+            <span data-i18n="home.webVersion">网页版本</span>
+          </button>
+          <button class="home-v2-support-top" type="button" data-open-support>
+            <i data-lucide="heart"></i>
+            <span data-i18n="home.supportAuthor">支持作者</span>
+          </button>
+          <div class="home-v2-window-cluster" aria-label="窗口与设置">
+            <button class="home-v2-icon-button" id="pdfPageNumberV2Settings" type="button" data-i18n-title="nav.settings" title="设置" aria-label="设置"><i data-lucide="settings"></i></button>
+            <div class="home-v2-window-controls" aria-label="窗口控制">
+              <button class="home-v2-window-button ctrl-btn" type="button" data-action="minimize" data-i18n-title="common.minimize" title="最小化"><i data-lucide="minus"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" data-action="maximize" data-i18n-title="common.maximize" title="最大化"><i data-lucide="square"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" data-action="close" data-i18n-title="common.close" title="关闭"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="pdf-page-number-layout">
+        <aside class="pdf-page-number-pages" aria-labelledby="pdfPageNumberPagesTitle">
+          <div class="pdf-page-number-panel-head">
+            <div>
+              <span class="pdf-page-number-kicker">PAGE QUEUE</span>
+              <h2 id="pdfPageNumberPagesTitle" data-i18n="home.pdfPageNumber.pagesTitle">页面管理</h2>
+            </div>
+            <span class="pdf-page-number-count" id="pdfPageNumberPageCount">0 页</span>
+          </div>
+          <div class="pdf-page-number-page-tools">
+            <button id="pdfPageNumberAdd" type="button" data-i18n-title="home.pdfPageNumber.addFiles" title="添加 PDF"><i data-lucide="file-plus-2"></i></button>
+            <button id="pdfPageNumberSelectAll" type="button" data-i18n-title="home.pdfPageNumber.selectAll" title="全选"><i data-lucide="list-checks"></i></button>
+            <button id="pdfPageNumberDeleteSelected" class="is-danger" type="button" data-i18n-title="home.pdfPageNumber.deleteSelected" title="删除已选"><i data-lucide="trash-2"></i></button>
+            <button id="pdfPageNumberUndoDelete" type="button" data-i18n-title="home.pdfPageNumber.undoDelete" title="撤销删除"><i data-lucide="undo-2"></i></button>
+          </div>
+          <div class="pdf-page-number-selection-meta">
+            <span id="pdfPageNumberSelectedCount">已选 0 页</span>
+            <span data-i18n="home.pdfPageNumber.sortHint">拖动手柄调整顺序</span>
+          </div>
+          <div class="pdf-page-number-page-list is-empty" id="pdfPageNumberPageList" aria-live="polite"></div>
+        </aside>
+
+        <main class="pdf-page-number-preview" aria-labelledby="pdfPageNumberTitle">
+          <div class="pdf-page-number-preview-toolbar">
+            <div class="pdf-page-number-preview-title">
+              <span class="pdf-page-number-kicker">LIVE PREVIEW</span>
+              <h1 id="pdfPageNumberTitle" data-i18n="home.pdfPageNumber.title">PDF 加页码</h1>
+            </div>
+            <div class="pdf-page-number-preview-nav">
+              <button id="pdfPageNumberPrev" type="button" data-i18n-title="home.pdfPageNumber.previousPage" title="上一页"><i data-lucide="chevron-left"></i></button>
+              <span id="pdfPageNumberIndicator">未载入文档</span>
+              <button id="pdfPageNumberNext" type="button" data-i18n-title="home.pdfPageNumber.nextPage" title="下一页"><i data-lucide="chevron-right"></i></button>
+            </div>
+            <div class="pdf-page-number-zoom">
+              <button id="pdfPageNumberZoomOut" type="button" data-i18n-title="home.pdfPageNumber.zoomOut" title="缩小"><i data-lucide="minus"></i></button>
+              <span id="pdfPageNumberZoomValue">100%</span>
+              <button id="pdfPageNumberZoomIn" type="button" data-i18n-title="home.pdfPageNumber.zoomIn" title="放大"><i data-lucide="plus"></i></button>
+              <button id="pdfPageNumberFit" type="button" data-i18n-title="home.pdfPageNumber.fit" title="适应窗口"><i data-lucide="scan"></i></button>
+            </div>
+          </div>
+          <div class="pdf-page-number-canvas-scroll" id="pdfPageNumberCanvasScroll">
+            <div class="pdf-page-number-canvas-stage" id="pdfPageNumberCanvasStage">
+              <div class="pdf-page-number-empty" id="pdfPageNumberEmpty">
+                <span class="pdf-page-number-empty-icon"><i data-lucide="file-stack"></i></span>
+                <span class="pdf-page-number-kicker">LOCAL PDF WORKSPACE</span>
+                <h2 data-i18n="home.pdfPageNumber.emptyTitle">添加 PDF，直接看见页码效果</h2>
+                <p data-i18n="home.pdfPageNumber.emptyDesc">支持一个多页文件或多个 PDF，导入后可以排序、删除和批量设置页码。</p>
+                <button class="pdf-page-number-primary" id="pdfPageNumberEmptyAdd" type="button"><i data-lucide="upload"></i><span data-i18n="home.pdfPageNumber.addFiles">添加 PDF</span></button>
+              </div>
+              <div class="pdf-page-number-canvas-wrap" id="pdfPageNumberCanvasWrap" hidden>
+                <canvas id="pdfPageNumberPreviewCanvas" class="pdf-page-number-main-canvas"></canvas>
+                <div class="pdf-page-number-live-layer" id="pdfPageNumberLiveLayer" aria-hidden="true" hidden>
+                  <span class="pdf-page-number-live-background" id="pdfPageNumberLiveBackground"></span>
+                  <span class="pdf-page-number-live-text" id="pdfPageNumberLiveText"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <footer class="pdf-page-number-preview-footer">
+            <span class="pdf-page-number-preview-dot"></span>
+            <span id="pdfPageNumberPreviewStatus" data-i18n="home.pdfPageNumber.previewEmpty">文件只在本机处理，页码预览会与导出结果保持一致。</span>
+          </footer>
+        </main>
+
+        <aside class="pdf-page-number-settings" aria-label="页码设置">
+          <div class="pdf-page-number-settings-scroll">
+            <section class="pdf-page-number-setting-section">
+              <div class="pdf-page-number-section-title"><span>01</span><div><strong data-i18n="home.pdfPageNumber.rangeTitle">编号范围</strong><small>NUMBERING RANGE</small></div></div>
+              <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.applyTo">应用到</span><select id="pdfPageNumberScope"><option value="all" data-i18n="home.pdfPageNumber.scopeAll">全部页面</option><option value="odd" data-i18n="home.pdfPageNumber.scopeOdd">奇数页</option><option value="even" data-i18n="home.pdfPageNumber.scopeEven">偶数页</option><option value="custom" data-i18n="home.pdfPageNumber.scopeCustom">自定义范围</option><option value="selected" data-i18n="home.pdfPageNumber.scopeSelected">左侧已选页面</option></select></label>
+              <label class="pdf-page-number-field" id="pdfPageNumberRangeField" hidden><span data-i18n="home.pdfPageNumber.customRange">页面范围</span><input id="pdfPageNumberCustomRange" type="text" placeholder="1-3, 6, 9-12" autocomplete="off"></label>
+              <div class="pdf-page-number-field-grid">
+                <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.numberingMode">编号方式</span><select id="pdfPageNumberMode"><option value="continuous" data-i18n="home.pdfPageNumber.modeContinuous">连续编号</option><option value="source" data-i18n="home.pdfPageNumber.modeSource">每个文件重新编号</option></select></label>
+                <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.numberFormat">数字格式</span><select id="pdfPageNumberFormat"><option value="decimal">1, 2, 3</option><option value="padded-2">01, 02, 03</option><option value="padded-3">001, 002</option><option value="roman-upper">I, II, III</option><option value="roman-lower">i, ii, iii</option><option value="alpha-upper">A, B, C</option><option value="alpha-lower">a, b, c</option></select></label>
+              </div>
+              <div class="pdf-page-number-field-grid pdf-page-number-field-grid-3">
+                <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.startAt">起始值</span><input id="pdfPageNumberStart" type="number" value="1" min="-999999" max="999999"></label>
+                <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.step">步长</span><input id="pdfPageNumberStep" type="number" value="1" min="1" max="9999"></label>
+                <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.skipFirst">跳过前 N 页</span><input id="pdfPageNumberSkip" type="number" value="0" min="0" max="999999"></label>
+              </div>
+              <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.templatePreset">文本模板</span><select id="pdfPageNumberTemplatePreset"><option value="page" data-i18n="home.pdfPageNumber.templatePage">仅页码</option><option value="total" data-i18n="home.pdfPageNumber.templateTotal">页码 / 总页数</option><option value="chinese" data-i18n="home.pdfPageNumber.templateChinese">第 N 页</option><option value="dash" data-i18n="home.pdfPageNumber.templateDash">装饰短线</option><option value="custom" data-i18n="home.pdfPageNumber.templateCustom">自定义模板</option></select></label>
+              <label class="pdf-page-number-field" id="pdfPageNumberTemplateField" hidden><span data-i18n="home.pdfPageNumber.customTemplate">模板内容</span><input id="pdfPageNumberTemplate" type="text" value="{page}" maxlength="120"><small data-i18n="home.pdfPageNumber.templateHint">可用 {page}、{total}、{sourcePage}</small></label>
+            </section>
+
+            <section class="pdf-page-number-setting-section">
+              <div class="pdf-page-number-section-title"><span>02</span><div><strong data-i18n="home.pdfPageNumber.positionTitle">位置与边距</strong><small>PLACEMENT</small></div></div>
+              <div class="pdf-page-number-position-grid" role="group" data-i18n-aria-label="home.pdfPageNumber.positionTitle">
+                <button class="pdf-page-number-position" data-position="top-left" type="button"><span></span></button><button class="pdf-page-number-position" data-position="top-center" type="button"><span></span></button><button class="pdf-page-number-position" data-position="top-right" type="button"><span></span></button>
+                <button class="pdf-page-number-position" data-position="middle-left" type="button"><span></span></button><button class="pdf-page-number-position" data-position="middle-center" type="button"><span></span></button><button class="pdf-page-number-position" data-position="middle-right" type="button"><span></span></button>
+                <button class="pdf-page-number-position" data-position="bottom-left" type="button"><span></span></button><button class="pdf-page-number-position is-active" data-position="bottom-center" type="button"><span></span></button><button class="pdf-page-number-position" data-position="bottom-right" type="button"><span></span></button>
+              </div>
+              <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.margin">页面边距</b><output id="pdfPageNumberMarginValue">24 pt</output></span><input id="pdfPageNumberMargin" type="range" min="0" max="120" value="24" data-output="pdfPageNumberMarginValue" data-suffix=" pt"></label>
+              <div class="pdf-page-number-field-grid">
+                <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.offsetX">水平偏移</b><output id="pdfPageNumberOffsetXValue">0 pt</output></span><input id="pdfPageNumberOffsetX" type="range" min="-120" max="120" value="0" data-output="pdfPageNumberOffsetXValue" data-suffix=" pt"></label>
+                <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.offsetY">垂直偏移</b><output id="pdfPageNumberOffsetYValue">0 pt</output></span><input id="pdfPageNumberOffsetY" type="range" min="-120" max="120" value="0" data-output="pdfPageNumberOffsetYValue" data-suffix=" pt"></label>
+              </div>
+            </section>
+
+            <section class="pdf-page-number-setting-section">
+              <div class="pdf-page-number-section-title"><span>03</span><div><strong data-i18n="home.pdfPageNumber.styleTitle">文字与样式</strong><small>APPEARANCE</small></div></div>
+              <div class="pdf-page-number-style-grid" role="group" data-i18n-aria-label="home.pdfPageNumber.backgroundStyle">
+                <button class="pdf-page-number-style is-active" data-style="none" type="button"><span class="style-none">12</span><b data-i18n="home.pdfPageNumber.styleNone">纯文字</b></button>
+                <button class="pdf-page-number-style" data-style="circle" type="button"><span class="style-circle">12</span><b data-i18n="home.pdfPageNumber.styleCircle">圆形</b></button>
+                <button class="pdf-page-number-style" data-style="pill" type="button"><span class="style-pill">12</span><b data-i18n="home.pdfPageNumber.stylePill">胶囊</b></button>
+                <button class="pdf-page-number-style" data-style="label" type="button"><span class="style-label">12</span><b data-i18n="home.pdfPageNumber.styleLabel">标签</b></button>
+                <button class="pdf-page-number-style" data-style="bar" type="button"><span class="style-bar">12</span><b data-i18n="home.pdfPageNumber.styleBar">横条</b></button>
+              </div>
+              <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.fontSize">字号</b><output id="pdfPageNumberFontSizeValue">11 pt</output></span><input id="pdfPageNumberFontSize" type="range" min="6" max="48" value="11" data-output="pdfPageNumberFontSizeValue" data-suffix=" pt"></label>
+              <div class="pdf-page-number-field-grid">
+                <label class="pdf-page-number-color-field"><span data-i18n="home.pdfPageNumber.textColor">文字颜色</span><span><i data-lucide="type"></i><input id="pdfPageNumberTextColor" type="color" value="#111111"></span></label>
+                <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.textOpacity">文字透明度</b><output id="pdfPageNumberTextOpacityValue">92%</output></span><input id="pdfPageNumberTextOpacity" type="range" min="0.05" max="1" step="0.05" value="0.92" data-output="pdfPageNumberTextOpacityValue" data-percent="true"></label>
+              </div>
+              <div class="pdf-page-number-field-grid">
+                <label class="pdf-page-number-color-field"><span data-i18n="home.pdfPageNumber.backgroundColor">背景颜色</span><span><i data-lucide="paint-bucket"></i><input id="pdfPageNumberBackgroundColor" type="color" value="#ffffff"></span></label>
+                <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.backgroundOpacity">背景透明度</b><output id="pdfPageNumberBackgroundOpacityValue">86%</output></span><input id="pdfPageNumberBackgroundOpacity" type="range" min="0.05" max="1" step="0.05" value="0.86" data-output="pdfPageNumberBackgroundOpacityValue" data-percent="true"></label>
+              </div>
+              <div class="pdf-page-number-field-grid pdf-page-number-border-grid">
+                <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.padding">内边距</b><output id="pdfPageNumberPaddingValue">7 pt</output></span><input id="pdfPageNumberPadding" type="range" min="2" max="24" value="7" data-output="pdfPageNumberPaddingValue" data-suffix=" pt"></label>
+                <label class="pdf-page-number-color-field"><span data-i18n="home.pdfPageNumber.borderColor">边框颜色</span><span><i data-lucide="square"></i><input id="pdfPageNumberBorderColor" type="color" value="#111111"></span></label>
+                <label class="pdf-page-number-range-field"><span><b data-i18n="home.pdfPageNumber.borderWidth">边框</b><output id="pdfPageNumberBorderWidthValue">0 pt</output></span><input id="pdfPageNumberBorderWidth" type="range" min="0" max="4" step="0.5" value="0" data-output="pdfPageNumberBorderWidthValue" data-suffix=" pt"></label>
+              </div>
+              <p class="pdf-page-number-setting-status" id="pdfPageNumberSettingStatus">请先添加 PDF</p>
+            </section>
+
+            <section class="pdf-page-number-setting-section pdf-page-number-export-section">
+              <div class="pdf-page-number-section-title"><span>04</span><div><strong data-i18n="home.pdfPageNumber.exportTitle">导出设置</strong><small>OUTPUT</small></div></div>
+              <div class="pdf-page-number-output-modes">
+                <label><input type="radio" name="pdfPageNumberOutputMode" value="single" checked><span><i data-lucide="file-check-2"></i><b data-i18n="home.pdfPageNumber.outputSingle">合并为单个 PDF</b><small data-i18n="home.pdfPageNumber.outputSingleHint">按照左侧顺序输出一个文件</small></span></label>
+                <label><input type="radio" name="pdfPageNumberOutputMode" value="zip"><span><i data-lucide="archive"></i><b data-i18n="home.pdfPageNumber.outputZip">逐页 PDF + ZIP</b><small data-i18n="home.pdfPageNumber.outputZipHint">每页一个 PDF，统一打包</small></span></label>
+              </div>
+              <label class="pdf-page-number-field"><span data-i18n="home.pdfPageNumber.outputName">输出名称</span><input id="pdfPageNumberOutputName" type="text" maxlength="96" placeholder="document"></label>
+            </section>
+          </div>
+          <div class="pdf-page-number-export-bar">
+            <span><i data-lucide="shield-check"></i><span data-i18n="home.pdfPageNumber.localOnly">矢量写入 · 本地导出 · 不修改源文件</span></span>
+            <button class="pdf-page-number-export" id="pdfPageNumberExport" type="button"><i data-lucide="download"></i><span data-i18n="home.pdfPageNumber.exportButton">导出带页码文件</span></button>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="audio-convert-process-mask pdf-page-number-process-mask" id="pdfPageNumberProcessMask" role="dialog" aria-modal="true" aria-labelledby="pdfPageNumberProcessText" aria-hidden="true" inert>
+      <div class="tk-mascot-lg" aria-hidden="true"></div>
+      <div class="pdf-page-number-process-copy"><span id="pdfPageNumberProcessText">正在准备...</span><strong id="pdfPageNumberProcessValue">0%</strong></div>
+      <div class="audio-convert-process-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="audio-convert-process-bar-fill" id="pdfPageNumberProcessFill"></div></div>
+      <button class="audio-convert-cancel-btn" id="pdfPageNumberProcessCancel" type="button"><i data-lucide="x"></i><span data-i18n="common.cancel">取消</span></button>
+    </div>
+
+    <div class="audio-clip-success-overlay" id="pdfPageNumberSuccessOverlay" aria-hidden="true" inert>
+      <div class="audio-clip-success-dialog" role="dialog" aria-modal="true" aria-labelledby="pdfPageNumberSuccessTitle">
+        <div class="audio-clip-success-icon"><i data-lucide="check"></i></div>
+        <h3 class="audio-clip-success-title" id="pdfPageNumberSuccessTitle" data-i18n="home.pdfPageNumber.successTitle">页码添加完成</h3>
+        <div class="audio-clip-success-meta" id="pdfPageNumberSuccessMeta"></div>
+        <div class="audio-convert-success-detail">
+          <div class="audio-convert-success-row"><span class="audio-convert-success-key" data-i18n="home.pdfPageNumber.outputCount">输出文件</span><span class="audio-convert-success-value" id="pdfPageNumberSuccessCount"></span></div>
+          <div class="audio-convert-success-row"><span class="audio-convert-success-key" data-i18n="home.pdfPageNumber.successPath">保存路径</span><span class="audio-convert-success-value" id="pdfPageNumberSuccessPath"></span></div>
+        </div>
+        <div class="audio-clip-success-actions">
+          <button class="audio-clip-success-btn audio-clip-success-btn-secondary" id="pdfPageNumberSuccessOpenFolder" type="button" data-i18n="home.pdfPageNumber.openFolder">打开文件夹</button>
+          <button class="audio-clip-success-btn audio-clip-success-btn-primary" id="pdfPageNumberSuccessOk" type="button" data-i18n="common.ok">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF Crop Tool -->
+    <div class="pdf-merge-overlay pdf-merge-v2 pdf-crop-v2" id="pdfCropOverlay" role="dialog" aria-modal="true" aria-labelledby="pdfCropTitle" aria-hidden="true" inert>
+      <div class="plasma-bg pdf-merge-v2-bg" id="pdfCropPlasmaBg"></div>
+      <div class="audio-convert-drop-zone pdf-merge-v2-drop-zone" id="pdfCropDropZone">
+        <span class="drop-hint" data-i18n="home.pdfCrop.dropHint">松手即可载入 PDF</span>
+      </div>
+      <input id="pdfCropFileInput" type="file" accept="application/pdf,.pdf" hidden>
+      <header class="pdf-merge-v2-topbar pdf-crop-topbar">
+        <div class="pdf-merge-v2-topbar-left">
+          <button class="settings-v2-back settings-back pdf-merge-v2-back" id="pdfCropBack" type="button" data-i18n-title="settings.back" title="返回首页">
+            <i data-lucide="arrow-left"></i>
+            <span data-i18n="settings.back">返回首页</span>
+          </button>
+          <span class="pdf-merge-v2-top-tag">PDF CROP · TOOL PAGE 2.3</span>
+        </div>
+        <div class="home-v2-top-actions pdf-merge-v2-top-actions">
+          <button class="home-v2-nav-link" type="button" data-home-link="website"><i data-lucide="globe-2"></i><span>网页版本</span></button>
+          <button class="home-v2-support-top" type="button" data-open-support><i data-lucide="heart"></i><span>支持作者</span></button>
+          <div class="home-v2-window-cluster" aria-label="窗口与设置">
+            <button class="home-v2-icon-button" id="pdfCropV2Settings" type="button" data-i18n-title="nav.settings" title="设置" aria-label="设置"><i data-lucide="settings"></i></button>
+            <div class="home-v2-window-controls" aria-label="窗口控制">
+              <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.minimize" title="最小化" data-action="minimize"><i data-lucide="minus"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.maximize" title="最大化" data-action="maximize"><i data-lucide="square"></i></button>
+              <button class="home-v2-window-button ctrl-btn" type="button" data-i18n-title="common.close" title="关闭" data-action="close"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="pdf-crop-layout">
+        <main class="pdf-crop-workspace" aria-labelledby="pdfCropTitle">
+          <div class="pdf-crop-preview-toolbar">
+            <div class="pdf-crop-preview-title">
+              <span class="pdf-crop-kicker">LIVE CROP PREVIEW</span>
+              <h1 id="pdfCropTitle" data-i18n="home.pdfCrop.title">PDF 裁剪</h1>
+            </div>
+            <div class="pdf-crop-page-nav">
+              <button id="pdfCropPrev" type="button" data-i18n-title="home.pdfCrop.previousPage" title="上一页"><i data-lucide="chevron-left"></i></button>
+              <span id="pdfCropPageIndicator" data-i18n="home.pdfCrop.noDocument">未载入文档</span>
+              <button id="pdfCropNext" type="button" data-i18n-title="home.pdfCrop.nextPage" title="下一页"><i data-lucide="chevron-right"></i></button>
+            </div>
+            <div class="pdf-crop-zoom">
+              <button id="pdfCropZoomOut" type="button" data-i18n-title="home.pdfCrop.zoomOut" title="缩小"><i data-lucide="minus"></i></button>
+              <span id="pdfCropZoomValue">100%</span>
+              <button id="pdfCropZoomIn" type="button" data-i18n-title="home.pdfCrop.zoomIn" title="放大"><i data-lucide="plus"></i></button>
+              <button id="pdfCropFit" type="button" data-i18n-title="home.pdfCrop.fit" title="适应窗口"><i data-lucide="scan"></i></button>
+            </div>
+          </div>
+
+          <div class="pdf-crop-canvas-scroll" id="pdfCropCanvasScroll">
+            <div class="pdf-crop-canvas-stage" id="pdfCropCanvasStage">
+              <div class="pdf-crop-empty" id="pdfCropEmpty">
+                <span class="pdf-crop-empty-icon"><i data-lucide="crop"></i></span>
+                <span class="pdf-crop-kicker">LOCAL PDF WORKSPACE</span>
+                <h2 data-i18n="home.pdfCrop.emptyTitle">添加一个 PDF，直接框选保留区域</h2>
+                <p data-i18n="home.pdfCrop.emptyDesc">支持多页文档，每页可以独立裁剪，也可以把同一范围应用到全部页面。</p>
+                <button class="pdf-crop-primary" id="pdfCropEmptyAdd" type="button"><i data-lucide="upload"></i><span data-i18n="home.pdfCrop.addFile">选择 PDF</span></button>
+              </div>
+              <div class="pdf-crop-canvas-wrap" id="pdfCropCanvasWrap" hidden>
+                <canvas id="pdfCropPreviewCanvas" class="pdf-crop-main-canvas"></canvas>
+                <div class="pdf-crop-interaction-layer is-unset" id="pdfCropInteractionLayer">
+                  <div class="pdf-crop-selection" id="pdfCropSelection">
+                    <button class="pdf-crop-handle handle-nw" data-handle="nw" type="button" aria-label="左上裁剪点"></button>
+                    <button class="pdf-crop-handle handle-n" data-handle="n" type="button" aria-label="上方裁剪点"></button>
+                    <button class="pdf-crop-handle handle-ne" data-handle="ne" type="button" aria-label="右上裁剪点"></button>
+                    <button class="pdf-crop-handle handle-e" data-handle="e" type="button" aria-label="右侧裁剪点"></button>
+                    <button class="pdf-crop-handle handle-se" data-handle="se" type="button" aria-label="右下裁剪点"></button>
+                    <button class="pdf-crop-handle handle-s" data-handle="s" type="button" aria-label="下方裁剪点"></button>
+                    <button class="pdf-crop-handle handle-sw" data-handle="sw" type="button" aria-label="左下裁剪点"></button>
+                    <button class="pdf-crop-handle handle-w" data-handle="w" type="button" aria-label="左侧裁剪点"></button>
+                    <span class="pdf-crop-size-badge" id="pdfCropSizeBadge"></span>
+                  </div>
+                  <div class="pdf-crop-draw-hint" id="pdfCropDrawHint"><i data-lucide="mouse-pointer-2"></i><span data-i18n="home.pdfCrop.drawHint">拖动画出要保留的区域</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pdf-crop-current-bar">
+            <span><i data-lucide="scan-line"></i><span id="pdfCropPreviewStatus" data-i18n="home.pdfCrop.previewEmpty">文件只在本机处理，导出不会修改源文件。</span></span>
+            <button id="pdfCropResetPage" type="button"><i data-lucide="rotate-ccw"></i><span data-i18n="home.pdfCrop.resetPage">重置本页</span></button>
+          </div>
+
+          <div class="pdf-crop-filmstrip-shell">
+            <div class="pdf-crop-filmstrip-head">
+              <span><b data-i18n="home.pdfCrop.pages">页面</b><small id="pdfCropPageCount">0 页</small></span>
+              <span data-i18n="home.pdfCrop.pageHint">点击缩略图切换页面</span>
+            </div>
+            <div class="pdf-crop-filmstrip is-empty" id="pdfCropFilmstrip" aria-live="polite"></div>
+          </div>
+        </main>
+
+        <aside class="pdf-crop-settings" aria-label="PDF 裁剪设置">
+          <div class="pdf-crop-settings-scroll">
+            <section class="pdf-crop-file-card">
+              <span class="pdf-crop-file-icon"><i data-lucide="file-text"></i></span>
+              <span><strong id="pdfCropFileName" data-i18n="home.pdfCrop.noFile">未载入文件</strong><small id="pdfCropFileMeta" data-i18n="home.pdfCrop.localOnly">单文件 · 纯本地处理</small></span>
+              <button id="pdfCropReplace" type="button" data-i18n-title="home.pdfCrop.replace" title="重新选择"><i data-lucide="refresh-cw"></i></button>
+            </section>
+
+            <section class="pdf-crop-setting-section">
+              <div class="pdf-crop-section-title"><span>01</span><div><strong data-i18n="home.pdfCrop.scopeTitle">作用范围</strong><small>APPLY SCOPE</small></div></div>
+              <div class="pdf-crop-scope" role="group" aria-label="作用范围">
+                <button class="is-active" data-crop-scope="all" type="button"><i data-lucide="layers-3"></i><span><b data-i18n="home.pdfCrop.scopeAll">全部页面</b><small data-i18n="home.pdfCrop.scopeAllHint">下一次调整同步全部页</small></span></button>
+                <button data-crop-scope="current" type="button"><i data-lucide="file"></i><span><b data-i18n="home.pdfCrop.scopeCurrent">当前页面</b><small data-i18n="home.pdfCrop.scopeCurrentHint">只修改正在预览的页面</small></span></button>
+              </div>
+              <p class="pdf-crop-scope-note" id="pdfCropScopeNote"></p>
+            </section>
+
+            <section class="pdf-crop-setting-section">
+              <div class="pdf-crop-section-title"><span>02</span><div><strong data-i18n="home.pdfCrop.marginTitle">精确边距</strong><small>EXACT MARGINS</small></div></div>
+              <div class="pdf-crop-margin-toolbar">
+                <label><span data-i18n="home.pdfCrop.unit">单位</span><select id="pdfCropUnit"><option value="mm">mm</option><option value="pt">pt</option></select></label>
+                <button id="pdfCropLinkMargins" type="button" aria-pressed="false"><i data-lucide="unlink"></i><span data-i18n="home.pdfCrop.linkMargins">联动边距</span></button>
+              </div>
+              <div class="pdf-crop-margin-grid">
+                <label><span data-i18n="home.pdfCrop.marginTop">上</span><input id="pdfCropMarginTop" data-margin-side="top" type="number" min="0" step="0.1" value="0"></label>
+                <label><span data-i18n="home.pdfCrop.marginRight">右</span><input id="pdfCropMarginRight" data-margin-side="right" type="number" min="0" step="0.1" value="0"></label>
+                <label><span data-i18n="home.pdfCrop.marginBottom">下</span><input id="pdfCropMarginBottom" data-margin-side="bottom" type="number" min="0" step="0.1" value="0"></label>
+                <label><span data-i18n="home.pdfCrop.marginLeft">左</span><input id="pdfCropMarginLeft" data-margin-side="left" type="number" min="0" step="0.1" value="0"></label>
+              </div>
+              <div class="pdf-crop-dimension-card"><span data-i18n="home.pdfCrop.outputSize">裁剪后尺寸</span><strong id="pdfCropDimension">-</strong></div>
+            </section>
+
+            <section class="pdf-crop-setting-section">
+              <div class="pdf-crop-section-title"><span>03</span><div><strong data-i18n="home.pdfCrop.adjustTitle">调整与历史</strong><small>ADJUST & HISTORY</small></div></div>
+              <div class="pdf-crop-history-actions">
+                <button id="pdfCropUndo" type="button"><i data-lucide="undo-2"></i><span data-i18n="home.pdfCrop.undo">撤销</span></button>
+                <button id="pdfCropRedo" type="button"><i data-lucide="redo-2"></i><span data-i18n="home.pdfCrop.redo">重做</span></button>
+              </div>
+              <button class="pdf-crop-reframe" id="pdfCropReframe" type="button" aria-pressed="false"><i data-lucide="scan"></i><span><b data-i18n="home.pdfCrop.reframe">重新框选</b><small data-i18n="home.pdfCrop.reframeHint">在预览区拖出一个新的保留区域</small></span></button>
+              <button class="pdf-crop-reset-all" id="pdfCropResetAll" type="button"><i data-lucide="refresh-ccw"></i><span data-i18n="home.pdfCrop.resetAll">重置全部裁剪</span></button>
+            </section>
+
+            <section class="pdf-crop-setting-section pdf-crop-export-section">
+              <div class="pdf-crop-section-title"><span>04</span><div><strong data-i18n="home.pdfCrop.exportTitle">导出设置</strong><small>OUTPUT</small></div></div>
+              <div class="pdf-crop-output-modes">
+                <label><input type="radio" name="pdfCropOutputMode" value="single" checked><span><i data-lucide="file-check-2"></i><b data-i18n="home.pdfCrop.outputSingle">合并为单个 PDF</b><small data-i18n="home.pdfCrop.outputSingleHint">保持原始页序和多页结构</small></span></label>
+                <label><input type="radio" name="pdfCropOutputMode" value="zip"><span><i data-lucide="archive"></i><b data-i18n="home.pdfCrop.outputZip">逐页 PDF + ZIP</b><small data-i18n="home.pdfCrop.outputZipHint">每页一个 PDF，统一打包</small></span></label>
+              </div>
+              <label class="pdf-crop-field"><span data-i18n="home.pdfCrop.outputName">输出名称</span><input id="pdfCropOutputName" type="text" maxlength="96" placeholder="document"></label>
+              <p class="pdf-crop-security-note"><i data-lucide="shield-alert"></i><span data-i18n="home.pdfCrop.securityNote">裁剪用于调整可视页面，不适合作为敏感内容脱敏手段。</span></p>
+            </section>
+          </div>
+          <div class="pdf-crop-export-bar">
+            <span><i data-lucide="shield-check"></i><span data-i18n="home.pdfCrop.exportNote">矢量保留 · 本地导出 · 不修改源文件</span></span>
+            <button class="pdf-crop-export" id="pdfCropExport" type="button"><i data-lucide="download"></i><span data-i18n="home.pdfCrop.exportButton">导出裁剪后的 PDF</span></button>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="audio-convert-process-mask pdf-crop-process-mask" id="pdfCropProcessMask" role="dialog" aria-modal="true" aria-labelledby="pdfCropProcessText" aria-hidden="true" inert>
+      <div class="tk-mascot-lg" aria-hidden="true"></div>
+      <div class="pdf-crop-process-copy"><span id="pdfCropProcessText">正在准备...</span><strong id="pdfCropProcessValue">0%</strong></div>
+      <div class="audio-convert-process-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="audio-convert-process-bar-fill" id="pdfCropProcessFill"></div></div>
+      <button class="audio-convert-cancel-btn" id="pdfCropProcessCancel" type="button"><i data-lucide="x"></i><span data-i18n="common.cancel">取消</span></button>
+    </div>
+
+    <div class="audio-clip-success-overlay" id="pdfCropSuccessOverlay" aria-hidden="true" inert>
+      <div class="audio-clip-success-dialog" role="dialog" aria-modal="true" aria-labelledby="pdfCropSuccessTitle">
+        <div class="audio-clip-success-icon"><i data-lucide="check"></i></div>
+        <h3 class="audio-clip-success-title" id="pdfCropSuccessTitle" data-i18n="home.pdfCrop.successTitle">PDF 裁剪完成</h3>
+        <div class="audio-clip-success-meta" id="pdfCropSuccessMeta"></div>
+        <div class="audio-convert-success-detail">
+          <div class="audio-convert-success-row"><span class="audio-convert-success-key" data-i18n="home.pdfCrop.outputCount">输出文件</span><span class="audio-convert-success-value" id="pdfCropSuccessCount"></span></div>
+          <div class="audio-convert-success-row"><span class="audio-convert-success-key" data-i18n="home.pdfCrop.successPath">保存路径</span><span class="audio-convert-success-value" id="pdfCropSuccessPath"></span></div>
+        </div>
+        <div class="audio-clip-success-actions">
+          <button class="audio-clip-success-btn audio-clip-success-btn-secondary" id="pdfCropSuccessOpenFolder" type="button" data-i18n="home.pdfCrop.openFolder">打开文件夹</button>
+          <button class="audio-clip-success-btn audio-clip-success-btn-primary" id="pdfCropSuccessOk" type="button" data-i18n="common.ok">确定</button>
+        </div>
+      </div>
+    </div>
+
     <div class="pdf-merge-overlay pdf-merge-v2 pdf-editor-v2" id="pdfEditorOverlay" role="dialog" aria-modal="true" aria-label="PDF 编辑器">
       <div class="plasma-bg pdf-merge-v2-bg" id="pdfEditorPlasmaBg"></div>
       <div class="audio-convert-drop-zone pdf-merge-v2-drop-zone" id="pdfEditorDropZone">
@@ -3565,7 +3980,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-editor-v2-top-tag">PDF EDITOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-editor-v2-top-tag">PDF EDITOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -3855,7 +4270,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-rotate-v2-top-tag">PDF ROTATOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-rotate-v2-top-tag">PDF ROTATOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -4047,7 +4462,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-encrypt-v2-top-tag">PDF ENCRYPTOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-encrypt-v2-top-tag">PDF ENCRYPTOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -4289,7 +4704,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-decrypt-v2-top-tag">PDF DECRYPTOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-decrypt-v2-top-tag">PDF DECRYPTOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -4476,7 +4891,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-enhance-v2-top-tag">PDF ENHANCER · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-enhance-v2-top-tag">PDF ENHANCER · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -4762,7 +5177,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">AI POLISH · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">AI POLISH · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -4906,7 +5321,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">AI TRANSLATE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">AI TRANSLATE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -5039,7 +5454,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">AI DOCUMENT · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">AI DOCUMENT · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -5177,7 +5592,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">AI TABLE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">AI TABLE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -5333,7 +5748,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">COLOR LAB · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">COLOR LAB · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website"><i data-lucide="globe-2"></i><span data-i18n="home.webVersion">网页版本</span></button>
@@ -5447,7 +5862,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">TEXT STATS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">TEXT STATS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -5587,23 +6002,27 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">TEXT FORMAT · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">TEXT FORMAT · TOOL PAGE 2.3</span>
         </div>
         <div class="pdf-merge-v2-top-actions home-v2-top-actions">
-          <a class="home-v2-nav-link" href="https://toolknit.zihangdong.com" target="_blank" rel="noopener noreferrer">
+          <button class="home-v2-nav-link" type="button" data-home-link="website">
             <i data-lucide="globe-2"></i>
-            <span data-i18n="home.webVersion">网页版</span>
-          </a>
+            <span data-i18n="home.webVersion">网页版本</span>
+          </button>
           <button class="home-v2-support-top" id="textFormatSupport" type="button" data-open-support>
             <i data-lucide="heart"></i>
             <span data-i18n="home.supportAuthor">支持作者</span>
           </button>
-          <button class="home-v2-icon-button" id="textFormatV2Settings" type="button" data-i18n-title="nav.settings" title="设置" aria-label="设置">
-            <i data-lucide="settings"></i>
-          </button>
-          <button class="home-v2-window-button ctrl-btn" data-action="minimize" type="button" aria-label="Minimize"><i data-lucide="minus"></i></button>
-          <button class="home-v2-window-button ctrl-btn" data-action="maximize" type="button" aria-label="Maximize"><i data-lucide="square"></i></button>
-          <button class="home-v2-window-button ctrl-btn" data-action="close" type="button" aria-label="Close"><i data-lucide="x"></i></button>
+           <div class="home-v2-window-cluster" aria-label="窗口与设置">
+             <button class="home-v2-icon-button" id="textFormatV2Settings" type="button" data-i18n-title="nav.settings" title="设置" aria-label="设置">
+               <i data-lucide="settings"></i>
+             </button>
+             <div class="home-v2-window-controls" aria-label="窗口控制">
+               <button class="home-v2-window-button ctrl-btn" data-action="minimize" type="button" data-i18n-title="common.minimize" title="最小化" aria-label="最小化"><i data-lucide="minus"></i></button>
+               <button class="home-v2-window-button ctrl-btn" data-action="maximize" type="button" data-i18n-title="common.maximize" title="最大化" aria-label="最大化"><i data-lucide="square"></i></button>
+               <button class="home-v2-window-button ctrl-btn" data-action="close" type="button" data-i18n-title="common.close" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+             </div>
+           </div>
         </div>
       </header>
 
@@ -5718,7 +6137,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">TYPING · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">TYPING · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -5874,7 +6293,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">BODY FAT · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">BODY FAT · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -6083,7 +6502,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">TIMESTAMP · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">TIMESTAMP · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -6231,7 +6650,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">MORTGAGE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">MORTGAGE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -6378,7 +6797,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">INTEREST · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">INTEREST · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -6541,7 +6960,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PASSWORD · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PASSWORD · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -6708,7 +7127,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回</span>
           </button>
-          <span class="pdf-merge-v2-top-tag ai-doc-edit-top-tag">AI DOCUMENT EDITOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag ai-doc-edit-top-tag">AI DOCUMENT EDITOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -6890,7 +7309,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag pdf-compress-v2-top-tag">PDF COMPRESSOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag pdf-compress-v2-top-tag">PDF COMPRESSOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -7078,7 +7497,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT TO PDF · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT TO PDF · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -7211,7 +7630,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT TO IMAGE · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT TO IMAGE · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -7316,7 +7735,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT ASSETS · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT ASSETS · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -7464,7 +7883,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT TEXT AI · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT TEXT AI · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -7626,7 +8045,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT COMPRESSOR · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT COMPRESSOR · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -7786,7 +8205,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT OUTLINE AI · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT OUTLINE AI · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -8013,7 +8432,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">PPT DRAFT AI · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">PPT DRAFT AI · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -8238,16 +8657,16 @@
 
     <div class="ppt-draft-editor-overlay" id="pptDraftEditorOverlay" role="dialog" aria-modal="true" aria-label="PPT 草稿编辑器" aria-hidden="true">
       <div class="plasma-bg" id="pptDraftEditorPlasmaBg"></div>
-      <header class="ppt-draft-editor-header">
-        <div class="ppt-draft-editor-topbar-left">
-          <button class="settings-v2-back settings-back ppt-draft-editor-back" id="pptDraftEditorBack" type="button" data-i18n-title="settings.back" title="返回">
+       <header class="ppt-draft-editor-header pdf-merge-v2-topbar">
+         <div class="ppt-draft-editor-topbar-left pdf-merge-v2-topbar-left">
+           <button class="settings-v2-back settings-back ppt-draft-editor-back pdf-merge-v2-back" id="pptDraftEditorBack" type="button" data-i18n-title="settings.back" title="返回">
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回</span>
           </button>
-          <span class="ppt-draft-editor-top-tag">PPT DRAFT AI · TOOL PAGE 2.1</span>
+           <span class="ppt-draft-editor-top-tag pdf-merge-v2-top-tag">PPT DRAFT AI · TOOL PAGE 2.3</span>
           <span class="ppt-draft-editor-deck-title" id="pptDraftEditorDeckTitle"></span>
         </div>
-        <div class="home-v2-top-actions">
+         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
             <i data-lucide="globe-2"></i>
             <span>网页版本</span>
@@ -8318,13 +8737,12 @@
     </div>
 
     <div class="app is-v2-home">
-      <canvas class="home-v2-shader-bg" id="homeV2ShaderBg" aria-hidden="true"></canvas>
       <div class="home-v2-shader-overlay" aria-hidden="true"></div>
       <header class="home-v2-topbar">
         <button class="home-v2-brand" type="button" data-home-return aria-label="ToolKnit 首页">
           <img src="/logo.png" alt="" />
           <span class="home-v2-brand-name">ToolKnit</span>
-          <span class="home-v2-brand-version">2.1</span>
+          <span class="home-v2-brand-version">2.3</span>
         </button>
         <div class="home-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -8418,7 +8836,7 @@
               <i data-lucide="settings"></i>
             </div>
           </div>
-          <div class="version-text" id="sidebarVersion">v2.1.1</div>
+          <div class="version-text" id="sidebarVersion">v2.3.0</div>
         </div>
       </div>
       <div class="divider"></div>
@@ -8438,22 +8856,22 @@
         <div class="main-content">
           <div class="content-section active" data-category="home">
             <div class="home-v2-shell">
-              <section class="hero" aria-label="ToolKnit home hero">
+              <section class="hero" data-i18n-aria-label="home.heroAria" aria-label="ToolKnit 首页首屏">
                 <div class="hero-copy">
                   <p class="eyebrow text-en">TOOLKNIT / LOCAL CREATIVE WORKBENCH</p>
                   <h1>
                     <span class="hero-title-brand text-en-display">ToolKnit</span>
-                    <span class="hero-title-sub text-cn">本地文件工作台 / 安静、可靠、始终留在本机</span>
+                    <span class="hero-title-sub text-cn" data-i18n="home.heroTitleSub">本地文件工作台 / 安静、可靠、始终留在本机</span>
                   </h1>
-                  <p class="hero-desc text-cn">把分散的文件工作，编织成一套安静、可靠、始终留在本地的处理方式。</p>
+                  <p class="hero-desc text-cn" data-i18n="home.heroDescription">把分散的文件工作，编织成一套安静、可靠、始终留在本地的处理方式。</p>
                   <div class="hero-actions">
                     <button class="primary-action" type="button" data-open-tools>
                       <i data-lucide="layout-grid"></i>
-                      <span>打开工具库</span>
+                      <span data-i18n="home.openTools">打开工具库</span>
                     </button>
                     <button class="secondary-action" type="button" id="homeSupportAuthor" data-open-support aria-haspopup="dialog" aria-controls="donationOverlay">
                       <i data-lucide="heart"></i>
-                      <span>支持持续更新</span>
+                      <span data-i18n="home.supportUpdates">支持持续更新</span>
                     </button>
                     <button class="secondary-action" type="button" data-home-link="website">
                       <i data-lucide="globe-2"></i>
@@ -8461,24 +8879,25 @@
                     </button>
                   </div>
                   <p class="hero-support-note text-cn">
-                    如果 ToolKnit 刚好帮你少传一次文件、少熬一会儿夜，<strong>点一下支持作者</strong>，它就会变成下一次更认真、更好用的更新。
+                    <span data-i18n="home.supportCostNote">为了持续给大家免费更新 ToolKnit，作者仅 AI 开发与测试每月就要自掏腰包 500 多元，长期独自承担已越来越吃力。</span>
+                    <strong data-i18n="home.supportGroupNote">赞助后可加入灰度体验群，提前体验版本并提交希望加入的功能。</strong>
                   </p>
-                  <div class="hero-meta" aria-label="产品信息">
+                  <div class="hero-meta" data-i18n-aria-label="home.productInfoAria" aria-label="产品信息">
                     <span>WINDOWS DESKTOP</span>
                     <span>LOCAL FIRST</span>
                     <span>OPEN SOURCE</span>
                   </div>
                 </div>
 
-                <div class="weave-stage" aria-label="ToolKnit 网页端预览">
-                  <button class="web-preview-stage" type="button" data-home-link="website" aria-label="打开 ToolKnit 网页版">
+                <div class="weave-stage" data-i18n-aria-label="home.webPreviewAria" aria-label="ToolKnit 网页端预览">
+                  <button class="web-preview-stage" type="button" data-home-link="website" data-i18n-aria-label="home.openWebAria" aria-label="打开 ToolKnit 网页版">
                     <img class="web-preview-image" src="assets/backgrounds/home-web-preview.png" alt="ToolKnit 网页版工具库预览" loading="eager" decoding="async" />
                     <span class="web-preview-tint" aria-hidden="true"></span>
                     <span class="web-preview-sheen" aria-hidden="true"></span>
                     <span class="web-preview-corner">WEB / TOOLKNIT.COM</span>
                     <span class="web-preview-hover-copy" aria-hidden="true">
                       <strong>OPEN THE WEB WORKBENCH</strong>
-                      <span>点击进入网页端 <i data-lucide="arrow-up-right"></i></span>
+                      <span><span data-i18n="home.webPreviewHover">点击进入网页端</span> <i data-lucide="arrow-up-right"></i></span>
                     </span>
                   </button>
                 </div>
@@ -8488,12 +8907,12 @@
                 <div class="section-heading">
                   <div>
                     <span class="section-index">01 / YOUR WORKBENCH</span>
-                    <h2 id="favoritesTitle">我的收藏</h2>
-                    <p>只留下你真正会反复使用的工具。</p>
+                    <h2 id="favoritesTitle" data-i18n="home.favoritesTitle">我的收藏</h2>
+                    <p data-i18n="home.favoritesDescription">只留下你真正会反复使用的工具。</p>
                   </div>
                   <button class="manage-favorites" id="manageFavorites" type="button" aria-pressed="false">
                     <i data-lucide="plus"></i>
-                    <span>管理收藏</span>
+                    <span data-i18n="home.manageFavorites">管理收藏</span>
                   </button>
                 </div>
 
@@ -8506,28 +8925,28 @@
                 <div class="tool-finder-head">
                   <div>
                     <span class="section-index">02 / TOOL EXPLORER</span>
-                    <h2 class="tool-finder-title" id="toolExplorerTitle">搜索全部工具</h2>
-                    <p class="tool-finder-subtitle">从这里开始找工具。默认展示全部已上线工具，也可以输入关键词或切换分类胶囊。</p>
+                    <h2 class="tool-finder-title" id="toolExplorerTitle" data-i18n="home.toolExplorerTitle">搜索全部工具</h2>
+                    <p class="tool-finder-subtitle" data-i18n="home.toolExplorerDescription">从这里开始找工具。默认展示全部已上线工具，也可以输入关键词或切换分类胶囊。</p>
                   </div>
                   <label class="home-search-field">
                     <i data-lucide="search"></i>
-                    <input id="homeToolSearch" type="search" placeholder="搜索 PDF、PPT、图像、音视频、文本、AI、硬件..." autocomplete="off" data-i18n-aria-label="home.searchToolsLabel" aria-label="搜索全部工具" />
+                    <input id="homeToolSearch" type="search" placeholder="搜索 PDF、PPT、图像、音视频、文本、AI、硬件..." autocomplete="off" data-i18n-placeholder="home.toolSearchPlaceholder" data-i18n-aria-label="home.searchToolsLabel" aria-label="搜索全部工具" />
                   </label>
                 </div>
 
-                <div class="category-strip" id="homeCategoryStrip" aria-label="工具分类">
-                  <button class="category-chip is-active" type="button" data-home-category="all"><i data-lucide="sparkles"></i><span>全部</span></button>
+                <div class="category-strip" id="homeCategoryStrip" data-i18n-aria-label="home.categoriesAria" aria-label="工具分类">
+                  <button class="category-chip is-active" type="button" data-home-category="all"><i data-lucide="sparkles"></i><span data-i18n="home.categoryAll">全部</span></button>
                   <button class="category-chip" type="button" data-home-category="pdf"><i data-lucide="file-text"></i><span>PDF</span></button>
                   <button class="category-chip" type="button" data-home-category="ppt"><i data-lucide="presentation"></i><span>PPT</span></button>
-                  <button class="category-chip" type="button" data-home-category="image"><i data-lucide="image"></i><span>图像</span></button>
-                  <button class="category-chip" type="button" data-home-category="media"><i data-lucide="film"></i><span>音视频</span></button>
-                  <button class="category-chip" type="button" data-home-category="text"><i data-lucide="type"></i><span>文本</span></button>
-                  <button class="category-chip" type="button" data-home-category="calc"><i data-lucide="calculator"></i><span>计算器</span></button>
-                  <button class="category-chip" type="button" data-home-category="creative"><i data-lucide="palette"></i><span>创意</span></button>
+                  <button class="category-chip" type="button" data-home-category="image"><i data-lucide="image"></i><span data-i18n="home.categoryImage">图像</span></button>
+                  <button class="category-chip" type="button" data-home-category="media"><i data-lucide="film"></i><span data-i18n="home.categoryMedia">音视频</span></button>
+                  <button class="category-chip" type="button" data-home-category="text"><i data-lucide="type"></i><span data-i18n="home.categoryText">文本</span></button>
+                  <button class="category-chip" type="button" data-home-category="calc"><i data-lucide="calculator"></i><span data-i18n="home.categoryCalculator">计算器</span></button>
+                  <button class="category-chip" type="button" data-home-category="creative"><i data-lucide="palette"></i><span data-i18n="home.categoryCreative">创意</span></button>
                   <button class="category-chip" type="button" data-home-category="ai"><i data-lucide="sparkles"></i><span>AI</span></button>
-                  <button class="category-chip" type="button" data-home-category="hardware"><i data-lucide="cpu"></i><span>硬件</span></button>
-                  <button class="category-chip" type="button" data-home-category="developer"><i data-lucide="braces"></i><span>开发者</span></button>
-                  <button class="category-chip" type="button" data-home-category="clean"><i data-lucide="trash-2"></i><span>清理</span></button>
+                  <button class="category-chip" type="button" data-home-category="hardware"><i data-lucide="cpu"></i><span data-i18n="home.categoryHardware">硬件</span></button>
+                  <button class="category-chip" type="button" data-home-category="developer"><i data-lucide="braces"></i><span data-i18n="home.categoryDeveloper">开发者</span></button>
+                  <button class="category-chip" type="button" data-home-category="clean"><i data-lucide="trash-2"></i><span data-i18n="home.categoryCleanup">清理</span></button>
                    <div class="tool-feedback-prompt">
                      <span data-i18n="home.featureRequestPrompt">Can't find the right tool? Tell us what you'd like to see.</span>
                      <button class="tool-feedback-link" type="button" data-home-link="feedback">
@@ -8579,11 +8998,11 @@
               </section>
 
               <footer class="footer-note">
-                <span>TOOLKNIT DESKTOP 2.1.1 / UI CONCEPT 01</span>
+                <span>TOOLKNIT DESKTOP 2.3.0 / UI CONCEPT 01</span>
                 <span>FILES STAY ON YOUR DEVICE</span>
               </footer>
             </div>
-            <button class="back-to-top" id="backToTop" type="button" aria-label="回到顶部">
+            <button class="back-to-top" id="backToTop" type="button" data-i18n-aria-label="home.backToTopAria" aria-label="回到顶部">
               <i data-lucide="arrow-up"></i>
             </button>
           </div>
@@ -8604,6 +9023,34 @@
                 <button class="audio-clear-btn tools-clear-btn" data-i18n="home.clearSearch" style="display:none;">清除搜索结果</button>
               </div>
               <div class="audio-list">
+                <div class="audio-list-item" data-tool="pdf-page-number" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.pdfPageNumber">
+                  <div class="audio-list-icon"><i data-lucide="hash"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.pdfPageNumber">PDF 加页码</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.pdfPageNumberDesc">实时预览并批量添加页码</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.pdfCategoryTag">PDF工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.pdfPageNumberMeta">页面排序 / 多种样式 / PDF 与 ZIP 导出</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="pdf-crop" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.pdfCrop">
+                  <div class="audio-list-icon"><i data-lucide="crop"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.pdfCrop">PDF 裁剪</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.pdfCropDesc">框选保留区域并批量裁剪页面</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.pdfCategoryTag">PDF工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.pdfCropMeta">八点调节 / 精确边距 / PDF 与 ZIP 导出</div>
+                  </div>
+                </div>
                 <div class="audio-list-item" data-tool="pdf-editor" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.pdfEditor">
                   <div class="audio-list-icon"><i data-lucide="file-pen-line"></i></div>
                   <div class="audio-list-info">
@@ -8728,6 +9175,20 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.pdfEnhanceMeta">去噪锐化 / 对比增强 / 纯本地处理</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="excel-to-pdf" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.excelToPdf">
+                  <div class="audio-list-icon"><i data-lucide="sheet"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.excelToPdf">Excel 转 PDF</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.excelToPdfDesc">把工作簿本地渲染为便于分享和打印的 PDF</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.pdfCategoryTag">PDF工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.excelToPdfMeta">工作表范围 / A4 / 横竖版 / 本地渲染</div>
                   </div>
                 </div>
               </div>
@@ -8870,6 +9331,11 @@
                   <div class="audio-list-icon"><i data-lucide="crop"></i></div>
                   <div class="audio-list-info"><div class="audio-list-title" data-i18n="home.toolNames.imgCrop">图片裁剪</div><div class="audio-list-desc" data-i18n="home.toolNames.imgCropDesc">自由裁剪尺寸</div></div>
                   <div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span><span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span></div><div class="audio-list-meta">比例预设 / 构图辅助线 / 磁吸居中 / 原图导出</div></div>
+                </div>
+                <div class="audio-list-item" data-tool="bg-removal" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.bgRemoval">
+                  <div class="audio-list-icon"><i data-lucide="scissors"></i></div>
+                  <div class="audio-list-info"><div class="audio-list-title" data-i18n="home.toolNames.bgRemoval">背景移除</div><div class="audio-list-desc" data-i18n="home.toolNames.bgRemovalDesc">AI 一键抠图，发丝级边缘</div></div>
+                  <div class="audio-list-right"><div class="audio-list-tags"><span class="audio-tag" data-i18n="home.toolNames.imageCategoryTag">图像工具</span><span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span></div><div class="audio-list-meta" data-i18n="home.toolNames.bgRemovalMeta">AI 抠图 / 边缘羽化 / 透明 PNG 导出</div></div>
                 </div>
                 <div class="audio-list-item" data-tool="image-color-replace" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.imageColorReplace">
                   <div class="audio-list-icon"><i data-lucide="pipette"></i></div>
@@ -9047,7 +9513,7 @@
               <div class="tools-hero-text">
                 <span class="tools-eyebrow" data-i18n="home.toolNames.textEyebrow">Text Terminal</span>
                 <h2 data-i18n="nav.textTools">文本工具</h2>
-                <p data-i18n="home.textCategoryDesc">音视频转文字、文本统计与文本格式化。</p>
+                <p data-i18n="home.textCategoryDesc">音视频转文字、提词、文本统计与格式化。</p>
               </div>
               <div class="audio-search tools-search">
                 <input type="text" class="tools-search-input" data-i18n-placeholder="home.searchPlaceholder" placeholder="搜索工具...">
@@ -9074,6 +9540,20 @@
                       <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
                     </div>
                     <div class="audio-list-meta" data-i18n="home.toolNames.transcriptionMeta">本地转写 / 可选 AI 润色 / TXT / SRT</div>
+                  </div>
+                </div>
+                <div class="audio-list-item" data-tool="teleprompter" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.teleprompter">
+                  <div class="audio-list-icon"><i data-lucide="captions"></i></div>
+                  <div class="audio-list-info">
+                    <div class="audio-list-title" data-i18n="home.toolNames.teleprompter">提词器</div>
+                    <div class="audio-list-desc" data-i18n="home.toolNames.teleprompterDesc">平滑滚动台词，支持句子级语音精准跟随</div>
+                  </div>
+                  <div class="audio-list-right">
+                    <div class="audio-list-tags">
+                      <span class="audio-tag" data-i18n="home.toolNames.textCategoryTag">文本工具</span>
+                      <span class="tool-badge badge-new" data-i18n="home.toolNames.badgeNew">新</span>
+                    </div>
+                    <div class="audio-list-meta" data-i18n="home.toolNames.teleprompterMeta">自动滚动 / 语音跟随 / 镜像 / 专注模式</div>
                   </div>
                 </div>
                 <div class="audio-list-item" data-tool="text-stats" role="button" tabindex="0" data-i18n-aria-label="home.toolNames.textStats">
@@ -9812,7 +10292,7 @@
             <i data-lucide="arrow-left"></i>
             <span data-i18n="settings.back">返回首页</span>
           </button>
-          <span class="pdf-merge-v2-top-tag">SYSTEM CLEANUP · TOOL PAGE 2.1</span>
+          <span class="pdf-merge-v2-top-tag">SYSTEM CLEANUP · TOOL PAGE 2.3</span>
         </div>
         <div class="home-v2-top-actions pdf-merge-v2-top-actions">
           <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -9956,7 +10436,7 @@
           <button class="home-v2-brand" type="button" data-donation-close aria-label="ToolKnit 首页">
             <img src="/logo.png" alt="" />
             <span class="home-v2-brand-name">ToolKnit</span>
-            <span class="home-v2-brand-version">2.1</span>
+            <span class="home-v2-brand-version">2.3</span>
           </button>
           <div class="home-v2-top-actions">
             <button class="home-v2-nav-link" type="button" data-home-link="website">
@@ -9992,18 +10472,19 @@
 
               <dl class="donation-stats" aria-label="ToolKnit 项目数据">
                 <div><dt id="donationGithubStars">435+</dt><dd data-i18n="home.supportPage.statStars">GitHub Stars</dd></div>
-                <div><dt>60</dt><dd data-i18n="home.supportPage.statTools">桌面工具</dd></div>
+                <div><dt>65</dt><dd data-i18n="home.supportPage.statTools">桌面工具</dd></div>
                 <div><dt data-i18n="home.supportPage.statViewsValue">近 100 万</dt><dd data-i18n="home.supportPage.statViews">累计内容播放</dd></div>
                 <div><dt id="donationJournalCount">81</dt><dd data-i18n="home.supportPage.statLogs">公开更新日志</dd></div>
               </dl>
             </div>
 
             <div class="donation-support-panel">
-              <p class="donation-support-copy" data-i18n="home.supportPage.scanLead">如果 ToolKnit 曾让你少装一个来路不明的软件、少上传一份隐私文件，或者少熬一会儿夜，欢迎支持它继续长大。</p>
+              <p class="donation-support-copy" data-i18n="home.supportPage.scanLead">为了持续给大家免费更新 ToolKnit，作者仅 AI 开发与测试每月就要自掏腰包 500 多元，长期独自承担已越来越吃力。你的每一份支持都会直接用于继续维护、验证和发布 ToolKnit。</p>
               <figure class="donation-qr-figure">
                 <img src="assets/donate/donation-support.webp" alt="ToolKnit 支付宝与微信双收款码 / Alipay and WeChat QR codes">
               </figure>
-              <p class="donation-voluntary" data-i18n="home.supportPage.voluntary">捐赠完全自愿，不解锁额外功能，也不构成付费服务、外包或功能排期承诺。</p>
+              <p class="donation-support-benefit"><i data-lucide="users" aria-hidden="true"></i><span data-i18n="home.supportPage.supporterBenefit">赞助后可加入 ToolKnit 灰度体验群，提前体验新版本，并直接提交希望加入的功能。</span></p>
+              <p class="donation-voluntary" data-i18n="home.supportPage.voluntary">灰度群用于版本交流、测试和需求收集；赞助不等于购买功能，建议会统一评估，不承诺实现或优先排期。</p>
             </div>
           </div>
 
@@ -10012,7 +10493,7 @@
               <span class="donation-section-index">01 / STORY</span>
               <h3 id="donationStoryTitle" data-i18n="home.supportPage.storyTitle">从一份 PDF，到一个公开维护的工具箱</h3>
               <p data-i18n="home.supportPage.storyBody1">最开始只是想解决手边的文件问题。后来，网页端逐步扩展到 90 多项工具，Windows 桌面端也用 Rust 与 Tauri 从头搭建。功能迁移、兼容测试、文档、安装包和用户反馈，都在工作之外一项项完成。</p>
-              <p data-i18n="home.supportPage.storyBody2">ToolKnit 2.0 不是换一套皮肤：49 个桌面工具逐页重构，CLI、MCP 和 Agent 能力一起补齐。GitHub 已获得 400 多颗 Star，相关内容累计传播接近 100 万次。每一次使用、分享和反馈，都在证明认真做小工具也有价值。</p>
+              <p data-i18n="home.supportPage.storyBody2">ToolKnit 2.0 完成了 49 个桌面工具的逐页重构，CLI、MCP 和 Agent 能力也一起补齐；到 V2.3，桌面工具已扩展到 65 项。每一次使用、分享和反馈，都在证明认真做小工具也有价值。</p>
               <div class="donation-actions">
                 <button class="donation-action donation-action-primary" type="button" data-donation-link="changelog">
                   <i data-lucide="history" aria-hidden="true"></i>
@@ -10033,7 +10514,7 @@
               <ol>
                 <li><time>2026.03</time><span data-i18n="home.supportPage.milestone1">从 PDF 工具起步，网页端开始公开更新。</span></li>
                 <li><time>2026.07</time><span data-i18n="home.supportPage.milestone2">Rust + Tauri 桌面端开源，工具开始真正进入本地工作流。</span></li>
-                <li><time>2026.08</time><span data-i18n="home.supportPage.milestone3">ToolKnit 2.0 完成全工具新 UI、交互和底层能力升级。</span></li>
+                <li><time>2026.08</time><span data-i18n="home.supportPage.milestone3">ToolKnit V2.3 扩展到 65 个桌面工具，并完成更新、依赖与兼容性加固。</span></li>
               </ol>
             </section>
           </div>
@@ -10063,13 +10544,15 @@
             <div>
               <span class="donation-section-index">04 / KEEP IT GOING</span>
               <h3 id="donationUseTitle" data-i18n="home.supportPage.useTitle">支持会花在哪里</h3>
-              <p data-i18n="home.supportPage.useBody">兼容性测试设备、安装包与依赖镜像验证、文档教程、线上服务和持续开源维护。金额无论大小，都会变成下一次更稳的发布。</p>
+              <p data-i18n="home.supportPage.useBody">AI 开发与测试、兼容性设备、依赖镜像、文档、安装包和持续开源维护都在产生实际成本。金额无论大小，都会回到下一次更稳的发布。</p>
             </div>
             <ul class="donation-purpose">
+              <li><i data-lucide="sparkles" aria-hidden="true"></i><span data-i18n="home.supportPage.useAi">AI 开发与测试成本</span></li>
               <li><i data-lucide="monitor-check" aria-hidden="true"></i><span data-i18n="home.supportPage.useCompatibility">兼容性测试</span></li>
               <li><i data-lucide="package-check" aria-hidden="true"></i><span data-i18n="home.supportPage.useRelease">安装与发布维护</span></li>
               <li><i data-lucide="file-check-2" aria-hidden="true"></i><span data-i18n="home.supportPage.useDocs">文档与教程</span></li>
               <li><i data-lucide="code-2" aria-hidden="true"></i><span data-i18n="home.supportPage.useOpenSource">持续开源开发</span></li>
+              <li><i data-lucide="users" aria-hidden="true"></i><span data-i18n="home.supportPage.useCommunity">灰度体验与需求交流</span></li>
             </ul>
           </section>
 
@@ -10083,11 +10566,121 @@
         </div>
       </section>
     </div>
+    <div class="update-preview-overlay" id="updatePreviewOverlay" role="dialog" aria-modal="true" aria-labelledby="updatePreviewTitle" aria-hidden="true" tabindex="-1">
+      <div class="update-preview-shell">
+        <section class="update-preview-left" aria-label="版本更新提醒" data-update-aria="noticeRegion">
+          <header class="update-preview-brand" data-tauri-drag-region>
+            <img src="/logo.png" alt="" aria-hidden="true" />
+            <span class="update-preview-brand-name">ToolKnit</span>
+            <span class="update-preview-brand-version" data-update-release="brand-version">2.3 PREVIEW</span>
+          </header>
+
+          <div class="update-preview-left-main">
+            <img class="update-preview-hero-logo" src="/logo.png" alt="" aria-hidden="true" />
+            <span class="update-preview-available" data-update-copy="available">UPDATE AVAILABLE</span>
+            <h1 class="update-preview-title" id="updatePreviewTitle">
+              <span data-update-copy="titleLead">新版本已经</span>
+              <span class="update-preview-title-emphasis" data-update-copy="titleAccent">织好了</span>
+            </h1>
+            <p class="update-preview-intro" data-update-copy="intro">ToolKnit 2.3 已经准备好，把更多麻烦留给工具，把更多时间还给你。</p>
+            <p class="update-preview-mission" data-update-copy="mission">我们做工具，不是为了堆数量，而是希望那些原本需要上传、等待和反复切换的事情，都能在你的电脑里安静地完成。</p>
+
+            <div class="update-preview-version-row" aria-label="版本跨度" data-update-aria="versionRange">
+              <div class="update-preview-version">
+                <span class="update-preview-version-label" data-update-copy="currentLabel">当前版本</span>
+                <strong data-update-version="current">2.3.0</strong>
+              </div>
+              <span class="update-preview-version-arrow" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+              <div class="update-preview-version">
+                <span class="update-preview-version-label" data-update-copy="latestLabel">最新版本</span>
+                <strong data-update-version="latest">2.3.0</strong>
+              </div>
+            </div>
+
+            <div class="update-preview-actions">
+              <button class="update-preview-action update-preview-action-primary" type="button" data-update-now>
+                <i class="update-preview-action-primary-icon" data-lucide="download" aria-hidden="true"></i>
+                <span data-update-copy="updateNow">现在去更新</span>
+              </button>
+              <button class="update-preview-action" type="button" data-update-later>
+                <i data-lucide="clock-3" aria-hidden="true"></i>
+                <span class="update-preview-later-label" data-update-copy="updateLater">我还不想更新</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="update-preview-marquee" aria-hidden="true">
+            <div class="update-preview-marquee-track" data-update-marquee></div>
+          </div>
+        </section>
+
+        <section class="update-preview-right" aria-label="版本更新内容" data-update-aria="contentRegion">
+          <div class="update-preview-stage">
+            <div class="update-preview-background" data-update-background aria-hidden="true"></div>
+            <div class="update-preview-stage-content">
+              <header class="update-preview-stage-topbar">
+                <span class="update-preview-stage-edition" data-update-release="edition">TOOLKNIT DESKTOP · V2.3</span>
+                <div class="update-preview-window-controls" aria-label="窗口控制" data-update-aria="windowControls">
+                  <button class="update-preview-window-button ctrl-btn" type="button" data-action="minimize" data-i18n-title="common.minimize" title="最小化" aria-label="最小化"><i data-lucide="minus"></i></button>
+                  <button class="update-preview-window-button ctrl-btn" type="button" data-action="maximize" data-i18n-title="common.maximize" title="最大化" aria-label="最大化"><i data-lucide="square"></i></button>
+                  <button class="update-preview-window-button ctrl-btn close" type="button" data-action="close" data-i18n-title="common.close" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+                </div>
+              </header>
+
+              <div class="update-preview-release">
+                <span class="update-preview-release-kicker" data-update-copy="releaseKicker" data-update-release="kicker">WHAT'S NEW · 2.3</span>
+                <h2 data-update-copy="releaseTitle" data-update-release="title">更新不该被错过，
+也不该打断你。</h2>
+                <p class="update-preview-release-description" data-update-copy="releaseDescription" data-update-release="description">新版本的变化会在这里被认真讲清楚。你可以先看、再决定，更新始终由你掌控。</p>
+
+                <div class="update-preview-release-panel">
+                  <span class="update-preview-release-panel-title" data-update-copy="highlightsLabel">本次更新预览</span>
+                  <div class="update-preview-highlight" data-update-release-highlight="0">
+                    <span class="update-preview-highlight-icon" aria-hidden="true"><i data-lucide="bell-ring"></i></span>
+                    <div class="update-preview-highlight-copy">
+                      <strong data-update-copy="highlight1Title" data-update-release-title>主动但克制的提醒</strong>
+                      <p data-update-copy="highlight1Body" data-update-release-body>只在合适的时机出现，不用再反复前往设置里手动检查。</p>
+                    </div>
+                  </div>
+                  <div class="update-preview-highlight" data-update-release-highlight="1">
+                    <span class="update-preview-highlight-icon" aria-hidden="true"><i data-lucide="file-text"></i></span>
+                    <div class="update-preview-highlight-copy">
+                      <strong data-update-copy="highlight2Title" data-update-release-title>更清楚的版本内容</strong>
+                      <p data-update-copy="highlight2Body" data-update-release-body>更新重点、版本跨度和详细日志集中呈现，重要变化一眼可见。</p>
+                    </div>
+                  </div>
+                  <div class="update-preview-highlight" data-update-release-highlight="2">
+                    <span class="update-preview-highlight-icon" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+                    <div class="update-preview-highlight-copy">
+                      <strong data-update-copy="highlight3Title" data-update-release-title>安全、可恢复的流程</strong>
+                      <p data-update-copy="highlight3Body" data-update-release-body>下载、验证和安装状态彼此分离，失败不会影响当前可用版本。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <footer class="update-preview-stage-footer">
+                <p class="update-preview-slogan" data-update-copy="slogan">把麻烦留给工具，把时间还给自己。</p>
+                <nav class="update-preview-links" aria-label="ToolKnit 相关链接" data-update-aria="relatedLinks">
+                  <a class="update-preview-link" href="https://toolknit.com" data-update-link="website" data-update-copy="website">网页版</a>
+                  <a class="update-preview-link" href="https://github.com/ZihangDong/toolknit-desktop" data-update-link="repository" data-update-copy="repository">开源仓库</a>
+                  <a class="update-preview-link" href="https://toolknit.com/changelog.html" data-update-link="changelog" data-update-copy="changelog">更新日志</a>
+                  <a class="update-preview-link" href="https://github.com/ZihangDong/toolknit-desktop/issues" data-update-link="feedback" data-update-copy="feedback">建议反馈</a>
+                </nav>
+              </footer>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
     <div class="feature-tool-overlay markdown-editor-overlay" id="markdownEditorOverlay" aria-hidden="true"></div>
     <div class="feature-tool-overlay color-replace-overlay" id="imageColorReplaceOverlay" aria-hidden="true"></div>
     <div class="feature-tool-overlay crypto-tool-overlay" id="cryptoToolOverlay" aria-hidden="true"></div>
     <div class="feature-tool-overlay developer-toolbox-overlay" id="developerToolboxOverlay" aria-hidden="true"></div>
     <div class="feature-tool-overlay color-space-compare-overlay" id="colorSpaceCompareOverlay" aria-hidden="true"></div>
+    <div class="feature-tool-overlay pdf-merge-v2 excel-to-pdf-overlay" id="excelToPdfOverlay" aria-hidden="true"></div>
+    <div class="feature-tool-overlay teleprompter-overlay pdf-merge-v2" id="teleprompterOverlay" aria-hidden="true"></div>
+              <div class="feature-tool-overlay bg-removal-overlay pdf-merge-v2" id="bgRemovalOverlay" aria-hidden="true"></div>
     <div class="toast" id="favToast"><span id="favToastText"></span></div>
   </body>
 </html>

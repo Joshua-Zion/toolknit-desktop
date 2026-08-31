@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { compactFfmpegError, resolveFfmpeg, runFfmpeg } from './ffmpeg-runtime.mjs';
 import { cancellationError, isCancellationError, ToolKnitError, throwIfAborted } from './errors.mjs';
 import { isPlaceholderAiApiKey, requestAiCompletion } from './core/ai-provider-core.js';
+import { simplifyChineseText } from './core/teleprompter-core.js';
 
 const CLI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT_ROOT = path.resolve(CLI_ROOT, '..');
@@ -331,6 +332,12 @@ export async function transcribeMedia({ input_path, output_dir, language = 'auto
     throwIfAborted(options.signal);
     const sources = { json: path.join(temporary, 'transcript.json'), srt: path.join(temporary, 'transcript.srt'), txt: path.join(temporary, 'transcript.txt') };
     if (!await regularFile(sources.json) || !await regularFile(sources.srt) || !await regularFile(sources.txt)) throw new ToolKnitError('PROCESSING_FAILED', 'The transcription engine did not create every expected output.');
+    // Whisper sometimes answers in traditional characters; publish simplified.
+    for (const filePath of [sources.json, sources.srt, sources.txt]) {
+      const content = await readFile(filePath, 'utf8');
+      const simplified = simplifyChineseText(content);
+      if (simplified !== content) await writeFile(filePath, simplified, 'utf8');
+    }
     report(options, 94, 'Publishing transcription results.');
     const stem = safeStem(input);
     let suffix = 0;

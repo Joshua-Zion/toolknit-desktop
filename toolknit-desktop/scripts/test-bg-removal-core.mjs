@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import {
+  applyAlphaDabValue,
+  canTransitionBgRemovalState,
+  commitEditStroke,
+  createEditHistory,
+  joinNativePath,
+  parentDirectoryFromPath,
+  redoEditStroke,
+  resetEditHistory,
+  selectInstalledModels,
+  transitionBgRemovalState,
+  undoEditStroke
+} from '../src/bg-removal-core.js';
+
+let state = 'empty';
+for (const next of ['processing', 'ready', 'processing', 'editing', 'saving', 'saved']) {
+  state = transitionBgRemovalState(state, next);
+}
+assert.equal(state, 'saved');
+assert.equal(canTransitionBgRemovalState('saved', 'editing'), true);
+assert.equal(canTransitionBgRemovalState('ready', 'saved'), false);
+assert.throws(() => transitionBgRemovalState('ready', 'saved'), /Invalid background-removal transition/);
+
+const history = createEditHistory();
+const restore = { mode: 'restore', radius: 10, points: [{ x: 2, y: 3 }] };
+const erase = { mode: 'erase', radius: 8, points: [{ x: 5, y: 6 }] };
+assert.equal(commitEditStroke(history, restore), true);
+assert.equal(commitEditStroke(history, erase), true);
+assert.equal(history.strokes.length, 2);
+assert.equal(undoEditStroke(history), erase);
+assert.equal(history.strokes.length, 1);
+assert.equal(history.redo.length, 1);
+assert.equal(redoEditStroke(history), erase);
+assert.equal(history.strokes.length, 2);
+undoEditStroke(history);
+commitEditStroke(history, { ...erase, points: [{ x: 9, y: 9 }] });
+assert.equal(history.redo.length, 0, 'a new edit must clear the redo branch');
+resetEditHistory(history);
+assert.deepEqual(history, { strokes: [], redo: [] });
+
+assert.equal(applyAlphaDabValue(0.8, 1, 'erase'), 0);
+assert.equal(applyAlphaDabValue(0.2, 1, 'restore'), 1);
+assert.ok(Math.abs(applyAlphaDabValue(0.8, 0.5, 'erase') - 0.4) < 1e-9);
+assert.ok(Math.abs(applyAlphaDabValue(0.2, 0.5, 'restore') - 0.6) < 1e-9);
+
+const selection = selectInstalledModels([
+  { id: 'missing', installed: false, current: true },
+  { id: 'modnet', installed: true, current: true },
+  { id: 'isnet', installed: true, current: false }
+], 'isnet');
+assert.deepEqual(selection.installed.map(model => model.id), ['modnet', 'isnet']);
+assert.equal(selection.preferred.id, 'isnet');
+assert.equal(selectInstalledModels([{ id: 'missing', installed: false }]).preferred, null);
+
+assert.equal(joinNativePath('C:\\Users\\test\\Downloads\\ToolKnit', '背景移除'), 'C:\\Users\\test\\Downloads\\ToolKnit\\背景移除');
+assert.equal(joinNativePath('C:\\Users\\test\\Downloads\\ToolKnit\\', '/背景移除/'), 'C:\\Users\\test\\Downloads\\ToolKnit\\背景移除');
+assert.equal(joinNativePath('/home/test/ToolKnit/', '背景移除'), '/home/test/ToolKnit/背景移除');
+assert.equal(parentDirectoryFromPath('C:\\Users\\test\\Downloads\\ToolKnit\\背景移除\\result.png'), 'C:\\Users\\test\\Downloads\\ToolKnit\\背景移除');
+assert.equal(parentDirectoryFromPath('/home/test/ToolKnit/背景移除/result.png'), '/home/test/ToolKnit/背景移除');
+
+const css = await readFile(new URL('../src/bg-removal.css', import.meta.url), 'utf8');
+assert.match(css, /\.bg-removal-overlay \[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
+assert.match(css, /max-width:\s*839px/);
+assert.match(css, /\.is-compare[\s\S]*\.bg-removal-canvas-original/);
+
+const ui = await readFile(new URL('../src/bg-removal-ui.js', import.meta.url), 'utf8');
+assert.equal((ui.match(/function handleAction\(/g) || []).length, 1, 'actions must be bound through one dispatcher');
+assert.equal((ui.match(/function startNativeDragListener\(/g) || []).length, 1, 'native drag listener must have one implementation');
+assert.doesNotMatch(ui, /scheduleSave|saveWorking|debounceSegment/);
+assert.match(ui, /data-bgr-success/, 'export completion must use the standard success dialog');
+assert.doesNotMatch(ui, /data-bgr-toast|showInlineToast/, 'background removal must not use inline toast feedback');
+assert.doesNotMatch(ui, /data-bgr-result-path/, 'the workspace must not duplicate the saved output path');
+assert.match(ui, /invoke\('open_path', \{ path: savedPath \}\)/, 'open folder must use the exported file path returned by Rust');
+assert.doesNotMatch(ui, /invoke\('open_path', \{ path: outputDir \}\)/, 'open folder must not use a predicted output directory');
+assert.match(css, /\.bg-removal-zoom-value\s*\{[^}]*font-size:\s*15px/s);
+
+console.log('background removal core tests passed');

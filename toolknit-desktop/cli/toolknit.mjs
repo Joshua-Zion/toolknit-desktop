@@ -41,7 +41,7 @@ import { editAiTableProject, generateAiTableProject, inspectAiTableProjectFile, 
 import { installTranscriptionModel, listTranscriptionModels, setCurrentTranscriptionModel, transcribeMedia } from './lib/transcription-runtime.mjs';
 import { TaskRunner } from './lib/shared/task-runtime.mjs';
 
-const VERSION = '2.1.1';
+const VERSION = '2.3.0';
 const CLI_ABORT_CONTROLLER = new AbortController();
 let CLI_SIGNAL_COUNT = 0;
 

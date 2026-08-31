@@ -1458,7 +1458,7 @@ export function initPdfEditorTool({
     if (pdfDocs.has(sourceId)) return pdfDocs.get(sourceId);
     const source = sources.find(item => item.id === sourceId);
     if (!source) throw new Error('Missing PDF source');
-    const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
     const wasmUrl = new URL('assets/', document.baseURI).href;
     const loadingTask = pdfjsLib.getDocument({
@@ -3640,7 +3640,7 @@ export function initPdfEditorTool({
       setLocalizedProgress(12, 'loadingDocument');
       const bytes = await readBytes(file);
       assertOperation(operation);
-      const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
       const wasmUrl = new URL('assets/', document.baseURI).href;
       const loadingTask = pdfjsLib.getDocument({ data: bytes.slice(), wasmUrl, useWasm: true });
