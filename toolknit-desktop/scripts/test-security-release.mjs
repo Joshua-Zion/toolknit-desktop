@@ -73,8 +73,37 @@ const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repositoryRo
   .toString('utf8')
   .split('\0')
   .filter(Boolean);
+const trackedFileSet = new Set(trackedFiles);
 const sensitiveFilePattern = /(?:^|\/)(?:\.env(?:\..+)?|\.npmrc|[^/]+\.(?:pem|pfx|p12|key))$/i;
 check(!trackedFiles.some(file => sensitiveFilePattern.test(file)), 'Sensitive configuration or key material must not be tracked');
+
+const desktopPackage = JSON.parse(read('toolknit-desktop/package.json'));
+check(
+  desktopPackage.scripts?.['test:security-release']?.startsWith('npm run stage:cli-resources &&'),
+  'Security release tests must stage generated CLI runtime resources for clean checkouts'
+);
+const cliStageSource = read('toolknit-desktop/scripts/stage-cli-resources.cjs');
+const stagedCoreFiles = new Set(
+  [...cliStageSource.matchAll(/^\s*'([^']+\.js)',?\s*$/gm)].map(match => match[1])
+);
+check(stagedCoreFiles.size > 0, 'CLI staging must define an explicit core module manifest');
+for (const fileName of stagedCoreFiles) {
+  check(
+    trackedFileSet.has(`toolknit-desktop/src/${fileName}`),
+    `CLI staged core source must be tracked: toolknit-desktop/src/${fileName}`
+  );
+}
+const referencedCoreFiles = new Set();
+for (const cliFile of trackedFiles.filter(file => /^toolknit-desktop\/cli\/.*\.(?:mjs|js)$/i.test(file))) {
+  const contents = readFileSync(resolve(repositoryRoot, cliFile), 'utf8');
+  for (const match of contents.matchAll(/(?:from\s+|import\s*\()\s*['"]\.\/core\/([^'"]+\.js)['"]/g)) {
+    referencedCoreFiles.add(match[1]);
+  }
+}
+check(referencedCoreFiles.size > 0, 'CLI runtime modules must expose their generated core dependencies');
+for (const fileName of referencedCoreFiles) {
+  check(stagedCoreFiles.has(fileName), `CLI core import is missing from the staging manifest: ${fileName}`);
+}
 
 const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
