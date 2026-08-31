@@ -2,7 +2,7 @@
 
 <img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop — ToolKnit spider web hero" width="100%" />
 
-<h1>ToolKnit Desktop 2.1</h1>
+<h1>ToolKnit Desktop 2.3</h1>
 
 <p><strong>本地文件工作台 · 桌面端、网页端与 AI Agent 工作流</strong></p>
 
@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/2.1.1-正式版-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.1.1" />
+  <img src="https://img.shields.io/badge/2.3.0-发布候选-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.0 release candidate" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -45,20 +45,20 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
       <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
-      <sub>2.1.1 安装包、校验文件和版本说明会同步到 Release。</sub>
+      <sub>2.3.0 正式安装包、校验文件和版本说明会同步到 Release。</sub>
     </td>
   </tr>
 </table>
 
-## ToolKnit 2.1
+## ToolKnit 2.3
 
-ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把常用文件处理、图像与 Markdown 创作、开发者工具、AI 内容生产、专业文档工作流和 IDE Agent 自动化放在同一个产品体系里。
+ToolKnit Desktop 2.3 是一套面向 Windows 的本地文件工作台。它把常用文件处理、图像与 Markdown 创作、开发者工具、AI 内容生产、专业文档工作流和 IDE Agent 自动化放在同一个产品体系里。
 
 同一份本地文件可以被桌面端预览、被 CLI 批处理、被 MCP Agent 调用，并且拥有明确的输入、输出、进度、错误和安全边界。
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>60</h3><strong>桌面工具</strong></td>
+    <td align="center"><h3>65</h3><strong>桌面工具</strong></td>
     <td align="center"><h3>12</h3><strong>功能分类</strong></td>
     <td align="center"><h3>46</h3><strong>MCP 能力</strong></td>
     <td align="center"><h3>3</h3><strong>工作方式</strong></td>
@@ -67,7 +67,19 @@ ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把�
   </tr>
 </table>
 
-## 2.1 系列新功能
+## 2.3 发布候选
+
+V2.3 新增 5 项桌面工具，并完成更新、依赖下载、管理员重启、圆角渲染和工具页交互的兼容性加固：
+
+- `提词器`：支持平滑滚动、镜像、专注模式，以及 Windows 系统识别或 ToolKnit 离线识别驱动的句子级语音跟随。
+- `PDF 加页码`：支持页面范围、编号方式、起始值、文本模板、位置和外观预览，以矢量指令写入页码。
+- `PDF 裁剪`：支持可视化框选、精确边距、统一或逐页调整，通过修改页面边界完成无损裁剪。
+- `背景移除`：使用按需下载的本地模型生成透明背景，支持边缘优化、背景预览和原始分辨率导出。
+- `Excel 转 PDF`：批量读取 XLSX、XLS 和 ODS，通过 ToolKnit 管理的本地 LibreOffice 运行时渲染，并兼容 WPS 工作簿。
+
+桌面端、Tauri、Rust crate 与 `@toolknit/cli` 版本统一为 `2.3.0`；发布门禁覆盖 65 个桌面工具帮助映射、46 项 MCP 能力、完整前端回归与 Rust 测试。
+
+### 2.1 系列基础
 
 2.1 系列新增 11 项桌面工具，并围绕自定义背景、玻璃拟态交互、依赖复用、任务生命周期和失败恢复完成一轮系统升级。新工具继续遵循本地优先原则，重型编辑器与算法模块按需加载，离开页面后会释放 Worker、Canvas、监听器和临时资源。
 
@@ -151,15 +163,15 @@ ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把�
 
 ## 完整功能目录
 
-下面按桌面端的 12 个分类列出全部 60 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
+下面按桌面端的 12 个分类列出全部 65 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF 文档工具 · 9 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF 文档工具 · 12 项</h3></td></tr>
 </table>
 
-`PDF 合并` · `PDF 拆分` · `PDF 转图像` · `PDF 编辑器` · `PDF 页面旋转` · `PDF 文件加密` · `PDF 文件解密` · `PDF 文件压缩` · `PDF 文字增强`
+`PDF 合并` · `PDF 拆分` · `PDF 加页码` · `PDF 裁剪` · `PDF 转图像` · `PDF 编辑器` · `PDF 页面旋转` · `PDF 文件加密` · `PDF 文件解密` · `PDF 文件压缩` · `PDF 文字增强` · `Excel 转 PDF`
 
-支持拖拽排序、逐页预览、选页导出、页面旋转、文字替换、文本与图像插入、追加合并、密码保护、扫描件增强和多等级压缩。PDF、密码和导出结果默认只在本机处理。
+支持拖拽排序、逐页预览、选页导出、页码写入、无损裁剪、页面旋转、文字替换、文本与图像插入、追加合并、密码保护、扫描件增强、多等级压缩和工作簿本地渲染。PDF、工作簿、密码和导出结果默认只在本机处理。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PPT-Presentation%20Studio-d24726?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white" alt="PPT Presentation Studio" /></td><td align="right" style="border:0;"><h3 align="right">PPT 演示文稿工具 · 7 项</h3></td></tr>
@@ -170,12 +182,12 @@ ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把�
 支持逐页渲染、页码选择、PNG/JPG/WebP 输出、素材去重、标题正文备注提取、Markdown/TXT/JSON 导出、媒体清理，以及从主题和资料生成结构化大纲与可编辑 PPTX 草稿。PPT 渲染运行时按需下载。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 6 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 7 项</h3></td></tr>
 </table>
 
-`图像裁剪` · `智能颜色替换` · `图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器`
+`图像裁剪` · `智能颜色替换` · `背景移除` · `图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器`
 
-支持常用比例与构图辅助线裁剪、区域保护颜色替换、JPG / PNG / WebP / BMP / GIF / SVG 互转、批量压缩、横向 / 纵向 / 无缝拼接图片或 PDF 页面，以及生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP。
+支持常用比例与构图辅助线裁剪、区域保护颜色替换、本地模型背景移除、JPG / PNG / WebP / BMP / GIF / SVG 互转、批量压缩、横向 / 纵向 / 无缝拼接图片或 PDF 页面，以及生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">音频工具 · 4 项</h3></td></tr>
@@ -194,12 +206,12 @@ ToolKnit Desktop 2.1 是一套面向 Windows 的本地文件工作台。它把�
 支持 MP4、AVI、MKV、MOV、WebM、FLV、WMV、TS、M4V 等格式转换，按精确时间点导出 PNG/JPG 单帧，以及从 30 秒以内片段生成调色板优化 GIF。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">文本与转写 · 4 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">文本与转写 · 5 项</h3></td></tr>
 </table>
 
-`Markdown 文档编辑器` · `音视频提取文字` · `文本统计器` · `文本格式化`
+`Markdown 文档编辑器` · `音视频提取文字` · `提词器` · `文本统计器` · `文本格式化`
 
-Markdown 编辑器提供 GFM、Mermaid、数学公式、标题大纲、草稿恢复与离线导出；Whisper 模型下载到本机后，可离线识别中英文音频和视频并输出 TXT、SRT、JSON；文本统计和格式化工具用于检查与整理纯文本内容。
+Markdown 编辑器提供 GFM、Mermaid、数学公式、标题大纲、草稿恢复与离线导出；Whisper 模型下载到本机后，可离线识别中英文音频和视频并输出 TXT、SRT、JSON，也可驱动提词器语音跟随；文本统计和格式化工具用于检查与整理纯文本内容。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/UTILITY-Calculator-2563eb?style=for-the-badge" alt="Calculator utility" /></td><td align="right" style="border:0;"><h3 align="right">计算器工具 · 5 项</h3></td></tr>
@@ -261,7 +273,7 @@ CLI 和 MCP 默认要求明确输入与输出路径，不覆盖已有文件；�
 
 ## 技术栈
 
-ToolKnit 2.1 采用轻量桌面容器与本地文件引擎组合，网页端、桌面端、CLI 和 MCP 共用清晰的输入输出边界。
+ToolKnit 2.3 采用轻量桌面容器与本地文件引擎组合，网页端、桌面端、CLI 和 MCP 共用清晰的输入输出边界。
 
 <table cellpadding="10" cellspacing="0">
   <tr>
@@ -365,11 +377,11 @@ ToolKnit 2.1 采用轻量桌面容器与本地文件引擎组合，网页端、�
 
 ### 安装 Windows 桌面端
 
-从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。2.1.1 正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
+从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。当前开发版本为 2.3.0 发布候选；正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
 
 正式安装包发布前请以仓库 Release 页面为准，并在运行前核对同页提供的 SHA-256 校验值。
 
-**代码签名状态：** 2.1.1 尚未使用 SignPath 签名流程。项目已申请 SignPath Foundation 的开源代码签名支持；获批并完成集成后，后续版本将按照[代码签名政策](CODE_SIGNING_POLICY.md)签名。
+**代码签名状态：** 当前 2.3.0 发布候选尚未使用 SignPath 签名流程。项目已申请 SignPath Foundation 的开源代码签名支持；获批并完成集成后，后续版本将按照[代码签名政策](CODE_SIGNING_POLICY.md)签名。
 
 ### 从源码运行
 
@@ -449,7 +461,9 @@ ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的�
 
 ## 捐赠支持
 
-如果 ToolKnit 对你的工作有帮助，欢迎用一次性捐赠支持测试设备、依赖镜像、文档维护和后续功能开发。捐赠不是付费外包承诺，但会帮助项目保持开源、纯净、可维护和持续更新。
+为了持续给大家免费更新 ToolKnit，作者仅 AI 开发与测试每月就要自掏腰包 500 多元，长期独自承担已越来越吃力。如果 ToolKnit 对你的工作有帮助，欢迎用一次性捐赠支持 AI 测试、兼容性设备、依赖镜像、文档维护和后续功能开发。
+
+赞助后可经确认加入 ToolKnit 灰度体验群，提前体验版本并提交希望加入的功能。灰度群用于交流、测试和需求收集；赞助不代表购买功能，也不承诺实现或优先排期。
 
 <p align="center">
   <img src="assets/readme/donation-support.webp" alt="支持 ToolKnit 的支付宝和微信二维码" width="100%" />
@@ -494,5 +508,5 @@ ToolKnit Desktop 和 CLI/MCP 源代码采用 [Apache License 2.0](LICENSE) 开�
 该协议不授予 ToolKnit 名称、Logo、视觉标识、域名、官网、托管网页服务、服务账号或其他独立运营产品的使用权。详见 [NOTICE](NOTICE)。
 
 <p align="center">
-  <sub>ToolKnit Desktop 2.1 · Local-first tools for real work</sub>
+  <sub>ToolKnit Desktop 2.3 · Local-first tools for real work</sub>
 </p>

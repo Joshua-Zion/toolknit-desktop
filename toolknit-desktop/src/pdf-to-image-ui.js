@@ -842,7 +842,7 @@ export function initPdfToImageTool({
       setLocalizedProgress(10, 'loadingDocument');
       const bytes = await readPdfBytes(file);
       assertOperation(operation);
-      const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
       assertOperation(operation);
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
       const wasmUrl = new URL('assets/', document.baseURI).href;

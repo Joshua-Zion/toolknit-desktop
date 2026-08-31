@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const REPARSE_POINT_ATTRIBUTE: u32 = 0x400;
+const ELEVATED_RELAUNCH_PARENT_PREFIX: &str = "--toolknit-elevated-relaunch-parent=";
+const ELEVATED_RELAUNCH_WAIT_MS: u32 = 30_000;
 
 #[derive(Clone, Serialize)]
 pub struct SystemCleanupTierSummary {
@@ -453,12 +455,97 @@ fn run_powershell_number(script: &str) -> u64 {
         .unwrap_or(0)
 }
 
-fn is_admin() -> bool {
-    const SCRIPT: &str = r#"[bool]([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"#;
-    run_powershell_stdout(SCRIPT)
-        .map(|value| value.trim().eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+#[cfg(target_os = "windows")]
+fn query_admin_status() -> Result<bool, String> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).map_err(|error| {
+            format!(
+                "system-cleanup:admin-check-failed:open-token:{:#010x}",
+                error.code().0 as u32
+            )
+        })?;
+
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut returned_size = 0u32;
+        let query_result = GetTokenInformation(
+            token,
+            TokenElevation,
+            Some((&mut elevation as *mut TOKEN_ELEVATION).cast()),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned_size,
+        );
+        let _ = CloseHandle(token);
+
+        query_result.map_err(|error| {
+            format!(
+                "system-cleanup:admin-check-failed:query-token:{:#010x}",
+                error.code().0 as u32
+            )
+        })?;
+        if returned_size < std::mem::size_of::<TOKEN_ELEVATION>() as u32 {
+            return Err("system-cleanup:admin-check-failed:invalid-token-data".to_string());
+        }
+        Ok(elevation.TokenIsElevated != 0)
+    }
 }
+
+#[cfg(not(target_os = "windows"))]
+fn query_admin_status() -> Result<bool, String> {
+    Err("system-cleanup:windows-only".to_string())
+}
+
+fn elevated_relaunch_parent_pid<I, S>(args: I) -> Option<u32>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    args.into_iter().find_map(|arg| {
+        arg.as_ref()
+            .strip_prefix(ELEVATED_RELAUNCH_PARENT_PREFIX)
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|pid| *pid > 0)
+    })
+}
+
+#[cfg(target_os = "windows")]
+pub fn await_previous_instance_for_elevated_relaunch() {
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+    };
+
+    let Some(parent_pid) = elevated_relaunch_parent_pid(std::env::args()) else {
+        return;
+    };
+    if parent_pid == std::process::id() || query_admin_status() != Ok(true) {
+        return;
+    }
+
+    unsafe {
+        let parent = match OpenProcess(PROCESS_SYNCHRONIZE, false, parent_pid) {
+            Ok(handle) => handle,
+            Err(_) => return,
+        };
+        let wait_result = WaitForSingleObject(parent, ELEVATED_RELAUNCH_WAIT_MS);
+        let _ = CloseHandle(parent);
+        if wait_result != WAIT_OBJECT_0 && wait_result != WAIT_TIMEOUT {
+            eprintln!(
+                "ToolKnit elevated relaunch could not wait for process {} (result {}).",
+                parent_pid, wait_result.0
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn await_previous_instance_for_elevated_relaunch() {}
 
 fn hibernation_size_bytes() -> u64 {
     const SCRIPT: &str = r#"$ErrorActionPreference='SilentlyContinue'; $f=Get-Item -LiteralPath "$env:SystemDrive\hiberfil.sys" -Force -ErrorAction SilentlyContinue; if($null -ne $f){[Int64]$f.Length}else{0}"#;
@@ -582,29 +669,78 @@ fn normalize_tier(tier: &str) -> Result<&'static str, String> {
 }
 
 #[tauri::command]
-pub fn system_cleanup_is_admin() -> bool {
-    is_admin()
+pub fn system_cleanup_is_admin() -> Result<bool, String> {
+    query_admin_status()
 }
 
+#[cfg(target_os = "windows")]
 #[tauri::command]
-pub fn system_cleanup_relaunch_as_admin(app: tauri::AppHandle) -> Result<(), String> {
+pub fn system_cleanup_relaunch_as_admin(app: tauri::AppHandle) -> Result<bool, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::ERROR_CANCELLED;
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW};
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    if query_admin_status()? {
+        return Ok(false);
+    }
+
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let path = exe.to_string_lossy().replace('\'', "''");
-    let script = format!("Start-Process -FilePath '{}' -Verb RunAs", path);
-    run_powershell_stdout(&script)?;
+    let verb: Vec<u16> = std::ffi::OsStr::new("runas")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let exe_wide: Vec<u16> = exe
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let parameters = format!("{}{}", ELEVATED_RELAUNCH_PARENT_PREFIX, std::process::id());
+    let parameters_wide: Vec<u16> = std::ffi::OsStr::new(&parameters)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut execute = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        lpVerb: PCWSTR(verb.as_ptr()),
+        lpFile: PCWSTR(exe_wide.as_ptr()),
+        lpParameters: PCWSTR(parameters_wide.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    if let Err(error) = unsafe { ShellExecuteExW(&mut execute) } {
+        let raw_code = error.code().0 as u32;
+        if raw_code & 0xffff == ERROR_CANCELLED.0 {
+            return Err("system-cleanup:uac-cancelled".to_string());
+        }
+        return Err(format!(
+            "system-cleanup:elevation-failed:{:#010x}",
+            raw_code
+        ));
+    }
+
     app.exit(0);
-    Ok(())
+    Ok(true)
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn system_cleanup_relaunch_as_admin(_app: tauri::AppHandle) -> Result<bool, String> {
+    Err("system-cleanup:windows-only".to_string())
 }
 
 #[tauri::command]
 pub async fn system_cleanup_scan() -> Result<SystemCleanupScan, String> {
     tokio::task::spawn_blocking(move || {
+        let is_admin = query_admin_status()?;
         let low = scan_path_tier("low", &collect_low_rules());
         let medium = scan_path_tier("medium", &collect_medium_rules());
         let high = scan_high_tier();
         Ok(SystemCleanupScan {
             system_drive: system_drive(),
-            is_admin: is_admin(),
+            is_admin,
             tiers: vec![low, medium, high],
         })
     })
@@ -615,6 +751,9 @@ pub async fn system_cleanup_scan() -> Result<SystemCleanupScan, String> {
 #[tauri::command]
 pub async fn system_cleanup_run(tier: String) -> Result<SystemCleanupRunResult, String> {
     tokio::task::spawn_blocking(move || {
+        if !query_admin_status()? {
+            return Err("system-cleanup:admin-required".to_string());
+        }
         let normalized = normalize_tier(&tier)?;
         match normalized {
             "low" => Ok(run_path_tier("low", &collect_low_rules())),
@@ -664,5 +803,44 @@ mod tests {
         assert_eq!(normalize_tier("MEDIUM").unwrap(), "medium");
         assert_eq!(normalize_tier("high").unwrap(), "high");
         assert!(normalize_tier("bogus").is_err());
+    }
+
+    #[test]
+    fn elevated_relaunch_parent_marker_accepts_only_valid_nonzero_pid() {
+        assert_eq!(
+            elevated_relaunch_parent_pid([
+                "toolknit.exe",
+                "--toolknit-elevated-relaunch-parent=4128",
+            ]),
+            Some(4128)
+        );
+        assert_eq!(
+            elevated_relaunch_parent_pid(["toolknit.exe", "--toolknit-elevated-relaunch-parent=0"]),
+            None
+        );
+        assert_eq!(
+            elevated_relaunch_parent_pid([
+                "toolknit.exe",
+                "--toolknit-elevated-relaunch-parent=nope",
+            ]),
+            None
+        );
+        assert_eq!(
+            elevated_relaunch_parent_pid(["toolknit.exe", "--unrelated=4128"]),
+            None
+        );
+        assert_eq!(
+            elevated_relaunch_parent_pid([
+                "toolknit.exe",
+                "--toolknit-elevated-relaunch-parent=99999999999999999999",
+            ]),
+            None
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn native_admin_query_reads_current_process_token() {
+        assert!(query_admin_status().is_ok());
     }
 }

@@ -100,7 +100,9 @@ const [
   zhLocale,
   enLocale,
   zhHelpSource,
-  enHelpSource
+  enHelpSource,
+  repositoryReadme,
+  releaseNotes
 ] = await Promise.all([
   readJson('package.json'),
   readJson('package-lock.json'),
@@ -117,12 +119,21 @@ const [
   readJson('src/locales/zh.json'),
   readJson('src/locales/en.json'),
   readText('src/help-data.js'),
-  readText('src/help-data-en.js')
+  readText('src/help-data-en.js'),
+  readText('../README.md'),
+  readText('../docs/desktop-update.md')
 ]);
 
 const fullVersion = desktopPackage.version;
 assert.match(fullVersion, /^\d+\.\d+\.\d+$/, 'package.json version must use MAJOR.MINOR.PATCH');
 const seriesVersion = fullVersion.split('.').slice(0, 2).join('.');
+
+assert.match(repositoryReadme, new RegExp(`<h1>ToolKnit Desktop ${escapeRegExp(seriesVersion)}<\\/h1>`), 'Repository README heading must match the current release series');
+assert.match(repositoryReadme, /<h3>65<\/h3><strong>桌面工具<\/strong>/, 'Repository README must state the 65-tool V2.3 catalog');
+assert.match(repositoryReadme, /<h3>46<\/h3><strong>MCP 能力<\/strong>/, 'Repository README must state the 46-capability MCP contract');
+assert.match(releaseNotes, new RegExp(`^# ToolKnit Desktop ${escapeRegExp(fullVersion)}\\s*$`, 'm'), 'Release notes heading must match package.json version');
+assert.match(releaseNotes, /65 项工具/, 'Release notes must state the 65-tool desktop catalog');
+assert.match(releaseNotes, /46 项已发布能力/, 'Release notes must state the 46-capability CLI and MCP contract');
 
 const manifestVersions = new Map([
   ['package-lock.json version', desktopLock.version],
@@ -223,5 +234,12 @@ for (const [label, actual] of legalVersions) {
 }
 assert.match(zhUsageSource, /随当前功能边界更新/, 'Chinese usage policy must use a version-independent feature boundary');
 assert.match(enUsageSource, /with the current feature boundary/, 'English usage policy must use a version-independent feature boundary');
+
+assert.match(zhLocale.home?.supportCostNote ?? '', /500/, 'Chinese home support copy must state the monthly AI cost');
+assert.match(enLocale.home?.supportCostNote ?? '', /500/, 'English home support copy must state the monthly AI cost');
+assert.match(zhLocale.home?.supportPage?.supporterBenefit ?? '', /灰度体验群/, 'Chinese support copy must explain preview-group access');
+assert.match(enLocale.home?.supportPage?.supporterBenefit ?? '', /preview group/i, 'English support copy must explain preview-group access');
+assert.match(zhLegalSource, /灰度体验群/, 'Chinese legal copy must define the preview-group boundary');
+assert.match(enLegalSource, /preview group/i, 'English legal copy must define the preview-group boundary');
 
 console.log(`Release version contract passed for ${fullVersion}: ${manifestVersions.size} manifests, ${runtimeVersions.size} runtime constants, ${toolPageMentions.length} tool-page labels, and 4 legal notices.`);

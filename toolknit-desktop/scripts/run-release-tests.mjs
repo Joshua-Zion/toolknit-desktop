@@ -2,6 +2,10 @@ import { spawnSync } from 'node:child_process';
 
 const releaseTests = [
   'test:release-version',
+  'test:update-service',
+  'test:window-radius',
+  'test:system-cleanup',
+  'test:excel-to-pdf',
   'test:pdf-merge',
   'test:pdf-split',
   'test:pdf-to-image',
@@ -11,6 +15,8 @@ const releaseTests = [
   'test:pdf-compress',
   'test:pdf-enhance',
   'test:pdf-editor',
+  'test:pdf-page-number',
+  'test:pdf-crop',
   'test:font-metadata',
   'test:ai-doc',
   'test:ai-table',
@@ -19,6 +25,8 @@ const releaseTests = [
   'test:ai-polish',
   'test:text-format',
   'test:text-stats',
+  'test:teleprompter',
+  'test:bg-removal',
   'test:password',
   'test:color-extractor',
   'test:color-space-compare',

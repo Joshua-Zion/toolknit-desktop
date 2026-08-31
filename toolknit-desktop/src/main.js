@@ -1,9 +1,11 @@
-      import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
+      import { LogicalSize, currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
       import { createElement as createLucideElement, createIcons, icons } from 'lucide';
-      import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
+      import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
       import { initLightRays } from './lightrays.js';
       import { initPlasma } from './plasma.js';
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
+      import { initUpdatePreview } from './update-preview.js';
+      import { compareVersions, createUpdateService, UPDATE_RELEASES_PAGE } from './update-service.js';
       import typingWordsData from './data/typing-words.json';
       import { HELP_CONTENT, getHelpContent } from './help-data.js';
       import { SUPPORT_JOURNAL_ENTRIES } from './support-journal-data.js';
@@ -207,8 +209,15 @@
 
       const WINDOW_RADIUS_KEY = 'toolknit.window-radius.v1';
       const WINDOW_RESIZE_KEY = 'toolknit.window-resizable.v1';
-      const WINDOW_MIN_WIDTH = 1400;
-      const WINDOW_MIN_HEIGHT = 900;
+      // Keep the native constraint low enough for compact and high-DPI laptop
+      // work areas. Individual pages already switch to their compact layouts
+      // before this floor, while larger screens receive their preferred size
+      // from the native startup fitting below.
+      const WINDOW_MIN_WIDTH = 720;
+      const WINDOW_MIN_HEIGHT = 480;
+      const WINDOW_ABSOLUTE_MIN_WIDTH = 480;
+      const WINDOW_ABSOLUTE_MIN_HEIGHT = 360;
+      const WINDOW_SAFE_MARGIN = 32;
       const WINDOW_RADIUS_PRESETS = {
         none: 0,
         small: 10,
@@ -747,18 +756,18 @@
       function repairNativeWindowChrome() {
         if (!isTauri || !appWindow || isScreenPickerWindow) return Promise.resolve();
 
-        // Windows/WebView2 can occasionally reintroduce native decorations
-        // after changing resizable/maximized state on a transparent frameless
-        // window. Repair it from the renderer side so the shell never falls
-        // back to the Win32 title bar.
+        // Do not repeatedly rewrite the native window style. Apart from being
+        // unnecessary for a normally frameless window, that can race a resize
+        // or a title-bar click on WebView2. Repair only if decoration really
+        // returned after a Windows state transition.
         nativeWindowChromeRepairQueue = nativeWindowChromeRepairQueue
           .catch(() => undefined)
           .then(async () => {
-            if (typeof appWindow.setDecorations === 'function') {
+            const hasNativeDecorations = typeof appWindow.isDecorated === 'function'
+              ? await appWindow.isDecorated()
+              : true;
+            if (hasNativeDecorations && typeof appWindow.setDecorations === 'function') {
               await appWindow.setDecorations(false);
-            }
-            if (typeof appWindow.setShadow === 'function') {
-              await appWindow.setShadow(false);
             }
           })
           .catch(error => {
@@ -768,15 +777,16 @@
         return nativeWindowChromeRepairQueue;
       }
 
+      let nativeWindowChromeRepairTimer = 0;
       function scheduleNativeWindowChromeRepair({ reapplyRadius = true } = {}) {
         if (!isTauri || !appWindow || isScreenPickerWindow) return;
-        [0, 60, 160, 360, 760].forEach(delay => {
-          window.setTimeout(() => {
-            repairNativeWindowChrome().finally(() => {
-              if (reapplyRadius) applyWindowRadiusSetting(readWindowRadiusSetting());
-            });
-          }, delay);
-        });
+        clearTimeout(nativeWindowChromeRepairTimer);
+        nativeWindowChromeRepairTimer = window.setTimeout(() => {
+          nativeWindowChromeRepairTimer = 0;
+          repairNativeWindowChrome().finally(() => {
+            if (reapplyRadius) applyWindowRadiusSetting(readWindowRadiusSetting());
+          });
+        }, 140);
       }
 
       function applyWindowRadiusSetting(setting = readWindowRadiusSetting()) {
@@ -787,7 +797,8 @@
         root.style.setProperty('--toolknit-window-radius', value);
         root.dataset.windowRadius = setting.mode;
         const body = document.body;
-        body?.classList.toggle('use-native-window-radius', isTauri);
+        body?.classList.remove('use-native-window-radius');
+        body?.classList.toggle('use-css-window-radius', radius > 0);
         body?.style.setProperty('--toolknit-window-radius', value);
         body?.setAttribute('data-window-radius', setting.mode);
         document.querySelectorAll('.app, .settings-overlay, .global-window-controls, .transition-mask').forEach(layer => {
@@ -797,6 +808,8 @@
         clearLegacyWindowRadiusStyles();
 
         if (isTauri) {
+          // The native command clears the old binary GDI region. The body is
+          // the single alpha-antialiased clipping surface for every page.
           applyNativeWindowRadius(radius);
         } else if (body) {
           // Preview fallback: one clipping boundary only, without reintroducing
@@ -869,7 +882,7 @@
 
       function syncWindowFrameAfterLayoutChange() {
         if (!isTauri || !appWindow || isScreenPickerWindow) return;
-        [0, 80, 180, 360, 720].forEach(delay => {
+        [0, 180].forEach(delay => {
           setTimeout(async () => {
             await syncWindowFrameState();
             applyWindowRadiusSetting(readWindowRadiusSetting());
@@ -1260,8 +1273,7 @@
         const host = document.createElement('div');
         host.className = 'home-v2-custom-background-host';
         host.setAttribute('aria-hidden', 'true');
-        const canvas = document.getElementById('homeV2ShaderBg');
-        root.insertBefore(host, canvas || root.firstChild);
+        root.insertBefore(host, root.firstChild);
         customBackgroundRuntime.homeHost = host;
         return host;
       }
@@ -1379,7 +1391,7 @@
           if (!source) {
             customBackgroundRuntime.homeFailedKey = configKey;
             session.dispose();
-            syncHomeV2Shader();
+            syncHomeV2Background();
             return;
           }
           const mounted = mountCustomBackgroundMedia(host, config, source, 'home');
@@ -1389,11 +1401,11 @@
               customBackgroundRuntime.homeReady = true;
               host.classList.add('has-custom-background');
               root?.classList.toggle('has-custom-background', Boolean(root?.classList.contains('is-v2-home') && customBackgroundRuntime.toolSessions.size === 0));
-              syncHomeV2Shader();
+              syncHomeV2Background();
             } else if (!ok && !session.disposed) {
               customBackgroundRuntime.homeFailedKey = configKey;
               session.dispose();
-              syncHomeV2Shader();
+              syncHomeV2Background();
             }
           });
           session.dispose = () => {
@@ -1417,9 +1429,7 @@
           refreshCustomBackgroundConfig();
           syncCustomHomeBackground();
           customBackgroundRuntime.toolSessions.forEach(session => session.refresh?.());
-          // Clearing or replacing a ready background can re-enable the shader;
-          // reconcile its RAF after the media sessions have been updated.
-          syncHomeV2Shader();
+          syncHomeV2Background();
         },
         getConfig: () => ({ ...(refreshCustomBackgroundConfig() || {}) })
       };
@@ -1583,44 +1593,109 @@
 
       const OUTPUT_ROOT_KEY = 'toolknit.output-root.v1';
 
-      async function applyWindowResizeSetting(enabled = readWindowResizeSetting()) {
-        if (isScreenPickerWindow) return Boolean(enabled);
-        if (!isTauri || !appWindow) return Boolean(enabled);
+      let windowResizeQueue = Promise.resolve();
+      async function adaptiveMinimumWindowSize() {
+        if (!isTauri) return new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
         try {
-          await appWindow.setMinSize(new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT));
-          await appWindow.setMaxSize(null);
-          if (enabled) {
-            await appWindow.setResizable(true);
-            await repairNativeWindowChrome();
-          } else {
-            try {
-              if (await appWindow.isMaximized()) await appWindow.unmaximize();
-            } catch {}
-            try {
-              await appWindow.setSize(new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT));
-            } catch {}
-            await appWindow.setResizable(false);
-            await repairNativeWindowChrome();
+          const monitor = await currentMonitor();
+          const scale = Number(monitor?.scaleFactor) || 1;
+          const physicalSize = monitor?.workArea?.size;
+          if (!physicalSize || scale <= 0) {
+            return new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
           }
-          syncWindowFrameAfterLayoutChange();
-          scheduleNativeWindowChromeRepair();
+          const usableWidth = Math.max(
+            WINDOW_ABSOLUTE_MIN_WIDTH,
+            (Number(physicalSize.width) / scale) - WINDOW_SAFE_MARGIN
+          );
+          const usableHeight = Math.max(
+            WINDOW_ABSOLUTE_MIN_HEIGHT,
+            (Number(physicalSize.height) / scale) - WINDOW_SAFE_MARGIN
+          );
+          return new LogicalSize(
+            Math.max(WINDOW_ABSOLUTE_MIN_WIDTH, Math.min(WINDOW_MIN_WIDTH, usableWidth)),
+            Math.max(WINDOW_ABSOLUTE_MIN_HEIGHT, Math.min(WINDOW_MIN_HEIGHT, usableHeight))
+          );
         } catch (error) {
-          console.error('Failed to apply window resize setting:', error);
-          window.showToast?.(getLang() === 'zh' ? '窗口拉伸设置应用失败。' : 'Failed to apply window resize setting.');
+          console.warn('Unable to inspect monitor work area for window sizing:', error);
+          return new LogicalSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
         }
-        return Boolean(enabled);
       }
 
-      if (!isScreenPickerWindow) void applyWindowResizeSetting();
+      function applyWindowResizeSetting(enabled = readWindowResizeSetting()) {
+        const requested = Boolean(enabled);
+        if (isScreenPickerWindow || !isTauri || !appWindow) return Promise.resolve(requested);
 
-      // Tauri uses data-tauri-drag-region. The older WebKit-only CSS hint was not
-      // reliable on every Windows WebView, especially after opening an overlay.
-      if (isTauri && appWindow) {
-        const dragRegions = '.main-header-drag-region, .settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header';
-        document.querySelectorAll(dragRegions).forEach(region => {
-          region.setAttribute('data-tauri-drag-region', '');
+        // All native style changes share one queue. This prevents a fast
+        // double-click from interleaving setResizable with unmaximize or a
+        // delayed frame repair and leaving the toggle out of sync.
+        windowResizeQueue = windowResizeQueue
+          .catch(() => undefined)
+          .then(async () => {
+            await appWindow.setMinSize(await adaptiveMinimumWindowSize());
+            await appWindow.setMaxSize(null);
+            await repairNativeWindowChrome();
+
+            if (!requested) {
+              try {
+                if (await appWindow.isMaximized()) await appWindow.unmaximize();
+              } catch (error) {
+                // A transient maximize-state read must not prevent the user
+                // from changing the resizable setting itself.
+                console.warn('Unable to restore window before disabling resize:', error);
+              }
+            }
+            await appWindow.setResizable(requested);
+
+            const applied = await appWindow.isResizable();
+            if (applied !== requested) {
+              throw new Error(`Native resizable state mismatch: requested=${requested}, applied=${applied}`);
+            }
+            syncWindowFrameAfterLayoutChange();
+            return applied;
+          });
+        return windowResizeQueue;
+      }
+
+      if (!isScreenPickerWindow) {
+        const initialResizePreference = readWindowResizeSetting();
+        void applyWindowResizeSetting(initialResizePreference).catch(error => {
+          console.error('Failed to apply saved window resize setting:', error);
         });
       }
+
+      function canStartNativeWindowDrag(event) {
+        if (event.button !== 0 || event.defaultPrevented) return false;
+        const target = event.target;
+        if (!(target instanceof Element)) return false;
+        return !target.closest('button, a, input, select, textarea, summary, [contenteditable="true"], [role="button"], [data-no-window-drag]');
+      }
+
+      // A data-tauri-drag-region on a complete header also includes its nested
+      // controls. On Windows that lets the native drag handler win over a
+      // settings/minimize/maximize click intermittently. Dedicated empty drag
+      // strips retain the native attribute; interactive headers start dragging
+      // only from genuinely empty space.
+      function initNativeWindowDragRegions() {
+        if (!isTauri || !appWindow || isScreenPickerWindow) return;
+        document.querySelectorAll('.main-header-drag-region').forEach(region => {
+          region.setAttribute('data-tauri-drag-region', '');
+        });
+
+        const headerSelector = '.settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header, .update-preview-stage-topbar';
+        document.querySelectorAll(headerSelector).forEach(header => {
+          header.removeAttribute('data-tauri-drag-region');
+          header.style.setProperty('-webkit-app-region', 'no-drag');
+          header.addEventListener('pointerdown', event => {
+            if (!canStartNativeWindowDrag(event)) return;
+            event.preventDefault();
+            appWindow.startDragging().catch(error => {
+              console.warn('Native window drag failed:', error);
+            });
+          });
+        });
+      }
+
+      initNativeWindowDragRegions();
 
       function configuredOutputRoot() {
         try { return localStorage.getItem(OUTPUT_ROOT_KEY)?.trim() || ''; } catch { return ''; }
@@ -1874,196 +1949,20 @@
 
       const appRoot = document.querySelector('.app');
 
-      const homeV2ShaderCanvas = document.getElementById('homeV2ShaderBg');
-      // The canvas is a fully painted, opaque decorative surface. Keeping it
-      // opaque avoids an extra transparent-compositing pass in WebView2.
-      const homeV2ShaderContext = homeV2ShaderCanvas?.getContext('2d', {
-        alpha: false,
-        desynchronized: true
-      });
-      const homeV2ShaderState = {
-        width: 0,
-        height: 0,
-        // This is a soft background layer; 1.25x is visually crisp while
-        // keeping the backing store substantially smaller on HiDPI screens.
-        dpr: Math.min(window.devicePixelRatio || 1, 1.25),
-        raf: 0,
-        lastRenderAt: 0,
-        animationTime: 0,
-        lastAnimationAt: 0,
-        scrolling: false,
-        scrollIdleTimer: 0,
-        reduced: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      };
-      const homeV2RibbonSeeds = [
-        { radiusX: 0.22, radiusY: 0.16, speed: 0.23, phase: 0, opacity: 0.16 },
-        { radiusX: 0.29, radiusY: 0.21, speed: -0.18, phase: 1.8, opacity: 0.11 },
-        { radiusX: 0.35, radiusY: 0.14, speed: 0.13, phase: 3.4, opacity: 0.08 }
-      ];
-
-      function resizeHomeV2Shader() {
-        if (!homeV2ShaderCanvas || !homeV2ShaderContext) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const canvasWidth = Math.floor(width * dpr);
-        const canvasHeight = Math.floor(height * dpr);
-        if (
-          homeV2ShaderState.width === width &&
-          homeV2ShaderState.height === height &&
-          homeV2ShaderState.dpr === dpr &&
-          homeV2ShaderCanvas.width === canvasWidth &&
-          homeV2ShaderCanvas.height === canvasHeight
-        ) return;
-        homeV2ShaderState.dpr = dpr;
-        homeV2ShaderState.width = width;
-        homeV2ShaderState.height = height;
-        homeV2ShaderCanvas.width = canvasWidth;
-        homeV2ShaderCanvas.height = canvasHeight;
-        homeV2ShaderContext.setTransform(homeV2ShaderState.dpr, 0, 0, homeV2ShaderState.dpr, 0, 0);
-      }
-
-      function drawHomeV2Ribbon(seed, time, centerX, centerY) {
-        if (!homeV2ShaderContext) return;
-        const { width, height } = homeV2ShaderState;
-        const points = [];
-        const segments = 14;
-        const radiusX = Math.min(width, height) * seed.radiusX;
-        const radiusY = Math.min(width, height) * seed.radiusY;
-        for (let index = 0; index <= segments; index += 1) {
-          const progress = index / segments;
-          const angle = progress * Math.PI * 2 + time * seed.speed + seed.phase;
-          const wave = 1 + 0.12 * Math.sin(time * 1.2 + progress * 9.2 + seed.phase);
-          points.push([
-            centerX + Math.cos(angle) * radiusX * wave,
-            centerY + Math.sin(angle) * radiusY * (1 + 0.08 * Math.cos(time * 1.05 + progress * 7.5))
-          ]);
-        }
-
-        // Build the path once and reuse it for the glow and the crisp line.
-        // The previous implementation rebuilt the same curve twice per seed.
-        homeV2ShaderContext.beginPath();
-        homeV2ShaderContext.moveTo(points[0][0], points[0][1]);
-        for (let index = 1; index < points.length; index += 1) {
-          const previous = points[index - 1];
-          const current = points[index];
-          homeV2ShaderContext.quadraticCurveTo(previous[0], previous[1], (previous[0] + current[0]) / 2, (previous[1] + current[1]) / 2);
-        }
-        homeV2ShaderContext.closePath();
-
-        homeV2ShaderContext.save();
-        homeV2ShaderContext.filter = 'blur(12px)';
-        homeV2ShaderContext.lineWidth = 24;
-        homeV2ShaderContext.strokeStyle = `rgba(255, 255, 255, ${seed.opacity * 0.42})`;
-        homeV2ShaderContext.stroke();
-        homeV2ShaderContext.restore();
-
-        homeV2ShaderContext.save();
-        homeV2ShaderContext.lineWidth = 1.2;
-        homeV2ShaderContext.strokeStyle = `rgba(255, 255, 255, ${seed.opacity})`;
-        homeV2ShaderContext.stroke();
-        homeV2ShaderContext.restore();
-      }
-
-      function renderHomeV2Shader(now) {
-        if (!homeV2ShaderContext || !appRoot?.classList.contains('is-v2-home') || document.hidden) {
-          homeV2ShaderState.raf = 0;
-          return;
-        }
-        // Scrolling uses the compositor to move the document. Repainting a
-        // full-window canvas at the same time only steals main-thread/raster
-        // time, so the scroll handler pauses this loop and keeps the last
-        // completed frame visible.
-        if (homeV2ShaderState.scrolling) {
-          homeV2ShaderState.raf = 0;
-          return;
-        }
-        const frameInterval = 1000 / 30;
-        if (homeV2ShaderState.lastRenderAt && now - homeV2ShaderState.lastRenderAt < frameInterval) {
-          homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
-          return;
-        }
-        homeV2ShaderState.lastRenderAt = now;
-        const previousAnimationAt = homeV2ShaderState.lastAnimationAt || now;
-        homeV2ShaderState.animationTime += Math.min(Math.max(now - previousAnimationAt, 0), 200);
-        homeV2ShaderState.lastAnimationAt = now;
-        const { width, height } = homeV2ShaderState;
-        const time = homeV2ShaderState.animationTime * 0.001;
-        homeV2ShaderContext.fillStyle = '#060607';
-        homeV2ShaderContext.fillRect(0, 0, width, height);
-
-        const centerX = width * 0.56;
-        const centerY = height * 0.46;
-        homeV2RibbonSeeds.forEach(seed => drawHomeV2Ribbon(seed, time, centerX, centerY));
-        homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
-      }
-
-      function markHomeV2Scrolling() {
-        if (!appRoot?.classList.contains('is-v2-home')) return;
-        if (!homeV2ShaderState.scrolling) homeV2ShaderState.lastAnimationAt = 0;
-        homeV2ShaderState.scrolling = true;
-        if (homeV2ShaderState.raf) {
-          window.cancelAnimationFrame(homeV2ShaderState.raf);
-          homeV2ShaderState.raf = 0;
-        }
-        if (homeV2ShaderState.scrollIdleTimer) window.clearTimeout(homeV2ShaderState.scrollIdleTimer);
-        homeV2ShaderState.scrollIdleTimer = window.setTimeout(() => {
-          homeV2ShaderState.scrolling = false;
-          homeV2ShaderState.scrollIdleTimer = 0;
-          homeV2ShaderState.lastRenderAt = 0;
-          homeV2ShaderState.lastAnimationAt = 0;
-          syncHomeV2Shader();
-        }, 160);
-      }
-
-      function syncHomeV2Shader() {
-        if (!homeV2ShaderContext || homeV2ShaderState.reduced) return;
-        const isHome = appRoot?.classList.contains('is-v2-home');
-        const customConfig = refreshCustomBackgroundConfig();
-        if (isHome) {
-          syncCustomHomeBackground();
-        }
-        if (isHome && customConfig) {
-          if (customBackgroundRuntime.homeReady) {
-            if (homeV2ShaderState.raf) {
-              window.cancelAnimationFrame(homeV2ShaderState.raf);
-              homeV2ShaderState.raf = 0;
-            }
-            homeV2ShaderState.lastRenderAt = 0;
-            return;
-          }
-        }
-        if (isHome && !document.hidden && !homeV2ShaderState.raf) {
-          resizeHomeV2Shader();
-          homeV2ShaderState.lastRenderAt = 0;
-          homeV2ShaderState.raf = window.requestAnimationFrame(renderHomeV2Shader);
-        }
-        if ((!isHome || document.hidden) && homeV2ShaderState.raf) {
-          window.cancelAnimationFrame(homeV2ShaderState.raf);
-          homeV2ShaderState.raf = 0;
-          homeV2ShaderState.lastRenderAt = 0;
-        }
+      function syncHomeV2Background() {
+        if (!appRoot?.classList.contains('is-v2-home') || document.body.classList.contains('update-preview-open')) return;
+        syncCustomHomeBackground();
       }
 
       function syncV2HomeShell(category) {
         const isHome = category === 'home';
         appRoot?.classList.toggle('is-v2-home', isHome);
         document.body.classList.toggle('v2-home-active', isHome);
-        if (!isHome) {
-          homeV2ShaderState.scrolling = false;
-          homeV2ShaderState.lastAnimationAt = 0;
-          if (homeV2ShaderState.scrollIdleTimer) {
-            window.clearTimeout(homeV2ShaderState.scrollIdleTimer);
-            homeV2ShaderState.scrollIdleTimer = 0;
-          }
-        }
         syncCustomHomeBackground();
-        syncHomeV2Shader();
+        syncHomeV2Background();
       }
 
       syncV2HomeShell(document.querySelector('.content-section.active')?.dataset.category || 'home');
-      window.addEventListener('resize', resizeHomeV2Shader, { passive: true });
-      document.addEventListener('visibilitychange', syncHomeV2Shader);
 
       function switchCategory(category) {
         if (isSwitching) return;
@@ -2122,9 +2021,13 @@
 
       if (isTauri && appWindow && !isScreenPickerWindow) {
         document.querySelectorAll('.ctrl-btn[data-action]').forEach(btn => {
-          btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-          btn.addEventListener('mousedown', (e) => e.stopPropagation());
-          btn.addEventListener('click', () => handleWindowControlAction(btn.dataset.action));
+          btn.addEventListener('pointerdown', (e) => e.stopPropagation(), { capture: true });
+          btn.addEventListener('mousedown', (e) => e.stopPropagation(), { capture: true });
+          btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void handleWindowControlAction(btn.dataset.action);
+          });
         });
       }
 
@@ -2198,10 +2101,12 @@
       const windowRadiusValue = document.getElementById('windowRadiusValue');
       const windowRadiusCustomWrap = document.getElementById('windowRadiusCustomWrap');
       const windowResizeToggle = document.getElementById('windowResizeToggle');
+      let applyingWindowResizeSetting = false;
 
       function syncWindowResizeControl(enabled = readWindowResizeSetting()) {
         windowResizeToggle?.classList.toggle('active', enabled);
         windowResizeToggle?.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        windowResizeToggle?.toggleAttribute('disabled', applyingWindowResizeSetting);
       }
 
       function syncWindowRadiusControls(setting = readWindowRadiusSetting()) {
@@ -2246,9 +2151,23 @@
       });
 
       windowResizeToggle?.addEventListener('click', async () => {
-        const next = saveWindowResizeSetting(!readWindowResizeSetting());
-        syncWindowResizeControl(next);
-        await applyWindowResizeSetting(next);
+        if (applyingWindowResizeSetting) return;
+        const previous = readWindowResizeSetting();
+        const next = !previous;
+        applyingWindowResizeSetting = true;
+        syncWindowResizeControl(previous);
+        try {
+          const applied = await applyWindowResizeSetting(next);
+          saveWindowResizeSetting(applied);
+          syncWindowResizeControl(applied);
+        } catch (error) {
+          console.error('Failed to apply window resize setting:', error);
+          syncWindowResizeControl(previous);
+          window.showToast?.(getLang() === 'zh' ? '窗口拉伸设置应用失败，请重试。' : 'Failed to apply window resize setting. Please try again.');
+        } finally {
+          applyingWindowResizeSetting = false;
+          syncWindowResizeControl(readWindowResizeSetting());
+        }
       });
 
       syncWindowResizeControl();
@@ -2862,31 +2781,12 @@
       const versionUpdateStatus = document.getElementById('versionUpdateStatus');
       const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
       const openReleasePageBtn = document.getElementById('openReleasePageBtn');
-      const APP_VERSION_FALLBACK = '2.1.1';
-      const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/ZihangDong/toolknit-desktop/releases/latest';
-      const GITHUB_RELEASES_PAGE = 'https://github.com/ZihangDong/toolknit-desktop/releases/latest';
+      const APP_VERSION_FALLBACK = '2.3.0';
       let versionCheckRunning = false;
-
-      function parseVersionToken(raw) {
-        const cleaned = String(raw || '').trim().replace(/^v/i, '');
-        const parts = cleaned.split('.').map(part => Number.parseInt(part, 10));
-        if (!parts.length || parts.some(Number.isNaN)) return null;
-        return parts;
-      }
-
-      function compareVersionTokens(a, b) {
-        const left = parseVersionToken(a);
-        const right = parseVersionToken(b);
-        if (!left || !right) return 0;
-        const length = Math.max(left.length, right.length);
-        for (let i = 0; i < length; i += 1) {
-          const leftPart = left[i] || 0;
-          const rightPart = right[i] || 0;
-          if (leftPart > rightPart) return 1;
-          if (leftPart < rightPart) return -1;
-        }
-        return 0;
-      }
+      let updatePreviewController = null;
+      let lastVersionUpdateResult = null;
+      let versionUpdateState = { kind: 'neutral', version: APP_VERSION_FALLBACK };
+      const updateService = createUpdateService();
 
       async function getLocalAppVersion() {
         if (!isTauri) return APP_VERSION_FALLBACK;
@@ -2900,51 +2800,68 @@
         return APP_VERSION_FALLBACK;
       }
 
-      function setVersionUpdateStatus(text, kind = 'neutral') {
+      function renderVersionUpdateStatus() {
         if (!versionUpdateStatus) return;
+        const { kind, version } = versionUpdateState;
+        const text = kind === 'checking'
+          ? t('settings.versionChecking')
+          : kind === 'available'
+            ? t('settings.versionAvailable', { version })
+            : kind === 'up-to-date'
+              ? t('settings.versionUpToDate', { version })
+              : kind === 'error'
+                ? t('settings.versionUpdateFailed')
+                : t('settings.versionCurrent', { version });
         versionUpdateStatus.textContent = text;
         versionUpdateStatus.dataset.kind = kind;
+        if (openReleasePageBtn) openReleasePageBtn.hidden = kind !== 'available';
       }
 
-      async function runVersionUpdateCheck() {
+      function setVersionUpdateState(kind, version = APP_VERSION_FALLBACK) {
+        versionUpdateState = { kind, version };
+        renderVersionUpdateStatus();
+      }
+
+      async function runVersionUpdateCheck({ force = true, showUpdate = true } = {}) {
         if (versionCheckRunning) return;
         versionCheckRunning = true;
         if (checkVersionUpdateBtn) checkVersionUpdateBtn.disabled = true;
-        if (openReleasePageBtn) openReleasePageBtn.hidden = true;
-        setVersionUpdateStatus(t('settings.versionChecking'), 'checking');
+        setVersionUpdateState('checking');
         try {
-          const data = await fetchGithubJson(GITHUB_LATEST_RELEASE_API);
-          const latest = data?.tag_name;
-          if (!latest) throw new Error('No release tag returned');
           const localVersion = await getLocalAppVersion();
-          if (compareVersionTokens(latest, localVersion) > 0) {
-            setVersionUpdateStatus(t('settings.versionAvailable', { version: latest }), 'available');
-            if (openReleasePageBtn) openReleasePageBtn.hidden = false;
+          const result = await updateService.check({ force });
+          lastVersionUpdateResult = result;
+          const updateAvailable = compareVersions(result.release.version, localVersion) > 0;
+          if (updateAvailable) {
+            setVersionUpdateState('available', result.release.version);
+            // A manual Settings check deliberately bypasses a previous
+            // “Not right now” choice. The choice only suppresses automatic
+            // reminders for the same release.
+            if (showUpdate) updatePreviewController?.open({ ...result.release, currentVersion: localVersion });
           } else {
-            setVersionUpdateStatus(t('settings.versionUpToDate', { version: localVersion }), 'up-to-date');
+            setVersionUpdateState('up-to-date', localVersion);
           }
+          return result;
         } catch (error) {
-          console.error('Version update check failed:', error);
-          setVersionUpdateStatus(t('settings.versionUpdateFailed'), 'error');
+          if (showUpdate) console.error('Version update check failed:', error);
+          setVersionUpdateState('error');
+          return null;
         } finally {
           versionCheckRunning = false;
           if (checkVersionUpdateBtn) checkVersionUpdateBtn.disabled = false;
         }
       }
 
-      checkVersionUpdateBtn?.addEventListener('click', runVersionUpdateCheck);
-      openReleasePageBtn?.addEventListener('click', () => openExternalUrl(GITHUB_RELEASES_PAGE));
+      checkVersionUpdateBtn?.addEventListener('click', () => void runVersionUpdateCheck());
+      openReleasePageBtn?.addEventListener('click', () => {
+        void openExternalUrl(lastVersionUpdateResult?.release?.htmlUrl || UPDATE_RELEASES_PAGE);
+      });
 
       void getLocalAppVersion().then(version => {
-        setVersionUpdateStatus(t('settings.versionCurrent', { version }));
+        setVersionUpdateState('neutral', version);
       });
 
-      onLangChange(() => {
-        if (!versionUpdateStatus || versionUpdateStatus.dataset.kind !== 'neutral') return;
-        void getLocalAppVersion().then(version => {
-          setVersionUpdateStatus(t('settings.versionCurrent', { version }));
-        });
-      });
+      onLangChange(renderVersionUpdateStatus);
 
       // ===== Screen picker global shortcut =====
       const screenPickerShortcutBtn = document.getElementById('screenPickerShortcutBtn');
@@ -3618,10 +3535,11 @@
           dependencyGateOverlay.dataset.taskState = state.taskSnapshot.state;
           dependencyGateOverlay.dataset.taskId = state.taskSnapshot.task_id;
         }
-        const isTranscription = state.needsModel;
+        const isMatting = state.modelKind === 'matting';
+        const isTranscription = state.needsModel && !isMatting;
         const isPpt = state.needsLibreOffice;
-        if (dependencyGateTitle) dependencyGateTitle.textContent = t(isTranscription ? 'home.dependencies.transcriptionTitle' : (isPpt ? 'home.dependencies.pptTitle' : 'home.dependencies.title'));
-        if (dependencyGateDesc) dependencyGateDesc.textContent = t(isTranscription ? 'home.dependencies.transcriptionDesc' : (isPpt ? 'home.dependencies.pptDesc' : 'home.dependencies.desc'));
+        if (dependencyGateTitle) dependencyGateTitle.textContent = t(isMatting ? 'home.dependencies.mattingTitle' : (isTranscription ? 'home.dependencies.transcriptionTitle' : (isPpt ? 'home.dependencies.pptTitle' : 'home.dependencies.title')));
+        if (dependencyGateDesc) dependencyGateDesc.textContent = t(isMatting ? 'home.dependencies.mattingDesc' : (isTranscription ? 'home.dependencies.transcriptionDesc' : (isPpt ? 'home.dependencies.pptDesc' : 'home.dependencies.desc')));
         dependencyGateList.replaceChildren();
         const appendItem = (type, label, size, progress, complete) => {
           const row = document.createElement('div');
@@ -3632,20 +3550,30 @@
           row.append(key, value); dependencyGateList.append(row);
         };
         if (state.needsFfmpeg) appendItem('ffmpeg', 'FFmpeg', '29 MB', state.ffmpegProgress, state.ffmpegComplete);
-        if (state.needsModel) appendItem('model', 'Whisper Small', '465 MB', state.modelProgress, state.modelComplete);
+        if (state.needsModel) appendItem('model', state.modelLabel || 'Whisper Small', state.modelSizeText || '465 MB', state.modelProgress, state.modelComplete);
         if (state.needsLibreOffice) appendItem('libreoffice', 'LibreOffice', '356 MB', state.libreOfficeProgress, state.libreOfficeComplete);
 
         const types = [state.needsFfmpeg && 'ffmpeg', state.needsModel && 'model', state.needsLibreOffice && 'libreoffice'].filter(Boolean);
         const overall = types.length
           ? Math.round(types.reduce((sum, type) => sum + (state[`${type}Complete`] ? 100 : dependencyProgressPercent(state[`${type}Progress`])), 0) / types.length)
           : 100;
+        const currentProgress = state.current === 'model'
+          ? state.modelProgress
+          : (state.current === 'libreoffice' ? state.libreOfficeProgress : state.ffmpegProgress);
+        const currentPhase = currentProgress?.phase || '';
+        const isPostDownload = currentPhase === 'installing' || currentPhase === 'verifying';
         if (dependencyGateProgress) dependencyGateProgress.hidden = !state.downloading;
-        if (dependencyGateProgressFill) dependencyGateProgressFill.style.width = `${overall}%`;
+        if (dependencyGateProgress) dependencyGateProgress.dataset.indeterminate = isPostDownload ? 'true' : 'false';
+        if (dependencyGateProgressFill) dependencyGateProgressFill.style.width = isPostDownload ? '34%' : `${overall}%`;
         if (dependencyGateProgressText) {
-          const currentName = state.current === 'model' ? 'Whisper Small' : (state.current === 'libreoffice' ? 'LibreOffice' : 'FFmpeg');
+          const currentName = state.current === 'model' ? (state.modelLabel || 'Whisper Small') : (state.current === 'libreoffice' ? 'LibreOffice' : 'FFmpeg');
           dependencyGateProgressText.textContent = state.cancelling
             ? t('home.dependencies.cancelling')
-            : `${t('home.dependencies.current')}${currentName} · ${overall}%`;
+            : (currentPhase === 'installing'
+              ? t('home.dependencies.installingDetail', { name: currentName })
+              : (currentPhase === 'verifying'
+                ? t('home.dependencies.verifyingDetail', { name: currentName })
+                : `${t('home.dependencies.current')}${currentName} · ${overall}%`));
         }
         if (dependencyGateError) {
           dependencyGateError.hidden = !state.error;
@@ -3666,12 +3594,15 @@
         renderDependencyGate();
       }
 
-      function showDependencyGate({ openFn, needsFfmpeg, needsModel, needsLibreOffice }) {
+      function showDependencyGate({ openFn, needsFfmpeg, needsModel, needsLibreOffice, modelKind, modelLabel, modelSizeText }) {
         dependencyGateState = {
           openFn,
           needsFfmpeg: Boolean(needsFfmpeg),
           needsModel: Boolean(needsModel),
           needsLibreOffice: Boolean(needsLibreOffice),
+          modelKind: modelKind === 'matting' ? 'matting' : 'transcription',
+          modelLabel: modelLabel || 'Whisper Small',
+          modelSizeText: modelSizeText || '465 MB',
           ffmpegProgress: null,
           modelProgress: null,
           libreOfficeProgress: null,
@@ -3738,6 +3669,25 @@
             }
             if (state.needsModel) {
               state.current = 'model'; renderDependencyGate();
+              if (state.modelKind === 'matting') {
+                report(8, state.modelLabel, { phase: 'model' });
+                const unlistenMatting = await tauriEventPromise.then(({ listen }) => listen('matting-model-progress', event => {
+                  state.modelProgress = event?.payload || null;
+                  renderDependencyGate();
+                }));
+                try {
+                  throwIfCancelled();
+                  await invoke('download_matting_model', { modelId: 'modnet', source: resolvedModelDownloadSource() });
+                  await invoke('set_current_matting_model', { modelId: 'modnet' });
+                  throwIfCancelled();
+                } finally {
+                  try { unlistenMatting(); } catch {}
+                }
+                state.modelComplete = true;
+                state.modelProgress = { phase: 'complete', downloaded_bytes: 1, total_bytes: 1 };
+                renderDependencyGate();
+                report(96, state.modelLabel, { phase: 'model-complete' });
+              } else {
               report(state.needsFfmpeg ? 52 : 8, 'Whisper Small', { phase: 'model' });
               await refreshTranscriptionModels();
               if (!activeTranscriptionModel()) {
@@ -3752,6 +3702,7 @@
               transcriptionModelProgress.delete('small');
               await refreshTranscriptionModels();
               report(96, 'Whisper Small', { phase: 'model-complete' });
+              }
             }
             if (state.needsLibreOffice) {
               state.current = 'libreoffice'; renderDependencyGate();
@@ -11522,6 +11473,7 @@
       let cDriveCleanupScanData = null;
       let cDriveCleanupScanRunId = 0;
       let cDriveCleanupRunning = false;
+      let cDriveCleanupRelaunching = false;
       let cDriveCleanupCountdownTimer = null;
 
       const CDRIVE_TIER_CONFIG = {
@@ -11616,6 +11568,35 @@
         cDriveCleanupAdminMask?.setAttribute('aria-hidden', 'false');
       }
 
+      function cDriveCleanupHideAdminMask() {
+        cDriveCleanupAdminMask?.classList.remove('visible');
+        cDriveCleanupAdminMask?.setAttribute('aria-hidden', 'true');
+      }
+
+      function cDriveCleanupSetRelaunching(value) {
+        cDriveCleanupRelaunching = Boolean(value);
+        if (!cDriveCleanupAdminRelaunch) return;
+        cDriveCleanupAdminRelaunch.disabled = cDriveCleanupRelaunching;
+        cDriveCleanupAdminRelaunch.textContent = t(cDriveCleanupRelaunching
+          ? 'home.cDriveCleanupPage.adminRelaunching'
+          : 'home.cDriveCleanupPage.adminRelaunch');
+      }
+
+      function cDriveCleanupErrorCode(error) {
+        return String(error?.message || error || '');
+      }
+
+      function cDriveCleanupAdminErrorMessage(error, fallbackKey) {
+        const code = cDriveCleanupErrorCode(error);
+        if (code.includes('system-cleanup:uac-cancelled')) {
+          return t('home.cDriveCleanupPage.adminUacCancelled');
+        }
+        if (code.includes('system-cleanup:admin-check-failed')) {
+          return t('home.cDriveCleanupPage.adminCheckFailed');
+        }
+        return t(fallbackKey);
+      }
+
       function cDriveCleanupClearCountdown() {
         if (cDriveCleanupCountdownTimer) {
           clearTimeout(cDriveCleanupCountdownTimer);
@@ -11681,6 +11662,17 @@
         cDriveCleanupRenderSizes();
         if (cDriveCleanupFooterBtn) cDriveCleanupFooterBtn.disabled = true;
         try {
+          const isAdmin = await cDriveCleanupInvoke('system_cleanup_is_admin');
+          if (runId !== cDriveCleanupScanRunId) return;
+          if (isAdmin === false) {
+            cDriveCleanupShowAdminMask();
+            return;
+          }
+          if (isAdmin !== true) {
+            throw new Error('system-cleanup:admin-check-failed:invalid-response');
+          }
+          cDriveCleanupHideAdminMask();
+
           const data = await cDriveCleanupInvoke('system_cleanup_scan');
           if (runId !== cDriveCleanupScanRunId) return;
           cDriveCleanupScanData = data || null;
@@ -11688,11 +11680,15 @@
             cDriveCleanupShowAdminMask();
             return;
           }
+          if (!data || data.is_admin !== true) {
+            throw new Error('system-cleanup:admin-check-failed:invalid-scan-response');
+          }
           cDriveCleanupRenderSizes();
           cDriveCleanupSelect(cDriveCleanupSelectedTier);
         } catch (error) {
+          if (runId !== cDriveCleanupScanRunId) return;
           console.error('C-drive cleanup scan failed:', error);
-          window.showToast?.(t('home.cDriveCleanupPage.scanFailed'));
+          window.showToast?.(cDriveCleanupAdminErrorMessage(error, 'home.cDriveCleanupPage.scanFailed'));
         }
       }
 
@@ -11713,7 +11709,13 @@
         } catch (error) {
           console.error('C-drive cleanup run failed:', error);
           cDriveCleanupCloseConfirm();
-          window.showToast?.(error?.message || t('home.cDriveCleanupPage.cleaningFailed'));
+          const code = cDriveCleanupErrorCode(error);
+          if (code.includes('system-cleanup:admin-required')) {
+            cDriveCleanupShowAdminMask();
+            window.showToast?.(t('home.cDriveCleanupPage.adminRequiredAgain'));
+          } else {
+            window.showToast?.(cDriveCleanupAdminErrorMessage(error, 'home.cDriveCleanupPage.cleaningFailed'));
+          }
         } finally {
           cDriveCleanupRunning = false;
           if (cDriveCleanupFooterBtn) {
@@ -11724,6 +11726,8 @@
 
       function cDriveCleanupOpen() {
         if (!cDriveCleanupOverlay) return;
+        cDriveCleanupSetRelaunching(false);
+        cDriveCleanupHideAdminMask();
         cDriveCleanupOverlay.classList.add('visible');
         cDriveCleanupOverlay.setAttribute('aria-hidden', 'false');
         if (cDriveCleanupPlasmaBg && !cDriveCleanupPlasmaInstance) {
@@ -11740,8 +11744,7 @@
           return;
         }
         cDriveCleanupCloseConfirm();
-        cDriveCleanupAdminMask?.classList.remove('visible');
-        cDriveCleanupAdminMask?.setAttribute('aria-hidden', 'true');
+        cDriveCleanupHideAdminMask();
         if (!cDriveCleanupOverlay) return;
         cDriveCleanupOverlay.classList.remove('visible');
         cDriveCleanupOverlay.setAttribute('aria-hidden', 'true');
@@ -11759,11 +11762,19 @@
       cDriveCleanupConfirmCancel?.addEventListener('click', cDriveCleanupCloseConfirm);
       cDriveCleanupConfirmRun?.addEventListener('click', cDriveCleanupRunSelected);
       cDriveCleanupAdminRelaunch?.addEventListener('click', async () => {
+        if (cDriveCleanupRelaunching) return;
+        cDriveCleanupSetRelaunching(true);
         try {
-          await cDriveCleanupInvoke('system_cleanup_relaunch_as_admin');
+          const relaunchStarted = await cDriveCleanupInvoke('system_cleanup_relaunch_as_admin');
+          if (relaunchStarted === false) {
+            cDriveCleanupSetRelaunching(false);
+            cDriveCleanupHideAdminMask();
+            await cDriveCleanupStartScan();
+          }
         } catch (error) {
+          cDriveCleanupSetRelaunching(false);
           console.error('Relaunch as admin failed:', error);
-          window.showToast?.(error?.message || t('home.cDriveCleanupPage.adminRelaunchFailed'));
+          window.showToast?.(cDriveCleanupAdminErrorMessage(error, 'home.cDriveCleanupPage.adminRelaunchFailed'));
         }
       });
       document.querySelectorAll('.audio-list-item[data-tool="c-drive-cleanup"]').forEach(item => {
@@ -11780,6 +11791,7 @@
         if (!cDriveCleanupOverlay?.classList.contains('visible')) return;
         cDriveCleanupRenderSizes();
         cDriveCleanupRenderExplain();
+        cDriveCleanupSetRelaunching(cDriveCleanupRelaunching);
         if (cDriveCleanupConfirmMask?.classList.contains('visible') && cDriveCleanupConfirmRun?.disabled) {
           cDriveCleanupStartCountdown();
         }
@@ -14692,7 +14704,7 @@
           session = await invoke('create_image_stitch_pdf_session');
           const rawBytes = await invoke('read_file_bytes_limited', { path: inputPath, maxBytes: 250 * 1024 * 1024 });
           if (imageStitchPdfImportCancelled) throw new Error('image-stitch:pdf-import-cancelled');
-          const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+          const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
           const wasmUrl = new URL('assets/', document.baseURI).href;
           const bytes = Array.isArray(rawBytes) ? Uint8Array.from(rawBytes) : new Uint8Array(rawBytes);
@@ -19230,7 +19242,6 @@ March 18, 2026|Launch Day
         renderHomeTools();
       });
       homeScrollContainer?.addEventListener('scroll', () => {
-        markHomeV2Scrolling();
         if (homeScrollUiRaf) return;
         homeScrollUiRaf = window.requestAnimationFrame(() => {
           homeScrollUiRaf = 0;
@@ -19587,7 +19598,7 @@ March 18, 2026|Launch Day
             releasePdfSplitPreviewResources();
             const limits = await preflightPdfSplitFiles();
             assertPdfSplitRun(runId);
-            const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
             pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
             let totalPages = 0;
@@ -19936,6 +19947,100 @@ March 18, 2026|Launch Day
         initStandardToolPlasma,
         disposeStandardToolPlasma
       });
+      // ===== PDF Page Number (lazy-loaded) =====
+      let pdfPageNumberTool = null;
+      let pdfPageNumberToolPromise = null;
+
+      async function ensurePdfPageNumberTool() {
+        if (pdfPageNumberTool) return pdfPageNumberTool;
+        if (!pdfPageNumberToolPromise) {
+          pdfPageNumberToolPromise = import('./pdf-page-number-ui.js')
+            .then(({ initPdfPageNumberTool }) => {
+              pdfPageNumberTool = initPdfPageNumberTool({
+                isTauri,
+                t,
+                onLangChange,
+                pdfWorkerUrl,
+                getOutputDir,
+                displayFilesystemPath,
+                initStandardToolPlasma,
+                disposeStandardToolPlasma
+              });
+              return pdfPageNumberTool;
+            })
+            .catch(error => {
+              pdfPageNumberToolPromise = null;
+              throw error;
+            });
+        }
+        return await pdfPageNumberToolPromise;
+      }
+
+      async function openPdfPageNumberTool() {
+        try {
+          const tool = await ensurePdfPageNumberTool();
+          tool.open();
+        } catch (error) {
+          console.error('[PDF Page Number] tool load failed:', error);
+          window.showToast?.(t('home.pdfPageNumber.toolLoadFailed'));
+        }
+      }
+
+      document.querySelectorAll('.audio-list-item[data-tool="pdf-page-number"]').forEach(item => {
+        item.addEventListener('click', () => void openPdfPageNumberTool());
+        item.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          void openPdfPageNumberTool();
+        });
+      });
+      // ===== PDF Crop (lazy-loaded) =====
+      let pdfCropTool = null;
+      let pdfCropToolPromise = null;
+
+      async function ensurePdfCropTool() {
+        if (pdfCropTool) return pdfCropTool;
+        if (!pdfCropToolPromise) {
+          pdfCropToolPromise = import('./pdf-crop-ui.js')
+            .then(({ initPdfCropTool }) => {
+              pdfCropTool = initPdfCropTool({
+                isTauri,
+                t,
+                onLangChange,
+                pdfWorkerUrl,
+                getOutputDir,
+                displayFilesystemPath,
+                initStandardToolPlasma,
+                disposeStandardToolPlasma
+              });
+              return pdfCropTool;
+            })
+            .catch(error => {
+              pdfCropToolPromise = null;
+              throw error;
+            });
+        }
+        return await pdfCropToolPromise;
+      }
+
+      async function openPdfCropTool() {
+        try {
+          const tool = await ensurePdfCropTool();
+          tool.open();
+        } catch (error) {
+          console.error('[PDF Crop] tool load failed:', error);
+          window.showToast?.(t('home.pdfCrop.toolLoadFailed'));
+        }
+      }
+
+      document.querySelectorAll('.audio-list-item[data-tool="pdf-crop"]').forEach(item => {
+        item.addEventListener('click', () => void openPdfCropTool());
+        item.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          void openPdfCropTool();
+        });
+      });
       // ===== PDF Rotate Overlay Open/Close =====
       const pdfRotateOverlay = document.getElementById('pdfRotateOverlay');
       const pdfRotatePlasmaBg = document.getElementById('pdfRotatePlasmaBg');
@@ -20223,7 +20328,7 @@ March 18, 2026|Launch Day
             assertPdfRotateRun(runId);
 
             // Configure pdf.js worker
-            const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
             pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
             const file = selectedPdfRotateFiles[0];
@@ -21897,7 +22002,7 @@ March 18, 2026|Launch Day
             }
             if (fileData.length === 0) throw new Error('pdf-enhance:invalid-pdf');
 
-            const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+            const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
             pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
             const wasmUrl = new URL('assets/', document.baseURI).href;
             const loadingTask = pdfjsLib.getDocument({ data: fileData, wasmUrl, useWasm: true });
@@ -28016,7 +28121,7 @@ March 18, 2026|Launch Day
       }
 
       async function readTextStatsPdf(bytes) {
-        const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
         pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
         const wasmUrl = new URL('assets/', document.baseURI).href;
         const loadingTask = pdfjsLib.getDocument({ data: normalizeDesktopBytes(bytes).slice(), wasmUrl, useWasm: true });
@@ -30552,6 +30657,7 @@ March 18, 2026|Launch Day
       let selectedPdfMergeFiles = [];
       let pdfMergeProcessing = false;
       let pdfMergeCommitting = false;
+      let pdfMergeInternalDragGuardUntil = 0;
 
       function addPdfMergeFiles(fileList) {
         if (!fileList || fileList.length === 0) return;
@@ -30601,6 +30707,115 @@ March 18, 2026|Launch Day
         assertPdfMergeSelection(selectedPdfMergeFiles, totalBytes);
       }
 
+      function enablePdfMergePointerSorting() {
+        if (!pdfMergeFiles) return;
+        const rows = Array.from(pdfMergeFiles.querySelectorAll(':scope > .audio-convert-file-item'));
+        const sortable = rows.length > 1 && !pdfMergeProcessing && !pdfMergeCommitting;
+
+        const clearDropTargets = () => {
+          rows.forEach(row => row.classList.remove('drag-target', 'drag-target-before', 'drag-target-after'));
+        };
+
+        rows.forEach((row, sourceIndex) => {
+          row.draggable = false;
+          row.classList.toggle('is-sortable', sortable);
+          row.setAttribute('aria-grabbed', 'false');
+          if (!sortable) return;
+
+          let activePointerId = null;
+          let startX = 0;
+          let startY = 0;
+          let dragging = false;
+          let destinationIndex = sourceIndex;
+
+          const resolveDestination = clientY => {
+            let insertionSlot = rows.length;
+            for (let index = 0; index < rows.length; index += 1) {
+              const bounds = rows[index].getBoundingClientRect();
+              if (clientY < bounds.top + bounds.height / 2) {
+                insertionSlot = index;
+                break;
+              }
+            }
+
+            const nextIndex = Math.max(
+              0,
+              Math.min(rows.length - 1, insertionSlot - (sourceIndex < insertionSlot ? 1 : 0))
+            );
+            destinationIndex = nextIndex;
+            clearDropTargets();
+            if (nextIndex === sourceIndex) return;
+
+            const marker = insertionSlot >= rows.length ? rows[rows.length - 1] : rows[insertionSlot];
+            marker?.classList.add(
+              'drag-target',
+              insertionSlot >= rows.length ? 'drag-target-after' : 'drag-target-before'
+            );
+          };
+
+          const finish = (event, cancelled = false) => {
+            if (activePointerId === null || event.pointerId !== activePointerId) return;
+            const shouldMove = dragging
+              && !cancelled
+              && !pdfMergeProcessing
+              && !pdfMergeCommitting
+              && destinationIndex !== sourceIndex;
+
+            activePointerId = null;
+            dragging = false;
+            try {
+              if (row.hasPointerCapture(event.pointerId)) row.releasePointerCapture(event.pointerId);
+            } catch {}
+            row.classList.remove('dragging');
+            row.setAttribute('aria-grabbed', 'false');
+            pdfMergeFiles.classList.remove('is-reordering');
+            clearDropTargets();
+            pdfMergeInternalDragGuardUntil = performance.now() + 250;
+            hidePdfMergeDropZone();
+
+            if (!shouldMove) return;
+            const [moved] = selectedPdfMergeFiles.splice(sourceIndex, 1);
+            selectedPdfMergeFiles.splice(destinationIndex, 0, moved);
+            renderPdfMergeFiles();
+          };
+
+          row.addEventListener('pointerdown', event => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (event.button !== 0 || target?.closest('button, input, select, textarea, a')) return;
+            event.preventDefault();
+            activePointerId = event.pointerId;
+            startX = event.clientX;
+            startY = event.clientY;
+            destinationIndex = sourceIndex;
+            pdfMergeInternalDragGuardUntil = performance.now() + 1_000;
+            row.setPointerCapture(event.pointerId);
+          });
+
+          row.addEventListener('pointermove', event => {
+            if (activePointerId === null || event.pointerId !== activePointerId) return;
+            if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < 5) return;
+            event.preventDefault();
+            if (!dragging) {
+              dragging = true;
+              row.classList.add('dragging');
+              row.setAttribute('aria-grabbed', 'true');
+              pdfMergeFiles.classList.add('is-reordering');
+            }
+            pdfMergeInternalDragGuardUntil = performance.now() + 1_000;
+
+            const listBounds = pdfMergeFiles.getBoundingClientRect();
+            const edgeSize = Math.min(44, listBounds.height / 4);
+            if (event.clientY < listBounds.top + edgeSize) pdfMergeFiles.scrollTop -= 12;
+            else if (event.clientY > listBounds.bottom - edgeSize) pdfMergeFiles.scrollTop += 12;
+            resolveDestination(event.clientY);
+          });
+
+          row.addEventListener('pointerup', event => finish(event));
+          row.addEventListener('pointercancel', event => finish(event, true));
+          row.addEventListener('lostpointercapture', event => finish(event, true));
+        });
+      }
+
       function renderPdfMergeFiles() {
         if (!pdfMergeFiles) return;
         pdfMergeFiles.innerHTML = '';
@@ -30612,10 +30827,13 @@ March 18, 2026|Launch Day
         selectedPdfMergeFiles.forEach((file, index) => {
           const item = document.createElement('div');
           item.className = 'audio-convert-file-item';
-          item.draggable = true;
           item.dataset.index = index;
+          item.title = t('home.pdfMerge.info2');
           item.innerHTML = `
-            <span class="audio-convert-file-index">${index + 1}</span>
+            <span class="pdf-merge-file-grip" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="5" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+            </span>
+            <span class="audio-convert-file-index"><span>${index + 1}</span></span>
             <span class="audio-convert-file-name">${escapeHtml(file.name)}</span>
             <button class="audio-convert-file-remove" data-index="${index}" aria-label="remove">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -30630,26 +30848,9 @@ March 18, 2026|Launch Day
             if (!isNaN(idx)) removePdfMergeFile(idx);
           });
         });
-        // Drag-to-reorder
-        let dragSrcIdx = null;
-        pdfMergeFiles.querySelectorAll('.audio-convert-file-item').forEach(item => {
-          item.addEventListener('dragstart', (e) => {
-            dragSrcIdx = parseInt(item.dataset.index, 10);
-            item.classList.add('dragging');
-          });
-          item.addEventListener('dragend', () => {
-            item.classList.remove('dragging');
-          });
-          item.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const targetIdx = parseInt(item.dataset.index, 10);
-            if (dragSrcIdx === null || dragSrcIdx === targetIdx) return;
-            const moved = selectedPdfMergeFiles.splice(dragSrcIdx, 1)[0];
-            selectedPdfMergeFiles.splice(targetIdx, 0, moved);
-            dragSrcIdx = targetIdx;
-            renderPdfMergeFiles();
-          });
-        });
+        // Pointer sorting is deliberately separate from Tauri's native file
+        // drop channel, which is reserved for adding PDFs from Explorer.
+        enablePdfMergePointerSorting();
         togglePdfMergeProcessButton();
       }
 
@@ -30687,6 +30888,10 @@ March 18, 2026|Launch Day
           await webview.onDragDropEvent((event) => {
             if (!pdfMergeOverlay.classList.contains('visible') || pdfMergeProcessing) return;
             const payload = event.payload;
+            if (pdfMergeFiles?.classList.contains('is-reordering') || performance.now() < pdfMergeInternalDragGuardUntil) {
+              hidePdfMergeDropZone();
+              return;
+            }
             if (payload.type === 'enter' || payload.type === 'over') {
               showPdfMergeDropZone();
             } else if (payload.type === 'leave') {
@@ -30818,7 +31023,7 @@ March 18, 2026|Launch Day
         try {
           await preflightPdfMergeFiles();
           const { PDF_MERGE_LIMITS } = await import('./pdf-merge-core.js');
-          const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+          const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
           for (let fi = 0; fi < selectedPdfMergeFiles.length; fi++) {
@@ -31893,7 +32098,221 @@ March 18, 2026|Launch Day
       });
 
       // ===== Lazy feature tools (2.1) =====
+      let mattingManagerRenderQueued = false;
+      let mattingDownloadSource = 'auto';
+      const mattingManagerDownloads = new Map();
+      if (isTauri) {
+        void tauriEventPromise
+          .then(({ listen }) => listen('matting-model-progress', event => {
+            const payload = event?.payload || {};
+            if (payload.model_id) {
+              mattingManagerDownloads.set(payload.model_id, payload.total_bytes ? Math.round(payload.downloaded_bytes / payload.total_bytes * 100) : 0);
+              queueMattingManagerRender();
+            }
+          }))
+          .catch(error => console.error('Cannot listen for matting model progress:', error));
+      }
+
+      function settingsOverlayVisible() {
+        return Boolean(settingsOverlay?.classList.contains('visible'));
+      }
+
+      function queueMattingManagerRender() {
+        if (mattingManagerRenderQueued) return;
+        mattingManagerRenderQueued = true;
+        requestAnimationFrame(() => {
+          mattingManagerRenderQueued = false;
+          void renderMattingModelManager();
+        });
+      }
+
+      function openMattingModelManager() {
+        const overlayEl = document.getElementById('mattingModelOverlay');
+        overlayEl?.classList.add('visible');
+        overlayEl?.setAttribute('aria-hidden', 'false');
+        queueMattingManagerRender();
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function closeMattingModelManager() {
+        const overlayEl = document.getElementById('mattingModelOverlay');
+        overlayEl?.classList.remove('visible');
+        overlayEl?.setAttribute('aria-hidden', 'true');
+      }
+
+      function wireMattingModelManager() {
+        const manageButton = document.getElementById('manageMattingModelsBtn');
+        manageButton?.addEventListener('click', () => openMattingModelManager());
+        document.getElementById('mattingModelClose')?.addEventListener('click', () => closeMattingModelManager());
+        const overlayEl = document.getElementById('mattingModelOverlay');
+        overlayEl?.addEventListener('click', event => {
+          if (event.target === overlayEl) closeMattingModelManager();
+        });
+        document.getElementById('mattingModelOverlay')?.addEventListener('keydown', event => {
+          if (event.key === 'Escape') closeMattingModelManager();
+        });
+        document.querySelectorAll('#mattingSourceOptions .audio-convert-format-option').forEach(option => {
+          option.addEventListener('click', () => {
+            document.querySelectorAll('#mattingSourceOptions .audio-convert-format-option').forEach(item => item.classList.remove('active'));
+            option.classList.add('active');
+            mattingDownloadSource = option.dataset.source || 'auto';
+          });
+        });
+        manageButton && renderMattingModelStatus();
+      }
+      wireMattingModelManager();
+
+      async function renderMattingModelStatus() {
+        const status = document.getElementById('mattingModelStatus');
+        if (!status || !isTauri) return;
+        try {
+          const { invoke } = await tauriCorePromise;
+          const models = await invoke('list_matting_models');
+          const current = models.find(model => model.current && model.installed);
+          status.textContent = current
+            ? t('settings.mattingStatusCurrent', { name: current.display_name })
+            : t('settings.mattingStatusNone');
+        } catch (error) {
+          status.textContent = t('settings.mattingStatusNone');
+        }
+      }
+
+      async function renderMattingModelManager() {
+        const list = document.getElementById('mattingModelList');
+        if (!list) return;
+        try {
+          const { invoke } = await tauriCorePromise;
+          const models = await invoke('list_matting_models');
+          list.replaceChildren();
+          models.forEach(model => {
+            const row = document.createElement('div');
+            row.className = 'transcription-model-row';
+            const info = document.createElement('div');
+            const name = document.createElement('div');
+            name.className = 'transcription-model-name';
+            name.textContent = model.display_name;
+            const meta = document.createElement('div');
+            meta.className = 'transcription-model-meta';
+            const progress = mattingManagerDownloads.get(model.id);
+            meta.textContent = progress !== undefined
+              ? progress + '%'
+              : Math.round(model.bytes / 1024 / 1024) + ' MB';
+            info.append(name, meta);
+            const actions = document.createElement('div');
+            actions.className = 'transcription-model-actions';
+            const makeButton = (label, handler) => {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.className = 'settings-btn';
+              button.textContent = label;
+              button.addEventListener('click', () => void handler());
+              return button;
+            };
+            const done = () => {
+              document.dispatchEvent(new CustomEvent('toolknit:matting-models-changed'));
+              void renderMattingModelManager();
+            };
+            if (progress !== undefined) {
+              const status = document.createElement('span');
+              status.className = 'transcription-model-current';
+              status.textContent = progress + '%';
+              actions.append(status);
+            } else if (model.installed) {
+              if (!model.current) {
+                actions.append(makeButton(t('home.transcription.useModel'), async () => {
+                  await invoke('set_current_matting_model', { modelId: model.id });
+                  done();
+                }));
+              }
+              actions.append(makeButton(t('home.transcription.deleteModel'), async () => {
+                await invoke('delete_matting_model', { modelId: model.id });
+                done();
+              }));
+            } else {
+              actions.append(makeButton(t('settings.mattingDownload'), async () => {
+                await invoke('download_matting_model', { modelId: model.id, source: mattingDownloadSource });
+                await invoke('set_current_matting_model', { modelId: model.id });
+                done();
+              }));
+            }
+            row.append(info, actions);
+            list.append(row);
+          });
+          await renderMattingModelStatus();
+        } catch (error) {
+          console.error('[BgRemoval] matting manager render failed:', error);
+        }
+      }
+
+      async function requestMattingModelGate(onReady) {
+        if (!isTauri) return true;
+        let installed = false;
+        try {
+          const { invoke } = await tauriCorePromise;
+          const models = await invoke('list_matting_models');
+          installed = Array.isArray(models) && models.some(model => model.installed);
+        } catch (error) {
+          console.error('[BgRemoval] model check failed:', error);
+        }
+        if (installed) {
+          console.info('[BgRemoval] matting model present, opening tool.');
+          return true;
+        }
+        console.info('[BgRemoval] matting model missing, showing dependency gate.');
+        showDependencyGate({
+          openFn: async () => {
+            try {
+              const { invoke } = await tauriCorePromise;
+              const models = await invoke('list_matting_models');
+              if (Array.isArray(models) && models.some(model => model.installed)) await onReady?.();
+            } catch (error) {
+              console.error('[BgRemoval] gate reopen failed:', error);
+            }
+          },
+          needsFfmpeg: false,
+          needsModel: true,
+          modelKind: 'matting',
+          modelLabel: 'MODNet 人像精修',
+          modelSizeText: '24.7 MB'
+        });
+        return false;
+      }
+
+      async function requestTeleprompterOfflineModel(onReady) {
+        if (!isTauri) {
+          window.showToast?.(t('home.teleprompter.desktopOnly'));
+          return false;
+        }
+        await refreshTranscriptionModels();
+        if (activeTranscriptionModel()) return true;
+        showDependencyGate({
+          openFn: async () => {
+            await refreshTranscriptionModels();
+            await onReady?.();
+          },
+          needsFfmpeg: false,
+          needsModel: true,
+          needsLibreOffice: false
+        });
+        return false;
+      }
+
       const lazyFeatureTools = {
+        'excel-to-pdf': {
+          overlayId: 'excelToPdfOverlay',
+          load: () => import('./excel-to-pdf-ui.js'),
+          init: 'initExcelToPdfTool'
+        },
+        'teleprompter': {
+          overlayId: 'teleprompterOverlay',
+          load: () => import('./teleprompter-ui.js'),
+          init: 'initTeleprompterTool'
+        },
+      'bg-removal': {
+          overlayId: 'bgRemovalOverlay',
+          load: () => import('./bg-removal-ui.js'),
+          init: 'initBgRemovalTool'
+        },
         'markdown-editor': {
           overlayId: 'markdownEditorOverlay',
           load: () => import('./markdown-editor-ui.js'),
@@ -31951,6 +32370,18 @@ March 18, 2026|Launch Day
       let lazyFeatureOpenRequest = 0;
 
       async function openLazyFeatureTool(toolId) {
+        if ((toolId === 'teleprompter' || toolId === 'bg-removal') && isTauri) {
+          // AI tools that depend on on-demand models gate at the home card:
+          // no model, no tool page (dependencies install, then entry resumes).
+          const ready = toolId === 'teleprompter'
+            ? await requestTeleprompterOfflineModel(() => {
+                void openLazyFeatureTool(toolId);
+              })
+            : await requestMattingModelGate(() => {
+                void openLazyFeatureTool(toolId);
+              });
+          if (!ready) return;
+        }
         const spec = lazyFeatureTools[toolId];
         if (!spec) return;
         const requestId = ++lazyFeatureOpenRequest;
@@ -31965,7 +32396,27 @@ March 18, 2026|Launch Day
                 if (typeof initializer !== 'function') throw new Error(`Missing ${spec.init}`);
                 const created = initializer({
                   overlay: document.getElementById(spec.overlayId),
-                  notify: (message, options) => window.showToast?.(message, options)
+                  notify: (message, options) => window.showToast?.(message, options),
+                  isTauri,
+                  readTextDocument: readTextStatsDocument,
+                  requestOfflineModel: requestTeleprompterOfflineModel,
+                  initStandardToolPlasma,
+                  disposeStandardToolPlasma,
+                  getOutputDir,
+                  ensureLibreOfficeAvailable: ensurePptRuntimeAvailable,
+                   openSettings: () => {
+                    document.getElementById('helpOverlay')?.classList.remove('visible');
+                    if (settingsContent) settingsContent.scrollTop = 0;
+                    if (settingsOverlay) {
+                      settingsOverlay.style.zIndex = '50000';
+                      settingsOverlay.classList.add('visible');
+                      syncCustomBackgroundPreviewPlayback?.();
+                     }
+                   },
+                  openMattingModelManager,
+                   openSupport: openDonationOverlay,
+                  openExternalUrl,
+                  handleWindowAction: handleWindowControlAction
                 });
                 lazyFeatureInstances.set(instanceKey, created);
                 return created;
@@ -32001,3 +32452,41 @@ March 18, 2026|Launch Day
         activeLazyFeature.close?.();
         activeLazyFeature = null;
       });
+
+      updatePreviewController = initUpdatePreview({
+        openExternalUrl,
+        notify: message => window.showToast?.(message),
+        refreshBackgroundRendering: syncHomeV2Background,
+        refreshIcons: () => createIcons({ icons }),
+        onUpdate: async release => {
+          // The updater public key is not configured yet. Keep the current
+          // release action honest: it opens the verified GitHub Release where
+          // the installer and its SHA-256 checksum are published together.
+          await openExternalUrl(release.htmlUrl || UPDATE_RELEASES_PAGE);
+        },
+        onDefer: release => updateService.defer(release.version)
+      });
+
+      function scheduleAutomaticUpdateCheck() {
+        if (!isTauri) return;
+        const checkWhenIdle = () => {
+          if (document.hidden || !appRoot?.classList.contains('is-v2-home')) return;
+          void runVersionUpdateCheck({ force: false, showUpdate: false }).then(result => {
+            if (!result) return;
+            void getLocalAppVersion().then(localVersion => {
+              if (updateService.shouldPrompt(result, localVersion)) {
+                updatePreviewController?.open({ ...result.release, currentVersion: localVersion });
+              }
+            });
+          });
+        };
+        window.setTimeout(() => {
+          if ('requestIdleCallback' in window) {
+            window.requestIdleCallback(checkWhenIdle, { timeout: 3_000 });
+          } else {
+            checkWhenIdle();
+          }
+        }, 5_000);
+      }
+
+      scheduleAutomaticUpdateCheck();

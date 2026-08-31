@@ -649,7 +649,7 @@ export function initColorSpaceCompareTool({
 
   overlay.innerHTML = `<div class="tool-page-v2-shell color-space-compare-shell">
     ${toolTopbarMarkup({
-      tag: 'CREATIVE TOOLS · TOOL PAGE 2.1',
+      tag: 'CREATIVE TOOLS · TOOL PAGE 2.3',
       title: t('home.toolNames.colorSpaceCompare'),
       closeAttr: 'data-csc-close',
     })}

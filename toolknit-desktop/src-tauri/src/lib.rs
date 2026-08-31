@@ -1,12 +1,14 @@
 use std::sync::OnceLock;
 use tauri::{
-    Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
+    Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
     WebviewWindowBuilder,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 mod rsa_legacy_windows;
 mod system_cleanup;
+mod onnx_segmenter;
+mod teleprompter_whisper;
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
 static CUSTOM_BACKGROUND_IMPORT_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
@@ -23,9 +25,15 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 #[derive(Default)]
 struct WindowCornerRadiusState {
     radius: std::sync::Mutex<u32>,
+    reapply_generation: std::sync::atomic::AtomicU64,
 }
-
 const MAX_WINDOW_CORNER_RADIUS: u32 = 32;
+
+const MAIN_WINDOW_MIN_WIDTH: f64 = 720.0;
+const MAIN_WINDOW_MIN_HEIGHT: f64 = 480.0;
+const MAIN_WINDOW_MAX_WIDTH: f64 = 1400.0;
+const MAIN_WINDOW_MAX_HEIGHT: f64 = 900.0;
+const MAIN_WINDOW_SAFE_MARGIN: f64 = 32.0;
 
 const AI_PROVIDER_MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const AI_PROVIDER_MAX_MESSAGES: usize = 12;
@@ -786,86 +794,25 @@ fn set_tray_lang(app: tauri::AppHandle, lang: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Applies a true native corner radius to the Win32 window instead of only
-/// rounding the DOM inside it. `SetWindowRgn` transfers ownership of a
-/// successful region to Windows, so failed calls clean the GDI object up here.
+/// Clears the legacy binary Win32 clipping region before the webview applies
+/// its alpha-antialiased CSS window mask. GDI regions contain only fully on or
+/// fully off pixels, which makes rounded corners visibly stair-step.
 #[cfg(target_os = "windows")]
 fn apply_native_window_corner_radius(
     window: &tauri::WebviewWindow,
-    logical_radius: u32,
+    _logical_radius: u32,
 ) -> Result<(), String> {
     use windows::Win32::{
         Foundation::{BOOL, HWND},
-        Graphics::Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn, HRGN},
-        UI::WindowsAndMessaging::IsZoomed,
+        Graphics::Gdi::{SetWindowRgn, HRGN},
     };
 
-    // A maximized or fullscreen window must fill the monitor work area. Keep
-    // the preference stored, but temporarily remove the region until it is
-    // restored to a normal window again.
     let tauri_hwnd = window.hwnd().map_err(|error| error.to_string())?;
-    // Tauri 2.11 currently exposes HWND from its own `windows` dependency.
-    // Rebuild the transparent handle for this crate's pinned windows 0.54 API.
     let hwnd = HWND(tauri_hwnd.0 as isize);
-    // `WebviewWindow::is_maximized()` can lag behind the actual Win32 state
-    // while Windows is still animating a maximize transition. `IsZoomed`
-    // reflects the live window placement, which reliably clears the clipping
-    // region so the maximized window always covers the full work area.
-    let should_clear_region = logical_radius == 0
-        || unsafe { IsZoomed(hwnd).as_bool() }
-        || window.is_fullscreen().unwrap_or(false);
-
-    if should_clear_region {
-        let result = unsafe { SetWindowRgn(hwnd, HRGN::default(), BOOL(1)) };
-        if result == 0 {
-            return Err(format!(
-                "Unable to clear the native window clipping region: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-        return Ok(());
-    }
-
-    let size = window.outer_size().map_err(|error| error.to_string())?;
-    let width = i32::try_from(size.width)
-        .map_err(|_| "Native window width is outside the supported range".to_string())?;
-    let height = i32::try_from(size.height)
-        .map_err(|_| "Native window height is outside the supported range".to_string())?;
-    if width <= 1 || height <= 1 {
-        return Err("Native window size is not ready for corner clipping".to_string());
-    }
-
-    let scale_factor = window.scale_factor().map_err(|error| error.to_string())?;
-    let max_radius = (width.min(height) / 2).max(1) as f64;
-    let radius = ((logical_radius as f64 * scale_factor).round()).clamp(1.0, max_radius) as i32;
-    let diameter = radius.saturating_mul(2).max(2);
-    // The right and bottom values are exclusive. Adding one prevents the last
-    // edge pixel from being trimmed by GDI at certain DPI scales.
-    let region = unsafe {
-        CreateRoundRectRgn(
-            0,
-            0,
-            width.saturating_add(1),
-            height.saturating_add(1),
-            diameter,
-            diameter,
-        )
-    };
-    if region.0 == 0 {
-        return Err(format!(
-            "Unable to create the native rounded window region: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-
-    let result = unsafe { SetWindowRgn(hwnd, region, BOOL(1)) };
+    let result = unsafe { SetWindowRgn(hwnd, HRGN::default(), BOOL(1)) };
     if result == 0 {
-        // SetWindowRgn only owns `region` after a successful call.
-        unsafe {
-            let _ = DeleteObject(region);
-        }
         return Err(format!(
-            "Unable to apply the native rounded window region: {}",
+            "Unable to clear the native window clipping region: {}",
             std::io::Error::last_os_error()
         ));
     }
@@ -924,16 +871,66 @@ fn reapply_native_window_corner_radius(window: &tauri::WebviewWindow) {
 fn schedule_native_window_corner_radius_reapply(window: tauri::WebviewWindow) {
     reapply_native_window_corner_radius(&window);
 
-    // Windows may report resize before the maximized/fullscreen state is
-    // fully stable. Reapplying in a few later ticks keeps the normal-window
-    // radius preference, but reliably clears the native region after maximize.
-    for delay_ms in [80_u64, 180, 360, 720] {
-        let window = window.clone();
-        tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+    // Resizing emits a stream of native events. Keep the corner region current
+    // immediately, then do one trailing repair after Windows has settled.
+    // Older generations become no-ops, so a drag cannot accumulate hundreds
+    // of delayed GDI updates in the background.
+    let state = window.state::<WindowCornerRadiusState>();
+    let generation = state
+        .reapply_generation
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        .saturating_add(1);
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+        let state = window.state::<WindowCornerRadiusState>();
+        if state
+            .reapply_generation
+            .load(std::sync::atomic::Ordering::Relaxed)
+            == generation
+        {
             reapply_native_window_corner_radius(&window);
-        });
-    }
+        }
+    });
+}
+
+/// Fit the first window to the monitor work area rather than assuming the
+/// developer's screen. The values are logical pixels, so Windows DPI scaling
+/// is accounted for before the native minimum size is applied.
+fn fit_main_window_to_work_area(window: &tauri::WebviewWindow) -> Result<(), String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .or(
+            window
+                .primary_monitor()
+                .map_err(|error| error.to_string())?,
+        );
+    let Some(monitor) = monitor else {
+        return Ok(());
+    };
+
+    let scale_factor = monitor.scale_factor().max(0.1);
+    let work_area = monitor.work_area().size;
+    let usable_width = ((work_area.width as f64 / scale_factor) - MAIN_WINDOW_SAFE_MARGIN).max(480.0);
+    let usable_height = ((work_area.height as f64 / scale_factor) - MAIN_WINDOW_SAFE_MARGIN).max(360.0);
+    let min_width = MAIN_WINDOW_MIN_WIDTH.min(usable_width).max(480.0);
+    let min_height = MAIN_WINDOW_MIN_HEIGHT.min(usable_height).max(360.0);
+    let max_width = MAIN_WINDOW_MAX_WIDTH.min(usable_width).max(min_width);
+    let max_height = MAIN_WINDOW_MAX_HEIGHT.min(usable_height).max(min_height);
+    let width = (usable_width * 0.84).round().clamp(min_width, max_width);
+    let height = (usable_height * 0.88).round().clamp(min_height, max_height);
+
+    window
+        .set_min_size(Some(Size::Logical(LogicalSize::new(min_width, min_height))))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_max_size(None::<Size>)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(Size::Logical(LogicalSize::new(width, height)))
+        .map_err(|error| error.to_string())?;
+    window.center().map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -2117,6 +2114,9 @@ const PPT_RENDER_PROBE_TIMEOUT_MS: u128 = 10_000;
 static ACTIVE_VIDEO_CHILDREN: std::sync::OnceLock<
     std::sync::Mutex<std::collections::BTreeSet<u32>>,
 > = std::sync::OnceLock::new();
+static ACTIVE_OFFICE_CHILDREN: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::BTreeSet<u32>>,
+> = std::sync::OnceLock::new();
 static ICON_ARCHIVE_WRITE_ID: AtomicU64 = AtomicU64::new(0);
 static ICON_ARCHIVE_WRITES: std::sync::OnceLock<
     std::sync::Mutex<std::collections::BTreeMap<u64, IconArchiveWrite>>,
@@ -2161,6 +2161,10 @@ fn active_video_children() -> &'static std::sync::Mutex<std::collections::BTreeS
     ACTIVE_VIDEO_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeSet::new()))
 }
 
+fn active_office_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>> {
+    ACTIVE_OFFICE_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeSet::new()))
+}
+
 fn terminate_conversion_process(pid: u32) {
     if pid == 0 {
         return;
@@ -2171,6 +2175,9 @@ fn terminate_conversion_process(pid: u32) {
         let _ = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .creation_flags(0x08000000)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn();
     }
     #[cfg(not(target_os = "windows"))]
@@ -3149,6 +3156,14 @@ async fn download_libreoffice_runtime(
             ));
             continue;
         }
+        let _ = app_handle.emit(
+            "libreoffice-runtime-download-progress",
+            LibreOfficeDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                phase: "verifying".to_string(),
+            },
+        );
         let archive_for_hash = archive.clone();
         let actual_hash = tokio::task::spawn_blocking(move || sha256_file(&archive_for_hash))
             .await
@@ -3179,6 +3194,14 @@ async fn download_libreoffice_runtime(
         }
         let _ = std::fs::remove_file(&archive);
         let executable = libreoffice_runtime_path()?;
+        let _ = app_handle.emit(
+            "libreoffice-runtime-download-progress",
+            LibreOfficeDownloadProgress {
+                downloaded_bytes: downloaded,
+                total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                phase: "verifying".to_string(),
+            },
+        );
         let valid = tokio::task::spawn_blocking(move || {
             probe_libreoffice(&executable, "managed").is_some()
         })
@@ -3433,6 +3456,219 @@ fn check_transcription_engine() -> bool {
     get_whisper_cli_path()
         .map(|path| path.is_file())
         .unwrap_or(false)
+}
+
+fn get_whisper_library_path() -> Result<std::path::PathBuf, String> {
+    let library = if cfg!(target_os = "windows") {
+        "whisper.dll"
+    } else if cfg!(target_os = "macos") {
+        "libwhisper.dylib"
+    } else {
+        "libwhisper.so"
+    };
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let exe_dir = exe.parent().ok_or("Cannot find executable directory")?;
+    let bundled = exe_dir
+        .join("resources")
+        .join("whisper")
+        .join("Release")
+        .join(library);
+    if bundled.is_file() {
+        return Ok(bundled);
+    }
+
+    let source_resource = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("whisper")
+        .join("Release")
+        .join(library);
+    if source_resource.is_file() {
+        return Ok(source_resource);
+    }
+    Err("Offline transcription engine is unavailable. Please reinstall ToolKnit.".to_string())
+}
+
+// ===== Teleprompter live offline recognition =====
+
+#[derive(Default)]
+struct TeleprompterRecognitionState {
+    session: std::sync::Mutex<Option<TeleprompterRecognitionSession>>,
+    generation: std::sync::atomic::AtomicU64,
+    next_session_id: std::sync::atomic::AtomicU64,
+}
+
+struct TeleprompterRecognitionSession {
+    id: String,
+    model_id: String,
+    language: String,
+    whisper: std::sync::Arc<teleprompter_whisper::WhisperSession>,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[derive(serde::Serialize)]
+struct TeleprompterRecognitionResult {
+    text: String,
+    confidence: f32,
+    model_id: String,
+}
+
+fn teleprompter_recognition_language(language: &str) -> Result<String, String> {
+    match language.trim().to_ascii_lowercase().as_str() {
+        "auto" => Ok("auto".to_string()),
+        "zh" | "zh-cn" | "chinese" => Ok("zh".to_string()),
+        "en" | "en-us" | "english" => Ok("en".to_string()),
+        _ => Err("teleprompter:invalid-language".to_string()),
+    }
+}
+
+fn cancel_teleprompter_session(session: &TeleprompterRecognitionSession) {
+    session
+        .cancelled
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+async fn start_teleprompter_recognition(
+    state: tauri::State<'_, TeleprompterRecognitionState>,
+    language: String,
+) -> Result<String, String> {
+    let language = teleprompter_recognition_language(&language)?;
+    let config = read_transcription_model_config();
+    let model_id = config
+        .current_model
+        .ok_or("transcription:model-not-installed".to_string())?;
+    let model = transcription_model_spec(&model_id)?;
+    let model_path =
+        installed_model_file(model)?.ok_or("transcription:model-not-installed".to_string())?;
+    let whisper_library = get_whisper_library_path()
+        .map_err(|_| "teleprompter:engine-unavailable".to_string())?;
+    let generation = state
+        .generation
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        .saturating_add(1);
+    let numeric_id = state
+        .next_session_id
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        .saturating_add(1);
+    let session_id = format!("teleprompter-{}-{}", std::process::id(), numeric_id);
+
+    {
+        let mut current = state
+            .session
+            .lock()
+            .map_err(|_| "teleprompter:state-unavailable".to_string())?;
+        if let Some(existing) = current.take() {
+            cancel_teleprompter_session(&existing);
+        }
+    }
+
+    let whisper = tokio::task::spawn_blocking(move || {
+        teleprompter_whisper::WhisperSession::load(&whisper_library, &model_path)
+    })
+    .await
+    .map_err(|_| "teleprompter:model-load-failed".to_string())??;
+
+    if state.generation.load(std::sync::atomic::Ordering::SeqCst) != generation {
+        return Err("teleprompter:stopped".to_string());
+    }
+
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut current = state
+        .session
+        .lock()
+        .map_err(|_| "teleprompter:state-unavailable".to_string())?;
+    *current = Some(TeleprompterRecognitionSession {
+        id: session_id.clone(),
+        model_id,
+        language,
+        whisper: std::sync::Arc::new(whisper),
+        cancelled,
+    });
+    Ok(session_id)
+}
+
+#[tauri::command]
+async fn transcribe_teleprompter_audio(
+    state: tauri::State<'_, TeleprompterRecognitionState>,
+    session_id: String,
+    samples: Vec<i16>,
+    prompt: Option<String>,
+) -> Result<TeleprompterRecognitionResult, String> {
+    const MIN_SAMPLES: usize = 8_000;
+    const MAX_SAMPLES: usize = 16_000 * 12;
+    if session_id.trim().is_empty() || samples.len() < MIN_SAMPLES || samples.len() > MAX_SAMPLES {
+        return Err("teleprompter:invalid-audio".to_string());
+    }
+    let (model_id, language, whisper, cancelled) = {
+        let current = state
+            .session
+            .lock()
+            .map_err(|_| "teleprompter:state-unavailable".to_string())?;
+        let current = current
+            .as_ref()
+            .filter(|session| session.id == session_id)
+            .ok_or("teleprompter:session-not-found".to_string())?;
+        (
+            current.model_id.clone(),
+            current.language.clone(),
+            current.whisper.clone(),
+            current.cancelled.clone(),
+        )
+    };
+    let prompt = prompt
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
+        .take(600)
+        .collect::<String>();
+
+    let inference_cancelled = cancelled.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        if inference_cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("teleprompter:stopped".to_string());
+        }
+        whisper.transcribe(samples, &language, &prompt, inference_cancelled)
+    })
+    .await
+    .map_err(|_| "teleprompter:recognition-failed".to_string())??;
+
+    let is_current = state
+        .session
+        .lock()
+        .map_err(|_| "teleprompter:state-unavailable".to_string())?
+        .as_ref()
+        .is_some_and(|session| session.id == session_id && !session.cancelled.load(std::sync::atomic::Ordering::SeqCst));
+    if !is_current {
+        return Err("teleprompter:stopped".to_string());
+    }
+    Ok(TeleprompterRecognitionResult {
+        text: result.text,
+        confidence: result.confidence,
+        model_id,
+    })
+}
+
+#[tauri::command]
+fn stop_teleprompter_recognition(
+    state: tauri::State<'_, TeleprompterRecognitionState>,
+    session_id: String,
+) -> Result<(), String> {
+    let mut current = state
+        .session
+        .lock()
+        .map_err(|_| "teleprompter:state-unavailable".to_string())?;
+    if current
+        .as_ref()
+        .is_some_and(|session| session.id == session_id)
+    {
+        if let Some(session) = current.take() {
+            cancel_teleprompter_session(&session);
+        }
+        state
+            .generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -3817,6 +4053,129 @@ async fn run_transcription_command(
     Ok(output)
 }
 
+// Whisper models occasionally answer spoken Mandarin in traditional
+// characters. Transcription outputs are rewritten to simplified so the
+// published files match what Chinese users expect to edit and share.
+fn simplify_char(character: char) -> char {
+    match character {
+        '艦' => '舰',
+        '彙' | '匯' => '汇',
+        '級' => '级',
+        '創' => '创',
+        '業' => '业',
+        '實' => '实',
+        '現' => '现',
+        '點' => '点',
+        '間' => '间',
+        '時' => '时',
+        '為' => '为',
+        '會' => '会',
+        '後' => '后',
+        '裡' => '里',
+        '這' => '这',
+        '說' => '说',
+        '對' => '对',
+        '開' => '开',
+        '關' => '关',
+        '們' => '们',
+        '從' => '从',
+        '見' => '见',
+        '車' => '车',
+        '電' => '电',
+        '動' => '动',
+        '應' => '应',
+        '話' => '话',
+        '語' => '语',
+        '讓' => '让',
+        '體' => '体',
+        '學' => '学',
+        '將' => '将',
+        '與' => '与',
+        '於' => '于',
+        '來' => '来',
+        '內' => '内',
+        '無' => '无',
+        '節' => '节',
+        '專' => '专',
+        '號' => '号',
+        '當' => '当',
+        '處' => '处',
+        '屬' => '属',
+        '據' => '据',
+        '備' => '备',
+        '質' => '质',
+        '資' => '资',
+        '費' => '费',
+        '環' => '环',
+        '聲' => '声',
+        '響' => '响',
+        '顯' => '显',
+        '飛' => '飞',
+        '機' => '机',
+        '構' => '构',
+        '標' => '标',
+        '統' => '统',
+        '斷' => '断',
+        '邊' => '边',
+        '變' => '变',
+        '輸' => '输',
+        '轉' => '转',
+        '連' => '连',
+        '運' => '运',
+        '進' => '进',
+        '遠' => '远',
+        '適' => '适',
+        '選' => '选',
+        '錄' => '录',
+        '鍵' => '键',
+        '盤' => '盘',
+        '壓' => '压',
+        '縮' => '缩',
+        '織' => '织',
+        '經' => '经',
+        '濟' => '济',
+        '廣' => '广',
+        '滅' => '灭',
+        '營' => '营',
+        '藝' => '艺',
+        '觀' => '观',
+        '釋' => '释',
+        '鏡' => '镜',
+        '錯' => '错',
+        '長' => '长',
+        '門' => '门',
+        '問' => '问',
+        '單' => '单',
+        '嚴' => '严',
+        '優' => '优',
+        '強' => '强',
+        '獲' => '获',
+        '證' => '证',
+        '護' => '护',
+        '觸' => '触',
+        '覺' => '觉',
+        other => other,
+    }
+}
+
+fn simplify_chinese_text(input: &str) -> String {
+    input.chars().map(simplify_char).collect()
+}
+
+fn simplify_transcription_outputs(temp_dir: &std::path::Path) -> Result<(), String> {
+    for name in ["transcript.json", "transcript.srt", "transcript.txt"] {
+        let path = temp_dir.join(name);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|error| format!("Cannot read transcription output: {error}"))?;
+        let simplified = simplify_chinese_text(&content);
+        if simplified != content {
+            std::fs::write(&path, simplified)
+                .map_err(|error| format!("Cannot update transcription output: {error}"))?;
+        }
+    }
+    Ok(())
+}
+
 fn publish_transcription_outputs(
     temp_dir: &std::path::Path,
     output_dir: &std::path::Path,
@@ -3942,6 +4301,7 @@ async fn transcribe_media(
             progress: 95,
         },
     );
+    simplify_transcription_outputs(&temp_dir)?;
     let stem = transcription_output_stem(&input);
     let published = publish_transcription_outputs(&temp_dir, &output_dir, &stem);
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -6108,6 +6468,15 @@ fn cancel_convert() -> Result<(), String> {
         .collect();
     for video_pid in video_pids {
         terminate_conversion_process(video_pid);
+    }
+    let office_pids: Vec<u32> = active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .copied()
+        .collect();
+    for office_pid in office_pids {
+        terminate_conversion_process(office_pid);
     }
     Ok(())
 }
@@ -16116,6 +16485,1118 @@ async fn convert_ppt_to_pdf(
     result
 }
 
+const EXCEL_RENDER_MAX_FILES: usize = 20;
+const EXCEL_RENDER_MAX_INPUT_BYTES: u64 = 200 * 1024 * 1024;
+const EXCEL_WPS_METADATA_MAX_BYTES: u64 = 512 * 1024;
+const EXCEL_RENDER_TIMEOUT_SECS: u64 = 180;
+static EXCEL_RENDER_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+const EXCEL_TO_PDF_UNO_SCRIPT: &str = r#"import json
+import os
+import sys
+import time
+import uno
+from com.sun.star.beans import PropertyValue
+
+
+def prop(name, value):
+    item = PropertyValue()
+    item.Name = name
+    item.Value = value
+    return item
+
+
+def input_filter(path):
+    extension = os.path.splitext(path)[1].lower()
+    filters = {
+        ".xlsx": "Calc MS Excel 2007 XML",
+        ".xls": "MS Excel 97",
+        ".ods": "calc8",
+    }
+    return filters.get(extension)
+
+
+def connect(pipe_name):
+    local_context = uno.getComponentContext()
+    resolver = local_context.ServiceManager.createInstanceWithContext(
+        "com.sun.star.bridge.UnoUrlResolver", local_context
+    )
+    target = "uno:pipe,name=%s;urp;StarOffice.ComponentContext" % pipe_name
+    last_error = None
+    for _ in range(160):
+        try:
+            return resolver.resolve(target)
+        except Exception as error:
+            last_error = error
+            time.sleep(0.1)
+    raise RuntimeError("LibreOffice listener did not become ready: %s" % last_error)
+
+
+def set_page_property(style, name, value):
+    info = style.getPropertySetInfo()
+    if not info.hasPropertyByName(name):
+        raise RuntimeError("Calc page style does not expose %s" % name)
+    style.setPropertyValue(name, value)
+
+
+def apply_page_setup(document, options):
+    sheets = document.getSheets()
+    names = list(sheets.getElementNames())
+    visible_before = 0
+    for name in names:
+        sheet = sheets.getByName(name)
+        if bool(sheet.getPropertyValue("IsVisible")):
+            visible_before += 1
+        elif options["sheetRange"] == "all":
+            sheet.setPropertyValue("IsVisible", True)
+
+    page_styles = document.getStyleFamilies().getByName("PageStyles")
+    configured_styles = set()
+    for name in names:
+        sheet = sheets.getByName(name)
+        if not bool(sheet.getPropertyValue("IsVisible")):
+            continue
+        style_name = str(sheet.getPropertyValue("PageStyle"))
+        if style_name in configured_styles:
+            continue
+        configured_styles.add(style_name)
+        style = page_styles.getByName(style_name)
+
+        current_width = int(style.getPropertyValue("Width"))
+        current_height = int(style.getPropertyValue("Height"))
+        current_landscape = bool(style.getPropertyValue("IsLandscape"))
+        requested_orientation = options["orientation"]
+        landscape = current_landscape if requested_orientation == "source" else requested_orientation == "landscape"
+        paper = options["paper"]
+        if paper == "a4":
+            short_edge, long_edge = 21000, 29700
+        elif paper == "letter":
+            short_edge, long_edge = 21590, 27940
+        else:
+            short_edge, long_edge = min(current_width, current_height), max(current_width, current_height)
+        set_page_property(style, "IsLandscape", landscape)
+        set_page_property(style, "Width", long_edge if landscape else short_edge)
+        set_page_property(style, "Height", short_edge if landscape else long_edge)
+
+        if options["scale"] == "fit":
+            set_page_property(style, "ScaleToPages", 0)
+            set_page_property(style, "ScaleToPagesX", 1)
+            set_page_property(style, "ScaleToPagesY", 0)
+        else:
+            set_page_property(style, "ScaleToPages", 0)
+            set_page_property(style, "ScaleToPagesX", 0)
+            set_page_property(style, "ScaleToPagesY", 0)
+            set_page_property(style, "PageScale", 100)
+
+    return {
+        "sheetCount": len(names),
+        "visibleSheetCount": visible_before,
+        "exportedSheetCount": len(names) if options["sheetRange"] == "all" else visible_before,
+    }
+
+
+def main():
+    pipe_name, input_path, output_path, options_json, metadata_path = sys.argv[1:6]
+    options = json.loads(options_json)
+    context = connect(pipe_name)
+    service_manager = context.ServiceManager
+    desktop = service_manager.createInstanceWithContext("com.sun.star.frame.Desktop", context)
+    document = None
+    try:
+        load_properties = [
+            prop("Hidden", True),
+            prop("ReadOnly", False),
+            prop("UpdateDocMode", 0),
+            prop("MacroExecutionMode", 0),
+        ]
+        input_url = uno.systemPathToFileUrl(os.path.abspath(input_path))
+        try:
+            document = desktop.loadComponentFromURL(
+                input_url, "_blank", 0, tuple(load_properties)
+            )
+        except Exception:
+            filter_name = input_filter(input_path)
+            if not filter_name:
+                raise
+            document = desktop.loadComponentFromURL(
+                input_url,
+                "_blank",
+                0,
+                tuple(load_properties + [prop("FilterName", filter_name)]),
+            )
+        if document is None or not document.supportsService("com.sun.star.sheet.SpreadsheetDocument"):
+            implementation = "none" if document is None else str(document.getImplementationName())
+            services = [] if document is None else list(document.getSupportedServiceNames())
+            raise RuntimeError(
+                "The selected file is not a spreadsheet document "
+                "(implementation=%s, services=%s)" % (implementation, ",".join(services))
+            )
+        metadata = apply_page_setup(document, options)
+        try:
+            document.calculateAll()
+        except Exception:
+            pass
+        export_properties = (
+            prop("FilterName", "calc_pdf_Export"),
+            prop("Overwrite", True),
+        )
+        document.storeToURL(
+            uno.systemPathToFileUrl(os.path.abspath(output_path)), export_properties
+        )
+        metadata["outputPath"] = os.path.abspath(output_path)
+        with open(metadata_path, "w", encoding="utf-8") as handle:
+            json.dump(metadata, handle, ensure_ascii=True)
+    finally:
+        if document is not None:
+            try:
+                document.close(True)
+            except Exception:
+                try:
+                    document.dispose()
+                except Exception:
+                    pass
+        try:
+            desktop.terminate()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()
+"#;
+
+#[derive(Clone, Debug)]
+struct ExcelRenderInput {
+    path: std::path::PathBuf,
+    name: String,
+    bytes: u64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExcelToPdfOptions {
+    sheet_range: String,
+    orientation: String,
+    paper: String,
+    scale: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExcelUnoMetadata {
+    sheet_count: usize,
+    visible_sheet_count: usize,
+    exported_sheet_count: usize,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExcelToPdfFileResult {
+    source_name: String,
+    input_path: String,
+    input_bytes: u64,
+    output_path: String,
+    output_file: String,
+    output_bytes: u64,
+    page_count: usize,
+    sheet_count: usize,
+    visible_sheet_count: usize,
+    exported_sheet_count: usize,
+    warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExcelToPdfBatchResult {
+    tool: String,
+    success_count: usize,
+    fail_count: usize,
+    output_dir: String,
+    outputs: Vec<ExcelToPdfFileResult>,
+    errors: Vec<String>,
+    warnings: Vec<String>,
+    renderer: LibreOfficeRuntimeInfo,
+    manifest_path: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExcelToPdfProgress {
+    file_name: String,
+    current: usize,
+    total: usize,
+    percent: u8,
+    phase: String,
+}
+
+fn normalize_excel_to_pdf_options(
+    mut options: ExcelToPdfOptions,
+) -> Result<ExcelToPdfOptions, String> {
+    options.sheet_range = options.sheet_range.trim().to_ascii_lowercase();
+    options.orientation = options.orientation.trim().to_ascii_lowercase();
+    options.paper = options.paper.trim().to_ascii_lowercase();
+    options.scale = options.scale.trim().to_ascii_lowercase();
+    if !matches!(options.sheet_range.as_str(), "all" | "visible")
+        || !matches!(
+            options.orientation.as_str(),
+            "source" | "portrait" | "landscape"
+        )
+        || !matches!(options.paper.as_str(), "auto" | "a4" | "letter")
+        || !matches!(options.scale.as_str(), "fit" | "original")
+    {
+        return Err("excel-render:invalid-options".to_string());
+    }
+    Ok(options)
+}
+
+fn inspect_excel_render_input(input_path: &str) -> Result<ExcelRenderInput, String> {
+    if input_path.trim().is_empty() || input_path.contains('\0') {
+        return Err("excel-render:invalid-input".to_string());
+    }
+    let requested = std::path::PathBuf::from(input_path);
+    let extension = requested
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "xlsx" | "xls" | "ods") {
+        return Err("excel-render:invalid-extension".to_string());
+    }
+    let metadata = std::fs::symlink_metadata(&requested)
+        .map_err(|_| "excel-render:input-not-found".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() == 0 {
+        return Err("excel-render:invalid-input".to_string());
+    }
+    if metadata.len() > EXCEL_RENDER_MAX_INPUT_BYTES {
+        return Err("excel-render:input-too-large".to_string());
+    }
+    let path = requested
+        .canonicalize()
+        .map_err(|_| "excel-render:invalid-input".to_string())?;
+    let mut signature = [0_u8; 8];
+    let mut file = std::fs::File::open(&path)
+        .map_err(|_| "excel-render:read-failed".to_string())?;
+    use std::io::Read as _;
+    let read = file
+        .read(&mut signature)
+        .map_err(|_| "excel-render:read-failed".to_string())?;
+    let valid = if extension == "xls" {
+        read >= 8 && signature == [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+    } else {
+        read >= 4 && signature[..4] == [0x50, 0x4b, 0x03, 0x04]
+    };
+    if !valid {
+        return Err("excel-render:invalid-workbook".to_string());
+    }
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("workbook.xlsx")
+        .to_string();
+    Ok(ExcelRenderInput {
+        path,
+        name,
+        bytes: metadata.len(),
+    })
+}
+
+fn is_wps_generated_xlsx(path: &std::path::Path) -> bool {
+    if !path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("xlsx"))
+    {
+        return false;
+    }
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else {
+        return false;
+    };
+    for entry_name in ["docProps/app.xml", "docProps/custom.xml", "xl/workbook.xml"] {
+        let Ok(entry) = archive.by_name(entry_name) else {
+            continue;
+        };
+        if entry.size() > EXCEL_WPS_METADATA_MAX_BYTES {
+            continue;
+        }
+        let mut metadata = Vec::with_capacity(entry.size() as usize);
+        use std::io::Read as _;
+        if entry
+            .take(EXCEL_WPS_METADATA_MAX_BYTES + 1)
+            .read_to_end(&mut metadata)
+            .is_err()
+            || metadata.len() as u64 > EXCEL_WPS_METADATA_MAX_BYTES
+        {
+            continue;
+        }
+        let metadata = String::from_utf8_lossy(&metadata).to_ascii_lowercase();
+        if metadata.contains("wps office")
+            || metadata.contains("ksoproductbuildver")
+            || metadata.contains("web.wps.cn")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn libreoffice_python_path(runtime: &LibreOfficeRuntimeInfo) -> Result<std::path::PathBuf, String> {
+    let command = runtime
+        .command
+        .as_deref()
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "excel-render:runtime-missing".to_string())?;
+    let directory = command
+        .parent()
+        .ok_or_else(|| "excel-render:python-missing".to_string())?;
+    let names: &[&str] = if cfg!(target_os = "windows") {
+        &["python.exe"]
+    } else {
+        &["python", "python3"]
+    };
+    names
+        .iter()
+        .map(|name| directory.join(name))
+        .find(|path| std::fs::metadata(path).map(|meta| meta.is_file()).unwrap_or(false))
+        .ok_or_else(|| "excel-render:python-missing".to_string())
+}
+
+fn unique_excel_render_output_dir(
+    parent: &std::path::Path,
+    inputs: &[ExcelRenderInput],
+) -> Result<std::path::PathBuf, String> {
+    let label = if inputs.len() == 1 {
+        sanitize_ppt_render_base_name(&inputs[0].name)
+    } else {
+        "excel_batch".to_string()
+    };
+    for counter in 0..10_000_u32 {
+        let suffix = if counter == 0 {
+            String::new()
+        } else {
+            format!("_{}", counter)
+        };
+        let candidate = parent.join(format!("{}_to_pdf{}", label, suffix));
+        match std::fs::symlink_metadata(&candidate) {
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(candidate),
+            Err(_) => return Err("excel-render:output-path".to_string()),
+        }
+    }
+    Err("excel-render:output-path".to_string())
+}
+
+fn create_excel_render_temp_dir(parent: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    for _ in 0..10_000 {
+        let counter = EXCEL_RENDER_TEMP_ID.fetch_add(1, Ordering::SeqCst);
+        let candidate = parent.join(format!(
+            ".toolknit-excel-render-{}-{}",
+            std::process::id(),
+            counter
+        ));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("excel-render:output-path".to_string()),
+        }
+    }
+    Err("excel-render:output-path".to_string())
+}
+
+fn unique_excel_output_file(
+    directory: &std::path::Path,
+    input_name: &str,
+    used_names: &mut std::collections::BTreeSet<String>,
+) -> Result<(String, std::path::PathBuf), String> {
+    let base = sanitize_ppt_render_base_name(input_name);
+    for counter in 0..10_000_u32 {
+        let suffix = if counter == 0 {
+            String::new()
+        } else {
+            format!("_{}", counter)
+        };
+        let file_name = format!("{}{}.pdf", base, suffix);
+        if used_names.insert(file_name.to_ascii_lowercase()) {
+            return Ok((file_name.clone(), directory.join(file_name)));
+        }
+    }
+    Err("excel-render:output-path".to_string())
+}
+
+fn excel_render_error_detail(stdout: &[u8], stderr: &[u8]) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let stdout = String::from_utf8_lossy(stdout);
+    stderr
+        .lines()
+        .rev()
+        .chain(stdout.lines().rev())
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("LibreOffice Calc export failed.")
+        .to_string()
+}
+
+async fn normalize_excel_input_with_libreoffice(
+    runtime: &LibreOfficeRuntimeInfo,
+    input: &ExcelRenderInput,
+    work_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    let soffice = runtime
+        .command
+        .as_deref()
+        .ok_or_else(|| "excel-render:runtime-missing".to_string())?;
+    let normalize_dir = work_dir.join("compatibility-import");
+    let output_dir = normalize_dir.join("output");
+    let profile_dir = normalize_dir.join("profile");
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|_| "excel-render:output-path".to_string())?;
+    std::fs::create_dir_all(&profile_dir)
+        .map_err(|_| "excel-render:output-path".to_string())?;
+    seed_libreoffice_printer_profile(&profile_dir);
+    let extension = input
+        .path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("xlsx")
+        .to_ascii_lowercase();
+    let staged_input = normalize_dir.join(format!("input.{}", extension));
+    std::fs::copy(&input.path, &staged_input)
+        .map_err(|_| "excel-render:read-failed".to_string())?;
+
+    let mut command = tokio::process::Command::new(soffice);
+    command
+        .arg(format!(
+            "-env:UserInstallation={}",
+            file_url_for_libreoffice(&profile_dir)
+        ))
+        .arg("--headless")
+        .arg("--invisible")
+        .arg("--nologo")
+        .arg("--nofirststartwizard")
+        .arg("--nodefault")
+        .arg("--nolockcheck")
+        .arg("--norestore")
+        .arg("--convert-to")
+        .arg("ods")
+        .arg("--outdir")
+        .arg(&output_dir)
+        .arg(&staged_input)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .env("SAL_USE_VCLPLUGIN", "svp")
+        .env("SAL_DISABLE_PRINTERLIST", "1");
+    #[cfg(target_os = "windows")]
+    {
+        command.creation_flags(0x08000000);
+    }
+    let child = command
+        .spawn()
+        .map_err(|_| "excel-render:runtime-missing".to_string())?;
+    let child_id = child.id().unwrap_or(0);
+    active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(child_id);
+    CURRENT_CHILD_ID.store(child_id, Ordering::SeqCst);
+    let command_output = tokio::time::timeout(
+        std::time::Duration::from_secs(EXCEL_RENDER_TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await;
+    CURRENT_CHILD_ID.store(0, Ordering::SeqCst);
+    active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&child_id);
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
+        terminate_conversion_process(child_id);
+        return Err("excel-render:cancelled".to_string());
+    }
+    let output = match command_output {
+        Ok(Ok(output)) => output,
+        Ok(Err(_)) => return Err("excel-render:render-failed".to_string()),
+        Err(_) => {
+            terminate_conversion_process(child_id);
+            return Err("excel-render:timeout".to_string());
+        }
+    };
+    if !output.status.success() {
+        return Err(format!(
+            "excel-render:render-failed:{}",
+            excel_render_error_detail(&output.stdout, &output.stderr)
+        ));
+    }
+    let normalized = output_dir.join("input.ods");
+    let metadata = std::fs::metadata(&normalized)
+        .map_err(|_| "excel-render:render-failed".to_string())?;
+    if !metadata.is_file() || metadata.len() < 16 {
+        return Err("excel-render:render-failed".to_string());
+    }
+    Ok(normalized)
+}
+
+async fn run_libreoffice_excel_to_pdf(
+    runtime: &LibreOfficeRuntimeInfo,
+    input: &ExcelRenderInput,
+    output_path: &std::path::Path,
+    options: &ExcelToPdfOptions,
+    work_dir: &std::path::Path,
+) -> Result<ExcelUnoMetadata, String> {
+    let soffice = runtime
+        .command
+        .as_deref()
+        .ok_or_else(|| "excel-render:runtime-missing".to_string())?;
+    let python = libreoffice_python_path(runtime)?;
+    let profile_dir = work_dir.join("profile");
+    std::fs::create_dir_all(&profile_dir)
+        .map_err(|_| "excel-render:output-path".to_string())?;
+    // LibreOffice's remote UNO loader can fail type detection for otherwise
+    // valid WPS/Excel workbooks when the source URL contains non-ASCII path
+    // segments. Stage the input under a stable ASCII name for the renderer;
+    // the published PDF still keeps the original workbook name.
+    let input_extension = input
+        .path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("xlsx")
+        .to_ascii_lowercase();
+    let staged_input = work_dir.join(format!("input.{}", input_extension));
+    std::fs::copy(&input.path, &staged_input)
+        .map_err(|_| "excel-render:read-failed".to_string())?;
+    seed_libreoffice_printer_profile(&profile_dir);
+    let script_path = work_dir.join("excel-to-pdf.py");
+    let metadata_path = work_dir.join("metadata.json");
+    std::fs::write(&script_path, EXCEL_TO_PDF_UNO_SCRIPT.as_bytes())
+        .map_err(|_| "excel-render:write-failed".to_string())?;
+    let pipe_name = format!(
+        "toolknit_excel_{}_{}",
+        std::process::id(),
+        EXCEL_RENDER_TEMP_ID.fetch_add(1, Ordering::SeqCst)
+    );
+    let user_installation = file_url_for_libreoffice(&profile_dir);
+    let mut office_command = tokio::process::Command::new(soffice);
+    office_command
+        .arg("--headless")
+        .arg("--invisible")
+        .arg("--nologo")
+        .arg("--nofirststartwizard")
+        .arg("--nodefault")
+        .arg("--nolockcheck")
+        .arg("--norestore")
+        .arg(format!("-env:UserInstallation={}", user_installation))
+        .arg(format!(
+            "--accept=pipe,name={};urp;StarOffice.ComponentContext",
+            pipe_name
+        ))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .env("SAL_USE_VCLPLUGIN", "svp")
+        .env("SAL_DISABLE_PRINTERLIST", "1");
+    #[cfg(target_os = "windows")]
+    {
+        office_command.creation_flags(0x08000000);
+    }
+    let mut office = office_command
+        .spawn()
+        .map_err(|_| "excel-render:runtime-missing".to_string())?;
+    let office_id = office.id().unwrap_or(0);
+    active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(office_id);
+
+    let options_json = serde_json::to_string(options)
+        .map_err(|_| "excel-render:invalid-options".to_string())?;
+    let mut python_command = tokio::process::Command::new(&python);
+    python_command
+        .arg(&script_path)
+        .arg(&pipe_name)
+        .arg(&staged_input)
+        .arg(output_path)
+        .arg(options_json)
+        .arg(&metadata_path)
+        .current_dir(python.parent().unwrap_or_else(|| std::path::Path::new(".")))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(target_os = "windows")]
+    {
+        python_command.creation_flags(0x08000000);
+    }
+    let python_child = match python_command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            terminate_conversion_process(office_id);
+            let _ = office.wait().await;
+            active_office_children()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&office_id);
+            return Err("excel-render:python-missing".to_string());
+        }
+    };
+    let python_id = python_child.id().unwrap_or(0);
+    active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(python_id);
+    CURRENT_CHILD_ID.store(python_id, Ordering::SeqCst);
+    let python_output = tokio::time::timeout(
+        std::time::Duration::from_secs(EXCEL_RENDER_TIMEOUT_SECS),
+        python_child.wait_with_output(),
+    )
+    .await;
+    CURRENT_CHILD_ID.store(0, Ordering::SeqCst);
+    active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&python_id);
+    if CANCEL_FLAG.load(Ordering::SeqCst) || !matches!(&python_output, Ok(Ok(_))) {
+        terminate_conversion_process(python_id);
+    }
+    if tokio::time::timeout(std::time::Duration::from_secs(2), office.wait())
+        .await
+        .is_err()
+    {
+        terminate_conversion_process(office_id);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(3), office.wait()).await;
+    }
+    active_office_children()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&office_id);
+
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
+        terminate_conversion_process(python_id);
+        return Err("excel-render:cancelled".to_string());
+    }
+    let output = match python_output {
+        Ok(Ok(output)) => output,
+        Ok(Err(_)) => return Err("excel-render:render-failed".to_string()),
+        Err(_) => {
+            terminate_conversion_process(python_id);
+            return Err("excel-render:timeout".to_string());
+        }
+    };
+    if !output.status.success() {
+        return Err(format!(
+            "excel-render:render-failed:{}",
+            excel_render_error_detail(&output.stdout, &output.stderr)
+        ));
+    }
+    let metadata_bytes = std::fs::read(&metadata_path)
+        .map_err(|_| "excel-render:render-failed".to_string())?;
+    serde_json::from_slice(&metadata_bytes)
+        .map_err(|_| "excel-render:render-failed".to_string())
+}
+
+async fn run_compatible_excel_to_pdf(
+    runtime: &LibreOfficeRuntimeInfo,
+    input: &ExcelRenderInput,
+    output_path: &std::path::Path,
+    options: &ExcelToPdfOptions,
+    work_dir: &std::path::Path,
+) -> Result<ExcelUnoMetadata, String> {
+    let normalized_path = normalize_excel_input_with_libreoffice(runtime, input, work_dir).await?;
+    let normalized_input = ExcelRenderInput {
+        path: normalized_path,
+        name: input.name.clone(),
+        bytes: input.bytes,
+    };
+    let retry_work_dir = work_dir.join("normalized-render");
+    std::fs::create_dir_all(&retry_work_dir)
+        .map_err(|_| "excel-render:output-path".to_string())?;
+    run_libreoffice_excel_to_pdf(
+        runtime,
+        &normalized_input,
+        output_path,
+        options,
+        &retry_work_dir,
+    )
+    .await
+}
+
+async fn convert_excel_to_pdf_core<F>(
+    input_paths: Vec<String>,
+    output_dir: String,
+    options: ExcelToPdfOptions,
+    mut progress: F,
+) -> Result<ExcelToPdfBatchResult, String>
+where
+    F: FnMut(ExcelToPdfProgress),
+{
+    if input_paths.is_empty() || input_paths.len() > EXCEL_RENDER_MAX_FILES {
+        return Err("excel-render:invalid-file-count".to_string());
+    }
+    let options = normalize_excel_to_pdf_options(options)?;
+    let inputs = input_paths
+        .iter()
+        .map(|path| inspect_excel_render_input(path))
+        .collect::<Result<Vec<_>, _>>()?;
+    let runtime = resolve_libreoffice_runtime();
+    if !runtime.available {
+        return Err("excel-render:runtime-missing".to_string());
+    }
+    let output_parent = validate_image_output_dir(&output_dir)
+        .map_err(|_| "excel-render:output-path".to_string())?;
+    let final_dir = unique_excel_render_output_dir(&output_parent, &inputs)?;
+    let temp_dir = create_excel_render_temp_dir(&output_parent)?;
+    let total = inputs.len();
+    let mut outputs = Vec::new();
+    let mut errors = Vec::new();
+    let mut batch_warnings = Vec::new();
+    let mut used_names = std::collections::BTreeSet::new();
+
+    for (index, input) in inputs.iter().enumerate() {
+        if CANCEL_FLAG.load(Ordering::SeqCst) {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err("excel-render:cancelled".to_string());
+        }
+        progress(ExcelToPdfProgress {
+            file_name: input.name.clone(),
+            current: index + 1,
+            total,
+            percent: ((index * 100) / total).min(95) as u8,
+            phase: "preparing".to_string(),
+        });
+        let (output_file, temporary_output_path) =
+            unique_excel_output_file(&temp_dir, &input.name, &mut used_names)?;
+        // Keep LibreOffice's profile outside the publish directory. Windows
+        // may retain short-lived handles to profile files after soffice exits,
+        // which must not prevent the completed PDFs from being published.
+        let work_dir = create_excel_render_temp_dir(&output_parent)?;
+        progress(ExcelToPdfProgress {
+            file_name: input.name.clone(),
+            current: index + 1,
+            total,
+            percent: (((index * 100) + 18) / total).min(96) as u8,
+            phase: "converting".to_string(),
+        });
+        let mut used_compatibility_import = is_wps_generated_xlsx(&input.path);
+        let direct_result = if used_compatibility_import {
+            run_compatible_excel_to_pdf(
+                &runtime,
+                input,
+                &temporary_output_path,
+                &options,
+                &work_dir,
+            )
+            .await
+        } else {
+            run_libreoffice_excel_to_pdf(
+                &runtime,
+                input,
+                &temporary_output_path,
+                &options,
+                &work_dir,
+            )
+            .await
+        };
+        let render_result = match direct_result {
+            Err(error)
+                if !used_compatibility_import
+                    && error.starts_with("excel-render:render-failed")
+                    && input
+                        .path
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        .is_some_and(|extension| !extension.eq_ignore_ascii_case("ods")) =>
+            {
+                used_compatibility_import = true;
+                match run_compatible_excel_to_pdf(
+                    &runtime,
+                    input,
+                    &temporary_output_path,
+                    &options,
+                    &work_dir,
+                )
+                .await
+                {
+                    Ok(metadata) => Ok(metadata),
+                    Err(normalize_error) => Err(format!("{} | {}", error, normalize_error)),
+                }
+            }
+            result => result,
+        };
+        match render_result {
+            Ok(metadata) => {
+                let output_metadata = std::fs::metadata(&temporary_output_path)
+                    .map_err(|_| "excel-render:render-failed".to_string())?;
+                let bytes = std::fs::read(&temporary_output_path)
+                    .map_err(|_| "excel-render:render-failed".to_string())?;
+                if !output_metadata.is_file()
+                    || output_metadata.len() < 16
+                    || !bytes.starts_with(b"%PDF-")
+                {
+                    errors.push(format!("{}: excel-render:render-failed", input.name));
+                    let _ = std::fs::remove_file(&temporary_output_path);
+                } else {
+                    let page_count = count_pdf_pages_rough(&bytes);
+                    let mut warnings = Vec::new();
+                    if used_compatibility_import {
+                        warnings.push(
+                            "Workbook was normalized through LibreOffice compatibility import before rendering."
+                                .to_string(),
+                        );
+                    }
+                    if page_count == 0 {
+                        warnings.push("PDF page count could not be verified exactly.".to_string());
+                    }
+                    outputs.push(ExcelToPdfFileResult {
+                        source_name: input.name.clone(),
+                        input_path: cleanup_display_path(&input.path),
+                        input_bytes: input.bytes,
+                        output_path: cleanup_display_path(&final_dir.join(&output_file)),
+                        output_file,
+                        output_bytes: output_metadata.len(),
+                        page_count,
+                        sheet_count: metadata.sheet_count,
+                        visible_sheet_count: metadata.visible_sheet_count,
+                        exported_sheet_count: metadata.exported_sheet_count,
+                        warnings,
+                    });
+                }
+            }
+            Err(error) if error == "excel-render:cancelled" => {
+                let _ = std::fs::remove_dir_all(&work_dir);
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                return Err(error);
+            }
+            Err(error) => errors.push(format!("{}: {}", input.name, error)),
+        }
+        let _ = std::fs::remove_dir_all(&work_dir);
+        progress(ExcelToPdfProgress {
+            file_name: input.name.clone(),
+            current: index + 1,
+            total,
+            percent: (((index + 1) * 100) / total).min(99) as u8,
+            phase: "publishing".to_string(),
+        });
+    }
+
+    if outputs.is_empty() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return Err(format!(
+            "excel-render:all-failed:{}",
+            errors.join(" | ")
+        ));
+    }
+    if runtime.source.as_deref() == Some("dev-runtime-cache") {
+        batch_warnings.push("Using local development LibreOffice runtime cache.".to_string());
+    }
+    let manifest_path = temp_dir.join("manifest.json");
+    let manifest = serde_json::json!({
+        "tool": "excel.to-pdf",
+        "options": &options,
+        "renderer": &runtime,
+        "successCount": outputs.len(),
+        "failCount": errors.len(),
+        "outputDir": cleanup_display_path(&final_dir),
+        "outputs": &outputs,
+        "errors": &errors,
+        "warnings": &batch_warnings,
+    });
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest)
+            .map_err(|_| "excel-render:write-failed".to_string())?,
+    )
+    .map_err(|_| "excel-render:write-failed".to_string())?;
+    std::fs::rename(&temp_dir, &final_dir)
+        .map_err(|error| format!("excel-render:publish-failed:{}", error))?;
+    progress(ExcelToPdfProgress {
+        file_name: String::new(),
+        current: total,
+        total,
+        percent: 100,
+        phase: "complete".to_string(),
+    });
+    Ok(ExcelToPdfBatchResult {
+        tool: "excel.to-pdf".to_string(),
+        success_count: outputs.len(),
+        fail_count: errors.len(),
+        output_dir: cleanup_display_path(&final_dir),
+        outputs,
+        errors,
+        warnings: batch_warnings,
+        renderer: runtime,
+        manifest_path: cleanup_display_path(&final_dir.join("manifest.json")),
+    })
+}
+
+#[tauri::command]
+async fn convert_excel_to_pdf(
+    app_handle: tauri::AppHandle,
+    input_paths: Vec<String>,
+    output_dir: String,
+    options: ExcelToPdfOptions,
+) -> Result<ExcelToPdfBatchResult, String> {
+    use tauri::Emitter;
+    let _conversion_guard = begin_conversion().map_err(|_| "excel-render:busy".to_string())?;
+    convert_excel_to_pdf_core(input_paths, output_dir, options, |event| {
+        let _ = app_handle.emit("excel-to-pdf-progress", event);
+    })
+    .await
+}
+
+#[cfg(test)]
+mod excel_to_pdf_tests {
+    use super::*;
+
+    fn default_options() -> ExcelToPdfOptions {
+        ExcelToPdfOptions {
+            sheet_range: "all".to_string(),
+            orientation: "source".to_string(),
+            paper: "auto".to_string(),
+            scale: "fit".to_string(),
+        }
+    }
+
+    #[test]
+    fn excel_options_reject_unknown_values() {
+        let mut options = default_options();
+        options.paper = "legal".to_string();
+        assert_eq!(
+            normalize_excel_to_pdf_options(options).unwrap_err(),
+            "excel-render:invalid-options"
+        );
+    }
+
+    #[test]
+    fn excel_input_rejects_fake_workbooks() {
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-excel-validation-{}-{}",
+            std::process::id(),
+            EXCEL_RENDER_TEMP_ID.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("fake.xlsx");
+        std::fs::write(&path, b"not an xlsx").unwrap();
+        assert_eq!(
+            inspect_excel_render_input(path.to_str().unwrap()).unwrap_err(),
+            "excel-render:invalid-workbook"
+        );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn excel_render_error_reports_the_traceback_cause() {
+        let stderr = b"Traceback (most recent call last):\n  File \"excel-to-pdf.py\", line 1\nRuntimeError: type detection failed\n";
+        assert_eq!(
+            excel_render_error_detail(b"", stderr),
+            "RuntimeError: type detection failed"
+        );
+    }
+
+    fn write_xlsx_metadata_fixture(path: &std::path::Path, metadata: &str) {
+        use std::io::Write as _;
+        let file = std::fs::File::create(path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(
+                "docProps/app.xml",
+                zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated),
+            )
+            .unwrap();
+        archive.write_all(metadata.as_bytes()).unwrap();
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn excel_detects_wps_metadata_for_fast_compatibility_import() {
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-excel-wps-detection-{}-{}",
+            std::process::id(),
+            EXCEL_RENDER_TEMP_ID.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let wps_path = directory.join("wps.xlsx");
+        let excel_path = directory.join("excel.xlsx");
+        write_xlsx_metadata_fixture(&wps_path, "<Application>WPS Office</Application>");
+        write_xlsx_metadata_fixture(&excel_path, "<Application>Microsoft Excel</Application>");
+        assert!(is_wps_generated_xlsx(&wps_path));
+        assert!(!is_wps_generated_xlsx(&excel_path));
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires LibreOffice and TOOLKNIT_EXCEL_QA_FILE"]
+    async fn excel_real_runtime_qa() {
+        let input = std::env::var("TOOLKNIT_EXCEL_QA_FILE").unwrap();
+        let retained_output = std::env::var_os("TOOLKNIT_EXCEL_QA_OUTPUT_DIR")
+            .map(std::path::PathBuf::from);
+        let output = retained_output.clone().unwrap_or_else(|| {
+            std::env::temp_dir().join(format!(
+                "toolknit-excel-runtime-qa-{}",
+                EXCEL_RENDER_TEMP_ID.fetch_add(1, Ordering::SeqCst)
+            ))
+        });
+        std::fs::create_dir_all(&output).unwrap();
+        let _guard = begin_conversion().unwrap();
+        let all_sheets = convert_excel_to_pdf_core(
+            vec![input.clone()],
+            output.to_string_lossy().into_owned(),
+            default_options(),
+            |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(all_sheets.success_count, 1);
+        assert_eq!(all_sheets.fail_count, 0);
+        let all_pdf = std::path::Path::new(&all_sheets.outputs[0].output_path);
+        assert!(all_pdf.is_file());
+        assert!(all_sheets.outputs[0].output_bytes > 0);
+        assert!(std::fs::read(all_pdf).unwrap().starts_with(b"%PDF-"));
+        assert!(all_sheets.outputs[0].page_count > 0);
+        assert_eq!(
+            all_sheets.outputs[0].exported_sheet_count,
+            all_sheets.outputs[0].sheet_count
+        );
+        assert!(std::path::Path::new(&all_sheets.manifest_path).is_file());
+
+        let visible_options = ExcelToPdfOptions {
+            sheet_range: "visible".to_string(),
+            orientation: "landscape".to_string(),
+            paper: "letter".to_string(),
+            scale: "original".to_string(),
+        };
+        let visible_sheets = convert_excel_to_pdf_core(
+            vec![input],
+            output.to_string_lossy().into_owned(),
+            visible_options,
+            |_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(visible_sheets.success_count, 1);
+        assert_eq!(visible_sheets.fail_count, 0);
+        let visible_pdf = std::path::Path::new(&visible_sheets.outputs[0].output_path);
+        assert!(visible_pdf.is_file());
+        assert!(std::fs::read(visible_pdf).unwrap().starts_with(b"%PDF-"));
+        assert!(visible_sheets.outputs[0].page_count > 0);
+        assert_eq!(
+            visible_sheets.outputs[0].exported_sheet_count,
+            visible_sheets.outputs[0].visible_sheet_count
+        );
+        assert!(std::path::Path::new(&visible_sheets.manifest_path).is_file());
+        assert!(
+            all_sheets.outputs[0].exported_sheet_count
+                >= visible_sheets.outputs[0].exported_sheet_count
+        );
+        println!("all-sheets PDF: {}", all_sheets.outputs[0].output_path);
+        println!("visible-sheets PDF: {}", visible_sheets.outputs[0].output_path);
+
+        if retained_output.is_none() {
+            let _ = std::fs::remove_dir_all(output);
+        }
+    }
+}
+
 #[cfg(test)]
 mod image_crop_tests {
     use super::*;
@@ -16458,8 +17939,11 @@ mod crypto_tool_tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    system_cleanup::await_previous_instance_for_elevated_relaunch();
     tauri::Builder::default()
         .manage(WindowCornerRadiusState::default())
+        .manage(onnx_segmenter::MattingState::default())
+        .manage(TeleprompterRecognitionState::default())
         .invoke_handler(tauri::generate_handler![
             open_url,
             request_private_ai_completion,
@@ -16479,7 +17963,19 @@ pub fn run() {
             log_custom_background_event,
             get_custom_background_media_url,
             check_transcription_engine,
-            list_transcription_models,
+            start_teleprompter_recognition,
+            transcribe_teleprompter_audio,
+            stop_teleprompter_recognition,
+            onnx_segmenter::list_matting_models,
+        onnx_segmenter::set_current_matting_model,
+        onnx_segmenter::download_matting_model,
+            onnx_segmenter::cancel_matting_model_download,
+            onnx_segmenter::delete_matting_model,
+            onnx_segmenter::segment_image,
+            onnx_segmenter::cancel_matting_segmentation,
+            onnx_segmenter::discard_matting_preview,
+            onnx_segmenter::export_segmented_image,
+        list_transcription_models,
             set_current_transcription_model,
             delete_transcription_model,
             download_transcription_model,
@@ -16559,6 +18055,7 @@ pub fn run() {
             cancel_pdf_to_image,
             export_pdf_to_images,
             convert_ppt_to_pdf,
+            convert_excel_to_pdf,
             convert_video_batch,
             set_tray_lang,
             screen_picker_bounds,
@@ -16657,6 +18154,9 @@ pub fn run() {
 
             // 同步置顶状态到托盘菜单（可选）
             if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = fit_main_window_to_work_area(&window) {
+                    log::warn!("Unable to fit main window to monitor work area: {error}");
+                }
                 let _ = window.set_always_on_top(false);
             }
 
@@ -16685,5 +18185,36 @@ fn show_main_window(app: &tauri::AppHandle) {
 fn minimize_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.minimize();
+    }
+}
+
+
+#[cfg(test)]
+mod simplify_tests {
+    use super::*;
+
+    #[test]
+    fn simplify_converts_common_whisper_variants() {
+        let converted = simplify_chinese_text("旗艦模型升級，創作與理解能力。");
+        assert_eq!(converted, "旗舰模型升级，创作与理解能力。");
+        assert_eq!(simplify_chinese_text("English stays untouched 123"), "English stays untouched 123");
+    }
+
+    #[test]
+    fn simplify_transcription_outputs_rewrites_temp_files() {
+        let dir = std::env::temp_dir().join(format!("toolknit-simplify-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["transcript.json", "transcript.srt", "transcript.txt"] {
+            std::fs::write(dir.join(name), format!("{name}}}: 旗艦模型升級 {{}}")).unwrap();
+        }
+        simplify_transcription_outputs(&dir).unwrap();
+        let txt = std::fs::read_to_string(dir.join("transcript.txt")).unwrap();
+        assert!(txt.contains("旗舰模型升级"));
+        let json = std::fs::read_to_string(dir.join("transcript.json")).unwrap();
+        assert!(json.starts_with("transcript.json}:"));
+        for name in ["transcript.json", "transcript.srt", "transcript.txt"] {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+        let _ = std::fs::remove_dir(&dir);
     }
 }

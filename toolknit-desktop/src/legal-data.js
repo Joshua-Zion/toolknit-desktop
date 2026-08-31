@@ -5,7 +5,7 @@ const LEGAL_CONTENT_ZH = {
     title: '程序声明',
     html: `<div class="help-doc">
       <h2>程序声明</h2>
-      <p>本声明适用于 ToolKnit Desktop 2.1.1 及本仓库发布的 CLI / MCP 组件，用于说明软件性质、数据边界、第三方依赖与责任范围。使用前请结合实际任务阅读；继续使用即表示你理解本声明所述边界。</p>
+      <p>本声明适用于 ToolKnit Desktop 2.3.0 及本仓库发布的 CLI / MCP 组件，用于说明软件性质、数据边界、第三方依赖与责任范围。使用前请结合实际任务阅读；继续使用即表示你理解本声明所述边界。</p>
 
       <h3>一、软件性质与开源许可</h3>
       <p>ToolKnit Desktop 是面向 Windows 10 / 11（64 位）的免费、本地优先文件工作台。桌面端与 CLI / MCP 的已发布源代码采用 <strong>Apache License 2.0</strong>，你可以在遵守该许可证及仓库 <code>NOTICE</code> 的前提下使用、修改和分发代码。</p>
@@ -52,11 +52,11 @@ const LEGAL_CONTENT_ZH = {
       <p>用户处理的文件、数据和依法享有权利的内容仍归用户或相应权利人所有。代码使用权以 Apache License 2.0 为准；该许可不授予 ToolKnit 商标、名称、Logo、视觉识别、官网、域名或托管服务的使用权，也不得冒充官方版本或官方账号。</p>
 
       <h3>九、捐赠说明</h3>
-      <p>捐赠完全自愿，用于兼容性测试、依赖与镜像验证、文档、安装包发布和开源维护。捐赠不会解锁额外功能，也不构成购买、订阅、付费外包、技术支持合同或功能优先排期承诺。</p>
+      <p>捐赠完全自愿，用于 AI 开发与测试、兼容性测试、依赖与镜像验证、文档、安装包发布和开源维护。经作者确认后，赞助者可加入 ToolKnit 灰度体验群，参与版本交流、提前测试和功能建议收集；该群不解锁软件额外功能，也不构成购买、订阅、付费外包、技术支持合同或功能优先排期承诺。</p>
 
       <h3>十、更新与联系</h3>
       <p>本声明会随功能和数据边界变化而更新。正式版本、源代码和问题反馈请以官方 GitHub 仓库为准；提交问题前请移除文件内容、密钥、密码、完整私人路径等敏感信息。</p>
-      <div class="help-note"><p>适用版本：ToolKnit Desktop 2.1.1<br/>最后更新：2026 年 8 月 25 日<br/>开发者：董子航（Zihang Dong）</p></div>
+      <div class="help-note"><p>适用版本：ToolKnit Desktop 2.3.0<br/>最后更新：2026 年 8 月 31 日<br/>开发者：董子航（Zihang Dong）</p></div>
     </div>`
   },
 
@@ -115,14 +115,14 @@ const LEGAL_CONTENT_ZH = {
       <p>可以依照 Apache License 2.0 使用、修改和分发本仓库代码，并保留许可证与必要声明。不得冒用 ToolKnit 名称、Logo、官网、域名、服务账号或视觉标识把第三方版本包装成官方版本，也不得把恶意软件与 ToolKnit 名义捆绑传播。</p>
 
       <h3>八、捐赠与反馈</h3>
-      <p>捐赠是自愿支持，不代表购买功能或获得优先排期。反馈问题时请提供可复现步骤、版本与已脱敏日志，不要上传包含私人内容的原文件、密钥或密码。</p>
+      <p>捐赠是自愿支持。赞助者可经确认加入灰度体验群，参与提前测试并提交功能建议，但不代表购买功能、获得技术支持合同或优先排期。反馈问题时请提供可复现步骤、版本与已脱敏日志，不要上传包含私人内容的原文件、密钥或密码。</p>
 
       <h3>九、更新与兼容性</h3>
       <p>桌面端不会静默强制更新。建议从官方 GitHub Releases 获取新版本并核对发布说明；覆盖安装前先从系统托盘完全退出 ToolKnit。系统、驱动、WebView2、第三方格式和运行时变化可能造成兼容差异。</p>
 
       <h3>十、责任与规范变更</h3>
       <div class="help-note"><p>用户应对输入内容、操作授权、结果复核和最终用途负责。本规范会随当前功能边界更新；继续使用后续版本表示你理解当时版本中展示的最新说明。</p></div>
-      <div class="help-note"><p>适用版本：ToolKnit Desktop 2.1.1<br/>最后更新：2026 年 8 月 25 日<br/>开发者：董子航（Zihang Dong）</p></div>
+      <div class="help-note"><p>适用版本：ToolKnit Desktop 2.3.0<br/>最后更新：2026 年 8 月 31 日<br/>开发者：董子航（Zihang Dong）</p></div>
     </div>`
   }
 };
@@ -132,7 +132,7 @@ const LEGAL_CONTENT_EN = {
     title: 'Program Declaration',
     html: `<div class="help-doc">
       <h2>Program Declaration</h2>
-      <p>This declaration applies to ToolKnit Desktop 2.1.1 and the CLI / MCP components published in this repository. It explains the software's nature, data boundaries, third-party dependencies, and limits of responsibility. Please read it in the context of your intended task before use.</p>
+      <p>This declaration applies to ToolKnit Desktop 2.3.0 and the CLI / MCP components published in this repository. It explains the software's nature, data boundaries, third-party dependencies, and limits of responsibility. Please read it in the context of your intended task before use.</p>
 
       <h3>1. Software and Open-Source License</h3>
       <p>ToolKnit Desktop is a free, local-first file workspace for 64-bit Windows 10 / 11. Published source code for the desktop app and CLI / MCP components is licensed under the <strong>Apache License 2.0</strong>. You may use, modify, and distribute that code subject to the license and the repository <code>NOTICE</code>.</p>
@@ -179,11 +179,11 @@ const LEGAL_CONTENT_EN = {
       <p>Files and data processed by the user remain with the user or their rightful owners. Code rights are governed by Apache License 2.0. That license does not grant rights to ToolKnit trademarks, names, logos, visual identity, official websites, domains, or hosted services, and it does not permit impersonating an official release or account.</p>
 
       <h3>9. Donations</h3>
-      <p>Donations are voluntary support for compatibility testing, dependency and mirror verification, documentation, package distribution, and open-source maintenance. A donation does not unlock features or create a purchase, subscription, paid-development contract, support contract, or priority roadmap commitment.</p>
+      <p>Donations are voluntary support for AI development and testing, compatibility testing, dependency and mirror verification, documentation, package distribution, and open-source maintenance. After confirmation by the author, supporters may join the ToolKnit preview group for release discussion, early testing, and feature-request collection. Group access does not unlock software features or create a purchase, subscription, paid-development contract, support contract, or priority roadmap commitment.</p>
 
       <h3>10. Updates and Contact</h3>
       <p>This declaration may be updated when features or data boundaries change. Use the official GitHub repository for releases, source code, and issue reports. Remove file contents, keys, passwords, and private full paths from reports before submitting them.</p>
-      <div class="help-note"><p>Applies to: ToolKnit Desktop 2.1.1<br/>Last updated: August 25, 2026<br/>Developer: Zihang Dong</p></div>
+      <div class="help-note"><p>Applies to: ToolKnit Desktop 2.3.0<br/>Last updated: August 31, 2026<br/>Developer: Zihang Dong</p></div>
     </div>`
   },
 
@@ -242,14 +242,14 @@ const LEGAL_CONTENT_EN = {
       <p>You may use, modify, and distribute repository code under Apache License 2.0 while preserving the license and required notices. Do not use ToolKnit names, logos, websites, domains, service accounts, or visual identity to present a third-party build as official, and do not bundle malware under the ToolKnit name.</p>
 
       <h3>8. Donations and Feedback</h3>
-      <p>Donations are voluntary and do not purchase features or priority scheduling. When reporting a problem, provide reproducible steps, the app version, and sanitized logs. Do not upload source files containing private content, keys, or passwords.</p>
+      <p>Donations are voluntary. Confirmed supporters may join the preview group for early testing and feature requests, but this does not purchase a feature, support contract, or priority scheduling. When reporting a problem, provide reproducible steps, the app version, and sanitized logs. Do not upload source files containing private content, keys, or passwords.</p>
 
       <h3>9. Updates and Compatibility</h3>
       <p>The desktop app does not silently force updates. Obtain releases from official GitHub Releases and review release notes. Exit ToolKnit completely from the system tray before an in-place upgrade. Windows, drivers, WebView2, third-party formats, and runtime changes may affect compatibility.</p>
 
       <h3>10. Responsibility and Policy Changes</h3>
       <div class="help-note"><p>Users are responsible for input content, authorization, result review, and final use. This policy may be updated with the current feature boundary; continued use of a later release means you understand the latest policy shown for that release.</p></div>
-      <div class="help-note"><p>Applies to: ToolKnit Desktop 2.1.1<br/>Last updated: August 25, 2026<br/>Developer: Zihang Dong</p></div>
+      <div class="help-note"><p>Applies to: ToolKnit Desktop 2.3.0<br/>Last updated: August 31, 2026<br/>Developer: Zihang Dong</p></div>
     </div>`
   }
 };

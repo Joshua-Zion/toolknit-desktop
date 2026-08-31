@@ -6,16 +6,16 @@ export const HELP_CONTENT = {
     title: '功能概览',
     html: `<div class="help-doc">
       <h2>ToolKnit 功能概览</h2>
-      <p>ToolKnit 2.1 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 12 个分类、60 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、开发者、清理和硬件处理默认在本机完成。</p>
+      <p>ToolKnit 2.3 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前提供 12 个分类、65 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。PDF、PPT、图像、音视频、文本、计算、创意、开发者、清理和硬件处理默认在本机完成。</p>
 
       <h3>工具分类一览</h3>
       <div class="help-tool-grid">
-        <div class="help-tool-card"><div class="help-tool-card-name">PDF 工具</div><div class="help-tool-card-desc">合并、拆分、转图像、旋转、加密、解密、压缩、文字增强、轻量编辑</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">PDF 工具</div><div class="help-tool-card-desc">编辑、合并、拆分、添加页码、转图像、旋转、加密、解密、压缩、文字增强与 Excel 转 PDF</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">PPT 工具</div><div class="help-tool-card-desc">转 PDF / 图像、素材与文字提取、压缩、AI 大纲和黑白极简草稿</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">图像工具</div><div class="help-tool-card-desc">格式转换、图片压缩、长图拼接、图标生成器、图像与屏幕取色</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">音频工具</div><div class="help-tool-card-desc">格式转换、BPM 测速、剪辑、从视频提取音频</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">视频工具</div><div class="help-tool-card-desc">格式转换、高清单帧图、最长 30 秒 GIF</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">文本工具</div><div class="help-tool-card-desc">音视频转文字、文本统计、文本格式化</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">文本工具</div><div class="help-tool-card-desc">音视频转文字、提词器、文本统计、文本格式化</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">计算器工具</div><div class="help-tool-card-desc">体脂率、时间戳、房贷、利息、密码生成</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">创意工具</div><div class="help-tool-card-desc">配色提取、打字测试</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">清理工具</div><div class="help-tool-card-desc">扫描大文件、AI 元数据建议、移入回收站</div></div>
@@ -64,7 +64,7 @@ export const HELP_CONTENT = {
       <p>首次启动不强制下载附加组件。进入相关功能时，程序会检查并提示按需安装：FFmpeg 下载约 29 MB，推荐的 Whisper Small 模型约 465 MB，LibreOffice 下载包约 356 MB。下载进度到 100% 后仍可能继续进行校验、解压或安装，请等待完成提示。</p>
 
       <div class="help-note">
-        <p>FFmpeg、Whisper 和 LibreOffice 均可在设置中选择自动、官方或国内镜像源。LibreOffice 只用于 PPT 转 PDF 和 PPT 转图像。极少数没有 WebView2 的离线 Windows 设备，需要先联网安装 WebView2 Runtime 才能启动应用。</p>
+        <p>FFmpeg、Whisper 和 LibreOffice 均可在设置中选择自动、官方或国内镜像源。LibreOffice 用于 Excel 转 PDF、PPT 转 PDF 和 PPT 转图像。极少数没有 WebView2 的离线 Windows 设备，需要先联网安装 WebView2 Runtime 才能启动应用。</p>
       </div>
     </div>`
   },
@@ -88,7 +88,7 @@ export const HELP_CONTENT = {
       <p>音频转换、音频剪辑、音频提取、视频转换、单帧图、GIF 和转写预处理都需要 FFmpeg。安装包不再内置它：可在这里选择自动、官方或国内镜像下载。进入相关工具时若未安装，也会弹出依赖安装窗口。</p>
 
       <h3>LibreOffice 运行时</h3>
-      <p>只供 PPT 转 PDF 和 PPT 转图像使用。可选择自动、官方或国内镜像；下载完成后还需校验和解压，安装完成后可离线转换。</p>
+      <p>供 Excel 转 PDF、PPT 转 PDF 和 PPT 转图像使用。可选择自动、官方或国内镜像；下载完成后还需校验和解压，安装完成后可离线转换。</p>
 
       <h3>窗口、音效与快捷键</h3>
       <p>可调整窗口拉伸与小圆角 / 大圆角 / 自定义圆角；窗口最大化时会自动取消圆角并贴合屏幕，恢复窗口后重新应用。全局音效提供总开关和三套风格。屏幕取色默认快捷键为 <code>Ctrl+Shift+C</code>，可自定义或恢复默认；启动取色时主窗口会自动最小化，选中颜色后返回配色提取器。</p>
@@ -193,6 +193,52 @@ export const HELP_CONTENT = {
       <div class="help-note">
         <p>每个导出文件只包含一个原始页面。单次最多处理 25 个文件、150 MB 输入和 200 页预览。</p>
       </div>
+    </div>`
+  },
+
+  'pdf-page-number': {
+    title: 'PDF 加页码',
+    html: `<div class="help-doc">
+      <h2>PDF 加页码</h2>
+      <p>把一个多页 PDF 或多个 PDF 展开成统一页面序列，在实时预览中设置页码范围、编号方式、位置和外观，再导出为一个 PDF 或逐页 ZIP。</p>
+      <h3>页面管理</h3>
+      <ol class="help-steps">
+        <li>点击“添加 PDF”或把文件拖入工具页，单次最多 25 个文件、150 MB、200 页</li>
+        <li>在左侧单击页面查看预览，使用勾选、Ctrl 或 Shift 选择多页</li>
+        <li>拖动页面右侧手柄调整最终顺序，或删除单页和批量删除；工具始终至少保留一页</li>
+        <li>误删后可使用一次“撤销删除”恢复上一次删除前的页面序列</li>
+      </ol>
+      <h3>页码设置与导出</h3>
+      <ul>
+        <li>可应用到全部、奇数、偶数、自定义范围或左侧已选页面，并支持跳过封面</li>
+        <li>支持连续编号、每个来源文件重新编号、起始值、步长和自定义文本模板</li>
+        <li>九宫格位置支持边距与水平/垂直微调，外观包含纯文字、圆形、胶囊、标签和横条</li>
+        <li>“单个 PDF”按左侧顺序合并导出；“逐页 PDF + ZIP”会为每页生成独立 PDF 后统一打包</li>
+      </ul>
+      <div class="help-note"><p>页码由 PDF 矢量指令直接写入，不会把原页面截图压缩。受密码保护的文件请先用“PDF 文件解密”处理；源文件不会被修改或上传。</p></div>
+    </div>`
+  },
+
+  'pdf-crop': {
+    title: 'PDF 裁剪',
+    html: `<div class="help-doc">
+      <h2>PDF 裁剪</h2>
+      <p>在可视化预览中框选每页需要保留的区域，或输入精确边距，再导出一个多页 PDF 或逐页 ZIP。工具只支持单个 PDF，源文件始终保持不变。</p>
+      <h3>框选与页面范围</h3>
+      <ol class="help-steps">
+        <li>点击“选择 PDF”或把一个 PDF 拖入工具页，载入后在底部缩略图切换页面</li>
+        <li>默认使用“全部页面”，拖动画出保留区域后，同一比例的裁剪框会应用到全部页面</li>
+        <li>切换为“当前页面”后，拖动、移动或调整八个控制点只会修改正在预览的页面</li>
+        <li>如果页面尚未裁剪，可直接拖动画框；已有裁剪时使用“重新框选”开始绘制新区域</li>
+      </ol>
+      <h3>精确调整与导出</h3>
+      <ul>
+        <li>支持毫米和 PDF 点两种单位，并可联动上、右、下、左四个边距</li>
+        <li>“重置本页”只恢复当前页，“重置全部裁剪”恢复整个文档；撤销和重做会保留最近的裁剪历史</li>
+        <li>“合并为单个 PDF”保持原页序和多页结构；“逐页 PDF + ZIP”为每页生成一个独立 PDF</li>
+        <li>缩放、适应窗口和切换页面仅改变预览，不会修改裁剪范围</li>
+      </ul>
+      <div class="help-note"><p>裁剪通过修改 PDF 页面边界实现，页面内容不会被截图压缩。它不是安全脱敏：边界外内容仍可能存在于文件结构中，敏感信息请使用真正的涂黑或内容移除工具。单次支持 150 MB、500 页；加密 PDF 请先使用“PDF 文件解密”。</p></div>
     </div>`
   },
 
@@ -351,6 +397,38 @@ export const HELP_CONTENT = {
         <li>输入限制为 150 MB、500 页</li>
         <li>文字替换依赖 PDF 自带的文字层，扫描件或纯图像型 PDF 不支持文字编辑</li>
         <li>文件全程在本地处理，不上传服务器</li>
+      </ul>
+    </div>`
+  },
+
+  'excel-to-pdf': {
+    title: 'Excel 转 PDF',
+    html: `<div class="help-doc">
+      <h2>Excel 转 PDF</h2>
+      <p>使用本地 LibreOffice 渲染运行时，把 Excel 工作簿转换为适合分享、打印和归档的 PDF。源文件不会被修改，也不会上传服务器。</p>
+
+      <h3>使用方法</h3>
+      <ol class="help-steps">
+        <li>上传或拖入一个或多个 <code>XLSX</code>、<code>XLS</code>、<code>ODS</code> 工作簿</li>
+        <li>选择导出全部工作表或仅可见工作表</li>
+        <li>设置页面方向、纸张类型和缩放方式</li>
+        <li>点击「开始转换」，每个工作簿会分别生成一个 PDF</li>
+        <li>转换完成后打开输出文件夹查看 PDF 和 <code>manifest.json</code></li>
+      </ol>
+
+      <h3>页面与工作表规则</h3>
+      <ul>
+        <li>「全部工作表」会包含隐藏工作表；不需要隐藏内容时请选择「仅可见工作表」</li>
+        <li>方向支持跟随源文件、纵向和横向；纸张支持自动、A4 和美式信纸</li>
+        <li>「适合页面」会缩放内容以减少横向截断；「原始比例」更接近工作簿原有打印设置</li>
+      </ul>
+
+      <h3>注意事项</h3>
+      <ul>
+        <li>每批最多 20 个文件，单个文件不能超过 200 MB</li>
+        <li>首次使用需要按需安装约 356 MB 的 LibreOffice 运行时；安装完成后可离线转换</li>
+        <li>如果本机缺少工作簿使用的字体，分页、行高或文字宽度可能与原文件略有差异</li>
+        <li>复杂宏、外部数据连接和交互控件不会在 PDF 中继续运行</li>
       </ul>
     </div>`
   },
@@ -650,6 +728,11 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
   'video-gif': {
     title: '视频截取 GIF',
     html: `<div class="help-doc"><h2>视频截取 GIF</h2><p>从本地视频中选取起始帧和结束帧，生成最长 30 秒、经过调色板优化的循环 GIF。</p><h3>使用方法</h3><ol class="help-steps"><li>进入视频工具，选择“视频截取 GIF”，上传或直接拖入一个视频</li><li>上传完成后默认会选中从开头开始、最长 30 秒的范围；拖动时间轴或用逐帧按钮调整起点和终点，白色区间就是导出范围</li><li>选择帧率、输出宽度和质量。文件太大时优先选 6/8 FPS、360/480px、“小体积”或“极小”</li><li>点击播放按钮会循环预览起点到终点；暂停会停在当前帧，再点击“导出 GIF”</li></ol><div class="help-note"><p>GIF 的起点和终点必须明确，且区间不能超过 30 秒。导出在本机通过 FFmpeg 处理，源视频不会修改。IDE Agent 不能猜“精彩片段”，应先让你在桌面预览中确定两个时间点。</p></div></div>`
+  },
+
+  'teleprompter': {
+    title: '提词器',
+    html: `<div class="help-doc"><h2>提词器</h2><p>粘贴台词或读取 TXT、Markdown、DOCX、PDF 文稿，在高对比度提词区按设定速度滚动。可调整速度、字号、水平/垂直镜像，也可进入专注模式。</p><h3>普通滚动</h3><ol class="help-steps"><li>输入或读取文稿，点击句子可直接定位</li><li>在底部调整速度和字号，需要拍摄镜面时开启镜像</li><li>点击播放；播放期间左侧说明栏会自动收起</li></ol><h3>句子级语音跟随</h3><ul><li><strong>自动选择</strong>：桌面端默认使用稳定的 ToolKnit 离线识别；网页环境使用系统识别</li><li><strong>Windows 系统识别</strong>：依赖 Windows 语音服务；未真正启动或长时间没有返回结果时会自动切到离线识别</li><li><strong>ToolKnit 离线识别</strong>：麦克风片段只在本机处理。未安装模型时会弹出依赖下载窗口，完成校验后自动继续</li></ul><p>读完当前句会进入下一句；连续相同的句子每次只前进一段，无标点长稿也会自动拆成可跟随的小段。快捷键：<code>Space</code> 播放/暂停，<code>←</code>/<code>→</code> 切句，<code>+</code>/<code>-</code> 调速，<code>R</code> 回到开头，<code>F</code> 切换专注模式。</p><div class="help-note"><p>若系统与离线识别都无法工作，播放会明确改用普通自动滚动，不会停在原地。关闭工具、暂停播放或切换引擎时，ToolKnit 会停止麦克风、取消未完成识别并释放模型会话。</p></div></div>`
   },
 
   'text-stats': {
@@ -1044,7 +1127,7 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
 
       <div class="help-faq-item">
         <div class="help-faq-q">Q：Whisper 和 LibreOffice 分别做什么？</div>
-        <div class="help-faq-a">A：Whisper 模型用于本地音视频转写，推荐的 Small 约 465 MB；LibreOffice 只用于 PPT 转 PDF 和 PPT 转图像，下载包约 356 MB。两者都按需安装。</div>
+        <div class="help-faq-a">A：Whisper 模型用于本地音视频转写，推荐的 Small 约 465 MB；LibreOffice 用于 Excel 转 PDF、PPT 转 PDF 和 PPT 转图像，下载包约 356 MB。两者都按需安装。</div>
       </div>
 
       <div class="help-faq-item">
@@ -1165,7 +1248,7 @@ toolknit ppt draft --outline-file outline.json --output-dir out --theme minimal-
 
   'developer-tools': {
     title: '开发者工具',
-    html: `<div class="help-doc"><h2>2.1 开发者工具</h2><p>这里集中介绍本次新增的本地工具。它们默认在需要时加载，关闭页面后会释放 Worker、Canvas 和临时任务。</p><h3>Markdown 文档编辑器</h3><p>支持 GFM、任务列表、Mermaid、数学公式、目录跳转、草稿恢复，以及 Markdown 和离线 HTML 导出。导出本地图片时会自动整理 assets 目录。</p><h3>智能颜色替换</h3><p>使用吸管选择源色和目标色，可调节感知阈值、边缘柔化、亮度保持和八连通智能保护。预览使用降采样 Worker，导出由 Rust 按原始分辨率完成。</p><h3>Hash &amp; Crypto</h3><p>覆盖常用 Hash、HMAC、国密、AES 文件加密、RSA 和 SM2。旧算法仅用于兼容，敏感输入不会写入历史或本地存储。</p></div>`
+    html: `<div class="help-doc"><h2>2.3 开发者工具</h2><p>这里集中介绍本次新增的本地工具。它们默认在需要时加载，关闭页面后会释放 Worker、Canvas 和临时任务。</p><h3>Markdown 文档编辑器</h3><p>支持 GFM、任务列表、Mermaid、数学公式、目录跳转、草稿恢复，以及 Markdown 和离线 HTML 导出。导出本地图片时会自动整理 assets 目录。</p><h3>智能颜色替换</h3><p>使用吸管选择源色和目标色，可调节感知阈值、边缘柔化、亮度保持和八连通智能保护。预览使用降采样 Worker，导出由 Rust 按原始分辨率完成。</p><h3>Hash &amp; Crypto</h3><p>覆盖常用 Hash、HMAC、国密、AES 文件加密、RSA 和 SM2。旧算法仅用于兼容，敏感输入不会写入历史或本地存储。</p></div>`
   },
   'hardware-tools': {
     title: '硬件工具总览',
