@@ -1,0 +1,253 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { PassThrough } from 'node:stream';
+import { startMcpServer } from '../cli/lib/mcp-server.mjs';
+import { readResponseTextLimited, ResponseSizeLimitError } from '../src/bounded-response.js';
+
+const root = resolve(import.meta.dirname, '..');
+const repositoryRoot = resolve(root, '..');
+const read = relativePath => readFileSync(resolve(repositoryRoot, relativePath), 'utf8');
+let checks = 0;
+
+function check(condition, message) {
+  assert.ok(condition, message);
+  checks += 1;
+}
+
+const tauriConfig = JSON.parse(read('toolknit-desktop/src-tauri/tauri.conf.json'));
+const releaseWindows = tauriConfig.app?.windows || [];
+check(releaseWindows.length > 0, 'Tauri must define at least one release window');
+check(releaseWindows.every(window => window.devtools === false), 'DevTools must be disabled on every release window');
+check(
+  releaseWindows.every(window => !/remote-debugging|auto-open-devtools-for-tabs/i.test(window.additionalBrowserArgs || '')),
+  'Release browser arguments must not enable remote debugging or DevTools'
+);
+
+const cargoManifest = read('toolknit-desktop/src-tauri/Cargo.toml');
+check(!/features\s*=\s*\[[^\]]*["']devtools["']/s.test(cargoManifest), 'The Tauri devtools Cargo feature must not be enabled');
+
+const csp = tauriConfig.app?.security?.csp || '';
+const cspDirectives = new Map(
+  csp.split(';').map(value => value.trim()).filter(Boolean).map(value => {
+    const [name, ...sources] = value.split(/\s+/);
+    return [name, sources];
+  })
+);
+check(cspDirectives.get('script-src')?.join(' ') === "'self'", "script-src must be restricted to 'self'");
+check(!csp.includes("'unsafe-eval'"), "CSP must not allow 'unsafe-eval'");
+for (const directive of ['base-uri', 'object-src', 'frame-src', 'frame-ancestors', 'form-action']) {
+  check(cspDirectives.get(directive)?.join(' ') === "'none'", `${directive} must be disabled`);
+}
+
+check(tauriConfig.app?.security?.assetProtocol?.enable === true, 'The asset protocol must be explicitly configured');
+assert.deepEqual(
+  tauriConfig.app.security.assetProtocol.scope,
+  ['$DATA/ToolKnit/custom-fonts/**'],
+  'The asset protocol must remain scoped to managed custom fonts'
+);
+checks += 1;
+
+const capability = JSON.parse(read('toolknit-desktop/src-tauri/capabilities/default.json'));
+const permissions = capability.permissions || [];
+check(
+  permissions.every(permission => !/^(?:shell|fs|process|http|opener):/i.test(permission)),
+  'The frontend must not receive generic shell, filesystem, process, HTTP, or opener permissions'
+);
+
+for (const workflowPath of ['.github/workflows/ci.yml', '.github/workflows/release.yml']) {
+  const workflow = read(workflowPath);
+  const actionLines = workflow.match(/^\s*-?\s*uses:\s*[^\s#]+/gm) || [];
+  check(actionLines.length > 0, `${workflowPath} must use at least one action`);
+  for (const line of actionLines) {
+    const reference = line.match(/@([^\s#]+)/)?.[1] || '';
+    check(/^[0-9a-f]{40}$/i.test(reference), `${workflowPath} action is not pinned to a full commit SHA: ${line.trim()}`);
+  }
+}
+const releaseWorkflow = read('.github/workflows/release.yml');
+check(!releaseWorkflow.includes('$tag = "${{ github.ref_name }}"'), 'Release tags must not be interpolated directly into PowerShell');
+check(releaseWorkflow.includes('RELEASE_TAG: ${{ github.ref_name }}') && releaseWorkflow.includes('$tag = $env:RELEASE_TAG'), 'Release tags must enter PowerShell through an environment variable');
+
+const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repositoryRoot })
+  .toString('utf8')
+  .split('\0')
+  .filter(Boolean);
+const sensitiveFilePattern = /(?:^|\/)(?:\.env(?:\..+)?|\.npmrc|[^/]+\.(?:pem|pfx|p12|key))$/i;
+check(!trackedFiles.some(file => sensitiveFilePattern.test(file)), 'Sensitive configuration or key material must not be tracked');
+
+const secretPatterns = [
+  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
+  /\bnpm_[A-Za-z0-9]{20,}\b/,
+  /\bsk-[A-Za-z0-9_-]{20,}\b/
+];
+const textExtensions = new Set(['', '.cjs', '.css', '.html', '.js', '.json', '.md', '.mjs', '.nsi', '.nsh', '.rs', '.toml', '.txt', '.yaml', '.yml']);
+const extensionOf = file => file.includes('.') ? file.slice(file.lastIndexOf('.')).toLowerCase() : '';
+for (const file of trackedFiles.filter(file => textExtensions.has(extensionOf(file)))) {
+  const contents = readFileSync(resolve(repositoryRoot, file), 'utf8');
+  check(!secretPatterns.some(pattern => pattern.test(contents)), `Possible credential material found in tracked file: ${file}`);
+}
+
+const nativeSource = read('toolknit-desktop/src-tauri/src/lib.rs');
+for (const required of [
+  'fn validate_external_url',
+  'url.len() > 2_048',
+  'url.chars().any(char::is_control)',
+  'parsed.username().is_empty()',
+  'parsed.password().is_some()',
+  'fn allow_webview_navigation',
+  'on_navigation(|_webview, url| allow_webview_navigation(url))',
+  'fn resolve_open_folder',
+  'requested.is_absolute()',
+  '.canonicalize()',
+  'next_downloaded > model.bytes',
+  'CryptProtectData',
+  'CryptUnprotectData',
+  'CRYPTPROTECT_UI_FORBIDDEN',
+  'fn store_ai_api_key',
+  'fn load_ai_api_key',
+  'fn clear_ai_api_key'
+]) {
+  check(nativeSource.includes(required), `Native security boundary is missing: ${required}`);
+}
+
+const cleanupSource = read('toolknit-desktop/src-tauri/src/system_cleanup.rs');
+check(cleanupSource.includes('fn normalize_system_drive'), 'SystemDrive must pass through a strict normalizer');
+check(cleanupSource.includes('bytes.len() == 2'), 'SystemDrive must only accept a drive letter and colon');
+
+const mainSource = read('toolknit-desktop/src/main.js');
+const i18nSource = read('toolknit-desktop/src/i18n.js');
+check(mainSource.includes("window.open(parsedUrl.href, '_blank', 'noopener,noreferrer')"), 'Browser external links must isolate the opener');
+check(!mainSource.includes("window.open(url, '_blank')"), 'Tauri external-link failures must not bypass native validation');
+check(nativeSource.includes('.devtools(false)'), 'Dynamically created WebViews must explicitly disable DevTools');
+check(nativeSource.includes('not(debug_assertions)') && nativeSource.includes('fn append_picker_debug(_line: &str) {}'), 'Release builds must disable the screen-picker debug file');
+check(/#\[cfg\(all\(target_os = "windows", debug_assertions\)\)\]\s*fn append_hardware_debug/.test(nativeSource), 'Hardware debug logging must be debug-only');
+check(nativeSource.includes('fn append_hardware_debug(_line: &str) {}'), 'Release builds must disable the hardware debug file');
+check(!nativeSource.includes('Custom background video converted: source='), 'Custom background logs must not include user paths');
+check(nativeSource.includes('CUSTOM_BACKGROUND_SERVER_TOKEN'), 'The local background media server must use a per-process access token');
+check(nativeSource.includes('request_token != access_token'), 'The local background media server must reject unauthenticated requests');
+check(nativeSource.includes('/custom-background/{access_token}/{filename}'), 'Background media URLs must carry the local access token');
+check(!mainSource.includes("localStorage.setItem('ai_api_key'"), 'AI API keys must not be written to localStorage');
+check(!mainSource.includes("localStorage.setItem('deepseek_api_key'"), 'Legacy AI API keys must not be written to localStorage');
+check(mainSource.includes("invoke('store_ai_api_key'"), 'AI API keys must use native protected storage');
+check(mainSource.includes('clearLegacyAiApiKeys();'), 'Protected-key migration must remove legacy plaintext storage');
+check(!i18nSource.includes("querySelectorAll('[data-i18n-html]')"), 'Translations must not expose a generic innerHTML injection path');
+const aiProviderSource = read('toolknit-desktop/src/ai-provider-core.js');
+check(aiProviderSource.includes('async function readResponseTextLimited'), 'AI HTTPS responses must be read through a streaming size limit');
+check(aiProviderSource.includes('received > AI_PROVIDER_LIMITS.maxResponseBytes'), 'AI HTTPS streams must stop above the response limit');
+check(aiProviderSource.includes('await reader.cancel()'), 'Oversized AI HTTPS streams must be cancelled immediately');
+
+const updateServiceSource = read('toolknit-desktop/src/update-service.js');
+check(updateServiceSource.includes('readResponseTextLimited(response, MAX_UPDATE_API_BYTES)'), 'Update API responses must have a streaming size limit');
+check(updateServiceSource.includes('readResponseTextLimited(response, MAX_UPDATE_NOTES_BYTES)'), 'Update note responses must have a streaming size limit');
+check(mainSource.includes('readResponseTextLimited(response, GITHUB_RESPONSE_MAX_BYTES)'), 'Homepage GitHub responses must have a streaming size limit');
+const boundedResponseSource = read('toolknit-desktop/src/bounded-response.js');
+check(boundedResponseSource.includes('await reader.cancel()'), 'Oversized remote JSON streams must be cancelled immediately');
+
+const smallBoundedResponse = await readResponseTextLimited(new Response('ToolKnit'), 16);
+check(smallBoundedResponse === 'ToolKnit', 'Bounded response reader must preserve valid response text');
+await assert.rejects(
+  readResponseTextLimited(new Response('x'.repeat(32)), 16),
+  error => error instanceof ResponseSizeLimitError
+);
+checks += 1;
+
+const markdownSource = read('toolknit-desktop/src/markdown-editor-ui.js');
+for (const required of [
+  'function safeLivePreviewFragment',
+  "template.content.querySelectorAll('img')",
+  "template.content.querySelectorAll('a')",
+  "link.removeAttribute('target')",
+  "link.setAttribute('rel', 'noopener noreferrer')",
+  "preview.replaceChildren(safeLivePreviewFragment(clean, assets))",
+  "host.replaceChildren(safeLivePreviewFragment(html, []))",
+  "invoke('open_url',{url:href})"
+]) {
+  check(markdownSource.includes(required), `Markdown preview security boundary is missing: ${required}`);
+}
+const markdownCoreSource = read('toolknit-desktop/src/markdown-editor-core.js');
+check(markdownCoreSource.includes("default-src 'none'"), 'Standalone Markdown exports must block network access by default');
+check(markdownCoreSource.includes('img-src data:'), 'Standalone Markdown exports must allow embedded images only');
+check(markdownCoreSource.includes('name="referrer" content="no-referrer"'), 'Standalone Markdown exports must not leak referrer data');
+
+const mcpSource = read('toolknit-desktop/cli/lib/mcp-server.mjs');
+for (const required of [
+  'const MAX_MCP_MESSAGE_BYTES = 8 * 1024 * 1024',
+  'const MAX_ACTIVE_TOOL_CALLS = 4',
+  "Buffer.byteLength(rawLine, 'utf8') > MAX_MCP_MESSAGE_BYTES",
+  "Buffer.byteLength(buffer, 'utf8') > MAX_MCP_MESSAGE_BYTES",
+  'activeCalls.has(message.id)',
+  'activeCalls.size >= MAX_ACTIVE_TOOL_CALLS'
+]) {
+  check(mcpSource.includes(required), `MCP input boundary is missing: ${required}`);
+}
+
+const cliTranscription = read('toolknit-desktop/cli/lib/transcription-runtime.mjs');
+check(cliTranscription.includes('nextDownloaded > model.bytes'), 'CLI model downloads must stop above the signed catalog size');
+
+async function waitFor(predicate, message) {
+  const deadline = Date.now() + 2_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 5));
+  }
+}
+
+const input = new PassThrough();
+const output = new PassThrough();
+const messages = [];
+let outputBuffer = '';
+const pendingExecutions = [];
+output.setEncoding('utf8');
+output.on('data', chunk => {
+  outputBuffer += chunk;
+  let newline;
+  while ((newline = outputBuffer.indexOf('\n')) !== -1) {
+    const line = outputBuffer.slice(0, newline).trim();
+    outputBuffer = outputBuffer.slice(newline + 1);
+    if (line) messages.push(JSON.parse(line));
+  }
+});
+startMcpServer({
+  input,
+  output,
+  list: () => [],
+  execute: () => new Promise(resolvePromise => pendingExecutions.push(resolvePromise))
+});
+
+const send = message => input.write(`${JSON.stringify(message)}\n`);
+send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26' } });
+await waitFor(() => messages.some(message => message.id === 1), 'MCP security test did not initialize');
+
+send({ jsonrpc: '2.0', id: { invalid: true }, method: 'ping' });
+await waitFor(() => messages.some(message => message.error?.message?.includes('JSON-RPC id')), 'MCP did not reject an invalid request id');
+check(messages.some(message => message.error?.code === -32600 && message.error.message.includes('JSON-RPC id')), 'MCP must reject object request ids');
+
+input.write(`${' '.repeat(8 * 1024 * 1024 + 1)}{}\n`);
+await waitFor(() => messages.some(message => message.error?.message?.includes('8 MB')), 'MCP did not reject an oversized raw line');
+check(messages.some(message => message.error?.code === -32700 && message.error.message.includes('8 MB')), 'MCP must enforce its limit before trimming whitespace');
+
+for (let id = 10; id < 14; id += 1) {
+  send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'test', arguments: {} } });
+}
+await waitFor(() => pendingExecutions.length === 4, 'MCP did not start the expected bounded calls');
+send({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'test', arguments: {} } });
+send({ jsonrpc: '2.0', id: 14, method: 'tools/call', params: { name: 'test', arguments: {} } });
+await waitFor(
+  () => messages.some(message => message.id === 10 && message.error) && messages.some(message => message.id === 14 && message.error),
+  'MCP did not reject duplicate and excessive active calls'
+);
+check(messages.some(message => message.id === 10 && message.error?.code === -32600), 'MCP must reject duplicate active request ids');
+check(messages.some(message => message.id === 14 && message.error?.code === -32000), 'MCP must cap active tool calls');
+pendingExecutions.forEach(resolvePromise => resolvePromise({ ok: true }));
+await waitFor(
+  () => [10, 11, 12, 13].every(id => messages.some(message => message.id === id && message.result)),
+  'MCP security test did not flush completed calls'
+);
+input.end();
+output.end();
+
+console.log(`Security release checks passed: ${checks}`);

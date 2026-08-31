@@ -1,3 +1,5 @@
+import { readResponseTextLimited } from './bounded-response.js';
+
 const GITHUB_REPOSITORY = 'ZihangDong/toolknit-desktop';
 
 export const UPDATE_RELEASES_PAGE = `https://github.com/${GITHUB_REPOSITORY}/releases/latest`;
@@ -8,6 +10,8 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFER_DURATION_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8_000;
 const MAX_RELEASE_TEXT_LENGTH = 80_000;
+const MAX_UPDATE_API_BYTES = 512 * 1024;
+const MAX_UPDATE_NOTES_BYTES = 128 * 1024;
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/;
 
 function trimText(value, maxLength = MAX_RELEASE_TEXT_LENGTH) {
@@ -163,7 +167,7 @@ async function fetchLatestRelease(fetchImpl) {
     }
   });
   if (!response.ok) throw new Error(`update:http:${response.status}`);
-  const payload = await response.json();
+  const payload = JSON.parse(await readResponseTextLimited(response, MAX_UPDATE_API_BYTES));
   const release = normalizeRelease(payload);
   if (!release) throw new Error('update:invalid-release');
   return { payload, release };
@@ -174,7 +178,7 @@ async function fetchReleaseNotes(fetchImpl, tagName) {
     headers: { Accept: 'text/plain; charset=utf-8' }
   });
   if (!response.ok) return '';
-  const text = await response.text();
+  const text = await readResponseTextLimited(response, MAX_UPDATE_NOTES_BYTES);
   return trimText(text);
 }
 

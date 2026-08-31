@@ -11,6 +11,8 @@ mod onnx_segmenter;
 mod teleprompter_whisper;
 
 static CUSTOM_BACKGROUND_SERVER_PORT: OnceLock<u16> = OnceLock::new();
+static CUSTOM_BACKGROUND_SERVER_TOKEN: OnceLock<String> = OnceLock::new();
+static CUSTOM_BACKGROUND_SERVER_INIT_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
 static CUSTOM_BACKGROUND_IMPORT_LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
 
 #[cfg(target_os = "windows")]
@@ -155,7 +157,7 @@ async fn request_private_ai_completion_impl(
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/2.1 local-ai-provider")
+        .user_agent("ToolKnit/2.3.1 local-ai-provider")
         .connect_timeout(std::time::Duration::from_secs(8))
         .timeout(std::time::Duration::from_secs(45))
         .redirect(reqwest::redirect::Policy::none())
@@ -386,7 +388,7 @@ fn register_screen_picker_shortcut(
         .map_err(|error| error.to_string())
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", debug_assertions))]
 fn append_picker_debug(line: &str) {
     use std::io::Write;
     let stamp = std::time::SystemTime::now()
@@ -402,6 +404,9 @@ fn append_picker_debug(line: &str) {
         let _ = writeln!(file, "[{}] {}", stamp, line);
     }
 }
+
+#[cfg(any(not(target_os = "windows"), not(debug_assertions)))]
+fn append_picker_debug(_line: &str) {}
 
 #[cfg(target_os = "windows")]
 fn screen_picker_bounds_impl() -> Result<ScreenPickerBounds, String> {
@@ -625,6 +630,7 @@ async fn launch_screen_color_picker(app: &tauri::AppHandle) -> Result<ScreenPick
     .skip_taskbar(true)
     .shadow(false)
     .resizable(false)
+    .devtools(false)
     .focused(true)
     .on_page_load(|_window, payload| {
         append_picker_debug(&format!("overlay webview page loaded: {}", payload.url()));
@@ -933,15 +939,36 @@ fn fit_main_window_to_work_area(window: &tauri::WebviewWindow) -> Result<(), Str
     Ok(())
 }
 
+fn validate_external_url(url: &str) -> Result<url::Url, String> {
+    if url.len() > 2_048 || url.chars().any(char::is_control) {
+        return Err("Invalid URL".to_string());
+    }
+    let parsed = url::Url::parse(&url).map_err(|_| "Invalid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Unsupported URL".to_string());
+    }
+    Ok(parsed)
+}
+
+fn allow_webview_navigation(url: &url::Url) -> bool {
+    match (url.scheme(), url.host_str()) {
+        ("tauri", Some("localhost")) => true,
+        ("http" | "https", Some("tauri.localhost")) => true,
+        ("http", Some("localhost" | "127.0.0.1")) if cfg!(debug_assertions) => {
+            url.port_or_known_default() == Some(1420)
+        }
+        _ => false,
+    }
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    let parsed = url::Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
-    match parsed.scheme() {
-        "http" | "https" => {
-            opener::open(&url).map_err(|error| format!("Failed to open URL: {}", error))
-        }
-        _ => Err(format!("Unsupported URL scheme: {}", parsed.scheme())),
-    }
+    let parsed = validate_external_url(&url)?;
+    opener::open(parsed.as_str()).map_err(|error| format!("Failed to open URL: {}", error))
 }
 
 #[tauri::command]
@@ -965,6 +992,230 @@ fn toolknit_app_data_dir() -> Result<std::path::PathBuf, String> {
     Ok(dirs::data_dir()
         .ok_or("Cannot find AppData folder")?
         .join("ToolKnit"))
+}
+
+const AI_API_KEY_FILE_NAME: &str = "ai-api-key.dpapi";
+const AI_API_KEY_FILE_HEADER: &[u8] = b"TKDPAPI1";
+const AI_API_KEY_MAX_BYTES: usize = 8 * 1024;
+const AI_API_KEY_FILE_MAX_BYTES: u64 = 64 * 1024;
+
+fn ai_api_key_path() -> Result<std::path::PathBuf, String> {
+    Ok(toolknit_app_data_dir()?.join(AI_API_KEY_FILE_NAME))
+}
+
+fn validate_ai_api_key(api_key: &str) -> Result<(), String> {
+    if api_key.is_empty()
+        || api_key.len() > AI_API_KEY_MAX_BYTES
+        || api_key.chars().any(char::is_control)
+    {
+        return Err("ai-api-key:invalid".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn protect_ai_api_key_bytes(plaintext: &mut [u8]) -> Result<Vec<u8>, String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Cryptography::{
+        CryptProtectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+    };
+
+    let input_length = u32::try_from(plaintext.len()).map_err(|_| "ai-api-key:invalid")?;
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: input_length,
+        pbData: plaintext.as_mut_ptr(),
+    };
+    let mut output = CRYPT_INTEGER_BLOB::default();
+    unsafe {
+        CryptProtectData(
+            &input,
+            PCWSTR::null(),
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+        .map_err(|_| "ai-api-key:protect-failed".to_string())?;
+        if output.pbData.is_null() || output.cbData == 0 {
+            return Err("ai-api-key:protect-failed".to_string());
+        }
+        let protected = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        Ok(protected)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn unprotect_ai_api_key_bytes(protected: &mut [u8]) -> Result<Vec<u8>, String> {
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Cryptography::{
+        CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
+    };
+
+    let input_length = u32::try_from(protected.len()).map_err(|_| "ai-api-key:invalid")?;
+    let input = CRYPT_INTEGER_BLOB {
+        cbData: input_length,
+        pbData: protected.as_mut_ptr(),
+    };
+    let mut output = CRYPT_INTEGER_BLOB::default();
+    unsafe {
+        CryptUnprotectData(
+            &input,
+            None,
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+        .map_err(|_| "ai-api-key:unprotect-failed".to_string())?;
+        if output.pbData.is_null() || output.cbData == 0 {
+            return Err("ai-api-key:unprotect-failed".to_string());
+        }
+        let plaintext = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        Ok(plaintext)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn replace_ai_api_key_file(
+    temporary_path: &std::path::Path,
+    destination_path: &std::path::Path,
+) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let temporary_wide = temporary_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let destination_wide = destination_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    unsafe {
+        MoveFileExW(
+            PCWSTR(temporary_wide.as_ptr()),
+            PCWSTR(destination_wide.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+        .map_err(|_| "ai-api-key:write-failed".to_string())
+    }
+}
+
+#[tauri::command]
+fn store_ai_api_key(mut api_key: String) -> Result<(), String> {
+    use std::io::Write;
+    use zeroize::Zeroize;
+
+    let normalized = api_key.trim().to_string();
+    api_key.zeroize();
+    validate_ai_api_key(&normalized)?;
+
+    let mut plaintext = normalized.into_bytes();
+    let protected_result = protect_ai_api_key_bytes(&mut plaintext);
+    plaintext.zeroize();
+    let mut protected = protected_result?;
+
+    let destination_path = ai_api_key_path()?;
+    let parent = destination_path
+        .parent()
+        .ok_or_else(|| "ai-api-key:write-failed".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|_| "ai-api-key:write-failed".to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let temporary_path = parent.join(format!(
+        ".ai-api-key-{}-{}.tmp",
+        std::process::id(),
+        stamp
+    ));
+    let write_result = (|| -> Result<(), String> {
+        let mut output = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+            .map_err(|_| "ai-api-key:write-failed".to_string())?;
+        output
+            .write_all(AI_API_KEY_FILE_HEADER)
+            .and_then(|_| output.write_all(&protected))
+            .and_then(|_| output.sync_all())
+            .map_err(|_| "ai-api-key:write-failed".to_string())?;
+        replace_ai_api_key_file(&temporary_path, &destination_path)
+    })();
+    protected.zeroize();
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&temporary_path);
+    }
+    write_result
+}
+
+#[tauri::command]
+fn load_ai_api_key() -> Result<Option<String>, String> {
+    use zeroize::Zeroize;
+
+    let path = ai_api_key_path()?;
+    let metadata = match std::fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err("ai-api-key:read-failed".to_string()),
+    };
+    if !metadata.is_file() || metadata.len() > AI_API_KEY_FILE_MAX_BYTES {
+        return Err("ai-api-key:invalid-storage".to_string());
+    }
+    let mut stored = std::fs::read(&path).map_err(|_| "ai-api-key:read-failed".to_string())?;
+    if !stored.starts_with(AI_API_KEY_FILE_HEADER) || stored.len() == AI_API_KEY_FILE_HEADER.len() {
+        stored.zeroize();
+        return Err("ai-api-key:invalid-storage".to_string());
+    }
+    let mut protected = stored.split_off(AI_API_KEY_FILE_HEADER.len());
+    stored.zeroize();
+    let plaintext_result = unprotect_ai_api_key_bytes(&mut protected);
+    protected.zeroize();
+    let mut plaintext = plaintext_result?;
+    let key_result = std::str::from_utf8(&plaintext)
+        .map(str::to_owned)
+        .map_err(|_| "ai-api-key:invalid-storage".to_string());
+    plaintext.zeroize();
+    let key = key_result?;
+    validate_ai_api_key(&key)?;
+    Ok(Some(key))
+}
+
+#[tauri::command]
+fn clear_ai_api_key() -> Result<(), String> {
+    match std::fs::remove_file(ai_api_key_path()?) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err("ai-api-key:clear-failed".to_string()),
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod ai_api_key_storage_tests {
+    use super::*;
+    use zeroize::Zeroize;
+
+    #[test]
+    fn dpapi_round_trip_is_bound_to_the_current_windows_user() {
+        let mut plaintext = b"toolknit-test-api-key".to_vec();
+        let mut protected = protect_ai_api_key_bytes(&mut plaintext).unwrap();
+        assert_ne!(protected, plaintext);
+        let mut restored = unprotect_ai_api_key_bytes(&mut protected).unwrap();
+        assert_eq!(restored, plaintext);
+        plaintext.zeroize();
+        protected.zeroize();
+        restored.zeroize();
+    }
 }
 
 const CUSTOM_FONT_DIRECTORY: &str = "custom-fonts";
@@ -1748,22 +1999,19 @@ fn convert_custom_background_video(
             details
         ));
     }
-    log::info!(
-        "Custom background video converted: source={}, temporary={}",
-        source.display(),
-        temporary.display()
-    );
+    log::info!("Custom background video conversion completed");
     Ok(())
 }
 
 #[tauri::command]
 fn log_custom_background_event(event: String) {
-    // Browser media errors are only observable in the webview, so retain a bounded trace in the app log.
-    let safe_event = event.replace(['\r', '\n'], " ");
-    log::info!(
-        "Custom background: {}",
-        safe_event.chars().take(1_500).collect::<String>()
-    );
+    // Keep release logs useful without persisting user file names or paths.
+    let category = event
+        .split(':')
+        .next()
+        .filter(|value| matches!(*value, "resolve-failed" | "media-error"))
+        .unwrap_or("unknown");
+    log::info!("Custom background event: {}", category);
 }
 
 fn custom_background_content_type(path: &std::path::Path) -> &'static str {
@@ -1818,6 +2066,7 @@ fn parse_background_range(request: &str, file_len: u64) -> Option<(u64, u64)> {
 fn serve_custom_background_connection(
     mut stream: std::net::TcpStream,
     root: &std::path::Path,
+    access_token: &str,
 ) -> std::io::Result<()> {
     use std::io::{Read, Seek, Write};
 
@@ -1850,10 +2099,12 @@ fn serve_custom_background_connection(
     if !matches!(method, "GET" | "HEAD") {
         return write_background_http_error(&mut stream, "405 Method Not Allowed");
     }
-    let filename = url_path
+    let protected_path = url_path
         .strip_prefix("/custom-background/")
         .unwrap_or_default();
-    if filename.is_empty()
+    let (request_token, filename) = protected_path.split_once('/').unwrap_or_default();
+    if request_token != access_token
+        || filename.is_empty()
         || filename.contains(['/', '\\'])
         || filename.contains("..")
         || !filename.starts_with("background-")
@@ -1901,7 +2152,29 @@ fn serve_custom_background_connection(
     Ok(())
 }
 
+fn custom_background_server_token() -> Result<&'static str, String> {
+    if let Some(token) = CUSTOM_BACKGROUND_SERVER_TOKEN.get() {
+        return Ok(token.as_str());
+    }
+    let mut random = [0_u8; 16];
+    getrandom::getrandom(&mut random)
+        .map_err(|_| "Cannot secure local background media service".to_string())?;
+    let generated = hex::encode(random);
+    let _ = CUSTOM_BACKGROUND_SERVER_TOKEN.set(generated);
+    CUSTOM_BACKGROUND_SERVER_TOKEN
+        .get()
+        .map(String::as_str)
+        .ok_or_else(|| "Cannot secure local background media service".to_string())
+}
+
 fn custom_background_server_port(root: std::path::PathBuf) -> Result<u16, String> {
+    if let Some(port) = CUSTOM_BACKGROUND_SERVER_PORT.get() {
+        return Ok(*port);
+    }
+    let init_lock = CUSTOM_BACKGROUND_SERVER_INIT_LOCK.get_or_init(|| std::sync::Mutex::new(()));
+    let _init_guard = init_lock
+        .lock()
+        .map_err(|_| "Cannot start local background media service".to_string())?;
     if let Some(port) = CUSTOM_BACKGROUND_SERVER_PORT.get() {
         return Ok(*port);
     }
@@ -1911,11 +2184,14 @@ fn custom_background_server_port(root: std::path::PathBuf) -> Result<u16, String
         .local_addr()
         .map_err(|error| format!("Cannot read local background media port: {error}"))?
         .port();
+    let access_token = custom_background_server_token()?.to_string();
     std::thread::Builder::new()
         .name("toolknit-background-media".to_string())
         .spawn(move || {
             for stream in listener.incoming().flatten() {
-                if let Err(error) = serve_custom_background_connection(stream, &root) {
+                if let Err(error) =
+                    serve_custom_background_connection(stream, &root, &access_token)
+                {
                     log::debug!("Custom background media request failed: {error}");
                 }
             }
@@ -1943,8 +2219,9 @@ fn get_custom_background_media_url(app: tauri::AppHandle, path: String) -> Resul
         .filter(|name| name.starts_with("background-"))
         .ok_or("Invalid imported background file")?;
     let port = custom_background_server_port(root)?;
+    let access_token = custom_background_server_token()?;
     Ok(format!(
-        "http://127.0.0.1:{port}/custom-background/{filename}"
+        "http://127.0.0.1:{port}/custom-background/{access_token}/{filename}"
     ))
 }
 
@@ -1992,11 +2269,24 @@ mod custom_background_media_tests {
         let background = root.join("background-test.mp4");
         std::fs::write(&background, b"0123456789").unwrap();
         let port = custom_background_server_port(root.clone()).unwrap();
+        let mut unauthorized = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        unauthorized
+            .write_all(
+                b"GET /custom-background/wrong/background-test.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            )
+            .unwrap();
+        let mut unauthorized_response = Vec::new();
+        unauthorized.read_to_end(&mut unauthorized_response).unwrap();
+        assert!(String::from_utf8(unauthorized_response)
+            .unwrap()
+            .starts_with("HTTP/1.1 404 Not Found"));
+
+        let access_token = custom_background_server_token().unwrap();
         let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
         client
-            .write_all(
-                b"GET /custom-background/background-test.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nRange: bytes=2-5\r\n\r\n",
-            )
+            .write_all(format!(
+                "GET /custom-background/{access_token}/background-test.mp4 HTTP/1.1\r\nHost: 127.0.0.1\r\nRange: bytes=2-5\r\n\r\n"
+            ).as_bytes())
             .unwrap();
         let mut response = Vec::new();
         client.read_to_end(&mut response).unwrap();
@@ -2563,7 +2853,7 @@ async fn download_ffmpeg_runtime(
         .to_ascii_lowercase();
     let candidates = ffmpeg_download_candidates(&requested)?;
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/1.3 ffmpeg-runtime-manager")
+        .user_agent("ToolKnit/2.3.1 ffmpeg-runtime-manager")
         .connect_timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(|error| format!("Cannot initialize FFmpeg download: {}", error))?;
@@ -3059,7 +3349,7 @@ async fn download_libreoffice_runtime(
         .to_ascii_lowercase();
     let candidates = libreoffice_download_candidates(&requested)?;
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/2.0 libreoffice-runtime-manager")
+        .user_agent("ToolKnit/2.3.1 libreoffice-runtime-manager")
         .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|error| format!("Cannot initialize PPT runtime download: {}", error))?;
@@ -3752,7 +4042,7 @@ async fn download_transcription_model(
 
     let partial = target.with_extension("bin.part");
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/1.3 offline-model-manager")
+        .user_agent("ToolKnit/2.3.1 offline-model-manager")
         .build()
         .map_err(|error| format!("Cannot initialize model download: {}", error))?;
     let requested_source = source
@@ -3827,10 +4117,16 @@ async fn download_transcription_model(
             }
             match response.chunk().await {
                 Ok(Some(chunk)) => {
+                    let next_downloaded = downloaded.saturating_add(chunk.len() as u64);
+                    if next_downloaded > model.bytes {
+                        break Some(
+                            "Downloaded model is larger than the expected package".to_string(),
+                        );
+                    }
                     output
                         .write_all(&chunk)
                         .map_err(|error| format!("Cannot write model download: {}", error))?;
-                    downloaded = downloaded.saturating_add(chunk.len() as u64);
+                    downloaded = next_downloaded;
                     let _ = app_handle.emit(
                         "transcription-model-download-progress",
                         ModelDownloadProgress {
@@ -13960,7 +14256,7 @@ if ($script:__tkProviderMap -and $script:__tkProviderMap.Count -gt 0) {
 }
 "#;
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", debug_assertions))]
 fn append_hardware_debug(line: &str) {
     use std::io::Write;
     let stamp = std::time::SystemTime::now()
@@ -13976,6 +14272,9 @@ fn append_hardware_debug(line: &str) {
         let _ = writeln!(file, "[{}] {}", stamp, line);
     }
 }
+
+#[cfg(any(not(target_os = "windows"), not(debug_assertions)))]
+fn append_hardware_debug(_line: &str) {}
 
 #[cfg(target_os = "windows")]
 fn run_windows_powershell_json(script: &str, context: &str) -> Result<serde_json::Value, String> {
@@ -17779,20 +18078,34 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
     open_path(path)
 }
 
-#[tauri::command]
-fn open_path(path: String) -> Result<(), String> {
+fn resolve_open_folder(path: &str) -> Result<std::path::PathBuf, String> {
     if path.contains('\0') {
         return Err("Invalid path".to_string());
     }
     let requested = std::path::PathBuf::from(path);
-    let target = match std::fs::metadata(&requested) {
-        Ok(metadata) if metadata.is_file() => requested
+    if !requested.is_absolute() {
+        return Err("Path must be absolute".to_string());
+    }
+    let canonical = requested
+        .canonicalize()
+        .map_err(|_| "Path does not exist".to_string())?;
+    let metadata = std::fs::metadata(&canonical).map_err(|_| "Path is unavailable".to_string())?;
+    let target = if metadata.is_file() {
+        canonical
             .parent()
             .map(|parent| parent.to_path_buf())
-            .unwrap_or_else(|| std::path::PathBuf::from(".")),
-        _ => requested,
+            .ok_or_else(|| "File has no parent folder".to_string())?
+    } else if metadata.is_dir() {
+        canonical
+    } else {
+        return Err("Path must be a file or folder".to_string());
     };
-    let target = target.to_string_lossy().into_owned();
+    Ok(target)
+}
+
+#[tauri::command]
+fn open_path(path: String) -> Result<(), String> {
+    let target = resolve_open_folder(&path)?;
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -17834,6 +18147,59 @@ fn open_recycle_bin() -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     {
         Err("Opening the Recycle Bin is currently available on Windows only.".to_string())
+    }
+}
+
+#[cfg(test)]
+mod external_open_security_tests {
+    use super::*;
+
+    #[test]
+    fn external_urls_require_web_protocol_host_and_no_credentials() {
+        assert!(validate_external_url("https://toolknit.com/changelog.html").is_ok());
+        assert!(validate_external_url("http://127.0.0.1:1420/").is_ok());
+        assert!(validate_external_url("file:///C:/Windows/System32/calc.exe").is_err());
+        assert!(validate_external_url("https://user:secret@example.com/").is_err());
+        assert!(validate_external_url("javascript:alert(1)").is_err());
+        assert!(validate_external_url("https://example.com/\nnext").is_err());
+    }
+
+    #[test]
+    fn webviews_can_only_navigate_within_the_packaged_application() {
+        assert!(allow_webview_navigation(
+            &url::Url::parse("tauri://localhost/index.html").unwrap()
+        ));
+        assert!(allow_webview_navigation(
+            &url::Url::parse("http://tauri.localhost/index.html?screen-picker=1").unwrap()
+        ));
+        assert!(!allow_webview_navigation(
+            &url::Url::parse("https://toolknit.com/").unwrap()
+        ));
+        assert!(!allow_webview_navigation(
+            &url::Url::parse("data:text/html,external").unwrap()
+        ));
+    }
+
+    #[test]
+    fn open_folder_resolution_requires_an_existing_absolute_path() {
+        let root = std::env::temp_dir().join(format!(
+            "toolknit-open-folder-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("result.pdf");
+        std::fs::write(&file, b"test").unwrap();
+
+        assert_eq!(resolve_open_folder(root.to_str().unwrap()).unwrap(), root.canonicalize().unwrap());
+        assert_eq!(resolve_open_folder(file.to_str().unwrap()).unwrap(), root.canonicalize().unwrap());
+        assert!(resolve_open_folder("relative-output").is_err());
+        assert!(resolve_open_folder(root.join("missing").to_str().unwrap()).is_err());
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -17947,6 +18313,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_url,
             request_private_ai_completion,
+            store_ai_api_key,
+            load_ai_api_key,
+            clear_ai_api_key,
             set_window_corner_radius,
             get_documents_dir,
             get_download_dir,
@@ -18070,6 +18439,11 @@ pub fn run() {
             system_cleanup::system_cleanup_run,
         ])
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
+                .on_navigation(|_webview, url| allow_webview_navigation(url))
+                .build(),
+        )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main_window(app);

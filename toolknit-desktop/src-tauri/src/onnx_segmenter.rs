@@ -28,27 +28,6 @@ const MAX_SOURCE_PIXELS: u64 = 120_000_000;
 const MAX_EXPORT_PIXELS: u64 = 80_000_000;
 const MAX_MASK_BYTES: usize = 64 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum ChannelNormalization {
-    HalfRange,
-    ImageNet,
-}
-
-impl ChannelNormalization {
-    fn mean_std(self) -> ([f32; 3], [f32; 3]) {
-        match self {
-            Self::HalfRange => ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-            Self::ImageNet => ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum MaskActivation {
-    Clamp01,
-    Sigmoid,
-}
-
 pub struct MattingModelSpec {
     pub id: &'static str,
     pub file_name: &'static str,
@@ -57,45 +36,17 @@ pub struct MattingModelSpec {
     pub sha256: &'static str,
     pub input_size: u32,
     pub note: &'static str,
-    normalization: ChannelNormalization,
-    mask_activation: MaskActivation,
 }
 
-pub const MATTING_MODELS: [MattingModelSpec; 3] = [
-    MattingModelSpec {
-        id: "modnet",
-        file_name: "modnet.onnx",
-        display_name: "MODNet 人像精修",
-        bytes: 25_888_640,
-        sha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
-        input_size: 512,
-        note: "轻量人像专用，适合证件照",
-        normalization: ChannelNormalization::HalfRange,
-        mask_activation: MaskActivation::Clamp01,
-    },
-    MattingModelSpec {
-        id: "isnet",
-        file_name: "isnet.onnx",
-        display_name: "ISNet 通用高精度",
-        bytes: 178_648_008,
-        sha256: "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a",
-        input_size: 1024,
-        note: "推荐：发丝级边缘，通用场景",
-        normalization: ChannelNormalization::HalfRange,
-        mask_activation: MaskActivation::Sigmoid,
-    },
-    MattingModelSpec {
-        id: "u2net",
-        file_name: "u2net.onnx",
-        display_name: "U2Net 快速",
-        bytes: 175_997_641,
-        sha256: "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
-        input_size: 320,
-        note: "极速预览档",
-        normalization: ChannelNormalization::ImageNet,
-        mask_activation: MaskActivation::Clamp01,
-    },
-];
+pub const MATTING_MODELS: [MattingModelSpec; 1] = [MattingModelSpec {
+    id: "modnet",
+    file_name: "modnet.onnx",
+    display_name: "MODNet 人像精修",
+    bytes: 25_888_640,
+    sha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+    input_size: 512,
+    note: "轻量人像专用，适合证件照",
+}];
 
 #[derive(serde::Serialize, Clone)]
 pub struct MattingModelStatus {
@@ -154,12 +105,15 @@ fn cancelled_segmentations() -> &'static Mutex<HashSet<u64>> {
 struct MattingDownloadGuard;
 
 impl MattingDownloadGuard {
-    fn begin() -> Result<Self, String> {
-        MATTING_DOWNLOAD_IN_PROGRESS
+    fn begin() -> Option<Self> {
+        let acquired = MATTING_DOWNLOAD_IN_PROGRESS
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .map_err(|_| "matting:download-busy".to_string())?;
+            .is_ok();
+        if !acquired {
+            return None;
+        }
         MATTING_DOWNLOAD_CANCEL.store(false, Ordering::SeqCst);
-        Ok(MattingDownloadGuard)
+        Some(MattingDownloadGuard)
     }
 }
 
@@ -392,31 +346,23 @@ fn preprocess(image: &image::DynamicImage, spec: &MattingModelSpec) -> (Array4<f
     image::imageops::replace(&mut rgb, &resized, letterbox.x.into(), letterbox.y.into());
     let mut input =
         Array4::<f32>::zeros((1, 3, spec.input_size as usize, spec.input_size as usize));
-    let (mean, std) = spec.normalization.mean_std();
     for (x, y, pixel) in rgb.enumerate_pixels() {
         for channel in 0..3 {
             input[[0, channel, y as usize, x as usize]] =
-                (pixel.0[channel] as f32 / 255.0 - mean[channel]) / std[channel];
+                (pixel.0[channel] as f32 / 255.0 - 0.5) / 0.5;
         }
     }
     (input, letterbox)
 }
 
-fn activate_mask_value(value: f32, activation: MaskActivation) -> f32 {
+fn activate_mask_value(value: f32) -> f32 {
     if !value.is_finite() {
         return 0.0;
     }
-    match activation {
-        MaskActivation::Clamp01 => value.clamp(0.0, 1.0),
-        MaskActivation::Sigmoid => 1.0 / (1.0 + (-value.clamp(-30.0, 30.0)).exp()),
-    }
+    value.clamp(0.0, 1.0)
 }
 
-fn decode_mask(
-    data: &[f32],
-    dims: &[i64],
-    activation: MaskActivation,
-) -> Result<image::GrayImage, String> {
+fn decode_mask(data: &[f32], dims: &[i64]) -> Result<image::GrayImage, String> {
     let (mask_width, mask_height) = match dims.len() {
         4 => (dims[3].max(1) as u32, dims[2].max(1) as u32),
         3 => (dims[2].max(1) as u32, dims[1].max(1) as u32),
@@ -429,7 +375,7 @@ fn decode_mask(
     }
     let mut mask = image::GrayImage::new(mask_width, mask_height);
     for (index, pixel) in mask.pixels_mut().enumerate() {
-        pixel.0[0] = (activate_mask_value(data[index], activation) * 255.0).round() as u8;
+        pixel.0[0] = (activate_mask_value(data[index]) * 255.0).round() as u8;
     }
     Ok(mask)
 }
@@ -492,7 +438,7 @@ fn run_segmentation(
             output_name
         );
     }
-    let mask = decode_mask(data, &dims, spec.mask_activation)?;
+    let mask = decode_mask(data, &dims)?;
     let alpha = restore_letterboxed_mask(&mask, letterbox, output_size);
     let mut matte = source_image
         .resize_exact(
@@ -589,7 +535,24 @@ pub async fn download_matting_model(
     use std::io::Write;
 
     let spec = matting_model_spec(&model_id)?;
-    let _download_guard = MattingDownloadGuard::begin()?;
+    let Some(_download_guard) = MattingDownloadGuard::begin() else {
+        while MATTING_DOWNLOAD_IN_PROGRESS.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        }
+        if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".to_string());
+        }
+        let existing = installed_matting_model_file(spec)?
+            .ok_or("matting:download-failed:shared-task".to_string())?;
+        write_matting_model_config(&MattingModelConfig {
+            current_model: Some(spec.id.to_string()),
+        })?;
+        return Ok(MattingModelDownloadResult {
+            model_id: spec.id.to_string(),
+            path: existing.to_string_lossy().into_owned(),
+            current: true,
+        });
+    };
     let target = matting_models_dir()?.join(spec.file_name);
     std::fs::create_dir_all(matting_models_dir()?)
         .map_err(|error| format!("Cannot create model directory: {error}"))?;
@@ -607,7 +570,7 @@ pub async fn download_matting_model(
 
     let partial = target.with_extension("onnx.part");
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/2.3 matting-model-manager")
+        .user_agent("ToolKnit/2.3.1 matting-model-manager")
         .build()
         .map_err(|error| format!("matting:download-init-failed:{error}"))?;
     let requested = source.unwrap_or_else(|| "auto".to_string());
@@ -627,7 +590,7 @@ pub async fn download_matting_model(
             let _ = std::fs::remove_file(&partial);
             resume_from = 0;
         }
-        let url = matting_model_source(spec, Some(candidate))?;
+        let url = matting_model_source(Some(candidate))?;
         let mut request = client.get(url);
         if resume_from > 0 {
             request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
@@ -655,15 +618,22 @@ pub async fn download_matting_model(
         };
         let mut downloaded = if append { resume_from } else { 0 };
         let mut last_report = Instant::now();
+        let mut stream_failed = false;
         loop {
             if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
                 return Err("dependency-download:cancelled".to_string());
             }
             match response.chunk().await {
                 Ok(Some(chunk)) => {
+                    let next_downloaded = downloaded.saturating_add(chunk.len() as u64);
+                    if next_downloaded > spec.bytes {
+                        last_error = "matting:download-too-large".to_string();
+                        stream_failed = true;
+                        break;
+                    }
                     file.write_all(&chunk)
                         .map_err(|error| format!("matting:partial-write-failed:{error}"))?;
-                    downloaded += chunk.len() as u64;
+                    downloaded = next_downloaded;
                     if last_report.elapsed().as_millis() > 120 {
                         last_report = Instant::now();
                         let _ = app_handle.emit(
@@ -684,12 +654,16 @@ pub async fn download_matting_model(
                 Ok(None) => break,
                 Err(error) => {
                     last_error = format!("matting:download-stream:{error}");
+                    stream_failed = true;
                     break;
                 }
             }
         }
         let _ = file.flush();
-        if downloaded >= spec.bytes {
+        if stream_failed {
+            continue;
+        }
+        if downloaded == spec.bytes {
             break;
         }
     }
@@ -723,23 +697,12 @@ pub async fn download_matting_model(
     })
 }
 
-fn matting_model_source(spec: &MattingModelSpec, source: Option<&str>) -> Result<String, String> {
+fn matting_model_source(source: Option<&str>) -> Result<String, String> {
     let source = source.unwrap_or("auto").trim().to_ascii_lowercase();
-    let url = match (spec.id, source.as_str()) {
-        ("modnet", "official") | ("modnet", "auto") => {
-            "https://huggingface.co/Xenova/modnet/resolve/main/onnx/model.onnx"
-        }
-        ("modnet", "china") => "https://hf-mirror.com/Xenova/modnet/resolve/main/onnx/model.onnx",
-        ("u2net", "china") => {
-            "https://hf-mirror.com/Xenova/u2net/resolve/main/onnx/model_u2net.onnx"
-        }
-        ("isnet", "china") => {
-            "https://hf-mirror.com/Xenova/isnet-general-use/resolve/main/onnx/model.onnx"
-        }
-        (_, "official") | (_, "auto") => {
-            return Err(format!("matting:no-official-source:{}", spec.id))
-        }
-        (_, _) => return Err("matting:unknown-source".to_string()),
+    let url = match source.as_str() {
+        "official" | "auto" => "https://huggingface.co/Xenova/modnet/resolve/main/onnx/model.onnx",
+        "china" => "https://hf-mirror.com/Xenova/modnet/resolve/main/onnx/model.onnx",
+        _ => return Err("matting:unknown-source".to_string()),
     };
     Ok(url.to_string())
 }
@@ -1027,33 +990,17 @@ mod matting_tests {
         assert_eq!(tall.y, 0);
 
         let modnet = matting_model_spec("modnet").expect("modnet spec");
-        let u2net = matting_model_spec("u2net").expect("u2net spec");
-        assert_eq!(modnet.normalization, ChannelNormalization::HalfRange);
-        assert_eq!(u2net.normalization, ChannelNormalization::ImageNet);
+        assert_eq!(MATTING_MODELS.len(), 1);
+        assert_eq!(modnet.id, "modnet");
+        assert!(matting_model_spec("isnet").is_err());
+        assert!(matting_model_spec("u2net").is_err());
     }
 
     #[test]
-    fn mask_decoding_uses_model_activation_without_image_min_max() {
-        let clamped = decode_mask(
-            &[-1.0, 0.25, 0.75, 2.0],
-            &[1, 1, 2, 2],
-            MaskActivation::Clamp01,
-        )
-        .expect("clamped mask");
+    fn mask_decoding_clamps_values_without_image_min_max() {
+        let clamped = decode_mask(&[-1.0, 0.25, 0.75, 2.0], &[1, 1, 2, 2]).expect("clamped mask");
         let values: Vec<u8> = clamped.pixels().map(|pixel| pixel.0[0]).collect();
         assert_eq!(values, vec![0, 64, 191, 255]);
-
-        let sigmoid = decode_mask(
-            &[-10.0, 0.0, 2.0, 10.0],
-            &[1, 1, 2, 2],
-            MaskActivation::Sigmoid,
-        )
-        .expect("sigmoid mask");
-        let values: Vec<u8> = sigmoid.pixels().map(|pixel| pixel.0[0]).collect();
-        assert!(values[0] < 2);
-        assert_eq!(values[1], 128);
-        assert!(values[2] > 220);
-        assert!(values[3] > 253);
     }
 
     #[test]

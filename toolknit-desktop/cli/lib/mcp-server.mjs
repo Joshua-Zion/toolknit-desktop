@@ -1,8 +1,10 @@
 import { errorPayload, ToolKnitError } from './errors.mjs';
 import { executeTool, listTools } from './tool-registry.mjs';
 
-const SERVER_INFO = Object.freeze({ name: 'toolknit', version: '2.3.0' });
+const SERVER_INFO = Object.freeze({ name: 'toolknit', version: '2.3.1' });
 const SUPPORTED_PROTOCOLS = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);
+const MAX_MCP_MESSAGE_BYTES = 8 * 1024 * 1024;
+const MAX_ACTIVE_TOOL_CALLS = 4;
 
 function response(id, result) {
   return { jsonrpc: '2.0', id, result };
@@ -21,7 +23,7 @@ function toolErrorResult(error) {
   };
 }
 
-export function startMcpServer({ input = process.stdin, output = process.stdout } = {}) {
+export function startMcpServer({ input = process.stdin, output = process.stdout, execute = executeTool, list = listTools } = {}) {
   let buffer = '';
   let initialized = false;
   const activeCalls = new Map();
@@ -33,6 +35,10 @@ export function startMcpServer({ input = process.stdin, output = process.stdout 
       return;
     }
     const hasId = Object.prototype.hasOwnProperty.call(message, 'id');
+    if (hasId && message.id !== null && typeof message.id !== 'string' && typeof message.id !== 'number') {
+      write(rpcError(null, -32600, 'JSON-RPC id must be a string, number, or null.'));
+      return;
+    }
     try {
       if (message.method === 'initialize') {
         const requested = message.params?.protocolVersion;
@@ -69,11 +75,19 @@ export function startMcpServer({ input = process.stdin, output = process.stdout 
         return;
       }
       if (message.method === 'tools/list') {
-        if (hasId) write(response(message.id, { tools: listTools() }));
+        if (hasId) write(response(message.id, { tools: list() }));
         return;
       }
       if (message.method === 'tools/call') {
         if (!hasId) return;
+        if (activeCalls.has(message.id)) {
+          write(rpcError(message.id, -32600, 'A tool call with this request id is already active.'));
+          return;
+        }
+        if (activeCalls.size >= MAX_ACTIVE_TOOL_CALLS) {
+          write(rpcError(message.id, -32000, 'Too many ToolKnit tool calls are active.'));
+          return;
+        }
         const name = message.params?.name;
         const progressToken = message.params?._meta?.progressToken;
         const controller = new AbortController();
@@ -88,7 +102,7 @@ export function startMcpServer({ input = process.stdin, output = process.stdout 
         };
         try {
           reportProgress(0, 'ToolKnit started processing the requested files.');
-          const result = await executeTool(name, message.params?.arguments ?? {}, {
+          const result = await execute(name, message.params?.arguments ?? {}, {
             reportProgress,
             signal: controller.signal
           });
@@ -117,8 +131,13 @@ export function startMcpServer({ input = process.stdin, output = process.stdout 
     buffer += chunk;
     let lineEnd;
     while ((lineEnd = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, lineEnd).trim();
+      const rawLine = buffer.slice(0, lineEnd);
       buffer = buffer.slice(lineEnd + 1);
+      if (Buffer.byteLength(rawLine, 'utf8') > MAX_MCP_MESSAGE_BYTES) {
+        write(rpcError(null, -32700, 'MCP message exceeds the 8 MB limit.'));
+        continue;
+      }
+      const line = rawLine.trim();
       if (!line) continue;
       let message;
       try {
@@ -128,6 +147,10 @@ export function startMcpServer({ input = process.stdin, output = process.stdout 
         continue;
       }
       void handle(message);
+    }
+    if (Buffer.byteLength(buffer, 'utf8') > MAX_MCP_MESSAGE_BYTES) {
+      buffer = '';
+      write(rpcError(null, -32700, 'MCP message exceeds the 8 MB limit.'));
     }
   });
 }

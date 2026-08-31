@@ -2,6 +2,9 @@
   "app": {
     "title": "ToolKnit 桌面版"
   },
+  "common": {
+    "openLinkFailed": "无法打开链接，请稍后重试。"
+  },
   "nav": {
     "home": "首页",
     "pdfTools": "PDF 工具",
@@ -3728,7 +3731,7 @@
     "screenPickerShortcutInvalid": "快捷键无效，请至少包含一个修饰键和一个字母或数字键。",
     "screenPickerShortcutResetDone": "已恢复默认快捷键。",
     "mattingManagerTitle": "抠图模型管理",
-    "mattingManagerHint": "抠图模型供背景移除与证件照工具使用，可独立下载、切换或删除。",
+    "mattingManagerHint": "MODNet 模型供背景移除与证件照工具使用，可按需下载或删除。",
     "mattingCurrent": "当前使用",
     "mattingInstalled": "已安装",
     "mattingMissing": "未安装",
@@ -3740,9 +3743,10 @@
     "mattingDownloading": "下载中 {percent}%",
     "mattingManage": "管理模型",
     "mattingEyebrow": "抠图模型",
-    "mattingModelIntro": "模型按需下载至本机，仅在本机运行；下载源可切换为官方或国内镜像。",
+    "mattingModelIntro": "MODNet 按需下载至本机，仅在本机运行；下载源可选择官方或国内镜像。",
     "mattingStatusCurrent": "当前使用：{name}",
-    "mattingStatusNone": "未安装模型"
+    "mattingStatusNone": "未安装模型",
+    "mattingActionFailed": "抠图模型操作失败，请稍后重试。"
   },
   "legal": {
     "title": "法律声明",
@@ -3937,7 +3941,7 @@
   },
   "apiKey": {
     "title": "AI 平台密钥",
-    "hint": "用于 AI 功能。密钥仅保存在本地，不会上传服务器。",
+    "hint": "用于 AI 功能。密钥由 Windows 当前用户加密保存在本机，不会上传 ToolKnit 服务器。",
     "platform": "AI 平台",
     "custom": "自定义",
     "customUrl": "API 地址",
@@ -3952,6 +3956,7 @@
     "errCustom": "请填写 API 地址和模型名称",
     "errInvalidUrl": "API 地址格式无效",
     "errPrivateHttp": "请先开启“允许私网 HTTP”",
-    "errInsecureHttp": "HTTP 仅支持 localhost 或私网 IP 地址"
+    "errInsecureHttp": "HTTP 仅支持 localhost 或私网 IP 地址",
+    "errStorage": "无法安全保存密钥，请重试"
   }
 }

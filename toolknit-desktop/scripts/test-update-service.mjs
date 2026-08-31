@@ -31,16 +31,17 @@ let apiCalls = 0;
 const fetchImpl = async url => {
   apiCalls += 1;
   if (url.includes('raw.githubusercontent.com')) return { ok: false, status: 404, text: async () => '' };
+  const payload = {
+    tag_name: 'v2.2.0',
+    name: 'ToolKnit Desktop v2.2.0',
+    body: '## Highlights\n- A new update flow.',
+    published_at: '2026-08-25T00:00:00Z',
+    html_url: 'https://github.com/ZihangDong/toolknit-desktop/releases/tag/v2.2.0'
+  };
   return {
     ok: true,
     status: 200,
-    json: async () => ({
-      tag_name: 'v2.2.0',
-      name: 'ToolKnit Desktop v2.2.0',
-      body: '## Highlights\n- A new update flow.',
-      published_at: '2026-08-25T00:00:00Z',
-      html_url: 'https://github.com/ZihangDong/toolknit-desktop/releases/tag/v2.2.0'
-    })
+    text: async () => JSON.stringify(payload)
   };
 };
 const service = createUpdateService({

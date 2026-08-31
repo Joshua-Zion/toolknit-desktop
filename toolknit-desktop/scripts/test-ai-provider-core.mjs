@@ -133,6 +133,32 @@ await assert.rejects(
 );
 assert.equal(oversizedTextRead, false);
 
+let streamedBytesRead = 0;
+let streamedResponseCancelled = false;
+await assert.rejects(
+  requestAiCompletion({
+    ...request,
+    fetchImpl: async () => ({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => { throw new Error('streaming response must not use text()'); },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            streamedBytesRead += 1024 * 1024;
+            return { done: false, value: new Uint8Array(1024 * 1024) };
+          },
+          cancel: async () => { streamedResponseCancelled = true; },
+          releaseLock: () => {}
+        })
+      }
+    })
+  }),
+  error => error instanceof AiProviderError && error.code === 'response_too_large'
+);
+assert.equal(streamedBytesRead, 3 * 1024 * 1024);
+assert.equal(streamedResponseCancelled, true);
+
 const unicodeOversizedResponse = JSON.stringify({
   choices: [{ message: { content: '\u4e2d'.repeat(Math.ceil(AI_PROVIDER_LIMITS.maxResponseBytes / 3)) } }]
 });

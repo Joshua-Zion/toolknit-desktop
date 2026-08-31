@@ -150,6 +150,15 @@ for (const [label, actual] of manifestVersions) {
   assert.equal(actual, fullVersion, `${label} must match package.json version`);
 }
 
+const mainWindowConfig = tauriConfig.app?.windows?.find(windowConfig => windowConfig.label === 'main');
+assert.ok(mainWindowConfig, 'Tauri config must define the main window');
+assert.equal(mainWindowConfig.devtools, false, 'release window configuration must disable DevTools');
+assert.doesNotMatch(
+  tomlSection(cargoManifest, 'dependencies'),
+  /^tauri\s*=.*\bdevtools\b.*$/m,
+  'the Tauri release dependency must not enable the devtools feature'
+);
+
 const runtimeVersions = new Map([
   ['CLI VERSION', captureExactlyOnce(cliEntry, /const VERSION\s*=\s*'([^']+)'/, 'CLI VERSION')],
   ['MCP SERVER_INFO version', captureExactlyOnce(mcpServer, /const SERVER_INFO\s*=\s*Object\.freeze\(\{[^}]*\bversion:\s*'([^']+)'[^}]*\}\)/, 'MCP SERVER_INFO version')],

@@ -2,6 +2,9 @@
   "app": {
     "title": "ToolKnit Desktop"
   },
+  "common": {
+    "openLinkFailed": "The link could not be opened. Please try again later."
+  },
   "nav": {
     "home": "Home",
     "pdfTools": "PDF Tools",
@@ -3728,7 +3731,7 @@
     "screenPickerShortcutInvalid": "Invalid shortcut. Include at least one modifier plus a letter or number key.",
     "screenPickerShortcutResetDone": "Default shortcut restored.",
     "mattingManagerTitle": "Matting Models",
-    "mattingManagerHint": "Matting models power background removal and the ID photo tool. Download, switch, or delete them independently.",
+    "mattingManagerHint": "MODNet powers background removal and the ID photo tool. Download or remove it on demand.",
     "mattingCurrent": "installed",
     "mattingInstalled": "installed",
     "mattingMissing": "not installed",
@@ -3740,9 +3743,10 @@
     "mattingDownloading": "Downloading {percent}%",
     "mattingManage": "Manage Models",
     "mattingEyebrow": "Matting Models",
-    "mattingModelIntro": "Models download on demand and run locally. The download source can be switched between official and China mirror.",
+    "mattingModelIntro": "MODNet downloads on demand and runs locally. Choose the official source or China mirror.",
     "mattingStatusCurrent": "Current: {name}",
-    "mattingStatusNone": "No model installed"
+    "mattingStatusNone": "No model installed",
+    "mattingActionFailed": "The matting model action failed. Please try again."
   },
   "legal": {
     "title": "Legal Notice",
@@ -3937,7 +3941,7 @@
   },
   "apiKey": {
     "title": "AI Platform Key",
-    "hint": "Used for AI features. Key is stored locally only, never uploaded.",
+    "hint": "Used for AI features. The key is encrypted for the current Windows user, stored locally, and never sent to ToolKnit servers.",
     "platform": "AI Platform",
     "custom": "Custom",
     "customUrl": "API URL",
@@ -3952,6 +3956,7 @@
     "errCustom": "Please fill in API URL and model name",
     "errInvalidUrl": "The API URL is invalid",
     "errPrivateHttp": "Enable Allow private-network HTTP first",
-    "errInsecureHttp": "HTTP supports only localhost or private IP addresses"
+    "errInsecureHttp": "HTTP supports only localhost or private IP addresses",
+    "errStorage": "Could not store the key securely. Please retry."
   }
 }

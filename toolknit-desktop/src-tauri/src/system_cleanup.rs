@@ -61,10 +61,20 @@ struct PathRule {
     age_secs: Option<u64>,
 }
 
+fn normalize_system_drive(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let bytes = trimmed.as_bytes();
+    if bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        Some(format!("{}:", (bytes[0] as char).to_ascii_uppercase()))
+    } else {
+        None
+    }
+}
+
 fn system_drive() -> String {
     std::env::var("SystemDrive")
         .ok()
-        .filter(|value| !value.trim().is_empty())
+        .and_then(|value| normalize_system_drive(&value))
         .unwrap_or_else(|| "C:".to_string())
 }
 
@@ -803,6 +813,15 @@ mod tests {
         assert_eq!(normalize_tier("MEDIUM").unwrap(), "medium");
         assert_eq!(normalize_tier("high").unwrap(), "high");
         assert!(normalize_tier("bogus").is_err());
+    }
+
+    #[test]
+    fn system_drive_accepts_only_a_drive_letter_and_colon() {
+        assert_eq!(normalize_system_drive("c:"), Some("C:".to_string()));
+        assert_eq!(normalize_system_drive(" D: "), Some("D:".to_string()));
+        assert_eq!(normalize_system_drive("C:\\"), None);
+        assert_eq!(normalize_system_drive("C:; whoami"), None);
+        assert_eq!(normalize_system_drive("$env:SystemDrive"), None);
     }
 
     #[test]
