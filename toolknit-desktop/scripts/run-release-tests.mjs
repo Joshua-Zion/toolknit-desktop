@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const releaseTests = [
+  'test:security-release',
   'test:release-version',
   'test:update-service',
   'test:window-radius',

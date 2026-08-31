@@ -110,7 +110,7 @@ export async function installTranscriptionModel({ model_id, source = 'auto' }, o
       let start = 0;
       try { start = (await stat(partial)).size; } catch {}
       if (start > model.bytes) { await rm(partial, { force: true }); start = 0; }
-      const headers = { 'User-Agent': 'ToolKnit/1.3 offline-model-manager' };
+      const headers = { 'User-Agent': 'ToolKnit/2.3.1 offline-model-manager' };
       if (start > 0) headers.Range = `bytes=${start}-`;
       const response = await fetch(sourceUrl(model, candidate), { headers, redirect: 'follow', signal: options.signal });
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
@@ -121,8 +121,12 @@ export async function installTranscriptionModel({ model_id, source = 'auto' }, o
       report(options, 0, `Downloading ${model.display_name} model.`);
       for await (const chunk of response.body) {
         throwIfAborted(options.signal);
+        const nextDownloaded = downloaded + chunk.length;
+        if (!Number.isSafeInteger(nextDownloaded) || nextDownloaded > model.bytes) {
+          throw new Error('Downloaded file is larger than the expected model package.');
+        }
         if (!stream.write(chunk)) await new Promise(resolve => stream.once('drain', resolve));
-        downloaded += chunk.length;
+        downloaded = nextDownloaded;
         report(options, Math.min(94, downloaded / model.bytes * 94), `Downloading ${model.display_name}: ${Math.floor(downloaded / 1024 / 1024)} MB / ${Math.ceil(model.bytes / 1024 / 1024)} MB`);
       }
       stream.end(); await finished(stream);

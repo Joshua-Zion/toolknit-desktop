@@ -18,7 +18,7 @@
 
 <p>
   <a href="README.md"><img src="https://img.shields.io/badge/Language-Simplified%20Chinese-475569?style=for-the-badge&labelColor=334155" alt="Simplified Chinese README" /></a>
-  <img src="https://img.shields.io/badge/2.3.0-Current%20release-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.0 current release" />
+  <img src="https://img.shields.io/badge/2.3.1-Current%20release-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.1 current release" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-Files%20stay%20local-0f766e?style=for-the-badge" alt="Local-first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -46,7 +46,7 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>Use the desktop app</strong></p>
       <p>A local-first Windows app for long-running file work, offline processing, and visual editing.</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>View desktop downloads</strong></a></p>
-      <sub>The 2.3.0 installer, SHA-256 checksum, and release notes are published through GitHub Releases.</sub>
+      <sub>The 2.3.1 installer, SHA-256 checksum, and release notes are published through GitHub Releases.</sub>
     </td>
   </tr>
 </table>
@@ -80,7 +80,7 @@ V2.3 adds five desktop tools and strengthens update handling, dependency downloa
 
 The release also hardens real-world Windows behavior: idle-time GitHub Release checks can be deferred without uploading usage data; the installer carries the WebView2 bootstrapper; dependency downloads, installation-stage messaging, and administrator relaunch are more reliable; tool navigation, export dialogs, and rounded-corner rendering are consistent; and a compatible PDF.js build fixes PDF loading on older WebView2 runtimes.
 
-The desktop app, Tauri bundle, Rust crate, and `@toolknit/cli` share version `2.3.0`. Release checks cover the 65-tool desktop help map, 46 MCP capabilities, frontend regressions, and Rust tests.
+The desktop app, Tauri bundle, Rust crate, and `@toolknit/cli` share version `2.3.1`. Release checks cover the 65-tool desktop help map, 46 MCP capabilities, frontend regressions, Rust tests, and release security checks.
 
 ### Foundation from the 2.1 series
 
@@ -380,9 +380,9 @@ Open [ToolKnit.com](https://toolknit.com) to start using the web tools without i
 
 ### Install the Windows desktop app
 
-Get the 2.3.0 installer, release notes, and matching `.sha256` file from [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases). Download only from this repository's Release page and verify the SHA-256 checksum before running the installer.
+Get the 2.3.1 installer, release notes, and matching `.sha256` file from [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases). Download only from this repository's Release page and verify the SHA-256 checksum before running the installer.
 
-**Code-signing status:** Version 2.3.0 is not yet Authenticode-signed, so Windows may display an “Unknown publisher” or SmartScreen prompt. Confirm the download source and SHA-256 checksum before continuing. Future signed releases will follow the [code-signing policy](CODE_SIGNING_POLICY.md).
+**Code-signing status:** Version 2.3.1 is not yet Authenticode-signed, so Windows may display an “Unknown publisher” or SmartScreen prompt. Confirm the download source and SHA-256 checksum before continuing. Future signed releases will follow the [code-signing policy](CODE_SIGNING_POLICY.md).
 
 ### Run from source
 

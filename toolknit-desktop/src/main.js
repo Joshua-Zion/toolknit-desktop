@@ -6,6 +6,7 @@
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
       import { initUpdatePreview } from './update-preview.js';
       import { compareVersions, createUpdateService, UPDATE_RELEASES_PAGE } from './update-service.js';
+      import { readResponseTextLimited } from './bounded-response.js';
       import typingWordsData from './data/typing-words.json';
       import { HELP_CONTENT, getHelpContent } from './help-data.js';
       import { SUPPORT_JOURNAL_ENTRIES } from './support-journal-data.js';
@@ -229,6 +230,72 @@
       const isScreenPickerWindow = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('screen-picker') === '1';
       const appWindow = isTauri ? getCurrentWindow() : null;
+
+      const LEGACY_AI_API_KEY_NAMES = ['ai_api_key', 'deepseek_api_key'];
+
+      function readLegacyAiApiKey() {
+        try {
+          for (const name of LEGACY_AI_API_KEY_NAMES) {
+            const value = localStorage.getItem(name)?.trim();
+            if (value) return value;
+          }
+        } catch {
+          // Continue without migration when WebView storage is unavailable.
+        }
+        return '';
+      }
+
+      function clearLegacyAiApiKeys() {
+        try {
+          LEGACY_AI_API_KEY_NAMES.forEach(name => localStorage.removeItem(name));
+        } catch {
+          // The DPAPI copy is already durable, so storage cleanup is best-effort.
+        }
+      }
+
+      let aiApiKeyCache = readLegacyAiApiKey();
+      const aiApiKeyReady = (async () => {
+        if (!isTauri) return aiApiKeyCache;
+        try {
+          const { invoke } = await tauriCorePromise;
+          const protectedKey = await invoke('load_ai_api_key');
+          if (typeof protectedKey === 'string' && protectedKey) {
+            aiApiKeyCache = protectedKey;
+            clearLegacyAiApiKeys();
+          } else if (aiApiKeyCache) {
+            await invoke('store_ai_api_key', { apiKey: aiApiKeyCache });
+            clearLegacyAiApiKeys();
+          }
+        } catch {
+          // Preserve the legacy key until a later run can complete migration.
+        }
+        return aiApiKeyCache;
+      })();
+
+      async function getAiApiKey() {
+        await aiApiKeyReady;
+        return aiApiKeyCache;
+      }
+
+      async function persistAiApiKey(apiKey) {
+        await aiApiKeyReady;
+        if (isTauri) {
+          const { invoke } = await tauriCorePromise;
+          await invoke('store_ai_api_key', { apiKey });
+        }
+        aiApiKeyCache = apiKey;
+        clearLegacyAiApiKeys();
+      }
+
+      async function removeAiApiKey() {
+        await aiApiKeyReady;
+        if (isTauri) {
+          const { invoke } = await tauriCorePromise;
+          await invoke('clear_ai_api_key');
+        }
+        aiApiKeyCache = '';
+        clearLegacyAiApiKeys();
+      }
 
       // Global UI feedback is intentionally kept separate from tool audio
       // contexts (BPM, typing and audio clipping). It is synthesized locally,
@@ -1250,7 +1317,7 @@
               console.error('Failed to resolve custom background:', error);
               try {
                 const { invoke } = await tauriCorePromise;
-                await invoke('log_custom_background_event', { event: `resolve-failed:${String(error?.message || error)}` });
+                await invoke('log_custom_background_event', { event: 'resolve-failed' });
               } catch { /* logging is best effort */ }
               source = '';
             }
@@ -1336,7 +1403,7 @@
             try {
               if (isTauri) {
                 tauriCorePromise.then(({ invoke }) => invoke('log_custom_background_event', {
-                  event: `media-error:${role}:${config.name || config.path || config.type}`
+                  event: `media-error:${role}`
                 })).catch(() => {});
               }
             } catch { /* logging is best effort */ }
@@ -2781,7 +2848,7 @@
       const versionUpdateStatus = document.getElementById('versionUpdateStatus');
       const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
       const openReleasePageBtn = document.getElementById('openReleasePageBtn');
-      const APP_VERSION_FALLBACK = '2.3.0';
+      const APP_VERSION_FALLBACK = '2.3.1';
       let versionCheckRunning = false;
       let updatePreviewController = null;
       let lastVersionUpdateResult = null;
@@ -3677,8 +3744,7 @@
                 }));
                 try {
                   throwIfCancelled();
-                  await invoke('download_matting_model', { modelId: 'modnet', source: resolvedModelDownloadSource() });
-                  await invoke('set_current_matting_model', { modelId: 'modnet' });
+                  await installMattingModel(mattingDownloadSource);
                   throwIfCancelled();
                 } finally {
                   try { unlistenMatting(); } catch {}
@@ -8726,7 +8792,7 @@
         pptOutlineController = new AbortController();
         setPptOutlineProgress(10, pptOutlineText('validating'));
         try {
-          if (!(localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key'))) {
+          if (!(await getAiApiKey())) {
             throw new Error(pptOutlineText('needApiKey'));
           }
           const messages = buildPptOutlineMessages(request);
@@ -10090,7 +10156,7 @@
             });
             setPptDraftProgress(34, pptDraftText('building'));
           } else {
-            if (!(localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key'))) {
+            if (!(await getAiApiKey())) {
               throw new Error(pptDraftText('needApiKey'));
             }
             const messages = buildPptOutlineMessages({
@@ -10551,11 +10617,7 @@
       }
 
       function largeFileCleanupHasAiKey() {
-        try {
-          return !!(localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key'));
-        } catch {
-          return false;
-        }
+        return Boolean(aiApiKeyCache);
       }
 
       function largeFileCleanupRenderAiCard() {
@@ -12085,7 +12147,7 @@
             // Collect file paths from selectedAudioFiles
             const inputPaths = selectedAudioFiles.map(f => f.path).filter(Boolean);
             if (inputPaths.length === 0) {
-              console.error('No valid file paths found in selectedAudioFiles:', selectedAudioFiles);
+              console.error('No valid file paths were found in the audio selection.');
               if (runId === audioConversionRunId) {
                 audioConvertProcessMask.classList.remove('visible');
                 processingAudio = false;
@@ -18091,7 +18153,7 @@
       }
 
       function hasAiApiKey() {
-        return !!localStorage.getItem('ai_api_key');
+        return Boolean(aiApiKeyCache);
       }
 
       function setApiKeyPlatform(value) {
@@ -18143,10 +18205,10 @@
       }
 
       if (btnApiKey && apiKeyOverlay) {
-        btnApiKey.addEventListener('click', (e) => {
+        btnApiKey.addEventListener('click', async (e) => {
           e.stopPropagation();
           const savedPlatform = localStorage.getItem('ai_platform') || 'deepseek';
-          const savedKey = localStorage.getItem('ai_api_key') || '';
+          const savedKey = await getAiApiKey();
           setApiKeyPlatform(savedPlatform);
           apiKeyInput.value = savedKey;
           if (apiKeyCustomUrl) apiKeyCustomUrl.value = localStorage.getItem('ai_custom_url') || '';
@@ -18167,7 +18229,7 @@
         });
       }
       if (apiKeySave) {
-        apiKeySave.addEventListener('click', () => {
+        apiKeySave.addEventListener('click', async () => {
           const key = apiKeyInput.value.trim();
           if (!key) {
             apiKeyStatus.textContent = t('apiKey.errEmpty');
@@ -18204,34 +18266,48 @@
               return;
             }
           }
-          localStorage.setItem('ai_platform', platform);
-          localStorage.setItem('ai_api_key', key);
-          if (platform === 'custom') {
-            localStorage.setItem('ai_custom_url', customUrl);
-            localStorage.setItem('ai_custom_model', customModel);
-            localStorage.setItem('ai_custom_allow_private_http', apiKeyPrivateHttpSwitch?.getAttribute('aria-checked') === 'true' ? 'true' : 'false');
+          apiKeySave.disabled = true;
+          try {
+            await persistAiApiKey(key);
+            localStorage.setItem('ai_platform', platform);
+            if (platform === 'custom') {
+              localStorage.setItem('ai_custom_url', customUrl);
+              localStorage.setItem('ai_custom_model', customModel);
+              localStorage.setItem('ai_custom_allow_private_http', apiKeyPrivateHttpSwitch?.getAttribute('aria-checked') === 'true' ? 'true' : 'false');
+            }
+            apiKeyStatus.textContent = t('apiKey.saved');
+            apiKeyStatus.className = 'api-key-status show success';
+            largeFileCleanupRenderAiCard();
+            setTimeout(() => apiKeyOverlay.classList.remove('visible'), 800);
+          } catch {
+            apiKeyStatus.textContent = t('apiKey.errStorage');
+            apiKeyStatus.className = 'api-key-status show error';
+          } finally {
+            apiKeySave.disabled = false;
           }
-          apiKeyStatus.textContent = t('apiKey.saved');
-          apiKeyStatus.className = 'api-key-status show success';
-          largeFileCleanupRenderAiCard();
-          setTimeout(() => apiKeyOverlay.classList.remove('visible'), 800);
         });
       }
       if (apiKeyClear) {
-        apiKeyClear.addEventListener('click', () => {
-          apiKeyInput.value = '';
-          localStorage.removeItem('ai_api_key');
-          localStorage.removeItem('ai_platform');
-          localStorage.removeItem('ai_custom_url');
-          localStorage.removeItem('ai_custom_model');
-          localStorage.removeItem('ai_custom_allow_private_http');
-          setPrivateHttpPermission(false);
-          // Also clear legacy key
-          localStorage.removeItem('deepseek_api_key');
-          apiKeyStatus.textContent = t('apiKey.cleared');
-          apiKeyStatus.className = 'api-key-status show success';
-          largeFileCleanupRenderAiCard();
-          setTimeout(() => apiKeyOverlay.classList.remove('visible'), 800);
+        apiKeyClear.addEventListener('click', async () => {
+          apiKeyClear.disabled = true;
+          try {
+            await removeAiApiKey();
+            apiKeyInput.value = '';
+            localStorage.removeItem('ai_platform');
+            localStorage.removeItem('ai_custom_url');
+            localStorage.removeItem('ai_custom_model');
+            localStorage.removeItem('ai_custom_allow_private_http');
+            setPrivateHttpPermission(false);
+            apiKeyStatus.textContent = t('apiKey.cleared');
+            apiKeyStatus.className = 'api-key-status show success';
+            largeFileCleanupRenderAiCard();
+            setTimeout(() => apiKeyOverlay.classList.remove('visible'), 800);
+          } catch {
+            apiKeyStatus.textContent = t('apiKey.errStorage');
+            apiKeyStatus.className = 'api-key-status show error';
+          } finally {
+            apiKeyClear.disabled = false;
+          }
         });
       }
 
@@ -18266,7 +18342,8 @@
       }
 
       // Check AI API key before opening AI tool overlay
-      function openToolWithAiCheck(openFn) {
+      async function openToolWithAiCheck(openFn) {
+        await aiApiKeyReady;
         if (!hasAiApiKey()) {
           showAiKeyRequiredOverlay();
           return;
@@ -18409,20 +18486,25 @@
       };
 
       async function openExternalUrl(url) {
-        if (!url || !/^https?:\/\//i.test(url)) {
-          console.warn('Invalid external URL:', url);
+        let parsedUrl;
+        try {
+          if (typeof url !== 'string' || url.length > 2048 || /[\u0000-\u001f\u007f]/.test(url)) throw new Error('invalid');
+          parsedUrl = new URL(url);
+          if (!['http:', 'https:'].includes(parsedUrl.protocol) || !parsedUrl.hostname || parsedUrl.username || parsedUrl.password) throw new Error('unsupported');
+        } catch {
+          console.warn('Blocked an invalid external URL.');
           return;
         }
         if (isTauri) {
           try {
             const { invoke } = await tauriCorePromise;
-            await invoke('open_url', { url });
+            await invoke('open_url', { url: parsedUrl.href });
           } catch (err) {
             console.error('Failed to open URL:', err);
-            window.open(url, '_blank');
+            window.showToast?.(t('common.openLinkFailed'));
           }
         } else {
-          window.open(url, '_blank');
+          window.open(parsedUrl.href, '_blank', 'noopener,noreferrer');
         }
       }
 
@@ -18846,6 +18928,7 @@ March 18, 2026|Launch Day
       const DEFAULT_GITHUB_STAR_COUNT = 435;
       const DEFAULT_DONATION_TOTAL = 83.88;
       const GITHUB_REQUEST_TIMEOUT_MS = 8_000;
+      const GITHUB_RESPONSE_MAX_BYTES = 512 * 1024;
 
       async function fetchGithubJson(url, options = {}) {
         const controller = new AbortController();
@@ -18853,7 +18936,7 @@ March 18, 2026|Launch Day
         try {
           const response = await fetch(url, { ...options, signal: controller.signal });
           if (!response.ok) throw new Error(`GitHub request failed: ${response.status}`);
-          return response.json();
+          return JSON.parse(await readResponseTextLimited(response, GITHUB_RESPONSE_MAX_BYTES));
         } finally {
           window.clearTimeout(timeoutId);
         }
@@ -22388,7 +22471,7 @@ March 18, 2026|Launch Day
       }
 
       async function callDeepSeek(messages, signal, maxTokens) {
-        const apiKey = localStorage.getItem('ai_api_key') || localStorage.getItem('deepseek_api_key') || '';
+        const apiKey = await getAiApiKey();
         if (!apiKey) {
           throw new Error(t('home.aiPolish.noApiKey'));
         }
@@ -24078,7 +24161,7 @@ March 18, 2026|Launch Day
           try {
             parsed = JSON.parse(jsonStr);
           } catch (parseErr) {
-            console.error('[AI Doc] JSON parse failed:', parseErr, jsonStr?.slice(0, 500));
+            console.error('[AI Doc] JSON parse failed:', parseErr?.name || 'SyntaxError');
             // Try once more with aggressive cleanup
             const fallbackJson = jsonStr.replace(/[\u0000-\u001F\uFEFF\uFFFD]/g, ' ').replace(/\n/g, '\\n');
             try {
@@ -24112,7 +24195,7 @@ March 18, 2026|Launch Day
             renderAiDocThumbnails(aiDocLayoutData);
           } else {
             // Never surface raw, malformed model JSON as a user-facing chat message.
-            console.warn('[AI Doc] parsed missing ready/pages:', parsed);
+            console.warn('[AI Doc] response schema is missing ready/pages.');
             addAiDocChatMsg('ai', t('home.aiDoc.parseError'));
           }
         } catch (e) {
@@ -25617,7 +25700,7 @@ March 18, 2026|Launch Day
           let parsed;
           try { parsed = JSON.parse(jsonStr); }
           catch (parseErr) {
-            console.error('[AI Table] JSON parse failed:', parseErr, jsonStr?.slice(0, 500));
+            console.error('[AI Table] JSON parse failed:', parseErr?.name || 'SyntaxError');
             const fallbackJson = jsonStr.replace(/[\u0000-\u001F\uFEFF\uFFFD]/g, ' ').replace(/\n/g, '\\n');
             try { parsed = JSON.parse(fallbackJson); }
             catch (e2) { addAiTableChatMsg('ai', t('home.aiTable.parseError')); return; }
@@ -25648,7 +25731,7 @@ March 18, 2026|Launch Day
             });
             renderAiTablePreview(normalizedTable);
           } else {
-            console.warn('[AI Table] parsed missing fields:', parsed);
+            console.warn('[AI Table] response schema is missing required fields.');
             addAiTableChatMsg('ai', t('home.aiTable.parseError'));
           }
         } catch (e) {
@@ -31694,7 +31777,7 @@ March 18, 2026|Launch Day
                   outputPath: result.output_path || ''
                 });
               } catch (fileErr) {
-                console.error(`[PDF Compress] Failed: ${file.name}`, fileErr);
+                console.error('[PDF Compress] A source file failed.', fileErr);
                 errors.push(`${file.name}: ${await getPdfCompressErrorMessage(fileErr)}`);
               }
             }
@@ -32101,6 +32184,7 @@ March 18, 2026|Launch Day
       let mattingManagerRenderQueued = false;
       let mattingDownloadSource = 'auto';
       const mattingManagerDownloads = new Map();
+      let mattingDownloadPromise = null;
       if (isTauri) {
         void tauriEventPromise
           .then(({ listen }) => listen('matting-model-progress', event => {
@@ -32124,6 +32208,26 @@ March 18, 2026|Launch Day
           mattingManagerRenderQueued = false;
           void renderMattingModelManager();
         });
+      }
+
+      async function installMattingModel(source = 'auto') {
+        if (mattingDownloadPromise) return mattingDownloadPromise;
+        const operation = (async () => {
+          const { invoke } = await tauriCorePromise;
+          await invoke('download_matting_model', { modelId: 'modnet', source });
+          await invoke('set_current_matting_model', { modelId: 'modnet' });
+        })();
+        mattingDownloadPromise = operation;
+        mattingManagerDownloads.set('modnet', 0);
+        queueMattingManagerRender();
+        try {
+          await operation;
+        } finally {
+          if (mattingDownloadPromise === operation) mattingDownloadPromise = null;
+          mattingManagerDownloads.delete('modnet');
+          document.dispatchEvent(new CustomEvent('toolknit:matting-models-changed'));
+          queueMattingManagerRender();
+        }
       }
 
       function openMattingModelManager() {
@@ -32205,7 +32309,19 @@ March 18, 2026|Launch Day
               button.type = 'button';
               button.className = 'settings-btn';
               button.textContent = label;
-              button.addEventListener('click', () => void handler());
+              button.addEventListener('click', async () => {
+                if (button.disabled) return;
+                button.disabled = true;
+                try {
+                  await handler();
+                } catch (error) {
+                  console.error('[BgRemoval] matting model action failed:', error);
+                  window.showToast?.(t('settings.mattingActionFailed'));
+                } finally {
+                  button.disabled = false;
+                  queueMattingManagerRender();
+                }
+              });
               return button;
             };
             const done = () => {
@@ -32230,8 +32346,7 @@ March 18, 2026|Launch Day
               }));
             } else {
               actions.append(makeButton(t('settings.mattingDownload'), async () => {
-                await invoke('download_matting_model', { modelId: model.id, source: mattingDownloadSource });
-                await invoke('set_current_matting_model', { modelId: model.id });
+                await installMattingModel(mattingDownloadSource);
                 done();
               }));
             }
@@ -32255,10 +32370,8 @@ March 18, 2026|Launch Day
           console.error('[BgRemoval] model check failed:', error);
         }
         if (installed) {
-          console.info('[BgRemoval] matting model present, opening tool.');
           return true;
         }
-        console.info('[BgRemoval] matting model missing, showing dependency gate.');
         showDependencyGate({
           openFn: async () => {
             try {
@@ -32275,6 +32388,7 @@ March 18, 2026|Launch Day
           modelLabel: 'MODNet 人像精修',
           modelSizeText: '24.7 MB'
         });
+        if (mattingDownloadPromise) void installDependencyGateRequirements();
         return false;
       }
 

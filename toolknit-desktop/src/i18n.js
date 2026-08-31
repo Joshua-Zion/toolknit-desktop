@@ -155,10 +155,6 @@ export function applyTranslations() {
     el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
   });
 
-  document.querySelectorAll('[data-i18n-html]').forEach(el => {
-    el.innerHTML = t(el.dataset.i18nHtml);
-  });
-
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     el.placeholder = t(el.dataset.i18nPlaceholder);
   });

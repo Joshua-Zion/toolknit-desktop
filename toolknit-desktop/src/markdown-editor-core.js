@@ -168,6 +168,7 @@ export function buildStandaloneMarkdownHtml({ title, renderedHtml, katexCss = ''
   const safeTitle = String(title || 'ToolKnit Markdown').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><meta name="referrer" content="no-referrer">
 <title>${safeTitle}</title><style>
 :root{color-scheme:light;--ink:#17201d;--muted:#5e6b66;--line:#dce3df;--accent:#136f63}
 *{box-sizing:border-box}body{margin:0;background:#eef2ef;color:var(--ink);font:16px/1.8 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}

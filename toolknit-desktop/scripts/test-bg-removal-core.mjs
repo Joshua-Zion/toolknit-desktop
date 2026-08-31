@@ -66,6 +66,8 @@ assert.match(css, /max-width:\s*839px/);
 assert.match(css, /\.is-compare[\s\S]*\.bg-removal-canvas-original/);
 
 const ui = await readFile(new URL('../src/bg-removal-ui.js', import.meta.url), 'utf8');
+const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+const native = await readFile(new URL('../src-tauri/src/onnx_segmenter.rs', import.meta.url), 'utf8');
 assert.equal((ui.match(/function handleAction\(/g) || []).length, 1, 'actions must be bound through one dispatcher');
 assert.equal((ui.match(/function startNativeDragListener\(/g) || []).length, 1, 'native drag listener must have one implementation');
 assert.doesNotMatch(ui, /scheduleSave|saveWorking|debounceSegment/);
@@ -75,5 +77,13 @@ assert.doesNotMatch(ui, /data-bgr-result-path/, 'the workspace must not duplicat
 assert.match(ui, /invoke\('open_path', \{ path: savedPath \}\)/, 'open folder must use the exported file path returned by Rust');
 assert.doesNotMatch(ui, /invoke\('open_path', \{ path: outputDir \}\)/, 'open folder must not use a predicted output directory');
 assert.match(css, /\.bg-removal-zoom-value\s*\{[^}]*font-size:\s*15px/s);
+
+const modelCatalog = native.match(/pub const MATTING_MODELS:[\s\S]*?=\s*\[([\s\S]*?)\];/)?.[1] || '';
+assert.match(modelCatalog, /id:\s*"modnet"/, 'the supported matting catalog must expose MODNet');
+assert.doesNotMatch(modelCatalog, /id:\s*"(?:isnet|u2net)"/, 'models without complete official sources must not be exposed');
+assert.doesNotMatch(native, /matting:no-official-source|matting:download-busy/, 'download coordination must not leak internal busy/source errors');
+assert.match(main, /let mattingDownloadPromise = null;/, 'matting downloads must share one frontend promise');
+assert.match(main, /await installMattingModel\(mattingDownloadSource\)/, 'the dependency gate must reuse the shared matting download and source setting');
+assert.doesNotMatch(main, /console\.info\('\[BgRemoval\] matting model (?:present|missing)/, 'normal model-gate flow must not pollute the console');
 
 console.log('background removal core tests passed');

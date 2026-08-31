@@ -18,7 +18,7 @@
 
 <p>
   <a href="README_EN.md"><img src="https://img.shields.io/badge/Language-English-475569?style=for-the-badge&labelColor=334155" alt="English README" /></a>
-  <img src="https://img.shields.io/badge/2.3.0-最新版本-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.0 current release" />
+  <img src="https://img.shields.io/badge/2.3.1-最新版本-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.1 current release" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -46,7 +46,7 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
       <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
-      <sub>2.3.0 安装包、SHA-256 校验文件和版本说明通过 GitHub Release 发布。</sub>
+      <sub>2.3.1 安装包、SHA-256 校验文件和版本说明通过 GitHub Release 发布。</sub>
     </td>
   </tr>
 </table>
@@ -80,7 +80,7 @@ V2.3 新增 5 项桌面工具，并完成更新、依赖下载、管理员重启
 
 同时完成一轮面向真实 Windows 环境的体验与兼容性加固：启动后空闲检查 GitHub Release，可延后提醒且不上传使用数据；安装器携带 WebView2 引导程序；依赖下载、安装阶段提示和管理员权限重启更可靠；工具页导航、导出弹窗与圆角渲染保持一致；PDF.js 使用兼容构建，修复旧版 WebView2 打开 PDF 失败的问题。
 
-桌面端、Tauri、Rust crate 与 `@toolknit/cli` 版本统一为 `2.3.0`；发布门禁覆盖 65 个桌面工具帮助映射、46 项 MCP 能力、完整前端回归与 Rust 测试。
+桌面端、Tauri、Rust crate 与 `@toolknit/cli` 版本统一为 `2.3.1`；发布门禁覆盖 65 个桌面工具帮助映射、46 项 MCP 能力、完整前端回归、Rust 测试与发布安全检查。
 
 ### 2.1 系列基础
 
@@ -380,9 +380,9 @@ ToolKnit 2.3 采用轻量桌面容器与本地文件引擎组合，网页端、�
 
 ### 安装 Windows 桌面端
 
-从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取 2.3.0 安装包、版本说明和对应的 `.sha256` 文件。请只从本仓库 Release 页面下载，并在运行前核对 SHA-256 校验值。
+从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取 2.3.1 安装包、版本说明和对应的 `.sha256` 文件。请只从本仓库 Release 页面下载，并在运行前核对 SHA-256 校验值。
 
-**代码签名状态：** 2.3.0 暂未进行 Authenticode 代码签名，因此 Windows 可能显示“未知发布者”或 SmartScreen 提示。确认下载地址和 SHA-256 后再继续安装；后续签名版本将遵循[代码签名政策](CODE_SIGNING_POLICY.md)。
+**代码签名状态：** 2.3.1 暂未进行 Authenticode 代码签名，因此 Windows 可能显示“未知发布者”或 SmartScreen 提示。确认下载地址和 SHA-256 后再继续安装；后续签名版本将遵循[代码签名政策](CODE_SIGNING_POLICY.md)。
 
 ### 从源码运行
 

@@ -1,6 +1,6 @@
 [package]
 name = "toolknit-desktop"
-version = "2.3.0"
+version = "2.3.1"
 description = "ToolKnit Desktop App"
 edition = "2021"
 rust-version = "1.88"
@@ -15,7 +15,7 @@ tauri-build = { version = "2.6.2", features = [] }
 [dependencies]
 base64 = "0.22.1"
 hex = "0.4"
-tauri = { version = "2.11.2", features = ["custom-protocol", "tray-icon", "protocol-asset", "devtools"] }
+tauri = { version = "2.11.2", features = ["custom-protocol", "tray-icon", "protocol-asset"] }
 tauri-plugin-log = "2.9.0"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"

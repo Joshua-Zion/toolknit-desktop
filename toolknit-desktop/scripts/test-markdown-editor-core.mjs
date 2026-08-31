@@ -20,4 +20,8 @@ assert.equal(sanitizeExportBaseName(' a<>b. '), 'a--b');
 const html = buildStandaloneMarkdownHtml({ title: '<Title>', renderedHtml: '<h1>ok</h1>' });
 assert.match(html, /&lt;Title&gt;/);
 assert.match(html, /<main><h1>ok<\/h1><\/main>/);
+assert.match(html, /Content-Security-Policy/);
+assert.match(html, /default-src 'none'/);
+assert.match(html, /img-src data:/);
+assert.match(html, /name="referrer" content="no-referrer"/);
 console.log('markdown editor core tests passed');

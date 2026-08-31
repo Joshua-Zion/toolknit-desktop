@@ -48,6 +48,34 @@ function utf8ByteLength(value) {
   return new TextEncoder().encode(value).byteLength;
 }
 
+async function readResponseTextLimited(response) {
+  const reader = response?.body?.getReader?.();
+  if (!reader) return response.text();
+
+  const decoder = new TextDecoder();
+  let received = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || !Number.isSafeInteger(value.byteLength)) {
+        throw new AiProviderError('invalid_response');
+      }
+      received += value.byteLength;
+      if (!Number.isSafeInteger(received) || received > AI_PROVIDER_LIMITS.maxResponseBytes) {
+        try { await reader.cancel(); } catch {}
+        throw new AiProviderError('response_too_large');
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } finally {
+    try { reader.releaseLock?.(); } catch {}
+  }
+}
+
 function isLoopbackHost(hostname) {
   if (hostname === 'localhost' || hostname === '[::1]') return true;
   const octets = parseIpv4Host(hostname);
@@ -219,8 +247,9 @@ export async function requestAiCompletion({
 
   let text;
   try {
-    text = await response.text();
-  } catch {
+    text = await readResponseTextLimited(response);
+  } catch (error) {
+    if (error instanceof AiProviderError) throw error;
     throw new AiProviderError('invalid_response');
   }
   if (utf8ByteLength(text) > AI_PROVIDER_LIMITS.maxResponseBytes) {

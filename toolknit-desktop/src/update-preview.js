@@ -3,8 +3,8 @@ import en from './locales/en.json' with { type: 'json' };
 import { getLang, onLangChange } from './i18n.js';
 
 const PREVIEW_VERSIONS = Object.freeze({
-  current: '2.3.0',
-  latest: '2.3.0'
+  current: '2.3.1',
+  latest: '2.3.1'
 });
 
 const PREVIEW_LINKS = Object.freeze({
