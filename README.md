@@ -17,7 +17,8 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/2.3.0-发布候选-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.0 release candidate" />
+  <a href="README_EN.md"><img src="https://img.shields.io/badge/Language-English-475569?style=for-the-badge&labelColor=334155" alt="English README" /></a>
+  <img src="https://img.shields.io/badge/2.3.0-最新版本-16a34a?style=for-the-badge&labelColor=166534" alt="ToolKnit 2.3.0 current release" />
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
@@ -45,7 +46,7 @@
       <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
       <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
       <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
-      <sub>2.3.0 正式安装包、校验文件和版本说明会同步到 Release。</sub>
+      <sub>2.3.0 安装包、SHA-256 校验文件和版本说明通过 GitHub Release 发布。</sub>
     </td>
   </tr>
 </table>
@@ -67,7 +68,7 @@ ToolKnit Desktop 2.3 是一套面向 Windows 的本地文件工作台。它把�
   </tr>
 </table>
 
-## 2.3 发布候选
+## 2.3 核心更新
 
 V2.3 新增 5 项桌面工具，并完成更新、依赖下载、管理员重启、圆角渲染和工具页交互的兼容性加固：
 
@@ -76,6 +77,8 @@ V2.3 新增 5 项桌面工具，并完成更新、依赖下载、管理员重启
 - `PDF 裁剪`：支持可视化框选、精确边距、统一或逐页调整，通过修改页面边界完成无损裁剪。
 - `背景移除`：使用按需下载的本地模型生成透明背景，支持边缘优化、背景预览和原始分辨率导出。
 - `Excel 转 PDF`：批量读取 XLSX、XLS 和 ODS，通过 ToolKnit 管理的本地 LibreOffice 运行时渲染，并兼容 WPS 工作簿。
+
+同时完成一轮面向真实 Windows 环境的体验与兼容性加固：启动后空闲检查 GitHub Release，可延后提醒且不上传使用数据；安装器携带 WebView2 引导程序；依赖下载、安装阶段提示和管理员权限重启更可靠；工具页导航、导出弹窗与圆角渲染保持一致；PDF.js 使用兼容构建，修复旧版 WebView2 打开 PDF 失败的问题。
 
 桌面端、Tauri、Rust crate 与 `@toolknit/cli` 版本统一为 `2.3.0`；发布门禁覆盖 65 个桌面工具帮助映射、46 项 MCP 能力、完整前端回归与 Rust 测试。
 
@@ -318,7 +321,7 @@ ToolKnit 2.3 采用轻量桌面容器与本地文件引擎组合，网页端、�
     <td>
       <img src="https://img.shields.io/badge/FFmpeg-Audio%20%2F%20Video-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
       <img src="https://img.shields.io/badge/Whisper-Offline%20Transcription-111827?style=for-the-badge" alt="Whisper" />
-      <img src="https://img.shields.io/badge/LibreOffice-PPT%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
+      <img src="https://img.shields.io/badge/LibreOffice-Office%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
       <img src="https://img.shields.io/badge/Three.js-3D%20Effects-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js" />
     </td>
   </tr>
@@ -336,10 +339,10 @@ ToolKnit 2.3 采用轻量桌面容器与本地文件引擎组合，网页端、�
 ## 产品预览
 
 <p align="center">
-  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop 2.1 custom wallpaper and glass workbench" width="100%" />
+  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop custom wallpaper and glass workbench" width="100%" />
 </p>
 
-<p align="center"><sub>2.1 工作台首页 · 自定义壁纸 · 玻璃拟态卡片 · 统一搜索与分类导航</sub></p>
+<p align="center"><sub>ToolKnit 工作台首页 · 自定义壁纸 · 玻璃拟态卡片 · 统一搜索与分类导航</sub></p>
 
 <p align="center"><strong>ToolKnit.com 网页端 · 开箱即用</strong></p>
 <a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>
@@ -377,11 +380,9 @@ ToolKnit 2.3 采用轻量桌面容器与本地文件引擎组合，网页端、�
 
 ### 安装 Windows 桌面端
 
-从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取安装包。当前开发版本为 2.3.0 发布候选；正式发布后，安装包、校验文件和版本说明会在 Release 页面同步提供。
+从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取 2.3.0 安装包、版本说明和对应的 `.sha256` 文件。请只从本仓库 Release 页面下载，并在运行前核对 SHA-256 校验值。
 
-正式安装包发布前请以仓库 Release 页面为准，并在运行前核对同页提供的 SHA-256 校验值。
-
-**代码签名状态：** 当前 2.3.0 发布候选尚未使用 SignPath 签名流程。项目已申请 SignPath Foundation 的开源代码签名支持；获批并完成集成后，后续版本将按照[代码签名政策](CODE_SIGNING_POLICY.md)签名。
+**代码签名状态：** 2.3.0 暂未进行 Authenticode 代码签名，因此 Windows 可能显示“未知发布者”或 SmartScreen 提示。确认下载地址和 SHA-256 后再继续安装；后续签名版本将遵循[代码签名政策](CODE_SIGNING_POLICY.md)。
 
 ### 从源码运行
 
