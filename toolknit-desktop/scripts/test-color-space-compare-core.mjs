@@ -2,12 +2,18 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   COLOR_SPACE_SLIDER_CONFIG,
+  COLOR_WHEEL_GEOMETRY,
+  COLOR_WHEEL_TRIANGLE,
   LAB_D65_WHITE_POINT,
   cmykToRgb,
   fmtColorNumber,
   getSpaceValues,
+  hexCaretAfterSanitize,
   hslToRgb,
+  hslToWheelPoint,
   hsvToRgb,
+  hsvToWheelPoint,
+  hueToWheelPoint,
   labD65ToLch,
   labD65ToRgb,
   labD65ToXyz,
@@ -24,6 +30,7 @@ import {
   oklabToRgb,
   oklabToXyz,
   oklchToOklab,
+  parseHexColor,
   rgbToAllSpaces,
   rgbToCmyk,
   rgbToHex,
@@ -32,9 +39,15 @@ import {
   rgbToLabD65,
   rgbToOklab,
   rgbValuesToXyz,
+  sanitizeHexText,
   srgbToLinear,
   spaceToDisplayRgb,
   spaceToXyz,
+  wheelPointToHsl,
+  wheelPointToHsv,
+  wheelPointToHue,
+  wheelRadiusIsRing,
+  wheelTriangleBarycentric,
   xyzToAllSpaces,
   xyzToDisplayRgb,
   xyzToLabD65,
@@ -384,6 +397,67 @@ for (const space of editableSpaces) {
   }
 }
 
+// Wheel geometry must survive a round trip through every editable pick so the
+// handle drawn on screen always matches the linked HSV/HSL values.
+for (let s = 0; s <= 100; s += 10) {
+  for (let v = 0; v <= 100; v += 10) {
+    const point = hsvToWheelPoint(s, v);
+    const back = wheelPointToHsv(point.x, point.y);
+    approx(back.s, s, 1e-9, `HSV wheel round trip s=${s} v=${v}`);
+    approx(back.v, v, 1e-9, `HSV wheel round trip s=${s} v=${v}`);
+  }
+}
+
+for (let s = 0; s <= 100; s += 10) {
+  for (let l = 10; l <= 90; l += 10) {
+    const point = hslToWheelPoint(s, l);
+    const back = wheelPointToHsl(point.x, point.y);
+    approx(back.s, s, 1e-9, `HSL wheel round trip s=${s} l=${l}`);
+    approx(back.l, l, 1e-9, `HSL wheel round trip s=${s} l=${l}`);
+  }
+}
+
+const triangleVertices = [
+  { name: 'white', vertex: COLOR_WHEEL_TRIANGLE.white, expected: { bW: 1, bK: 0, bC: 0 } },
+  { name: 'black', vertex: COLOR_WHEEL_TRIANGLE.black, expected: { bW: 0, bK: 1, bC: 0 } },
+  { name: 'pure hue', vertex: COLOR_WHEEL_TRIANGLE.pure, expected: { bW: 0, bK: 0, bC: 1 } },
+];
+for (const { name, vertex, expected } of triangleVertices) {
+  approxObject(
+    wheelTriangleBarycentric(vertex.x, vertex.y),
+    expected,
+    1e-12,
+    `HSL triangle ${name} vertex`
+  );
+}
+
+// The hue ring and its indicator dot share one angle convention: 0° points to
+// three o'clock and the angle grows counter-clockwise on screen.
+for (let hue = 0; hue < 360; hue += 15) {
+  const dot = hueToWheelPoint(hue);
+  approx(wheelPointToHue(dot.x, dot.y), hue % 360, 1e-9, `hue indicator ${hue}`);
+  approx(dot.x * dot.x + dot.y * dot.y, COLOR_WHEEL_GEOMETRY.hueDotRadius ** 2, 1e-12, 'hue dot radius');
+}
+approx(wheelPointToHue(1, 0), 0, 1e-12, 'hue at three o clock');
+approx(wheelPointToHue(0, -1), 90, 1e-12, 'hue at twelve o clock');
+assert.equal(wheelRadiusIsRing(COLOR_WHEEL_GEOMETRY.ringSplitRatio), true);
+assert.equal(wheelRadiusIsRing(COLOR_WHEEL_GEOMETRY.ringSplitRatio - 1e-9), false);
+
+// HEX entry must accept the formats people actually paste and reject the rest.
+assert.deepEqual(parseHexColor('#1A2B3C'), { r: 26, g: 43, b: 60 });
+assert.deepEqual(parseHexColor('1a2b3c'), { r: 26, g: 43, b: 60 });
+assert.deepEqual(parseHexColor('#ABC'), { r: 170, g: 187, b: 204 });
+assert.deepEqual(parseHexColor('  #000000  '), { r: 0, g: 0, b: 0 });
+for (const invalid of ['', '#', '12345', '1234567', '#GGGGGG', 'rgb(1,2,3)', null, undefined]) {
+  assert.equal(parseHexColor(invalid), null, `parseHexColor must reject ${JSON.stringify(invalid)}`);
+}
+assert.equal(sanitizeHexText('#1a-2b 3c!!'), '1A2B3C');
+assert.equal(sanitizeHexText('abcdef123456'), 'ABCDEF');
+assert.equal(sanitizeHexText(null), '');
+assert.equal(hexCaretAfterSanitize('#1a-2b', 4), 2);
+assert.equal(hexCaretAfterSanitize('#1a-2b', 0), 0);
+assert.equal(hexCaretAfterSanitize('#1a-2b', 99), 4);
+
 // The desktop integration must remain discoverable, localizable, and wired
 // through the 2.1 lazy tool shell rather than an isolated iframe.
 const projectRoot = new URL('..', import.meta.url);
@@ -410,10 +484,22 @@ assert.match(ui, /resizeObserver\?\.disconnect\(\)/, 'Closing the page must disc
 assert.match(ui, /removeEventListener\('scroll', handleResize\)/, 'Closing the page must release its scroll listener.');
 assert.match(ui, /canvas\.width = 1;[\s\S]*?canvas\.height = 1;/, 'Closing the page must release canvas buffers.');
 assert.match(styles, /\.color-space-compare-sliders\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/, 'The desktop two-column controls layout is required.');
+assert.match(ui, /createColorWheels/, 'The tool must mount the linked HSV and HSL colour wheels.');
+assert.match(ui, /wheels\?\.sync\(\)/, 'Every update must sync the wheels.');
+assert.match(ui, /wheels\?\.relayout\(\)/, 'Opening the page must relayout the wheels.');
+assert.match(ui, /wheels\?\.destroy\(\)/, 'Closing the page must release wheel canvas buffers.');
+assert.match(ui, /parseHexColor/, 'The HEX field must be parsed before it is committed.');
+assert.match(ui, /hexInput !== document\.activeElement/, 'Syncing must not overwrite a HEX draft.');
+assert.match(styles, /\.color-space-compare-wheel-wrap\s*\{[\s\S]*?aspect-ratio:\s*1/, 'The wheels must stay square.');
+assert.match(styles, /\.color-space-compare-hex-row/, 'The HEX entry row requires dedicated styling.');
 for (const [locale, dictionary] of [['Chinese', zh], ['English', en]]) {
   assert.equal(typeof dictionary.home?.colorSpaceCompare?.subtitle, 'string', `${locale} tool copy is missing.`);
   assert.equal(typeof dictionary.home?.colorSpaceCompare?.spaces?.rgb, 'string', `${locale} RGB guidance is missing.`);
   assert.equal(typeof dictionary.home?.colorSpaceCompare?.gamutOutside, 'string', `${locale} gamut guidance is missing.`);
+  assert.equal(typeof dictionary.home?.colorSpaceCompare?.wheelHint, 'string', `${locale} wheel guidance is missing.`);
+  assert.equal(typeof dictionary.home?.colorSpaceCompare?.wheelRoles?.hsv, 'string', `${locale} HSV wheel role is missing.`);
+  assert.equal(typeof dictionary.home?.colorSpaceCompare?.wheelRoles?.hsl, 'string', `${locale} HSL wheel role is missing.`);
+  assert.equal(typeof dictionary.home?.colorSpaceCompare?.hexInputLabel, 'string', `${locale} HEX field label is missing.`);
   assert.equal(typeof dictionary.home?.toolNames?.colorSpaceCompare, 'string', `${locale} tool-list copy is missing.`);
   assert.equal(typeof dictionary.help?.nav?.colorSpaceCompare, 'string', `${locale} help navigation copy is missing.`);
 }
