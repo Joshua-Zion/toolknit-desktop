@@ -47,6 +47,7 @@ import {
   wheelPointToHsv,
   wheelPointToHue,
   wheelRadiusIsRing,
+  wheelSquareToHsv,
   wheelTriangleBarycentric,
   xyzToAllSpaces,
   xyzToDisplayRgb,
@@ -408,6 +409,33 @@ for (let s = 0; s <= 100; s += 10) {
   }
 }
 
+// The SV square is rasterised from pixel offsets, so its corners must map to
+// the four canonical HSV extremes (white, pure hue, black, black-hue).
+const sqHalf = COLOR_WHEEL_GEOMETRY.squareRadius / Math.SQRT2;
+{
+  const point = wheelSquareToHsv(-sqHalf, -sqHalf, sqHalf);
+  approx(point.s, 0, 1e-12, 'SV top-left saturation');
+  approx(point.v, 100, 1e-12, 'SV top-left value');
+}
+{
+  const point = wheelSquareToHsv(sqHalf, -sqHalf, sqHalf);
+  approx(point.s, 100, 1e-12, 'SV top-right saturation');
+  approx(point.v, 100, 1e-12, 'SV top-right value');
+}
+{
+  const point = wheelSquareToHsv(-sqHalf, sqHalf, sqHalf);
+  approx(point.s, 0, 1e-12, 'SV bottom-left saturation');
+  approx(point.v, 0, 1e-12, 'SV bottom-left value');
+}
+{
+  const point = wheelSquareToHsv(sqHalf, sqHalf, sqHalf);
+  approx(point.s, 100, 1e-12, 'SV bottom-right saturation');
+  approx(point.v, 0, 1e-12, 'SV bottom-right value');
+}
+// centre is 50% saturation, 50% value for any square half-width
+approx(wheelSquareToHsv(0, 0, sqHalf).s, 50, 1e-12, 'SV centre saturation');
+approx(wheelSquareToHsv(0, 0, sqHalf).v, 50, 1e-12, 'SV centre value');
+
 for (let s = 0; s <= 100; s += 10) {
   for (let l = 10; l <= 90; l += 10) {
     const point = hslToWheelPoint(s, l);
@@ -461,11 +489,12 @@ assert.equal(hexCaretAfterSanitize('#1a-2b', 99), 4);
 // The desktop integration must remain discoverable, localizable, and wired
 // through the 2.1 lazy tool shell rather than an isolated iframe.
 const projectRoot = new URL('..', import.meta.url);
-const [html, main, styles, ui, zh, en] = await Promise.all([
+const [html, main, styles, ui, wheel, zh, en] = await Promise.all([
   readFile(new URL('index.html', projectRoot), 'utf8'),
   readFile(new URL('src/main.js', projectRoot), 'utf8'),
   readFile(new URL('src/color-space-compare.css', projectRoot), 'utf8'),
   readFile(new URL('src/color-space-compare-ui.js', projectRoot), 'utf8'),
+  readFile(new URL('src/color-space-compare-wheel.js', projectRoot), 'utf8'),
   readFile(new URL('src/locales/zh.json', projectRoot), 'utf8').then(JSON.parse),
   readFile(new URL('src/locales/en.json', projectRoot), 'utf8').then(JSON.parse),
 ]);
@@ -490,6 +519,8 @@ assert.match(ui, /wheels\?\.relayout\(\)/, 'Opening the page must relayout the w
 assert.match(ui, /wheels\?\.destroy\(\)/, 'Closing the page must release wheel canvas buffers.');
 assert.match(ui, /parseHexColor/, 'The HEX field must be parsed before it is committed.');
 assert.match(ui, /hexInput !== document\.activeElement/, 'Syncing must not overwrite a HEX draft.');
+assert.match(wheel, /wheelSquareToHsv\(px, py, squareHalf\)/, 'The SV square must map pixel offsets via wheelSquareToHsv.');
+assert.doesNotMatch(wheel, /wheelPointToHsv\(px, py\)/, 'The SV square raster must not feed pixel coordinates to the normalised helper.');
 assert.match(styles, /\.color-space-compare-wheel-wrap\s*\{[\s\S]*?aspect-ratio:\s*1/, 'The wheels must stay square.');
 assert.match(styles, /\.color-space-compare-hex-row/, 'The HEX entry row requires dedicated styling.');
 for (const [locale, dictionary] of [['Chinese', zh], ['English', en]]) {

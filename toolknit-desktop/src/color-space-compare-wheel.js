@@ -25,6 +25,7 @@ import {
   wheelPointToHsv,
   wheelPointToHue,
   wheelRadiusIsRing,
+  wheelSquareToHsv,
   wheelTriangleBarycentric,
 } from './color-space-compare-core.js';
 
@@ -158,7 +159,9 @@ function drawInner(wheel, hue) {
         const insideY = squareHalf - Math.abs(py);
         if (insideX > 0 && insideY > 0) {
           alpha = Math.min(1, insideX) * Math.min(1, insideY);
-          const point = wheelPointToHsv(px, py);
+          // px/py are pixel offsets. wheelPointToHsv expects normalised
+          // unit-circle coordinates, so the pixel path uses wheelSquareToHsv.
+          const point = wheelSquareToHsv(px, py, squareHalf);
           const color = hsvToRgb(hue, point.s, point.v);
           r = color.r;
           g = color.g;

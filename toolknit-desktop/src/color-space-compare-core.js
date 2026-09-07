@@ -654,6 +654,20 @@ export function wheelPointToHsv(x, y) {
   };
 }
 
+/**
+ * Map a pixel offset inside the SV square to HSV given the square's pixel
+ * half-width. This is the rasterisation companion to wheelPointToHsv, which
+ * works on normalised unit-circle coordinates instead.
+ */
+export function wheelSquareToHsv(px, py, squareHalf) {
+  const cx = Math.max(-squareHalf, Math.min(squareHalf, px));
+  const cy = Math.max(-squareHalf, Math.min(squareHalf, py));
+  return {
+    s: (cx + squareHalf) / (2 * squareHalf) * 100,
+    v: (1 - (cy + squareHalf) / (2 * squareHalf)) * 100,
+  };
+}
+
 /** Map an HSL wheel pick to the triangle's normalised centre coordinates. */
 export function hslToWheelPoint(s, l) {
   const L = l / 100;
