@@ -165,19 +165,19 @@ pub(super) struct ScanSession {
     pub(super) cancelled: AtomicBool,
     created: Instant,
     files: Mutex<HashMap<PathBuf, Fingerprint>>,
-    root: Mutex<Option<PathBuf>>,
+    roots: Mutex<Vec<PathBuf>>,
     complete: AtomicBool,
 }
 static SESSIONS: OnceLock<Mutex<HashMap<String, Arc<ScanSession>>>> = OnceLock::new();
 fn sessions() -> &'static Mutex<HashMap<String, Arc<ScanSession>>> {
     SESSIONS.get_or_init(Default::default)
 }
-fn fresh_session() -> Arc<ScanSession> {
+pub(super) fn fresh_session() -> Arc<ScanSession> {
     Arc::new(ScanSession {
         cancelled: AtomicBool::new(false),
         created: Instant::now(),
         files: Mutex::new(HashMap::new()),
-        root: Mutex::new(None),
+        roots: Mutex::new(Vec::new()),
         complete: AtomicBool::new(false),
     })
 }
@@ -228,6 +228,10 @@ pub(super) fn cancel(id: &str) {
 }
 
 impl ScanSession {
+    pub(super) fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        if let Ok(mut files) = self.files.lock() { files.clear(); }
+    }
     pub(super) fn check(&self) -> Result<(), String> {
         if self.cancelled.load(Ordering::SeqCst)
             || self.created.elapsed() >= Duration::from_secs(1800)
@@ -238,7 +242,10 @@ impl ScanSession {
         }
     }
     pub(super) fn set_root(&self, root: &Path) {
-        *self.root.lock().unwrap() = Some(root.into());
+        let mut roots = self.roots.lock().unwrap();
+        if !roots.iter().any(|item| item == root) {
+            roots.push(root.into());
+        }
     }
     pub(super) fn record(
         &self,
@@ -259,8 +266,14 @@ impl ScanSession {
         if !self.complete.load(Ordering::SeqCst) {
             return Err("Scan is not complete".into());
         }
-        let root = self.root.lock().map_err(|_| "Cleanup state unavailable")?;
-        let (canonical, size) = validate_cleanup_delete_path(path, root.as_deref())?;
+        let roots = self.roots.lock().map_err(|_| "Cleanup state unavailable")?;
+        if roots.is_empty() {
+            return Err("Scan scope is unavailable; scan again".into());
+        }
+        let (canonical, size) = roots
+            .iter()
+            .find_map(|root| validate_cleanup_delete_path(path, Some(root)).ok())
+            .ok_or_else(|| "File is outside the current scan scope".to_string())?;
         let metadata = std::fs::metadata(&canonical).map_err(|_| "Cannot access scanned file")?;
         let files = self.files.lock().map_err(|_| "Cleanup state unavailable")?;
         if files.get(&canonical) != Some(&fingerprint(&metadata, file_identity(&canonical)?)) {

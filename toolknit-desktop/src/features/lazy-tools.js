@@ -168,6 +168,12 @@ export const LAZY_TOOL_SPECS = Object.freeze({
     load: () => import('./cleanup-tools/tool.js'),
     init: 'initLargeFileCleanupTool'
   }),
+  'duplicate-file-cleanup': Object.freeze({
+    overlayId: 'duplicateFileCleanupOverlay',
+    markup: () => import('./duplicate-file-cleanup/template.js'),
+    load: () => import('./duplicate-file-cleanup/tool.js'),
+    init: 'initDuplicateFileCleanupTool'
+  }),
   'c-drive-cleanup': Object.freeze({
     overlayId: 'cDriveCleanupOverlay',
     markup: () => import('./cleanup-tools/template.html?raw'),

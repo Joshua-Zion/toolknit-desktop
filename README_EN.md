@@ -36,7 +36,7 @@
 
 <p align="center">
   <a href="#whats-new-in-30">What's new</a> ·
-  <a href="#complete-tool-catalog">69 tools</a> ·
+  <a href="#complete-tool-catalog">70 tools</a> ·
   <a href="#local-first-privacy-boundaries">Privacy</a> ·
   <a href="#run-from-source">Run from source</a> ·
   <a href="#cli--mcp--agent">CLI / MCP</a>
@@ -67,7 +67,7 @@ The desktop app provides a visual workbench. Automation-ready capabilities are a
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>69</h3><strong>Desktop tools</strong></td>
+    <td align="center"><h3>70</h3><strong>Desktop tools</strong></td>
     <td align="center"><h3>12</h3><strong>Categories</strong></td>
     <td align="center"><h3>46</h3><strong>MCP capabilities</strong></td>
     <td align="center"><h3>3</h3><strong>Ways to work</strong></td>
@@ -182,7 +182,7 @@ The 2.1 series adds 11 desktop tools and delivers a broader upgrade across custo
 
 ## Complete tool catalog
 
-The 12 desktop categories below contain all 69 tools in the current source, including PDF to Scanned PDF under V3.1 development. Released V3.0 contains 68 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
+The 12 desktop categories below contain all 70 tools in the current source, including PDF to Scanned PDF and Clean Duplicate Files under V3.1 development. Released V3.0 contains 68 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF tools · 14</h3></td></tr>
@@ -253,10 +253,12 @@ Covers health estimates, Unix timestamp conversion, mortgage payments, simple/co
 Extract dominant image colors and palette shares, compare eight linked color spaces with common gamut checks, or practice Chinese and English typing with timing, speed, accuracy, and result statistics.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">Cleanup tools · 2</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">Cleanup tools · 3</h3></td></tr>
 </table>
 
-`AI Large File Cleanup` · `C Drive Cleanup`
+`AI Large File Cleanup` · `C Drive Cleanup` · `Clean Duplicate Files`
+
+Duplicate cleanup uses size grouping, sampling, full hashing and byte comparison locally. Choose one keeper per group and recycle extras in one action. Contents are verified again before recycling; changed files are rejected. No uploads or similar-image matching. See in-app help for scan limits and protected files.
 
 Large File Cleanup scans a selected directory or the C drive locally, then lets local rules and optional AI analyze only filenames, sizes, modification times, and directory clues. Protected paths, links, and system files are excluded. Confirmed large-file cleanup uses the Recycle Bin; C Drive Cleanup separately explains permanent removal of selected system caches and space items by risk level. File contents are not uploaded for AI review.
 

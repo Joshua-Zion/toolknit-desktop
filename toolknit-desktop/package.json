@@ -118,6 +118,8 @@
     "test:animation-policy": "node scripts/test-animation-policy.mjs",
     "test:system-cleanup": "node scripts/test-system-cleanup-runtime.mjs",
     "test:cleanup-tools-contract": "node scripts/test-cleanup-tools-contract.mjs",
+    "test:duplicate-file-cleanup": "node scripts/test-duplicate-file-cleanup.mjs",
+    "test:duplicate-file-cleanup-browser": "node scripts/test-duplicate-file-cleanup-browser.mjs",
     "test:excel-to-pdf": "node scripts/test-excel-to-pdf-shell.mjs && cargo test --manifest-path src-tauri/Cargo.toml excel_to_pdf --lib",
     "test:cli-package": "npm run stage:cli-resources && node scripts/test-cli-package.mjs",
     "test:cli-clean-worktree": "node scripts/test-cli-clean-worktree.mjs",

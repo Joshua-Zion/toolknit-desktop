@@ -131,6 +131,7 @@ const toolToHelp = new Map([
   ['color-space-compare', 'color-space-compare'],
   ['typing-test', 'typing-test'],
   ['large-file-cleanup', 'large-file-cleanup'],
+  ['duplicate-file-cleanup', 'duplicate-file-cleanup'],
   ['c-drive-cleanup', 'c-drive-cleanup'],
   ['hardware-overview', 'hardware-tools'],
   ['clipboard-history', 'clipboard-history'],
@@ -155,7 +156,7 @@ const toolToHelp = new Map([
 ]);
 
 const desktopTools = unique(valuesForAttribute(indexHtml, 'data-tool'));
-assert.equal(desktopTools.length, 69, 'Current desktop catalog must contain exactly 69 unique tools.');
+assert.equal(desktopTools.length, 70, 'Current desktop catalog must contain exactly 70 unique tools.');
 for (const tool of desktopTools) {
   const section = toolToHelp.get(tool);
   assert.ok(section, `Desktop tool has no help mapping: ${tool}`);

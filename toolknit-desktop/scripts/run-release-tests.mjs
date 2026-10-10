@@ -12,6 +12,7 @@ const releaseTests = [
   'test:animation-policy',
   'test:system-cleanup',
   'test:cleanup-tools-contract',
+  'test:duplicate-file-cleanup',
   'test:excel-to-pdf',
   'test:pdf-merge',
   'test:pdf-merge-tool-contract',
