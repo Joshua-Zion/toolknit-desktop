@@ -89,12 +89,6 @@ html[data-theme="light"] .ppt-draft-editor-overlay {
   color: var(--ppt-draft-ink);
 }
 
-html[data-theme="light"] .ppt-draft-editor-overlay .ppt-draft-editor-header {
-  border-bottom-color: var(--ppt-draft-border);
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--ppt-draft-ink);
-}
-
 html[data-theme="light"] .ppt-draft-editor-overlay :is(.ppt-draft-editor-preview, .ppt-draft-editor-inspector) {
   border-color: var(--ppt-draft-border);
   background: var(--ppt-draft-panel);

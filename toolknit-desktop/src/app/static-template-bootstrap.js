@@ -8,6 +8,7 @@ import aiKeyTemplate from './templates/ai-key.html?raw';
 import dependencyManagersTemplate from './templates/dependency-managers.html?raw';
 import globalDialogsTemplate from './templates/global-dialogs.html?raw';
 import { mountTrustedTemplate } from './trusted-template-runtime.js';
+import { toolTopbarMarkup } from '../shared/tool-page-shell.js';
 
 const STATIC_TEMPLATE_SPECS = Object.freeze([
   Object.freeze({
@@ -32,7 +33,11 @@ const STATIC_TEMPLATE_SPECS = Object.freeze([
   }),
   Object.freeze({
     name: 'legal',
-    markup: legalTemplate,
+    markup: legalTemplate.replace('<!-- legal-topbar -->', toolTopbarMarkup({
+      tag: '<span id="legalTopTag">ToolKnit Program Declaration</span>',
+      title: '',
+      closeAttr: 'id="legalBackBtn" data-i18n-title="legal.back"'
+    })),
     rootSelector: '#legalOverlay'
   }),
   Object.freeze({

@@ -341,21 +341,9 @@
       }
 
       @media (max-width: 780px) {
-        .pdf-merge-v2-topbar {
-          align-items: flex-start;
-          flex-direction: column;
-          min-height: 120px;
-          padding: 16px 22px;
-        }
 
         .pdf-merge-overlay.pdf-merge-v2 {
           grid-template-rows: auto minmax(0, 1fr);
-        }
-
-        .pdf-merge-v2-top-actions {
-          width: 100%;
-          justify-content: flex-start;
-          flex-wrap: wrap;
         }
 
         .pdf-merge-v2 .pdf-merge-v2-body {

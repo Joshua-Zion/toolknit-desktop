@@ -67,7 +67,8 @@ export async function checkSecondaryTheme(browser, url, output) {
         await layout('#feedbackOverlay', `feedback-${width}`, '.feedback-body');
       }
       await page.locator('#feedbackBack').hover();
-      await page.waitForFunction(() => /^#(?:000|000000)$/.test(getComputedStyle(document.querySelector('#feedbackBack')).getPropertyValue('--tool-back-static-outline').trim()));
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('#feedbackBack')).width === '64px');
+      assert.equal(await style('#feedbackBack', 'backgroundColor'), 'rgb(17, 17, 17)');
       await click('#feedbackBack');
       await closed('#feedbackOverlay');
       await page.setViewportSize({ width: 1400, height: 887 });

@@ -77,45 +77,6 @@ html[data-theme="light"] .pdf-editor-v2::after {
   -webkit-mask-image: none;
   opacity: 1;
 }
-html[data-theme="light"] .pdf-crop-v2 .pdf-merge-v2-topbar,
-html[data-theme="light"] .pdf-page-number-v2 .pdf-merge-v2-topbar,
-html[data-theme="light"] .pdf-editor-v2 .pdf-merge-v2-topbar {
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid #ececef;
-  color: #171717;
-}
-html[data-theme="light"] .pdf-crop-v2 .pdf-merge-v2-top-tag,
-html[data-theme="light"] .pdf-page-number-v2 .pdf-merge-v2-top-tag,
-html[data-theme="light"] .pdf-editor-v2 .pdf-merge-v2-top-tag {
-  border-color: transparent;
-  background: #f0f1f3;
-  color: #686b72;
-}
-html[data-theme="light"] .pdf-crop-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button),
-html[data-theme="light"] .pdf-page-number-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button),
-html[data-theme="light"] .pdf-editor-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
-  color: #171717;
-}
-html[data-theme="light"] .pdf-crop-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover,
-html[data-theme="light"] .pdf-page-number-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover,
-html[data-theme="light"] .pdf-editor-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover {
-  color: #171717;
-  background: #f0f1f3;
-}
-html[data-theme="light"] .pdf-crop-v2 .pdf-merge-v2-topbar .home-v2-support-top,
-html[data-theme="light"] .pdf-page-number-v2 .pdf-merge-v2-topbar .home-v2-support-top,
-html[data-theme="light"] .pdf-editor-v2 .pdf-merge-v2-topbar .home-v2-support-top {
-  border-color: #171717;
-  color: #ffffff;
-  background: #171717;
-}
-html[data-theme="light"] .pdf-crop-v2 .pdf-merge-v2-topbar .home-v2-support-top:hover,
-html[data-theme="light"] .pdf-page-number-v2 .pdf-merge-v2-topbar .home-v2-support-top:hover,
-html[data-theme="light"] .pdf-editor-v2 .pdf-merge-v2-topbar .home-v2-support-top:hover {
-  border-color: #303030;
-  color: #ffffff;
-  background: #303030;
-}
 html[data-theme="light"] .pdf-crop-v2 .pdf-crop-layout,
 html[data-theme="light"] .pdf-page-number-v2 .pdf-page-number-layout,
 html[data-theme="light"] .pdf-editor-v2 .pdf-editor-v2-body {

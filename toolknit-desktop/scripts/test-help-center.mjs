@@ -23,7 +23,7 @@ const helpLight = await readFile(new URL('src/styles/themes/help-light.css', roo
 assert.match(themeIndex, /@import url\('\.\/help-light\.css'\)/, 'Shared document theme is loaded by the theme entry.');
 assert.match(helpLight, /html\[data-theme="light"\] \.help-overlay/, 'Help and legal colors stay scoped to light document pages.');
 assert.doesNotMatch(helpLight, /!important|z-index\s*:/, 'Document theme must not compete with modal ownership.');
-assert.match(helpLight, /border-color: #000000/, 'Light back hover keeps the requested black outline.');
+assert.doesNotMatch(helpLight, /\.help-back-btn:hover/, 'Help navigation uses the shared hover owner.');
 const indexHtml = await readAppMarkup(import.meta.url);
 const zh = JSON.parse(await readFile(new URL('src/locales/zh.json', root), 'utf8'));
 const en = JSON.parse(await readFile(new URL('src/locales/en.json', root), 'utf8'));

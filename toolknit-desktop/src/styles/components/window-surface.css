@@ -103,16 +103,6 @@ body.window-is-maximized .app.is-v2-home {
   padding: 0 0 30px;
 }
 
-.settings-overlay.v2-settings .settings-v2-topbar .home-v2-nav-link,
-.settings-overlay.v2-settings .settings-v2-topbar .home-v2-support-top {
-  font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-
-.settings-overlay.v2-settings .settings-v2-shell .settings-v2-topbar .home-v2-window-cluster > .home-v2-icon-button.is-current {
-  color: var(--ink);
-  background: var(--tk-nav-current-bg, #171717);
-}
-
 .settings-overlay.v2-settings .settings-v2-top-meta,
 .settings-overlay.v2-settings .settings-v2-index,
 .settings-overlay.v2-settings .settings-v2-footnote {

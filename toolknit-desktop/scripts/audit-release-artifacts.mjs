@@ -25,6 +25,16 @@ assert.ok(config.app.windows.every(window => window.devtools === false));
 assert.ok(config.app.windows.every(window => !/remote-debugging|auto-open-devtools/i.test(window.additionalBrowserArgs || '')));
 const publicFiles = await files('public');
 const distFiles = await files('dist');
+const requiredAssets = ['logo.png', 'assets/spider.png', 'assets/backgrounds/default-dark-mountain.jpg',
+  'assets/donate/alipay-qr.jpg', 'assets/donate/wechat-qr.png', 'assets/donate/donation-support.webp'];
+for (const asset of requiredAssets) {
+  assert.ok(publicFiles.includes(`public/${asset}`), `Required source asset missing: ${asset}`);
+  assert.ok(distFiles.includes(`dist/${asset}`), `Required built asset missing: ${asset}`);
+  const source = await readFile(path.join(root, 'public', asset));
+  const built = await readFile(path.join(root, 'dist', asset));
+  assert.ok(source.length > 0, `Required asset is empty: ${asset}`);
+  assert.ok(source.equals(built), `Built asset differs from its original: ${asset}`);
+}
 const obsolete = /(?:^|\/)(?:controls\.html|home-web-preview\.png|INTER-OFL\.txt|inter-variable\.woff2|Fonarto-[^/]+|font-lab)(?:\/|$)/i;
 assert.ok(!publicFiles.some(file => obsolete.test(file)), 'Obsolete assets must stay outside public');
 assert.ok(!distFiles.some(file => obsolete.test(file)), 'Obsolete assets must not be copied to dist');

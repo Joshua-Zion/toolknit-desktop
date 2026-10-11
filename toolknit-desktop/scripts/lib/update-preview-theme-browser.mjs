@@ -62,6 +62,16 @@ export async function checkUpdatePreviewTheme(browser, url, output) {
     try {
       await page.goto(url);
       await page.waitForSelector('#homeToolGrid .tool-result-card');
+      // The home grid can render before the startup cover finishes revealing.
+      // Wait for the same interactive state a user sees before testing focus.
+      await page.waitForFunction(() => {
+        const app = document.querySelector('.app');
+        const startup = document.documentElement.dataset.tkStartup;
+        return !document.querySelector('#appStartupMask')
+          && !app?.inert
+          && startup !== 'loading'
+          && startup !== 'revealing';
+      });
       await page.locator('#homeV2Settings').focus();
       await page.evaluate(release => window.openToolKnitUpdatePreview?.({
         version: '3.0.1',

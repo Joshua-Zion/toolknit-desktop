@@ -11,7 +11,7 @@ html[data-theme="light"] .app.is-v2-home {
   color: var(--tk-page-ink);
 }
 
-html[data-theme="light"] .app.is-v2-home .home-v2-topbar {
+html[data-theme="light"] .app.is-v2-home .home-v2-topbar:not(.tk-tool-nav) {
   background: var(--tk-page-bg);
   color: var(--tk-page-ink);
 }
@@ -28,22 +28,22 @@ html[data-theme="light"] .app.is-v2-home :is(.eyebrow, .hero-desc, .hero-support
   color: var(--tk-page-muted);
 }
 
-html[data-theme="light"] .app.is-v2-home :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
+html[data-theme="light"] .app.is-v2-home :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):not(.tk-nav-button) {
   color: var(--tk-page-ink);
 }
 
-html[data-theme="light"] .app.is-v2-home :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover {
+html[data-theme="light"] .app.is-v2-home :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):not(.tk-nav-button):hover {
   color: var(--tk-page-ink);
   background: #eeeeee;
 }
 
-html[data-theme="light"] .app.is-v2-home :is(.primary-action, .home-v2-support-top, .tool-load-more-button, .tool-feedback-link) {
+html[data-theme="light"] .app.is-v2-home :is(.primary-action, .home-v2-support-top, .tool-load-more-button, .tool-feedback-link):not(.tk-nav-button) {
   background: var(--tk-page-ink);
   border-color: var(--tk-page-ink);
   color: #ffffff;
 }
 
-html[data-theme="light"] .app.is-v2-home :is(.primary-action, .home-v2-support-top, .tool-load-more-button, .tool-feedback-link):hover {
+html[data-theme="light"] .app.is-v2-home :is(.primary-action, .home-v2-support-top, .tool-load-more-button, .tool-feedback-link):not(.tk-nav-button):hover {
   background: #303030;
   border-color: #303030;
   color: #ffffff;

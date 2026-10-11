@@ -23,29 +23,6 @@ html[data-theme="light"] :is(.developer-toolbox-shell, .crypto-shell) .tool-page
   display: none;
 }
 
-html[data-theme="light"] :is(.developer-toolbox-shell, .crypto-shell) .tool-page-v2-topbar {
-  background: #ffffff;
-  border-color: var(--dev-line);
-}
-
-html[data-theme="light"] :is(.developer-toolbox-shell, .crypto-shell) .tool-page-v2-tag {
-  background: var(--dev-soft);
-  border-color: var(--dev-line);
-  color: var(--dev-ink);
-}
-
-html[data-theme="light"] :is(.developer-toolbox-shell, .crypto-shell) :is(.tool-page-v2-nav-link, .tool-page-v2-icon):hover {
-  background: var(--dev-hover);
-  border-color: var(--dev-line-strong);
-  color: var(--dev-ink);
-}
-
-html[data-theme="light"] :is(.developer-toolbox-shell, .crypto-shell) .tool-page-v2-support {
-  border-color: #171717;
-  background: #171717;
-  color: #ffffff;
-}
-
 html[data-theme="light"] :is(.developer-toolbox-shell, .crypto-shell) :is(.tool-page-v2-rail, .developer-toolbox-workspace, .crypto-workspace) {
   border-color: var(--dev-line);
   background: #ffffff;

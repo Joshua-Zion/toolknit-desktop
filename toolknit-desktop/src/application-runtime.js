@@ -398,6 +398,7 @@
       const settingsBtns = document.querySelectorAll('#settingsBtn, button[id$="V2Settings"]');
       const settingsBack = document.getElementById('settingsBack');
       const settingsContent = settingsOverlay?.querySelector('.settings-content');
+      let helpCenterRuntime = null;
 
       // Language selection in settings
       const langOptionBtns = document.querySelectorAll('.settings-row.lang-options .lang-option');
@@ -1437,6 +1438,7 @@
           if (region !== settingsOverlay) moveFocusOutOfHiddenRegion(region);
         });
         document.getElementById('helpOverlay')?.classList.remove('visible');
+        document.getElementById('legalOverlay')?.classList.remove('visible');
         if (settingsContent) settingsContent.scrollTop = 0;
         settingsOverlay.style.zIndex = '50000';
         settingsOverlay.classList.add('visible');
@@ -1474,7 +1476,7 @@
         settingsBack.addEventListener('click', () => { void closeSettingsOverlay(); });
       }
 
-      const helpCenterRuntime = createHelpCenterRuntime({
+      helpCenterRuntime = createHelpCenterRuntime({
         root: document,
         windowRef: window,
         translate: t,
@@ -1489,7 +1491,8 @@
         settingsOverlay,
         settingsContent,
         pageTransition,
-        syncCustomBackgroundPreviewPlayback
+        syncCustomBackgroundPreviewPlayback,
+        onShowSettings: showSettingsOverlay
       });
       const {
         openFeedbackOverlay,
@@ -1534,7 +1537,10 @@
         root: document,
         onWebsite: () => { void openExternalUrl('https://toolknit.com'); },
         onSupport: () => { void donationController.open(); },
-        onSettings: () => openSettingsOverlay(),
+        onSettings: ({ overlay } = {}) => {
+          if (helpCenterRuntime?.navigateToSettings?.(overlay)) return;
+          return openSettingsOverlay();
+        },
         onToolBack: ({ overlay }) => lazyFeatureRegistry?.closeFromChrome(overlay) ?? false,
         onWindowAction: action => { void handleWindowControlAction(action); }
       });

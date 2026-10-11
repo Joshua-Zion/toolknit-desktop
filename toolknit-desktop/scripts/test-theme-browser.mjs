@@ -42,22 +42,24 @@ async function select(theme) {
   await page.waitForTimeout(220);
 }
 async function capture(name) { await page.screenshot({ path: path.join(output, `${name}.png`) }); }
-async function checkBackOutline(expected, screenshot) {
+async function checkBackCapsule(expected, screenshot) {
   const back = page.locator('#settingsBack');
   const before = await back.boundingBox();
   await back.hover();
   await page.waitForFunction(() => {
-    const s = getComputedStyle(document.querySelector('#settingsBack'), '::after');
-    return s.opacity === '1' && s.getPropertyValue('--tool-back-outline-progress').trim() === '360deg';
+    return getComputedStyle(document.querySelector('#settingsBack')).width === '64px';
   });
   const style = await back.evaluate(n => {
-    const s = getComputedStyle(n, '::after');
-    return { background: s.backgroundImage, radius: s.borderRadius, pointerEvents: s.pointerEvents };
+    const s = getComputedStyle(n);
+    return { background: s.backgroundColor, radius: s.borderRadius, outline: getComputedStyle(n, '::after').content };
   });
-  assert.ok(style.background.includes(expected), 'back outline uses the page palette');
+  assert.equal(style.background, expected, 'back capsule uses the page palette');
   assert.equal(style.radius, '999px');
-  assert.equal(style.pointerEvents, 'none');
-  assert.deepEqual(await back.boundingBox(), before, 'hover does not move or resize the back button');
+  assert.equal(style.outline, 'none');
+  const after = await back.boundingBox();
+  assert.equal(after.x, before.x);
+  assert.equal(after.height, before.height);
+  assert.equal(after.width, 64, 'back expands rightward');
   await back.screenshot({ path: path.join(output, `${screenshot}.png`) });
   await page.mouse.move(1, 1);
 }
@@ -94,7 +96,8 @@ async function checkSettingsLayout() {
     if (entries.length !== 9 || meta.length !== 3 || [...entries, ...meta].some(n => !n.getBoundingClientRect().height)) failures.push('sidebar information missing');
     if (getComputedStyle(aside).borderRadius !== '32px' || aside.scrollWidth > aside.clientWidth + 1) failures.push('sidebar corners or overflow');
     for (const node of overlay.querySelectorAll('.settings-v2-topbar button, .settings-v2-btn, .settings-v2-choice, .settings-v2-icon-btn, .settings-v2-link-card, .settings-v2-radius-input')) {
-      if (getComputedStyle(node).borderRadius !== '999px') failures.push(`pill corners: ${node.id || node.className}`);
+      const radius = node.matches('.tk-nav-settings, .tk-nav-minimize, .tk-nav-maximize, .tk-nav-close') ? '6px' : '999px';
+      if (getComputedStyle(node).borderRadius !== radius) failures.push(`control corners: ${node.id || node.className}`);
     }
     aside.scrollTop = aside.scrollHeight;
     const lastEntry = entries.at(-1).getBoundingClientRect();
@@ -142,7 +145,7 @@ try {
   assert.equal(await color('.home-v2-topbar .home-v2-support-top', 'borderRadius'), '999px');
   await settings();
   assert.equal(await color('#settingsOverlay .home-v2-support-top', 'borderRadius'), '999px');
-  await checkBackOutline('255, 255, 255', 'dark-back-hover');
+  await checkBackCapsule('rgb(243, 243, 244)', 'dark-back-hover');
   assert.equal(await page.getAttribute('[data-theme-choice="dark"]', 'aria-checked'), 'true');
   assert.equal(await page.locator('[data-i18n="settings.posterNote"], [data-i18n="settings.customBackgroundHint"]').count(), 0);
   const darkSettingsPalette = await page.locator('.settings-v2-card').first().evaluate(n => {
@@ -172,7 +175,7 @@ try {
   assert.equal(await color('#settingsOverlay .settings-v2-topbar'), 'rgb(255, 255, 255)');
   assert.equal(await color('#settingsOverlay .home-v2-support-top', 'color'), 'rgb(255, 255, 255)');
   assert.equal(await color('#settingsOverlay .home-v2-support-top'), 'rgb(17, 17, 17)');
-  await checkBackOutline('rgb(0, 0, 0)', 'light-back-hover');
+  await checkBackCapsule('rgb(17, 17, 17)', 'light-back-hover');
   assert.equal(await color('#settingsOverlay .home-v2-icon-button.is-current'), 'rgb(238, 238, 238)');
   assert.equal(await color('#settingsOverlay .home-v2-icon-button.is-current', 'color'), 'rgb(17, 17, 17)');
   assert.equal(await page.locator('#settingsOverlay').evaluate(n => getComputedStyle(n, '::before').display), 'none');

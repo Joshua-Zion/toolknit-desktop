@@ -57,9 +57,9 @@ assert.doesNotMatch(workbench, /from.*features\//);
 assert.match(workbench, /toolTopbarMarkup/);
 assert.match(sharedToolShell, /export function toolTopbarMarkup/);
 assert.match(sharedToolShell, /export function bindGlobalToolPageChrome/);
-assert.match(unifiedNavigation, /> \.home-v2-window-cluster \.home-v2-window-button \{/);
-assert.match(unifiedNavigation, /font-size: 13\.3333px;/);
-assert.match(unifiedNavigation, /transition: color 150ms ease, background 150ms ease;/);
+assert.match(unifiedNavigation, /\.tk-tool-nav \.home-v2-window-cluster\s*\{/);
+assert.match(unifiedNavigation, /font-size: 14px;/);
+assert.match(unifiedNavigation, /transition: background-color 150ms ease, color 150ms ease;/);
 assert.doesNotMatch(preview, /\.innerHTML\s*=|\.addEventListener\(/);
 
 assert.match(exporter, /write_unique_file_bytes/);

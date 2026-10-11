@@ -41,37 +41,6 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-layout {
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-layout::-webkit-scrollbar-thumb { background: #aaaaaa; }
 
-html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-topbar {
-  --tk-nav-bg: #ffffff;
-  --tk-nav-button-bg: #ffffff;
-  --tk-nav-hover-bg: #eeeeee;
-  --tk-nav-current-bg: #eeeeee;
-  --tk-nav-support-bg: #111111;
-  --tk-nav-support-ink: #ffffff;
-  --muted: #111111;
-  background: var(--tk-nav-bg);
-  color: #111111;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-back {
-  --tool-back-static-outline: #bbbbbb;
-  --tool-back-hover-outline: #000000;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings :is(.settings-v2-top-tag, .home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
-  color: #111111;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover,
-html[data-theme="light"] .settings-overlay.v2-settings .home-v2-icon-button.is-current {
-  color: #111111;
-  background: #eeeeee;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings .home-v2-support-top:hover {
-  --tk-nav-support-bg: #303030;
-}
-
 /* Reuse the approved home palette without changing the dark settings rules. */
 html[data-theme="light"] .settings-overlay.v2-settings :is(.settings-v2-poster, .settings-v2-card) {
   --ink: var(--tk-home-card-ink);

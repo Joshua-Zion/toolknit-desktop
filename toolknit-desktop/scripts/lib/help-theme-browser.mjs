@@ -25,6 +25,10 @@ export async function checkHelpTheme(browser, url, output) {
       return !veil || getComputedStyle(veil).visibility === 'hidden';
     });
     const click = async selector => { await page.locator(selector).click(); await settle(); };
+    const openSettings = async () => {
+      const alreadyVisible = await page.locator('#settingsOverlay').evaluate(node => node.classList.contains('visible'));
+      if (!alreadyVisible) await click('#homeV2Settings');
+    };
     const style = (selector, property) => page.locator(selector).first().evaluate((n, key) => getComputedStyle(n)[key], property);
     const capture = name => page.screenshot({ path: path.join(output, `${language}-${name}.png`), animations: 'disabled' });
     async function layout(root, name) {
@@ -33,13 +37,13 @@ export async function checkHelpTheme(browser, url, output) {
       const metrics = await page.locator(root).evaluate(overlay => {
         const sidebar = overlay.querySelector('.help-sidebar');
         const body = overlay.querySelector('.help-content-body');
-        const header = overlay.querySelector('.help-v2-topbar, .help-content-header');
+        const header = overlay.querySelector('.tk-tool-nav');
         const rect = n => {
           const r = n.getBoundingClientRect();
           return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
         };
         const failures = [];
-        for (const n of overlay.querySelectorAll('button, input, .help-sidebar, .help-content-body, .help-content-title, .help-v2-topbar')) {
+        for (const n of overlay.querySelectorAll('button, input, .help-sidebar, .help-content-body, .help-content-title, .tk-tool-nav')) {
           const r = n.getBoundingClientRect();
           if (!r.width || !r.height) continue;
           if (r.left < -1 || r.right > innerWidth + 1 || n.scrollWidth > n.clientWidth + 2) failures.push(n.id || n.className);
@@ -115,40 +119,84 @@ export async function checkHelpTheme(browser, url, output) {
       }
       await page.setViewportSize({ width: 1400, height: 887 });
       await page.locator('#helpBackBtn').hover();
-      await page.waitForFunction(() => getComputedStyle(document.querySelector('#helpBackBtn')).borderTopColor === 'rgb(0, 0, 0)');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('#helpBackBtn')).width === '64px');
+      assert.equal(await style('#helpBackBtn', 'backgroundColor'), 'rgb(17, 17, 17)');
       assert.equal(await style('#helpBackBtn', 'transform'), 'none');
       await capture('help-back-hover');
       await page.keyboard.press('Escape');
       await settle();
       await page.waitForFunction(() => !document.querySelector('#helpOverlay').classList.contains('visible'));
-      await click('#homeV2Settings');
       for (const [entry, section] of [['#declarationLink', 'declaration'], ['#usagePolicyLink', 'usage-policy']]) {
+        await openSettings();
         await click(entry);
+        assert.equal(await page.locator('#settingsOverlay').evaluate(n => n.classList.contains('visible')), false);
         assert.equal(await page.locator('#legalNav .active').getAttribute('data-legal-section'), section);
+        assert.equal(await page.locator('#legalTopTag').textContent(), section === 'usage-policy'
+          ? 'ToolKnit Usage Policy' : 'ToolKnit Program Declaration');
+        assert.equal(await page.locator('#legalOverlay .tk-nav-actions button:visible').count(), 6);
+        await click('#legalOverlay .tk-nav-support');
+        await page.waitForSelector('#donationOverlay.visible');
+        await click('#donationOverlay .donation-close');
+        await page.waitForFunction(() => !document.querySelector('#donationOverlay').classList.contains('visible'));
+        await click('#legalOverlay .tk-nav-settings');
+        assert.equal(await page.locator('#legalOverlay').evaluate(n => n.classList.contains('visible')), false);
+        await click(entry);
         await checkText('#legalOverlay');
         for (const [width, height] of [[1400, 887], [1024, 480], [720, 480], [390, 740]]) {
           await page.setViewportSize({ width, height });
           await layout('#legalOverlay', `${section}-${width}`);
-          await page.locator('#legalContentBody').evaluate(n => { n.scrollTop = n.scrollHeight; });
-          assert.ok(await page.locator('#legalContentBody').evaluate(n => n.scrollTop + n.clientHeight >= n.scrollHeight - 1));
+          const scrollOwner = width <= 820 ? '#legalOverlay .help-v2-layout' : '#legalContentBody';
+          await page.locator(scrollOwner).evaluate(n => { n.scrollTop = n.scrollHeight; });
+          assert.ok(await page.locator(scrollOwner).evaluate(n => n.scrollTop + n.clientHeight >= n.scrollHeight - 1));
           await capture(`${section}-${width}-bottom`);
-          await page.locator('#legalContentBody').evaluate(n => { n.scrollTop = 0; });
+          await page.locator(scrollOwner).evaluate(n => { n.scrollTop = 0; });
         }
         await click(`#legalNav [data-legal-section="${section === 'declaration' ? 'usage-policy' : 'declaration'}"]`);
         await checkText('#legalOverlay');
         await page.locator('#legalBackBtn').hover();
-        await page.waitForFunction(() => getComputedStyle(document.querySelector('#legalBackBtn')).borderTopColor === 'rgb(0, 0, 0)');
+        await page.waitForFunction(() => getComputedStyle(document.querySelector('#legalBackBtn')).width === '64px');
+        assert.equal(await style('#legalBackBtn', 'backgroundColor'), 'rgb(17, 17, 17)');
         await click('#legalBackBtn');
         await page.waitForFunction(() => !document.querySelector('#legalOverlay').classList.contains('visible'));
         assert.equal(await page.locator('#legalOverlay').evaluate(n => n.contains(document.activeElement)), false);
         await page.setViewportSize({ width: 1400, height: 887 });
       }
+      await openSettings();
       await click('[data-theme-choice="dark"]');
       await click('#declarationLink');
-      assert.equal(await style('#legalOverlay', 'display'), 'flex');
-      assert.equal(await style('#legalOverlay', 'backgroundColor'), 'rgb(0, 0, 0)');
+      assert.equal(await style('#legalOverlay', 'display'), 'block');
+      assert.equal(await style('#legalOverlay', 'backgroundColor'), 'rgb(5, 5, 6)');
+      assert.equal(await style('#legalOverlay .tk-tool-nav', 'backgroundColor'), 'rgb(8, 8, 9)');
+      assert.equal(await page.locator('#legalOverlay .tk-nav-actions button:visible').count(), 6);
       await capture('dark-legal');
+      for (const role of ['web', 'support']) {
+        const button = page.locator(`#legalOverlay .tk-nav-${role}`);
+        for (let cycle = 0; cycle < 3; cycle++) {
+          await button.hover();
+          await page.waitForFunction(selector => getComputedStyle(document.querySelector(selector)).opacity === '1', `#legalOverlay .tk-nav-${role} .tk-nav-alternate`);
+          await page.mouse.move(0, 250);
+          await page.waitForFunction(selector => getComputedStyle(document.querySelector(selector)).opacity === '0', `#legalOverlay .tk-nav-${role} .tk-nav-alternate`);
+        }
+      }
+      await click('#legalOverlay .tk-nav-support');
+      await page.waitForSelector('#donationOverlay.visible');
+      await click('#donationOverlay .donation-close');
+      await page.waitForFunction(() => !document.querySelector('#donationOverlay').classList.contains('visible'));
+      await click('#legalOverlay .tk-nav-settings');
+      assert.equal(await style('#settingsOverlay', 'zIndex'), '50000');
+      assert.equal(await page.locator('#legalOverlay').evaluate(n => n.classList.contains('visible')), false);
+      await click('#settingsBack');
+      await openSettings();
+      await click('#declarationLink');
+      assert.equal(await page.locator('#legalTopTag').textContent(), 'ToolKnit Program Declaration');
+      await page.keyboard.press('Escape');
+      await settle();
+      await page.waitForFunction(() => !document.querySelector('#legalOverlay').classList.contains('visible'));
+      await openSettings();
+      await click('#usagePolicyLink');
+      assert.equal(await page.locator('#legalTopTag').textContent(), 'ToolKnit Usage Policy');
       await click('#legalBackBtn');
+      await openSettings();
       await click('#helpLink');
       assert.equal(await style('#helpOverlay', 'backgroundColor'), 'rgb(5, 5, 6)');
       await capture('dark-help');
@@ -157,12 +205,12 @@ export async function checkHelpTheme(browser, url, output) {
       await click('#helpLink');
       assert.equal(await style('#helpOverlay', 'backgroundColor'), 'rgb(255, 255, 255)');
       await click('#helpBackBtn');
-      await click('#homeV2Settings');
+      await openSettings();
       await click('#helpLink');
       assert.equal(await page.locator('#helpSearchInput').inputValue(), '');
       await page.reload();
       await page.waitForSelector('#homeToolGrid .tool-result-card');
-      await click('#homeV2Settings');
+      await openSettings();
       await click('#helpLink');
       assert.equal(await style('#helpOverlay', 'backgroundColor'), 'rgb(255, 255, 255)');
     } catch (error) {

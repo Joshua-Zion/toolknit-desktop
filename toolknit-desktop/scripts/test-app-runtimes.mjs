@@ -367,4 +367,27 @@ feedbackRuntime.dispose();
 feedbackRuntime.dispose();
 assert.equal(themeListener, null, 'disposal removes the theme subscription');
 
+const legalRoot = new FakeRoot(['legalOverlay', 'legalContentTitle', 'legalTopTag', 'legalContentBody']
+  .map(id => new FakeElement(id)));
+const legalSettings = new FakeElement('settingsOverlay');
+legalSettings.classList.add('visible');
+legalSettings.style.zIndex = '50000';
+const legalRuntime = createHelpCenterRuntime({
+  root: legalRoot,
+  settingsOverlay: legalSettings,
+  getLegalContent: () => ({
+    declaration: { title: '程序声明', html: '<p>Declaration</p>' },
+    'usage-policy': { title: '使用规范', html: '<p>Policy</p>' }
+  })
+});
+await legalRuntime.openLegalOverlay();
+assert.equal(legalSettings.classList.contains('visible'), false, 'legal pages replace settings rather than inherit its raised stacking layer');
+assert.equal(legalSettings.style.zIndex, '');
+assert.equal(legalRoot.getElementById('legalTopTag').textContent, 'ToolKnit Program Declaration');
+legalRuntime.showLegalSection('usage-policy');
+assert.equal(legalRoot.getElementById('legalTopTag').textContent, 'ToolKnit Usage Policy');
+assert.equal(legalRoot.getElementById('legalContentTitle').textContent, '使用规范');
+await legalRuntime.closeLegalOverlay();
+legalRuntime.dispose();
+
 console.log('Application runtime module contracts passed');

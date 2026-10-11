@@ -73,6 +73,6 @@ assert.match(uiStyles, /\.color-replace-output-link\s*\{[^}]*color:\s*#0969da/s,
 assert.match(themeIndex, /@import url\('\.\/image-color-replace-light\.css'\)/, 'the light theme index must load color replacement styling');
 assert.match(lightTheme, /html\[data-theme="light"\] \.color-replace-shell/, 'color replacement light styles must stay scoped to the feature shell');
 assert.match(lightTheme, /\.color-replace-shell > \.tool-page-v2-bg\s*\{[^}]*display:\s*none/s, 'the light workspace must not expose the shared dark background layer');
-assert.match(lightTheme, /\.color-replace-shell \.tool-page-v2-back\s*\{[^}]*--tool-back-static-outline:\s*#bbbbbb;[^}]*--tool-back-hover-outline:\s*#000000;/s, 'the shared back button must own its light-theme outline tokens');
+assert.doesNotMatch(lightTheme, /tool-page-v2-back|--tool-back-static-outline|--tool-back-hover-outline/, 'feature light themes defer back button visuals to shared navigation');
 assert.match(lightTheme, /\.color-replace-stage-actions \[data-cr-export\]:disabled/, 'the light theme must preserve a distinct disabled export state');
 console.log('image color replacement core tests passed');

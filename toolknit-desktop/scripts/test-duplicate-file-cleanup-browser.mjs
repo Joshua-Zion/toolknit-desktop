@@ -28,8 +28,10 @@ try {
     const { setLangWithoutFade } = await import('/src/i18n.js');
     const { createIcons, icons } = await import('/node_modules/lucide/dist/esm/lucide.js');
     const { createToastManager } = await import('/src/app/toast-manager.js');
+    const { prepareToolPageChrome } = await import('/src/shared/tool-page-chrome.js');
     await import('/src/styles/components/toasts.css');
     document.body.innerHTML = TOOL_MARKUP + '<div id="toastContainer" class="toast-container"></div>';
+    prepareToolPageChrome(document);
     const toasts = createToastManager();
     const groups = Array.from({ length: 12 }, (_, n) => ({ id: `group-${n}`, files: Array.from({ length: n === 0 ? 41 : 2 }, (_, i) => ({ name: `sample-${n}-${i}.pdf`, path: `D:/fixtures/${n}/sample-${i}.pdf`, size_bytes: 1024 * (n + 1), modified_at: 1700000000 + i })) }));
     const fixture = window.fixture = { groups, calls: [], scanMode: 'good', recycleMode: 'good', setLang: setLangWithoutFade, progress: { stage: 'hashing', scanned_files: 250, checked_files: 20, candidate_files: 80, read_bytes: 123456 } };
@@ -211,8 +213,10 @@ try {
     await page.evaluate(({ lang, theme }) => { window.fixture.setLang(lang); document.documentElement.dataset.theme = theme; }, { lang, theme });
     await page.locator('#duplicateFileCleanupOverlay [data-tool-website]').hover();
     await page.waitForTimeout(200);
-    const navHover = await page.locator('#duplicateFileCleanupOverlay [data-tool-website]').evaluate(node => { const css = getComputedStyle(node); return { transform: css.transform, color: css.color }; });
-    assert.notEqual(navHover.transform, 'none');
+    const navHover = await page.locator('#duplicateFileCleanupOverlay [data-tool-website]').evaluate(node => { const css = getComputedStyle(node); return { transform: css.transform, background: css.backgroundColor, radius: css.borderRadius }; });
+    assert.equal(navHover.transform, 'none');
+    assert.equal(navHover.radius, '999px');
+    assert.notEqual(navHover.background, 'rgba(0, 0, 0, 0)');
     const coverColors = await page.locator('#duplicateCleanupLayer').evaluate(node => { const css = getComputedStyle(node); return [css.backgroundColor, css.color]; });
     assert.deepEqual(coverColors, theme === 'light' ? ['rgb(255, 255, 255)', 'rgb(0, 0, 0)'] : ['rgb(0, 0, 0)', 'rgb(255, 255, 255)']);
     assert.equal(await page.locator('#duplicateCleanupQuote').evaluate(node => /[\u4e00-\u9fff]/.test(node.textContent)), lang === 'zh', 'active quote follows language changes');

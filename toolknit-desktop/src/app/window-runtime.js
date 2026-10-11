@@ -141,7 +141,7 @@ export function createWindowRuntime({
     const labelKey = maximized ? 'common.restore' : 'common.maximize';
     const label = translate(labelKey);
     let iconChanged = false;
-    documentRef?.querySelectorAll?.('.ctrl-btn[data-action="maximize"]').forEach(button => {
+    documentRef?.querySelectorAll?.('.ctrl-btn[data-action="maximize"], .tk-nav-maximize').forEach(button => {
       const icon = button.querySelector('[data-lucide]');
       if (icon && icon.getAttribute('data-lucide') !== iconName) {
         icon.setAttribute('data-lucide', iconName);

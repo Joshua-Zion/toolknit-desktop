@@ -29,61 +29,9 @@ html[data-theme="light"] .pdf-compress-v2::after {
   opacity: 1;
 }
 
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-topbar {
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--ink);
-  border-bottom: 1px solid #ececef;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-back {
-  --tool-back-static-outline: #bbbbbb;
-  --tool-back-hover-outline: #000000;
-  border-color: transparent;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #171717;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-back:hover {
-  --tool-back-hover-outline: #000000;
-  transform: none;
-  border-color: #111111;
-  background: #eeeeee;
-}
-
 /* Keep both outline layers explicit here. The shared navigation animation is
    still reused, while this page supplies the light-theme outline colors that
    its pseudo-elements render. */
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-back::before {
-  border-color: #bbbbbb;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-back::after {
-  --tool-back-outline-progress: 0deg;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-back:hover::after {
-  --tool-back-outline-progress: 360deg;
-  opacity: 1;
-  transition:
-    --tool-back-outline-progress 560ms linear,
-    opacity 70ms linear;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-top-tag {
-  border-color: transparent;
-  background: #f0f1f3;
-  color: #686b72;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-support-top, .home-v2-icon-button, .home-v2-window-button) {
-  color: #171717;
-}
-
-html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-support-top, .home-v2-icon-button, .home-v2-window-button):hover {
-  color: #171717;
-  background: #f0f1f3;
-}
 
 html[data-theme="light"] .pdf-compress-v2 .pdf-merge-v2-body {
   background: #ffffff;
@@ -477,7 +425,7 @@ html[data-theme="light"] .pdf-compress-v2 :is(button, select):focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-theme="light"] .pdf-compress-v2 :is(.pdf-merge-v2-cta, .pdf-merge-v2-process, .pdf-merge-v2-back) {
+  html[data-theme="light"] .pdf-compress-v2 :is(.pdf-merge-v2-cta, .pdf-merge-v2-process) {
     transition: none;
   }
 }

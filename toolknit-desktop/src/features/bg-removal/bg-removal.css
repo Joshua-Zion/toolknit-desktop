@@ -33,19 +33,6 @@
   pointer-events: none;
 }
 
-.bg-removal-topbar {
-  min-height: 64px;
-  padding: 0 28px;
-}
-
-.bg-removal-overlay .home-v2-support-top {
-  color: var(--black);
-}
-
-.bg-removal-overlay .home-v2-nav-link {
-  color: var(--muted);
-}
-
 .bg-removal-body {
   position: relative;
   z-index: 1;
@@ -850,34 +837,6 @@
 }
 
 @media (max-width: 780px) {
-  .feature-tool-overlay.bg-removal-overlay.pdf-merge-v2 > .bg-removal-topbar {
-    min-height: 58px;
-    height: 58px;
-    flex: 0 0 58px;
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    padding: 0 12px;
-  }
-
-  .feature-tool-overlay.bg-removal-overlay.pdf-merge-v2 > .bg-removal-topbar > .pdf-merge-v2-topbar-left {
-    width: auto;
-    flex: 0 0 auto;
-  }
-
-  .feature-tool-overlay.bg-removal-overlay.pdf-merge-v2 > .bg-removal-topbar > .pdf-merge-v2-top-actions {
-    width: auto;
-    flex: 0 0 auto;
-    flex-wrap: nowrap;
-    justify-content: flex-end;
-    margin-left: auto;
-  }
-
-  .feature-tool-overlay.bg-removal-overlay.pdf-merge-v2 > .bg-removal-topbar .pdf-merge-v2-top-tag,
-  .feature-tool-overlay.bg-removal-overlay.pdf-merge-v2 > .bg-removal-topbar .home-v2-nav-link,
-  .feature-tool-overlay.bg-removal-overlay.pdf-merge-v2 > .bg-removal-topbar .home-v2-support-top {
-    display: none !important;
-  }
 
   .bg-removal-body {
     gap: 0;

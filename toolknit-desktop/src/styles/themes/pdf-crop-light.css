@@ -241,7 +241,7 @@ html[data-theme="light"] .pdf-crop-v2 .pdf-crop-security-note {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-theme="light"] .pdf-crop-v2 :is(.pdf-crop-primary, .pdf-crop-export, .pdf-merge-v2-back) {
+  html[data-theme="light"] .pdf-crop-v2 :is(.pdf-crop-primary, .pdf-crop-export) {
     transition: none;
   }
 }

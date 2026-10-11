@@ -96,11 +96,6 @@ html[data-theme="light"] .ai-doc-v2 .ai-doc-thumb-overlay-text {
   color: #ffffff;
 }
 
-html[data-theme="light"] :is(.ai-doc-v2, .ai-doc-edit-v2) .pdf-merge-v2-topbar .home-v2-support-top {
-  background: var(--ink);
-  color: #ffffff;
-}
-
 html[data-theme="light"] .ai-doc-edit-v2 {
   background: var(--ai-doc-soft);
 }

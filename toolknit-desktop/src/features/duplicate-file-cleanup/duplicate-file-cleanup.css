@@ -1,8 +1,6 @@
 #duplicateFileCleanupOverlay { --dup-surface: #151617; --dup-muted: #a1a4a8; --dup-ink: #f2f3f4; --dup-input: #202224; --dup-curve-base: #3a3c3f; --dup-divider: #72767b; color: var(--dup-ink); }
 html[data-theme="light"] #duplicateFileCleanupOverlay { --dup-surface: #fff; --dup-muted: #60666c; --dup-ink: #202428; --dup-input: #f4f5f6; --dup-curve-base: #e3e5e7; --dup-divider: #e3e5e7; }
 #duplicateFileCleanupOverlay .cleanup-large-files-body { position: relative; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 20px; }
-#duplicateFileCleanupOverlay .pdf-merge-v2-topbar .home-v2-nav-link { transition: color 160ms ease, transform 160ms ease; }
-#duplicateFileCleanupOverlay .pdf-merge-v2-topbar .home-v2-nav-link:hover { color: var(--dup-ink); background: transparent; transform: scale(1.05); }
 #duplicateFileCleanupOverlay :is(.cleanup-v2-side, .cleanup-v2-main) { border-radius: 8px; background: var(--dup-surface); box-shadow: none; }
 #duplicateFileCleanupOverlay .cleanup-v2-side { gap: 12px; padding: 22px; }
 #duplicateFileCleanupOverlay h1 { font-size: 26px; line-height: 1.3; margin: 0; letter-spacing: 0; }

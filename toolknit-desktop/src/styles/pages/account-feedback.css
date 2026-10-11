@@ -384,79 +384,6 @@
         overflow: hidden;
       }
 
-      .feedback-v2-topbar {
-        position: relative;
-        z-index: 2;
-        min-height: 68px;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 14px 28px;
-        background: rgba(8, 8, 9, 0.72);
-        -webkit-app-region: drag;
-      }
-
-      .feedback-overlay .settings-v2-topbar-left {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-width: 0;
-      }
-
-      .feedback-overlay .settings-v2-back {
-        min-height: 38px;
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        padding: 0 14px;
-        margin: 0;
-        border: 1px solid var(--line-strong);
-        border-radius: var(--tk-nav-button-radius, 10px);
-        color: var(--ink);
-        background: rgba(255, 255, 255, 0.03);
-        font: inherit;
-        cursor: pointer;
-        transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
-        -webkit-app-region: no-drag;
-      }
-
-      .feedback-overlay .settings-v2-back:hover {
-        transform: translateY(-1px);
-        background: rgba(255, 255, 255, 0.06);
-        border-color: rgba(255, 255, 255, 0.28);
-      }
-
-      .feedback-overlay .settings-v2-back svg {
-        width: 16px;
-        height: 16px;
-      }
-
-      .feedback-overlay .settings-v2-top-tag {
-        display: inline-flex;
-        align-items: center;
-        min-height: 24px;
-        padding: 0 10px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        color: var(--muted);
-        font-family: var(--tk-font-display-en), var(--tk-font-display-cn), "Segoe UI Symbol", sans-serif;
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-
-      .feedback-overlay .settings-v2-top-actions {
-        flex: 0 0 auto;
-        white-space: nowrap;
-      }
-
-      .feedback-overlay .feedback-v2-topbar .home-v2-nav-link,
-      .feedback-overlay .feedback-v2-topbar .home-v2-support-top {
-        font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
-      }
-
       .feedback-body {
         position: relative;
         z-index: 1;
@@ -781,39 +708,9 @@
       }
 
       @media (max-width: 820px) {
-        .feedback-v2-topbar {
-          min-height: 60px;
-          gap: 8px;
-          padding: 10px 16px;
-        }
-
-        .feedback-v2-topbar .home-v2-top-actions {
-          gap: 3px;
-        }
-
-        .feedback-v2-topbar .home-v2-nav-link,
-        .feedback-v2-topbar .home-v2-support-top {
-          width: 34px;
-          min-width: 34px;
-          height: 34px;
-          min-height: 34px;
-          justify-content: center;
-          padding: 0;
-        }
-
-        .feedback-v2-topbar .home-v2-nav-link span,
-        .feedback-v2-topbar .home-v2-support-top span {
-          display: none;
-        }
 
         .feedback-hero {
           padding-inline: 20px;
-        }
-      }
-
-      @media (max-width: 640px) {
-        .feedback-overlay .settings-v2-top-tag {
-          display: none;
         }
       }
 
