@@ -84,6 +84,14 @@ try {
           assert.equal(await button.locator('svg').evaluate(n => n.getAnimations({ subtree: true }).length), 0);
         }
       }
+      await nav.locator('.tk-nav-support').click();
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('#donationOverlay')).opacity === '1');
+      assert.equal(await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest('#donationOverlay')?.id), 'donationOverlay');
+      assert.equal(await page.locator(root).evaluate(n => n.inert), true);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('#donationOverlay')).opacity === '0');
+      assert.equal(await page.locator(root).evaluate(n => n.classList.contains('visible') && !n.inert), true, 'Escape restores the original tool, not the homepage');
+      assert.equal(await nav.locator('.tk-nav-support').evaluate(n => n === document.activeElement), true, 'support restores tool button focus');
     }
     console.log(`PASS ${tool}: both themes, repeated morphs, title displacement and window animations`);
     await nav.locator('.tk-nav-back').click();

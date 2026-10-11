@@ -58,6 +58,11 @@ function prepareButton(button, motion, definitions) {
   }
 }
 
+/** Reuse the same SVG morph on commands outside the navigation bar. */
+export function prepareWebButton(button) {
+  if (button) prepareButton(button, 'web', [Globe2, ExternalLink]);
+}
+
 /** Idempotent visual preparation at existing template/lazy boundaries, not event binding. */
 export function prepareToolPageChrome(root = globalThis.document) {
   if (!root?.querySelectorAll) return;
@@ -71,7 +76,7 @@ export function prepareToolPageChrome(root = globalThis.document) {
     for (const button of header.querySelectorAll('button')) {
       if (button.matches(backSelector)) prepareButton(button, 'back', [backIcon]);
       else if (button.matches('.home-v2-support-top, .tool-page-v2-support')) prepareButton(button, 'support', [Heart, HeartHandshake]);
-      else if (button.matches('.home-v2-nav-link, .tool-page-v2-nav-link')) prepareButton(button, 'web', [Globe2, ExternalLink]);
+      else if (button.matches('.home-v2-nav-link, .tool-page-v2-nav-link')) prepareWebButton(button);
       else if (button.matches('.home-v2-icon-button, .tool-page-v2-icon, .home-v2-window-button')) {
         const action = button.getAttribute('data-tool-window') || button.getAttribute('data-ppt-window-action') || button.getAttribute('data-window-action') || button.getAttribute('data-action');
         const motion = ['minimize', 'maximize', 'close'].includes(action) ? action : 'settings';

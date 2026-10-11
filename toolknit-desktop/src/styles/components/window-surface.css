@@ -216,8 +216,8 @@ body.window-is-maximized .app.is-v2-home {
 .settings-overlay.v2-settings .settings-v2-toggle-copy span { display: block; margin-top: 6px; color: #ababaa; font-size: 13px; line-height: 1.7; }
 .settings-overlay.v2-settings .settings-v2-switch { position: relative; width: 58px; height: 32px; border: 1px solid rgba(255, 255, 255, 0.13); border-radius: 999px; background: rgba(255, 255, 255, 0.06); cursor: pointer; }
 .settings-overlay.v2-settings .settings-v2-switch::before { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--white); transition: transform 180ms ease, background 180ms ease; }
-.settings-overlay.v2-settings .settings-v2-switch.active { background: rgba(255, 255, 255, 0.18); }
-.settings-overlay.v2-settings .settings-v2-switch.active::before { transform: translateX(26px); }
+.settings-overlay.v2-settings .settings-v2-switch:is(.active, [aria-pressed="true"]) { background: rgba(255, 255, 255, 0.18); }
+.settings-overlay.v2-settings .settings-v2-switch:is(.active, [aria-pressed="true"])::before { transform: translateX(26px); }
 .settings-overlay.v2-settings .settings-v2-switch:disabled { cursor: wait; opacity: 0.58; }
 .settings-overlay.v2-settings .settings-v2-sound-toggle-row { margin-bottom: 2px; }
 .settings-overlay.v2-settings .settings-v2-sound-style-label { margin-top: 14px; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }

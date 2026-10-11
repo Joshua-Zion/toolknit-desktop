@@ -299,8 +299,13 @@ for (const [label, actual] of legalVersions) {
 assert.match(zhUsageSource, /随当前功能边界更新/, 'Chinese usage policy must use a version-independent feature boundary');
 assert.match(enUsageSource, /with the current feature boundary/, 'English usage policy must use a version-independent feature boundary');
 
-assert.match(zhLocale.home?.supportCostNote ?? '', /500/, 'Chinese home support copy must state the monthly AI cost');
-assert.match(enLocale.home?.supportCostNote ?? '', /500/, 'English home support copy must state the monthly AI cost');
+for (const [name, locale] of [['Chinese', zhLocale], ['English', enLocale]]) {
+  for (const key of ['recommendedProviders', 'malian', 'doufu', 'customTools', 'customToolsTitle', 'customToolsDescription', 'openWebWorkbench']) {
+    assert.ok(locale.home?.[key]?.trim(), `${name} home ${key} must be translated`);
+  }
+  assert.equal(locale.home?.supportCostNote, undefined, `${name} obsolete homepage cost copy must be removed`);
+  assert.equal(locale.home?.supportGroupNote, undefined, `${name} obsolete homepage group copy must be removed`);
+}
 assert.match(zhLocale.home?.supportPage?.supporterBenefit ?? '', /灰度体验群/, 'Chinese support copy must explain preview-group access');
 assert.match(enLocale.home?.supportPage?.supporterBenefit ?? '', /preview group/i, 'English support copy must explain preview-group access');
 assert.match(zhLegalSource, /灰度体验群/, 'Chinese legal copy must define the preview-group boundary');

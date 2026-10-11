@@ -7,6 +7,9 @@ pub(super) mod picker { use super::*; include!("core/picker.rs"); }
 pub(super) use picker::*;
 pub(super) mod window { use super::*; include!("core/window.rs"); }
 pub(super) use window::*;
+#[path = "core/autostart.rs"]
+pub(super) mod autostart;
+pub(super) use autostart::*;
 pub(super) mod security { include!("core/security.rs"); }
 pub(super) use security::*;
 pub(super) mod fonts { use super::*; include!("core/fonts.rs"); }

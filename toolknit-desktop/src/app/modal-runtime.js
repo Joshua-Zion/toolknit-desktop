@@ -20,6 +20,7 @@ export function setModalInteractivity(root, interactive) {
 export function createModalSession({ root, background, initialFocus, onClose, canClose = () => true } = {}) {
   let scope = null;
   let returnFocus = null;
+  let backgroundInteractive = false;
   const documentRef = root?.ownerDocument || globalThis.document;
 
   function close({ restore = true } = {}) {
@@ -28,7 +29,7 @@ export function createModalSession({ root, background, initialFocus, onClose, ca
     scope = null;
     setModalInteractivity(root, false);
     root.classList.remove('visible');
-    setModalInteractivity(background, Boolean(background?.classList.contains('visible')));
+    setModalInteractivity(background, backgroundInteractive);
     if (restore && returnFocus?.isConnected && !returnFocus.closest('[inert], [aria-hidden="true"]')) {
       returnFocus.focus({ preventScroll: true });
     }
@@ -39,6 +40,7 @@ export function createModalSession({ root, background, initialFocus, onClose, ca
     if (scope || !root) return;
     scope = createLifecycleScope();
     returnFocus = documentRef?.activeElement;
+    backgroundInteractive = Boolean(background && !background.inert && background.getAttribute('aria-hidden') !== 'true');
     setModalInteractivity(background, false);
     root.classList.add('visible');
     setModalInteractivity(root, true);

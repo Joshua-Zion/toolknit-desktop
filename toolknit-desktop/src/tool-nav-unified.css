@@ -184,8 +184,8 @@ html[data-theme="light"] .tk-tool-nav {
 .tk-nav-back-shaft { opacity: 0; transform: translateX(3px); transition: opacity 240ms ease, transform 360ms cubic-bezier(.22,.8,.28,1); }
 .tk-nav-back:hover .tk-nav-back-head { d: path("M 12 5 L 5 12 L 12 19 L 12 19"); fill: transparent; }
 .tk-nav-back:hover .tk-nav-back-shaft { opacity: 1; transform: translateX(0); }
-.tk-tool-nav .tk-nav-morph { width: 15px; height: 15px; display: inline-grid; flex: 0 0 15px; place-items: center; }
-.tk-tool-nav .tk-nav-morph > svg { grid-area: 1 / 1; transition: opacity 180ms ease, transform 260ms cubic-bezier(.22,.8,.28,1); }
+.tk-nav-morph { width: 15px; height: 15px; display: inline-grid; flex: 0 0 15px; place-items: center; }
+.tk-nav-morph > svg { grid-area: 1 / 1; transition: opacity 180ms ease, transform 260ms cubic-bezier(.22,.8,.28,1); }
 .tk-nav-morph .tk-nav-alternate { opacity: 0; transform: scale(.48) rotate(-35deg); }
 .tk-nav-web:hover .tk-nav-current { opacity: 0; transform: scale(.58) rotate(35deg); }
 .tk-nav-support:hover .tk-nav-current { opacity: 0; transform: scale(.58) rotate(-18deg); }
@@ -210,5 +210,7 @@ html[data-theme="light"] .tk-tool-nav {
   .tk-tool-nav .tk-nav-button,
   .tk-tool-nav .tk-nav-button *,
   .tk-tool-nav .tk-nav-button svg,
-  .tk-tool-nav .tk-nav-button svg > * { animation: none; transition: none; }
+  .tk-tool-nav .tk-nav-button svg *,
+  .tk-nav-button,
+  .tk-nav-button * { animation: none; transition: none; }
 }

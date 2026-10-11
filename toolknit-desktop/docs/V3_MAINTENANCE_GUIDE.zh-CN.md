@@ -37,6 +37,23 @@ AI 文档与表格的开发演示常量保留供开发预览和测试使用，�
 浏览器专项实际延迟入口脚本、字体和壁纸，检查第一帧覆盖、居中、渐隐中间帧、字体失败、
 低高度/窄窗口、减少动画设置、键盘锁定与释放、返回首页和缓存重载；结果在 `tmp/startup-browser/`。
 
+## 首页弹框、设置导航与 Windows 自启动
+
+- 首页定制弹框复用 `createModalSession` 与现有成功弹框布局；说明性长文不要套用结果摘要的两行截断类。关闭应恢复背景原先的交互状态与触发按钮焦点，不能用 `.visible` 推断首页是否可交互。新增页面分别检查白天/深色配色、图标文字间距和完整说明。
+- 首页网站 CTA 复用 `prepareWebButton`，外链统一注册在 `external-links-runtime.js`；不要复制动画或平台 opener。图标变换要覆盖反复悬停及减少动态效果。
+- 密钥页复用 `toolTopbarMarkup`；从设置进入后，返回、Escape 和导航设置按钮统一退出密钥页并恢复设置。异步读取和延迟关闭使用 revision 防止跨会话写回，关闭后清空密码输入。
+- Windows 自启动状态只以原生命令为准，不维护独立 localStorage 偏好。`autostart.rs` 只操作 HKCU Run 的 `ToolKnitDesktop` 值；路径必须是当前 exe，参数为 `--autostart`。设置与托盘状态同步，原生失败可见反馈，浏览器禁用开关。
+- 共享设置开关样式同时识别 `.active` 与 `aria-pressed="true"`；新开关沿用语义状态，不复制视觉状态逻辑。验证真实状态之外也要检查双主题滑块位置，不能只验证 Toast 或属性值。
+- 支持作者页复用 `createModalSession`，打开时以当前背景页的计算层级提升自身层级，关闭后还原；背景页暂时不可交互，返回与 Escape 恢复背景及触发按钮焦点。共享导航传入当前 overlay，不能固定假设背景是首页。
+- 首页工具分批显示由 `home-explorer-runtime.js` 维护，复用 settings controller 读取 `toolknit_home_lazy_load`（默认开启、每批 12 项）；关闭显示全部卡片，不改变 feature 模块按需加载。`homeLazyLoadToggle` / `homeLazyLoadStatus` 是新增设置契约，需覆盖刷新、筛选、搜索和语言切换。
+- 首页网页图标复用 `.tk-nav-morph`，文字子元素样式须排除图标容器，保持双 SVG 网格重叠。检查最终计算样式和反复悬停后的居中，避免页面 CSS 覆盖共享布局。
+- 自启动只改变应用启动方式；剪贴板监控是否恢复继续由原有恢复偏好决定。禁止因开启自启动而自动启用剪贴板记录，窗口隐藏不应停止用户已开启的后台记录。
+- 删除旧模板前核对首页入口、懒加载注册、内部/全局调用和素材消费者；只删除已经确认无消费者的模板及绑定，不连带删除真实工具、兼容转发或图片。
+
+验证：`node scripts/test-app-runtimes.mjs`、构建后 `node scripts/test-home-settings-browser.mjs`、
+`node scripts/test-tool-page-chrome-browser.mjs` 与原生 `autostart` 测试。浏览器可用
+`TOOLKNIT_TEST_BROWSER` 指定 Edge；实际登录/重启与托盘操作需桌面环境验证，不能以浏览器 mock 代替。
+
 ## 新增工具的标准结构
 
 每个工具必须放在 `src/features/<tool-id>/`，至少包含：

@@ -43,7 +43,12 @@ pub(crate) fn build_tray_menu(
     };
     let clipboard_i = tauri::menu::MenuItem::with_id(app, "clipboard-toggle", clipboard_label, true, None::<&str>)?;
     app.state::<crate::clipboard_history::ClipboardHistoryState>().register_tray(clipboard_i.clone(), lang);
-    tauri::menu::Menu::with_items(app, &[&show_i, &clipboard_i, &quit_i])
+    let startup_i = tauri::menu::CheckMenuItem::with_id(app, "autostart-toggle", if lang == "zh" { "开机自启动" } else { "Start with Windows" }, true, false, None::<&str>)?;
+    if register_autostart_tray(app, startup_i.clone()).is_err() {
+        let _ = startup_i.set_enabled(false);
+        log::warn!("Unable to read Windows startup setting");
+    }
+    tauri::menu::Menu::with_items(app, &[&show_i, &clipboard_i, &startup_i, &quit_i])
 }
 
 #[tauri::command]

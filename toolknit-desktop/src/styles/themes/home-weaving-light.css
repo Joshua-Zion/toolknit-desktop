@@ -7,7 +7,7 @@
   grid-template-rows: minmax(0, 1fr) auto;
   justify-items: center;
   gap: 12px;
-  height: 496px;
+  height: 440px;
   min-width: 0;
   color: var(--weaving-ink);
   --weaving-ink: #f1f3f5;
@@ -139,13 +139,13 @@ body:has(:is([id$="Overlay"], [id$="Workspace"], [id$="Dialog"]).visible:not(#sc
 
 /* Center the glyphs using their own font metrics, not the Latin fallback's
    line box. This also works in WebView2 versions without text-box-trim. */
-.app.is-v2-home .home-weaving-link > span {
+.app.is-v2-home .home-weaving-link > span:not(.tk-nav-morph) {
   display: block;
   line-height: 1;
   text-align: center;
 }
 
-.app.is-v2-home .home-weaving-link > span:lang(zh) {
+.app.is-v2-home .home-weaving-link > span:not(.tk-nav-morph):lang(zh) {
   font-family: var(--tk-font-ui-cn), var(--tk-font-ui-en), "Segoe UI Symbol", sans-serif;
 }
 

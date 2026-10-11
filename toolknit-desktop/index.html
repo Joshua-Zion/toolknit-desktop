@@ -303,18 +303,6 @@
     <!-- PDF Enhance Success Overlay -->
         <!-- pdfEnhanceSuccessOverlay mounts with its lazy feature. -->
 
-    <!-- ===== PDF Tool Template Page (设计标杆，复制后按需改动) ===== -->
-        <!-- pdfToolTemplateOverlay mounts with its lazy feature. -->
-
-    <!-- PDF Tool Template Process Mask -->
-        <!-- pdfToolTemplateProcessMask mounts with its lazy feature. -->
-
-    <!-- PDF Tool Template Success Overlay -->
-        <!-- pdfToolTemplateSuccessOverlay mounts with its lazy feature. -->
-
-    <!-- PDF Tool Template Preview Drawer -->
-        <!-- pdfToolTemplatePreviewDrawer mounts with its lazy feature. -->
-    <!-- ===== End PDF Tool Template Page ===== -->
 
     <!-- ===== AI Polish Tool Page ===== -->
         <!-- aiPolishOverlay mounts with its lazy feature. -->
@@ -556,12 +544,15 @@
                     </button>
                     <button class="secondary-action" type="button" data-home-link="website">
                       <i data-lucide="globe-2"></i>
-                      <span data-i18n="home.openWebWorkbench">Open web workbench</span>
+                      <span data-i18n="home.openWebWorkbench">点击进入网页端体验更多功能</span>
+                    </button>
+                    <button class="secondary-action" type="button" id="homeCustomTools" aria-haspopup="dialog" aria-controls="customToolsOverlay">
+                      <i data-lucide="wrench"></i><span data-i18n="home.customTools">定制工具</span>
                     </button>
                   </div>
                   <p class="hero-support-note text-cn">
-                    <span data-i18n="home.supportCostNote">为了持续给大家免费更新 ToolKnit，作者仅 AI 开发与测试每月就要自掏腰包 500 多元，长期独自承担已越来越吃力。</span>
-                    <strong data-i18n="home.supportGroupNote">赞助后可加入灰度体验群，提前体验版本并提交希望加入的功能。</strong>
+                    <span data-i18n="home.recommendedProviders">作者推荐中转站 · 低价不降智</span>
+                    <span class="home-provider-links"><a class="home-provider-malian" href="https://www.mlai.online/register?aff=5Q2VVMD7YJVB" data-home-link="malian" target="_blank" rel="noopener noreferrer" data-i18n="home.malian">马良AI</a><a class="home-provider-doufu" href="https://doufuapi.com/register?aff=TWKCBH9RGLN3" data-home-link="doufu" target="_blank" rel="noopener noreferrer" data-i18n="home.doufu">豆腐AI</a></span>
                   </p>
                   <div class="hero-meta" data-i18n-aria-label="home.productInfoAria" aria-label="产品信息">
                     <span><i data-lucide="monitor" aria-hidden="true"></i><span>WINDOWS DESKTOP</span></span>
@@ -575,8 +566,7 @@
                   <div class="home-weaving-art" aria-hidden="true"></div>
                   <button class="home-weaving-link" type="button" data-home-link="website" data-i18n-aria-label="home.openWebAria" aria-label="打开 ToolKnit 网页版">
                     <i data-lucide="globe-2" aria-hidden="true"></i>
-                    <span data-i18n="home.webPreviewHover">点击进入网页端</span>
-                    <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+                    <span data-i18n="home.openWebWorkbench">点击进入网页端体验更多功能</span>
                   </button>
                 </div>
               </section>

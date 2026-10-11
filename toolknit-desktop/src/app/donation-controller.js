@@ -1,5 +1,6 @@
 import { SUPPORT_JOURNAL_ENTRIES } from '../support-journal-data.js';
 import { createLifecycleScope } from './tool-lifecycle.js';
+import { createModalSession } from './modal-runtime.js';
 
 const JOURNAL_DURATION_MS = 15_000;
 
@@ -28,7 +29,8 @@ export function createDonationController({ openExternalUrl } = {}) {
   let startedAt = 0;
   let elapsed = 0;
   let wasPlayingBeforeHidden = false;
-  let returnFocus = null;
+  let modalSession = null;
+  let previousZIndex = '';
 
   const clearPlayback = () => {
     if (timer !== null) window.clearTimeout(timer);
@@ -139,27 +141,27 @@ export function createDonationController({ openExternalUrl } = {}) {
     raf = window.requestAnimationFrame(progressTick);
   };
 
-  const open = () => {
-    if (overlay.classList.contains('visible')) return;
-    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    overlay.classList.add('visible');
-    overlay.setAttribute('aria-hidden', 'false');
+  const open = ({ background } = {}) => {
+    if (lifecycle.disposed || overlay.classList.contains('visible')) return;
+    const page = background || document.activeElement?.closest('[id$="Overlay"], [id$="Workspace"], [id$="Dialog"]') || document.querySelector('.app');
+    previousZIndex = overlay.style.zIndex;
+    const backgroundZ = Number.parseInt(page ? getComputedStyle(page).zIndex : '0', 10) || 0;
+    const overlayZ = Number.parseInt(getComputedStyle(overlay).zIndex, 10) || 0;
+    overlay.style.zIndex = String(Math.max(overlayZ, backgroundZ + 1));
+    modalSession = createModalSession({ root: overlay, background: page, initialFocus: dialog, onClose: close });
+    modalSession.open();
     document.body.classList.add('donation-open');
+    if (scroll) scroll.scrollTop = 0;
     start();
-    window.requestAnimationFrame(() => {
-      if (scroll) scroll.scrollTop = 0;
-      dialog?.focus({ preventScroll: true });
-    });
   };
 
   const close = () => {
     if (!overlay.classList.contains('visible')) return;
-    overlay.classList.remove('visible');
-    overlay.setAttribute('aria-hidden', 'true');
+    modalSession?.close();
+    modalSession = null;
+    overlay.style.zIndex = previousZIndex;
     document.body.classList.remove('donation-open');
     clearPlayback();
-    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
-    returnFocus = null;
   };
 
   reader && lifecycle.event(reader, 'click', toggle);
@@ -188,9 +190,7 @@ export function createDonationController({ openExternalUrl } = {}) {
   lifecycle.event(overlay.querySelector('[data-donation-top]'), 'click', () => {
     scroll?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   });
-  lifecycle.event(document, 'keydown', event => {
-    if (event.key === 'Escape' && overlay.classList.contains('visible')) close();
-  });
+  lifecycle.event(window, 'pagehide', close);
 
   return {
     open,

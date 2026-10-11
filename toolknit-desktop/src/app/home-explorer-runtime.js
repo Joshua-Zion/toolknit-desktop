@@ -1,4 +1,5 @@
 import { createLifecycleScope } from './tool-lifecycle.js';
+import { createSettingsController } from './settings-controller.js';
 
 const FAVORITES_KEY = 'toolknit_favorites';
 const MAX_FAVORITES = 6;
@@ -49,6 +50,10 @@ export function createHomeExplorerRuntime({
   const backToTop = root?.getElementById?.('backToTop');
   const categoryChips = Array.from(root?.querySelectorAll?.('[data-home-category]') || []);
   const manageFavoritesButton = root?.getElementById?.('manageFavorites');
+  const homeLazyLoadToggle = root?.getElementById?.('homeLazyLoadToggle');
+  const homeLazyLoadStatus = root?.getElementById?.('homeLazyLoadStatus');
+  const settings = createSettingsController({ storage, prefix: 'toolknit_' });
+  let lazyLoadEnabled = settings.read('home_lazy_load', 'true') !== 'false';
   let activeCategory = 'all';
   let visibleToolCount = PAGE_SIZE;
   let favoritesManageMode = false;
@@ -167,11 +172,13 @@ export function createHomeExplorerRuntime({
       return { ...info, tag, homeCategory: categoryGroup(info.category), searchable: `${info.name} ${info.desc} ${tag} ${info.category}`.toLowerCase() };
     });
   const renderHomeTools = ({ resetPagination = false } = {}) => {
+    homeLazyLoadToggle?.setAttribute('aria-pressed', String(lazyLoadEnabled));
+    if (homeLazyLoadStatus) homeLazyLoadStatus.textContent = translate(lazyLoadEnabled ? 'settings.homeLazyLoadOn' : 'settings.homeLazyLoadOff');
     if (!homeToolSearch || !homeToolGrid) return;
     if (resetPagination) visibleToolCount = PAGE_SIZE;
     const query = homeToolSearch.value.trim().toLowerCase();
     const tools = collectTools().filter(item => (activeCategory === 'all' || item.homeCategory === activeCategory) && (!query || item.searchable.includes(query)));
-    const shown = tools.slice(0, visibleToolCount);
+    const shown = lazyLoadEnabled ? tools.slice(0, visibleToolCount) : tools;
     homeToolGrid.innerHTML = shown.length ? shown.map(item => `<button class="tool-result-card" type="button" data-home-tool="${escapeHtml(item.toolId)}" data-tool-category="${escapeHtml(item.homeCategory)}"><span class="card-water-layer" aria-hidden="true"><span class="card-water-ripple"></span></span><span class="tool-result-top"><span class="tool-result-icon">${item.iconHtml || '<i data-lucide="sparkles"></i>'}</span><span class="tool-result-tag">${escapeHtml(item.tag)}</span></span><span><span class="tool-result-name">${escapeHtml(item.name)}</span><span class="tool-result-desc">${escapeHtml(item.desc)}</span></span></button>`).join('') : `<div class="tool-result-empty">${escapeHtml(translate('home.noToolsFound'))}</div>`;
     const remaining = Math.max(0, tools.length - shown.length);
     if (homeToolLoadMore) homeToolLoadMore.hidden = remaining === 0;
@@ -210,6 +217,11 @@ export function createHomeExplorerRuntime({
     else if (card.matches('.tool-result-card')) { event.preventDefault(); saveFavorite(findToolInfo(card.dataset.homeTool)); }
   });
   bindEvent(homeToolSearch, 'input', () => renderHomeTools({ resetPagination: true }));
+  bindEvent(homeLazyLoadToggle, 'click', () => {
+    lazyLoadEnabled = !lazyLoadEnabled;
+    settings.write('home_lazy_load', lazyLoadEnabled);
+    renderHomeTools({ resetPagination: true });
+  });
   bindEvent(homeToolLoadMoreButton, 'click', () => { visibleToolCount += PAGE_SIZE; renderHomeTools(); });
   bindEvent(manageFavoritesButton, 'click', () => { favoritesManageMode = !favoritesManageMode; syncFavoritesMode(); if (!readFavorites().length) showFavoriteToast(translate('home.favEmptyGuide')); });
   categoryChips.forEach(chip => bindEvent(chip, 'click', () => { activeCategory = chip.dataset.homeCategory || 'all'; categoryChips.forEach(item => { const active = item === chip; item.classList.toggle('is-active', active); item.setAttribute('aria-pressed', String(active)); }); renderHomeTools({ resetPagination: true }); }));

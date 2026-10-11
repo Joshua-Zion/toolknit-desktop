@@ -4,6 +4,12 @@ use super::office;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     system_cleanup::await_previous_instance_for_elevated_relaunch();
+    let mut context = tauri::generate_context!();
+    if is_autostart_launch(std::env::args()) {
+        for window in &mut context.config_mut().app.windows {
+            if window.label == "main" { window.visible = false; }
+        }
+    }
     tauri::Builder::default()
         .on_page_load(|_webview, _payload| {
             #[cfg(feature = "qa-devtools")]
@@ -12,6 +18,7 @@ pub fn run() {
             }
         })
         .manage(WindowCornerRadiusState::default())
+        .manage(AutostartState::default())
         .manage(crate::clipboard_history::ClipboardHistoryState::default())
         .manage(onnx_segmenter::MattingState::default())
         .manage(TeleprompterRecognitionState::default())
@@ -146,6 +153,8 @@ pub fn run() {
             office::convert_excel_to_pdf,
             convert_video_batch,
             set_tray_lang,
+            get_autostart,
+            set_autostart,
             screen_picker_bounds,
             screen_color_sample,
             open_screen_color_picker,
@@ -164,8 +173,8 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            show_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if !is_autostart_launch(argv) { show_main_window(app); }
         }))
         .on_window_event(|window, event| {
             if window.label() == "main"
@@ -228,6 +237,7 @@ pub fn run() {
                         app.exit(0);
                     }
                     "clipboard-toggle" => crate::clipboard_history::tray_toggle(app),
+                    "autostart-toggle" => toggle_autostart_tray(app),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -258,6 +268,7 @@ pub fn run() {
                     log::warn!("Unable to fit main window to monitor work area: {error}");
                 }
                 let _ = window.set_always_on_top(false);
+                if is_autostart_launch(std::env::args()) { let _ = window.hide(); }
             }
 
             // 注册屏幕取色全局快捷键（如果用户已配置）。
@@ -270,7 +281,7 @@ pub fn run() {
 
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {

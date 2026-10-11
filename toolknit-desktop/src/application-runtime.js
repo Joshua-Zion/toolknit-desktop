@@ -11,6 +11,8 @@
       import { createAiKeyStore } from './app/ai-key-store.js';
       import { createAiSettingsRuntime } from './app/ai-settings-runtime.js';
       import { createExternalLinksRuntime } from './app/external-links-runtime.js';
+      import { createAutostartRuntime } from './app/autostart-runtime.js';
+      import { createHomeCustomToolsRuntime } from './app/home-custom-tools-runtime.js';
       import { createHomeExplorerRuntime } from './app/home-explorer-runtime.js';
       import { createFontSettingsRuntime } from './app/font-settings-runtime.js';
       import { createStartupRuntime } from './app/startup-runtime.js';
@@ -1509,7 +1511,13 @@
         aiKeyStore,
         aiApiKeyReady,
         translate: t,
-        onOpenSettings: openSettingsOverlay
+        onOpenSettings: showSettingsOverlay,
+        onCloseSettings: () => {
+          moveFocusOutOfHiddenRegion(settingsOverlay);
+          settingsOverlay?.classList.remove('visible');
+        },
+        settingsOverlay,
+        pageTransition
       });
       const {
         getAiPlatformConfig,
@@ -1536,8 +1544,18 @@
       bindGlobalToolPageChrome({
         root: document,
         onWebsite: () => { void openExternalUrl('https://toolknit.com'); },
-        onSupport: () => { void donationController.open(); },
+        onSupport: ({ overlay } = {}) => { void donationController.open({ background: overlay }); },
         onSettings: ({ overlay } = {}) => {
+          if (overlay?.id === 'donationOverlay') {
+            return pageTransition.run(() => {
+              donationController.close();
+              showSettingsOverlay();
+            });
+          }
+          if (overlay?.id === 'apiKeyOverlay') {
+            aiSettingsRuntime.closeApiKeySettings();
+            return;
+          }
           if (helpCenterRuntime?.navigateToSettings?.(overlay)) return;
           return openSettingsOverlay();
         },
@@ -1545,29 +1563,9 @@
         onWindowAction: action => { void handleWindowControlAction(action); }
       });
       void externalLinksRuntime.loadGithubActivity();
+      createAutostartRuntime({ isTauri, tauriCorePromise, tauriEventPromise, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
+      createHomeCustomToolsRuntime({ isTauri, tauriCorePromise, translate: t, notify: message => window.showToast?.(message) });
 
-      // ===== PDF Tool Template Overlay Background =====
-      const pdfToolTemplateOverlay = document.getElementById('pdfToolTemplateOverlay');
-      const pdfToolTemplatePlasmaBg = document.getElementById('pdfToolTemplatePlasmaBg');
-      const pdfToolTemplateBack = document.getElementById('pdfToolTemplateBack');
-      let pdfToolTemplatePlasmaInstance = null;
-
-      function openPdfToolTemplateOverlay() {
-        if (!pdfToolTemplateOverlay) return;
-        pdfToolTemplateOverlay.classList.add('visible');
-        if (pdfToolTemplatePlasmaBg && !pdfToolTemplatePlasmaInstance) {
-          pdfToolTemplatePlasmaInstance = initStandardToolPlasma(pdfToolTemplatePlasmaBg);
-        }
-      }
-
-      function closePdfToolTemplateOverlay() {
-        if (!pdfToolTemplateOverlay) return;
-        pdfToolTemplateOverlay.classList.remove('visible');
-        pdfToolTemplatePlasmaInstance = disposeStandardToolPlasma(pdfToolTemplatePlasmaInstance);
-      }
-
-      window.openPdfToolTemplateOverlay = openPdfToolTemplateOverlay;
-      pdfToolTemplateBack?.addEventListener('click', closePdfToolTemplateOverlay);
 
       const callDeepSeek = createAiRequestRuntime({
         getApiKey: getAiApiKey,

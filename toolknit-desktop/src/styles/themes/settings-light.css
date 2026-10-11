@@ -239,7 +239,7 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch {
   background: #9ca0a6;
 }
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch::before { top: 4px; left: 4px; background: #ffffff; }
-html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch.active { background: var(--tk-page-ink); }
+html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch:is(.active, [aria-pressed="true"]) { background: var(--tk-page-ink); }
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-font-slot { border-color: var(--line); }
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-radius-input:disabled { background: #dcdde0; }

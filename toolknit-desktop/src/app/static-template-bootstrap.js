@@ -7,10 +7,12 @@ import feedbackTemplate from './templates/feedback.html?raw';
 import aiKeyTemplate from './templates/ai-key.html?raw';
 import dependencyManagersTemplate from './templates/dependency-managers.html?raw';
 import globalDialogsTemplate from './templates/global-dialogs.html?raw';
+import customToolsTemplate from './templates/custom-tools.html?raw';
 import { mountTrustedTemplate } from './trusted-template-runtime.js';
 import { toolTopbarMarkup } from '../shared/tool-page-shell.js';
 
 const STATIC_TEMPLATE_SPECS = Object.freeze([
+  Object.freeze({ name: 'custom-tools', markup: customToolsTemplate, rootSelector: '#customToolsOverlay' }),
   Object.freeze({
     name: 'donation',
     markup: donationTemplate,
@@ -47,7 +49,11 @@ const STATIC_TEMPLATE_SPECS = Object.freeze([
   }),
   Object.freeze({
     name: 'ai-key',
-    markup: aiKeyTemplate,
+    markup: aiKeyTemplate.replace('<!-- ai-key-topbar -->', toolTopbarMarkup({
+      tag: 'AI KEY SETTINGS · TOOL PAGE 3.1',
+      title: 'AI Platform Keys',
+      closeAttr: 'id="apiKeyBack" data-i18n-title="apiKey.backToSettings"'
+    })),
     rootSelector: '#apiKeyOverlay'
   }),
   Object.freeze({

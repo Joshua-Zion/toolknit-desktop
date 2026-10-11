@@ -1,5 +1,11 @@
 # ToolKnit Desktop V3.0 架构迁移报告
 
+> 2026-10-11 设置/首页增量：`home-explorer-runtime.js` 通过现有 settings controller 持有 `toolknit_home_lazy_load`，默认每批显示 12 个工具，关闭仅改变卡片展示，不预加载工具模块。新增 `homeLazyLoadToggle` / `homeLazyLoadStatus`，当前 HTML ID 1433 个、无重复；工具/分类/CLI/MCP 数量及原生命令不变。支持作者控制器复用 modal session，以当前背景页层级覆盖并恢复交互/焦点；共享开关兼容 aria 状态，首页文字样式排除共享图标容器。双主题首页/设置与五类代表工具导航浏览器回归通过。
+
+> 2026-10-11 V3.1 增量：首页定制弹框与 Windows 自启动分别由 `app/home-custom-tools-runtime.js`、`app/autostart-runtime.js` 持有，组合根仅注入既有平台/翻译服务。弹框复用 modal session，网页按钮复用 tool-page-chrome，外链走既有 external-links；密钥页通过静态模板复用完整 tool-page-shell，返回与导航设置统一进入设置页。删除无入口的旧 PDF 模板及处理器，保留实际工具与素材。当前 70 个工具、12 分类、46 项 CLI/MCP；Tauri command 143 个实现、142 个唯一名称，HTML ID 1431 个、无重复，Rust 190 个测试（187 passed / 3 ignored）。
+>
+> 自启动原生 owner 为 `native_runtime/core/autostart.rs`：新增 `get_autostart` / `set_autostart`，返回 `{supported, enabled}`；设置和托盘通过同一状态锁访问 HKCU Run 的 `ToolKnitDesktop`，变化/失败分别发出 `toolknit-autostart-changed`（状态对象）和 `toolknit-autostart-error`（空载荷）。启动命令只使用当前 exe 与精确 `--autostart` 参数，自启动隐藏主窗口；剪贴板 bootstrap 与恢复偏好独立。公开 URL、定制联系信息和 DOM 契约见源码及根日志。真实注册表测试使用独立临时键，未测试注销/重启；UI 验证入口 `node scripts/test-home-settings-browser.mjs`（先 build）及原导航专项。
+
 > 2026-10-10 V3.1 增量：重复文件工具在原 feature/native 边界内优化扫描和结果呈现；新增后缀配置、懒加载曲线动画与明确安装目录保护模块。扫描命令增加可选 `extensions`，进度增加过滤/访问/耗时和截断原因，原命令名称与删除保护契约保持。70 个工具、12 分类、46 CLI/MCP 不变；新增字段、性能证据及验证范围见 [开发说明](DUPLICATE_FILE_CLEANUP.zh-CN.md) 与根目录更新日志。
 
 > 同日清理增量：`cleanup-view.js` 独立负责内容区纯色遮罩、原生清理进度与五类 SVG 结算，复用扫描动画及生命周期；返回淡出并重置页面。`system.rs` 提供线程内 COM 与 `IFileOperation` 批量复用，重复文件域跨组最多 32 份回收并保留逐项重验及参考文件句柄保护。四个命令与参数保持，新增清理进度及取消/未处理/耗时结果字段；DOM 与双语契约由专项测试覆盖，无新增 storage/事件/CLI。临时小文件实测 64 份由逐份 1303ms 降至批量 538ms，不代表全盘固定提速。
