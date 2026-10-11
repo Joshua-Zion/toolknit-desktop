@@ -1,10 +1,6 @@
-export const PDF_AI_MARKDOWN_LIMITS = Object.freeze({
-  maxDocumentBytes: 150 * 1024 * 1024,
-  maxPages: 120,
-  maxImageBytes: 7 * 1024 * 1024,
-  maxTextPerPage: 50_000,
-  maxSummaryChars: 28000
-});
+import { PDF_AI_MARKDOWN_LIMITS } from '../../core/limits/ai.js';
+
+export { PDF_AI_MARKDOWN_LIMITS };
 
 export function sourceName(file) {
   return String(file?.name || file?.fileName || file?.path?.split(/[\\/]/).pop() || 'document.pdf');

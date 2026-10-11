@@ -1,6 +1,8 @@
 import { createLifecycleScope } from '../../app/tool-lifecycle.js';
 import { tauriCorePromise, tauriEventPromise } from '../../platform/tauri-runtime.js';
 import { calculateStitchLayout, normalizeStitchSettings, IMAGE_STITCH_GRIDS } from './core.js';
+import { IMAGE_STITCH_LIMITS } from '../../image-stitch-core.js';
+import { PDF_EDITOR_LIMITS } from '../../core/limits/pdf.js';
 import { bindPointerSortableFileList } from '../../shared/sortable-file-list.js';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { pdfjsDocumentOptions } from '../../shared/pdfjs-options.js';
@@ -396,7 +398,7 @@ export function createImageStitchController({
       imageStitchOperation = operation;
       session = await invoke('create_image_stitch_pdf_session');
       if (!isCurrentOperation(operation)) throw new Error('image-stitch:pdf-import-cancelled');
-      const rawBytes = await invoke('read_file_bytes_limited', { path: inputPath, maxBytes: 250 * 1024 * 1024 });
+      const rawBytes = await invoke('read_file_bytes_limited', { path: inputPath, maxBytes: PDF_EDITOR_LIMITS.maxInputBytes });
       if (!isCurrentOperation(operation) || imageStitchPdfImportCancelled) throw new Error('image-stitch:pdf-import-cancelled');
       const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
       if (!isCurrentOperation(operation)) throw new Error('image-stitch:pdf-import-cancelled');
@@ -405,7 +407,7 @@ export function createImageStitchController({
       imageStitchPdfLoadingTask = pdfjsLib.getDocument(pdfjsDocumentOptions({ data: bytes }, documentRef.baseURI));
       const documentProxy = await imageStitchPdfLoadingTask.promise;
       if (!isCurrentOperation(operation)) throw new Error('image-stitch:pdf-import-cancelled');
-      if (documentProxy.numPages < 1 || imageStitchFiles.length + documentProxy.numPages > 100) {
+      if (documentProxy.numPages < 1 || imageStitchFiles.length + documentProxy.numPages > IMAGE_STITCH_LIMITS.maxFiles) {
         throw new Error('image-stitch:pdf-too-many');
       }
       const pagePaths = [];

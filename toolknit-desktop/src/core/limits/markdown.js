@@ -1,0 +1,13 @@
+export const MAX_MARKDOWN_ASSETS = 20;
+export const MAX_MARKDOWN_ASSET_BYTES = 15 * 1024 * 1024;
+export const MAX_MARKDOWN_ASSET_TOTAL_BYTES = 40 * 1024 * 1024;
+export const MAX_MARKDOWN_LIVE_CHARS = 500_000;
+export const MAX_MARKDOWN_OUTLINE_HEADINGS = 500;
+
+export const MARKDOWN_LIMITS = Object.freeze({
+  maxAssets: MAX_MARKDOWN_ASSETS,
+  maxAssetBytes: MAX_MARKDOWN_ASSET_BYTES,
+  maxAssetTotalBytes: MAX_MARKDOWN_ASSET_TOTAL_BYTES,
+  maxLiveCharacters: MAX_MARKDOWN_LIVE_CHARS,
+  maxOutlineHeadings: MAX_MARKDOWN_OUTLINE_HEADINGS
+});

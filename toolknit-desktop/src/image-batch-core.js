@@ -1,8 +1,6 @@
-export const IMAGE_BATCH_LIMITS = Object.freeze({
-  maxFiles: 100,
-  maxBytesPerFile: 100 * 1024 * 1024,
-  maxPixelsPerFile: 160_000_000
-});
+import { IMAGE_BATCH_LIMITS } from './core/limits/image.js';
+
+export { IMAGE_BATCH_LIMITS };
 
 const SUPPORTED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif']);
 const TARGET_FORMATS = new Set(['JPG', 'PNG', 'WEBP', 'BMP', 'GIF', 'SVG']);

@@ -33,13 +33,22 @@ import {
   markdownPreviewAssetUrl,
   safeLivePreviewFragment
 } from './preview-security.js';
+import {
+  MAX_MARKDOWN_ASSETS,
+  MAX_MARKDOWN_ASSET_BYTES,
+  MAX_MARKDOWN_ASSET_TOTAL_BYTES,
+  MAX_MARKDOWN_LIVE_CHARS,
+  MAX_MARKDOWN_OUTLINE_HEADINGS
+} from '../../core/limits/markdown.js';
 
 export const MARKDOWN_ASSET_KEY = 'toolknit.markdown.assets.v1';
-export const MAX_MARKDOWN_ASSETS = 20;
-export const MAX_MARKDOWN_ASSET_BYTES = 15 * 1024 * 1024;
-export const MAX_MARKDOWN_ASSET_TOTAL_BYTES = 40 * 1024 * 1024;
-export const MAX_MARKDOWN_LIVE_CHARS = 500_000;
-export const MAX_MARKDOWN_OUTLINE_HEADINGS = 500;
+export {
+  MAX_MARKDOWN_ASSETS,
+  MAX_MARKDOWN_ASSET_BYTES,
+  MAX_MARKDOWN_ASSET_TOTAL_BYTES,
+  MAX_MARKDOWN_LIVE_CHARS,
+  MAX_MARKDOWN_OUTLINE_HEADINGS
+};
 
 const encoder = new TextEncoder();
 

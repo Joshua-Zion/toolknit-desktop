@@ -9,6 +9,19 @@
 
 ## V3.1（未发布）
 
+### 2026-10-11 · 文件处理限制统一化
+
+状态：已实现，归入 V3.1 未发布更新；本轮未提交、推送、打包或外部发布。
+
+- 新增共享限制模块，集中维护 PDF、图片、图片拼接、AI PDF 转 Markdown 与 Markdown 编辑器的产品级文件大小、数量、页数、像素和文本边界；原有工具导出名保持兼容，避免各功能重复定义同一类限制。
+- 修复图片拼接桌面端导入 PDF 使用 `250 MiB` 硬编码的问题，改为复用 PDF 编辑器的 `150 MiB` 产品输入限制；图片拼接桌面端与 CLI 共用每文件 `100 MiB`、最多 `100` 个文件及统一输出像素边界。
+- Markdown 编辑器的资源限制继续统一为最多 `20` 个资源、单个 `15 MiB`、总计 `40 MiB`；Rust 导出层复用独立的原生限制模块，并保留通用文件读取的更高安全上限作为运行时兜底。
+- CLI 资源 staging 同步携带限制模块，新增限制契约测试，校验旧兼容导出、桌面端/CLI 引用、图片拼接硬编码清理及 Rust Markdown 校验边界。
+
+关联文件：`toolknit-desktop/src/core/limits/`、PDF/图片/Markdown 核心模块、图片拼接控制器与 CLI runtime、`src-tauri/src/native_runtime/limits.rs`、限制契约测试。无新增 storage、公开事件、Tauri command、CLI/MCP 参数或工具数量变化。
+
+验证：`test:limits-contract`、图片拼接/Markdown/PDF focused tests、`test:architecture`、`build`、CLI/MCP 合同测试、版本契约、源文件清单、产物审计、敏感信息扫描和 `git diff --check` 通过；Rust 全量测试串行执行为 184 passed、3 ignored。并行 Rust 测试曾因 Windows 剪贴板隔离测试与其他原生测试共享系统状态而出现竞态，单测及串行全量均通过。`test:release` 已完整通过 99 个 npm 发布回归脚本，安全子门禁通过 1293 项检查，新增共享限制文件已被纳入 Git 暂存索引以满足追踪前置条件。保留既有大 chunk、浏览器 crypto externalization 和 Windows linker 提示。
+
 ### 2026-10-11 · 素材恢复与法律页面导航修复
 
 状态：已实现，归入 V3.1 未发布更新。

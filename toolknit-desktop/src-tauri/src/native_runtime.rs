@@ -18,6 +18,9 @@ use core_runtime::*;
 #[path = "native_runtime/dependencies.rs"]
 pub(super) mod dependencies_runtime;
 use dependencies_runtime::*;
+#[path = "native_runtime/limits.rs"]
+pub(super) mod limits_runtime;
+use limits_runtime::*;
 #[path = "native_runtime/transcription.rs"]
 pub(super) mod transcription_runtime;
 use transcription_runtime::*;

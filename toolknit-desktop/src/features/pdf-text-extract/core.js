@@ -1,15 +1,11 @@
 import { detectRuledTables } from './table-grid.js';
+import { PDF_TEXT_LIMITS } from '../../core/limits/pdf.js';
 
 const HAN_PATTERN = /\p{Script=Han}/u;
 const LIST_PATTERN = /^(?:([\u2022\u2023\u25e6\u25aa\u25cf\u25cb\u25a0\u25a1\u2043]|[-*+])\s+|(\d{1,3}[.)]\s+)|((?:-\s*)?\[[ xX]\]\s+))/;
 const HEADING_PREFIX_PATTERN = /^(#{1,6})\s+(.+)$/;
 
-export const PDF_TEXT_LIMITS = Object.freeze({
-  maxDocumentBytes: 150 * 1024 * 1024,
-  maxPages: 300,
-  maxItemsPerPage: 100_000,
-  maxCharacters: 2_000_000
-});
+export { PDF_TEXT_LIMITS };
 
 export class PdfTextExtractionCancelledError extends Error {
   constructor() {

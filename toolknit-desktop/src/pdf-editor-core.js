@@ -2,13 +2,9 @@ import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import fontkit from './pdf-lib-fontkit.js';
 import { encryptPdf as encryptPdfBytes, normalizePdfEncryptPermissions } from './pdf-encrypt-core.js';
 import { flattenPdfFormForPageCopy } from './pdf-document-structure.js';
+import { PDF_EDITOR_LIMITS } from './core/limits/pdf.js';
 
-export const PDF_EDITOR_LIMITS = Object.freeze({
-  maxInputBytes: 150 * 1024 * 1024,
-  maxPages: 500,
-  maxMergeFiles: 25,
-  maxMergeTotalBytes: 150 * 1024 * 1024
-});
+export { PDF_EDITOR_LIMITS };
 
 export function assertPdfEditorFile(name, size, limits = PDF_EDITOR_LIMITS) {
   if (!/\.pdf$/i.test(String(name || ''))) {

@@ -1,5 +1,6 @@
-export const SCAN_LIMITS = Object.freeze({ inputBytes: 64 * 1024 * 1024, outputBytes: 100 * 1024 * 1024,
-  pages: 100, pixels: 16000000, side: 8192, timeoutMs: 10 * 60 * 1000 });
+import { PDF_SCAN_LIMITS } from '../../core/limits/pdf.js';
+
+export const SCAN_LIMITS = PDF_SCAN_LIMITS;
 export const DEFAULT_SCAN_SETTINGS = Object.freeze({ mode: 'faithful', dpi: 200, noise: 2, warmth: 3, skew: 0.25 });
 export function scanError(code) { return new Error(`pdf-scan:${code}`); }
 export function scanErrorCode(error) {

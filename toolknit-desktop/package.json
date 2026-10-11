@@ -66,6 +66,7 @@
     "test:hardware-inspector": "node scripts/test-hardware-inspector-contract.mjs",
     "test:clipboard-history": "node scripts/test-clipboard-history.mjs",
     "test:markdown-editor": "node scripts/test-markdown-editor-core.mjs && node scripts/test-markdown-editor-contract.mjs",
+    "test:limits-contract": "npm run stage:cli-resources && node scripts/test-limits-contract.mjs",
     "test:pdf-text-markdown": "node scripts/test-pdf-text-extract-core.mjs && node scripts/test-pdf-text-table-grid.mjs && node scripts/test-pdf-text-extract-tool-contract.mjs",
     "test:pdf-ai-markdown": "node scripts/test-pdf-ai-markdown.mjs",
     "test:image-color-replace": "node scripts/test-image-color-replace-core.mjs && cargo test --manifest-path src-tauri/Cargo.toml image_color_replace_tests --lib",

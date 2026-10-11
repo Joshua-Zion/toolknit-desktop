@@ -1,12 +1,6 @@
-export const IMAGE_STITCH_LIMITS = Object.freeze({
-  minFiles: 2,
-  maxFiles: 100,
-  maxSpacingPx: 500,
-  minScalePercent: 10,
-  maxScalePercent: 100,
-  maxSide: 65_535,
-  maxPixels: 160_000_000
-});
+import { IMAGE_STITCH_LIMITS } from './core/limits/image.js';
+
+export { IMAGE_STITCH_LIMITS };
 
 export class ImageStitchError extends Error {
   constructor(code, message) {
