@@ -13,7 +13,7 @@ use types::*;
 #[derive(Default)]
 pub(crate) struct ClipboardHistoryState {
     service: Mutex<Option<Arc<Service>>>,
-    tray: Mutex<Option<(tauri::menu::MenuItem<tauri::Wry>, String)>>,
+    tray: Mutex<Option<(tauri::menu::CheckMenuItem<tauri::Wry>, String)>>,
     exit_phase: AtomicU8,
 }
 struct Service {
@@ -36,6 +36,15 @@ struct Service {
 }
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+pub(crate) fn tray_label(lang: &str, enabled: bool) -> &'static str {
+    match (lang == "zh", enabled) {
+        (true, true) => "剪贴板历史：正在记录",
+        (true, false) => "剪贴板历史：未开启记录",
+        (false, true) => "Clipboard history: recording",
+        (false, false) => "Clipboard history: not recording",
+    }
 }
 
 impl ClipboardHistoryState {
@@ -82,18 +91,14 @@ impl ClipboardHistoryState {
             .as_ref()
             .is_some_and(|s| lock(&s.status).enabled)
     }
-    pub(crate) fn register_tray(&self, item: tauri::menu::MenuItem<tauri::Wry>, lang: &str) {
+    pub(crate) fn register_tray(&self, item: tauri::menu::CheckMenuItem<tauri::Wry>, lang: &str) {
         *lock(&self.tray) = Some((item, lang.into()));
     }
     fn update_tray(&self, enabled: bool) {
         let tray = lock(&self.tray).clone();
         if let Some((item, lang)) = tray {
-            let _ = item.set_text(match (lang == "zh", enabled) {
-                (true, true) => "剪贴板监控：暂停记录",
-                (true, false) => "剪贴板监控：开启记录",
-                (false, true) => "Clipboard: pause recording",
-                (false, false) => "Clipboard: start recording",
-            });
+            let _ = item.set_checked(enabled);
+            let _ = item.set_text(tray_label(&lang, enabled));
         }
     }
 }
@@ -451,6 +456,8 @@ pub(crate) fn tray_toggle(app: &tauri::AppHandle) {
                 let _ = service.start();
             }
         }
+        let state = app.state::<ClipboardHistoryState>();
+        state.update_tray(state.enabled());
     });
 }
 fn shutdown(app: &tauri::AppHandle) {
