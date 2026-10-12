@@ -28,9 +28,9 @@
       "search": "搜索内容或来源应用", "filterType": "内容类型", "filterDate": "日期范围", "allTypes": "全部类型", "allDates": "全部日期", "week": "最近 7 天", "favorites": "只看收藏", "batch": "批量管理", "clear": "清空历史", "selectVisible": "选择已加载记录", "selectedCount": "已选 {count} 条", "selectItem": "选择 {time} 的记录", "deleteSelected": "删除所选", "timeline": "复制时间线", "details": "记录详情", "more": "加载更多", "newRecords": "有 {count} 条新记录，点击查看", "selectRecord": "选择一条记录查看完整内容", "backList": "返回列表",
       "recordedAt": "记录时间", "source": "来源应用", "unknownSource": "来源未知", "size": "内容大小", "characters": "字符数", "dimensions": "图片尺寸", "fileCount": "文件数量", "usedAt": "最近使用", "copy": "复制", "copyPaths": "复制路径", "saveImage": "保存图片", "zoom": "缩放", "imagePreview": "图片预览", "favorite": "收藏", "unfavorite": "取消收藏", "delete": "删除", "cancel": "关闭", "confirm": "确认", "copied": "已复制到剪贴板", "imageSaved": "图片已保存到输出目录的 clipboard-history 文件夹。", "richNote": "此记录保存了富文本的纯文字内容。", "filesNote": "这里只保存文件路径，再次复制按复制文件处理，不会移动或修改原文件。",
       "desktopOnlyTitle": "请在 Windows 桌面版使用", "desktopOnlyDescription": "浏览器预览不会读取或监控系统剪贴板。", "loadingTitle": "正在读取本地历史", "loadingDescription": "正在载入记录。", "noMatchesTitle": "没有匹配的记录", "noMatchesDescription": "尝试调整关键词、内容类型或日期范围。", "waitingTitle": "等待下一次复制", "waitingDescription": "监控已开启。复制文字、截图或文件后，记录会显示在这里。", "emptyTitle": "你的复制时间线", "emptyDescription": "开启左侧监控后开始记录；已经在剪贴板里的内容不会自动收录。",
-      "startTitle": "开启剪贴板监控", "startDescription": "开启后将记录所选类型的新复制内容，并在本机加密保存。返回首页或关闭到托盘后会继续记录。部分应用不会标记密码等敏感内容，无法保证全部自动排除，请按需暂停或设置排除应用。",
+      "startTitle": "开启剪贴板监控", "startDescription": "开启后将记录所选类型的新复制内容，并在本机加密保存。返回首页或关闭到托盘后会继续记录，下次启动程序时会自动恢复；关闭实时监控后不再恢复。部分应用不会标记密码等敏感内容，无法保证全部自动排除，请按需暂停或设置排除应用。",
       "deleteTitle": "删除记录", "deleteDescription": "删除所选本地历史及不再使用的内容。不会删除原文件，也不会清空系统当前剪贴板。", "clearTitle": "清空剪贴板历史", "clearDescription": "清除本地保存的历史，默认保留收藏。当前系统剪贴板和原文件不受影响。", "includeFavorites": "同时删除收藏记录",
-      "retentionDays": "保留天数（1–365）", "maxRecords": "记录上限（100–10000）", "maxMegabytes": "内容容量上限 MB（32–2048）", "resumeOnLaunch": "下次启动时恢复仍在运行的监控", "excludedApps": "排除应用（每行一个进程名）", "settingsNote": "默认保留 7 天、2000 条、256 MB 内容容量。数据库索引与文件开销另计。收藏不自动删除；收藏占满容量时停止新增。文件路径不会保存文件实体。",
+      "retentionDays": "保留天数（1–365）", "maxRecords": "记录上限（100–10000）", "maxMegabytes": "内容容量上限 MB（32–2048）", "excludedApps": "排除应用（每行一个进程名）", "settingsNote": "实时监控开启后，下次启动程序会自动恢复；关闭后不再恢复。默认保留 7 天、2000 条、256 MB 内容容量。数据库索引与文件开销另计。收藏不自动删除；收藏占满容量时停止新增。文件路径不会保存文件实体。",
       "desktopOnly": "全局剪贴板监控仅支持 Windows 桌面版。", "busy": "剪贴板暂时被其他应用占用，本次读取失败。", "capacity": "收藏记录已占满容量，监控已暂停。请清理历史或提高上限后重新开启。", "tooLarge": "内容超出单条限制，已跳过。文字最多 2 MB，图片最多 20 MB / 3200 万像素，文件最多 1000 个。", "filesMissing": "部分原文件已不存在，仍可复制保存的路径。", "keyFailed": "无法解密本地历史密钥。请使用保存这些记录的 Windows 用户。", "recordDamaged": "这条记录无法解密或已损坏。", "notFound": "记录已被删除或过期，请刷新列表。", "invalidSettings": "请检查设置范围和进程名称。排除应用只填文件名，例如 example.exe。", "changed": "读取期间剪贴板已更新，该次内容未保存。", "imageInvalid": "该图片格式无法读取，本次已跳过。", "operationFailed": "操作未完成，请检查本地存储空间后重试。"
     },
     "aiKeyRequired": {
@@ -4377,7 +4377,7 @@
     "homeLazyLoadOn": "已开启 · 分批显示",
     "homeLazyLoadOff": "已关闭 · 显示全部工具",
     "autostart": "开机自启动",
-    "autostartHint": "登录 Windows 后自动启动并驻留托盘，可在托盘右键菜单关闭。剪贴板记录仅在已启用“下次启动恢复监控”时恢复，不会自动开启。",
+    "autostartHint": "登录 Windows 后自动启动并驻留托盘，可在托盘右键菜单关闭。已开启的剪贴板实时监控会自动恢复，未开启时不会记录。",
     "autostartUnavailable": "仅 Windows 桌面版可用",
     "autostartError": "无法更新启动设置，请稍后重试",
     "autostartOn": "已开启 · 登录后驻留托盘",

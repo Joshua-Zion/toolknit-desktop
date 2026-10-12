@@ -209,7 +209,13 @@ impl Service {
         .map_err(|_| "clipboard:storage-failed".into())
     }
     fn persist_and_notify(&self) -> Result<(), String> {
-        let result = self.persist_resume();
+        let result: Result<(), String> = (|| {
+            let settings = lock(&self.settings).clone();
+            let enabled = lock(&self.status).enabled;
+            let settings = lock(&self.store).save_monitoring_state(&settings, enabled)?;
+            *lock(&self.settings) = settings;
+            Ok(())
+        })();
         if let Err(error) = &result {
             self.stop_inner();
             lock(&self.status).last_error = Some(error.clone());
@@ -223,7 +229,7 @@ impl Service {
             return Err("clipboard:cancelled".into());
         }
         if lock(&self.status).enabled {
-            return Ok(());
+            return self.persist_and_notify();
         }
         #[cfg(not(target_os = "windows"))]
         return Err("clipboard:desktop-only".into());
@@ -255,14 +261,7 @@ impl Service {
                 status.last_error = None;
             }
             self.dropped.store(0, Ordering::Release);
-            if let Err(error) = self.persist_resume() {
-                self.stop_inner();
-                lock(&self.status).last_error = Some(error.clone());
-                self.changed();
-                return Err(error);
-            }
-            self.changed();
-            Ok(())
+            self.persist_and_notify()
         }
     }
     fn stop_inner(&self) {
@@ -318,9 +317,11 @@ impl Service {
             Request::Status => {}
             Request::Start => self.start()?,
             Request::Stop => self.stop()?,
-            Request::Settings { settings } => {
+            Request::Settings { mut settings } => {
                 settings.validate()?;
                 let _transition = lock(&self.transition);
+                // The recording switch owns resume; stale settings cannot turn it off.
+                settings.resume_on_launch = lock(&self.status).enabled;
                 lock(&self.store).save_settings(&settings)?;
                 *lock(&self.settings) = settings.clone();
                 let result = lock(&self.store).prune(&settings);

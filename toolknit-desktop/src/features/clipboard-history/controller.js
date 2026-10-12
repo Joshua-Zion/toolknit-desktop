@@ -150,12 +150,11 @@ export function createClipboardHistoryController({ overlay, isTauri = false, cli
       const label = node('label'); label.append(node('span', '', tr(key)));
       const input = node('input'); input.type = 'number'; input.min = min; input.max = max; input.step = '1'; input.value = settings[key]; input.dataset.setting = key; label.append(input); body.append(label);
     }
-    const resumeLabel = node('label', 'clipboard-check-label'), resume = node('input'); resume.type = 'checkbox'; resume.checked = settings.resumeOnLaunch; resume.dataset.setting = 'resumeOnLaunch'; resumeLabel.append(resume, node('span', '', tr('resumeOnLaunch'))); body.append(resumeLabel);
     const excludedLabel = node('label'); excludedLabel.append(node('span', '', tr('excludedApps')));
     const excluded = node('textarea'); excluded.rows = 3; excluded.value = settings.excludedApps.join('\n'); excluded.placeholder = 'example.exe'; excluded.dataset.setting = 'excludedApps'; excludedLabel.append(excluded); body.append(excludedLabel, node('p', 'clipboard-muted', tr('settingsNote')));
     openDialog('settings', body, async () => {
       const value = { ...status.settings };
-      for (const input of body.querySelectorAll('[data-setting]')) value[input.dataset.setting] = input.type === 'checkbox' ? input.checked : input.tagName === 'TEXTAREA' ? normalizeExcludedApps(input.value) : Number(input.value);
+      for (const input of body.querySelectorAll('[data-setting]')) value[input.dataset.setting] = input.tagName === 'TEXTAREA' ? normalizeExcludedApps(input.value) : Number(input.value);
       if (!validateSettings(value)) { notify(tr('invalidSettings')); return false; }
       return mutate({ action: 'settings', settings: value }, { reload: true });
     }, 'settings');

@@ -22,9 +22,9 @@ export function setup() {
   const runtime = { available:true, subscribe:async fn=>{listeners.add(fn);return ()=>listeners.delete(fn);}, request:async request=>{
     calls.push(request);
     if (request.action==='status') return status();
-    if (request.action==='start') enabled=true;
-    if (request.action==='stop') enabled=false;
-    if (request.action==='settings') settings=request.settings;
+    if (request.action==='start') { enabled=true; settings={...settings,resumeOnLaunch:true}; }
+    if (request.action==='stop') { enabled=false; settings={...settings,resumeOnLaunch:false}; }
+    if (request.action==='settings') settings={...request.settings,resumeOnLaunch:enabled};
     if (request.action==='list') {
       const q=request.query;
       let items=records.filter(r=>(!q.kind||r.kind===q.kind)&&(!q.search||(r.text||r.preview).includes(q.search))&&(!q.favorites||r.favorite)&&(!q.before||r.id<q.before)&&(!q.snapshot||r.id<=q.snapshot));
@@ -102,7 +102,13 @@ try {
     await screenshot(page,`${theme}-image`);
     await page.locator('#clipboardZoom').click(); await page.waitForSelector('#clipboardHistoryDialog.visible'); await screenshot(page,`${theme}-zoom`); await page.keyboard.press('Escape');
     await page.locator('#clipboardFavorite').click(); await page.waitForFunction(()=>document.querySelector('#clipboardFavorite').getAttribute('aria-pressed')==='true');
-    await page.locator('#clipboardSettings').click(); await screenshot(page,`${theme}-settings`); await page.locator('#clipboardDialogCancel').click();
+    await page.locator('#clipboardSettings').click(); await screenshot(page,`${theme}-settings`);
+    assert.equal(await page.locator('#clipboardDialogBody [data-setting="resumeOnLaunch"]').count(), 0, 'monitoring has one user-facing switch');
+    await page.locator('#clipboardDialogBody [data-setting="retentionDays"]').fill('14');
+    await page.locator('#clipboardDialogConfirm').click();
+    await page.waitForSelector('#clipboardHistoryDialog.visible',{state:'hidden'});
+    assert.equal(await page.evaluate(()=>window.fixture.status().settings.retentionDays),14);
+    assert.equal(await page.evaluate(()=>window.fixture.calls.findLast(r=>r.action==='settings').settings.resumeOnLaunch),true,'saving other settings preserves resume');
     await page.locator('#clipboardKind + .tool-custom-select button').click(); await page.waitForSelector('.tool-custom-select-menu:not([hidden])'); await page.keyboard.press('Escape');
     assert.ok(await page.locator('#clipboardHistoryOverlay').isVisible());
     await page.locator('#clipboardSearch').fill('no such match'); await page.waitForFunction(()=>document.querySelectorAll('[data-entry-id]').length===0); await screenshot(page,`${theme}-no-results`);
@@ -126,6 +132,7 @@ try {
     await page.waitForFunction(()=>window.fixture.status().total===1);
     assert.equal(await page.evaluate(()=>window.fixture.status().enabled),true);
     await page.locator('#clipboardToggle').click(); await page.waitForFunction(()=>!window.fixture.status().enabled);
+    assert.equal(await page.locator('#clipboardToggle').getAttribute('aria-checked'),'false');
     await page.evaluate(()=>window.fixture.tool.dispose()); assert.equal(await page.evaluate(()=>window.fixture.listeners.size),0);
     assert.equal(await page.locator('.tool-custom-select-menu').count(),0);
     assert.deepEqual(errors,[]); await page.close();
