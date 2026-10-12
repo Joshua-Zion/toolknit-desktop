@@ -1,8 +1,8 @@
 use super::*;
-#[path = "dependencies/libreoffice_install.rs"]
-mod libreoffice_install;
 #[path = "dependencies/libreoffice_extract.rs"]
 mod libreoffice_extract;
+#[path = "dependencies/libreoffice_install.rs"]
+mod libreoffice_install;
 
 // ===== Audio Conversion =====
 
@@ -68,11 +68,13 @@ pub(super) fn pdf_enhance_writes(
     PDF_ENHANCE_WRITES.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeMap::new()))
 }
 
-pub(super) fn active_video_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>> {
+pub(super) fn active_video_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>>
+{
     ACTIVE_VIDEO_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeSet::new()))
 }
 
-pub(super) fn active_office_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>> {
+pub(super) fn active_office_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>>
+{
     ACTIVE_OFFICE_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeSet::new()))
 }
 
@@ -393,7 +395,9 @@ pub(super) fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String>
     })
 }
 
-pub(super) fn ffmpeg_download_candidates(source: &str) -> Result<Vec<(&'static str, &'static str)>, String> {
+pub(super) fn ffmpeg_download_candidates(
+    source: &str,
+) -> Result<Vec<(&'static str, &'static str)>, String> {
     let china = [
         ("china", FFMPEG_CHINA_URL),
         ("china-fallback", FFMPEG_CHINA_FALLBACK_URL),
@@ -704,7 +708,8 @@ pub(super) static LIBREOFFICE_RUNTIME_CACHE: std::sync::OnceLock<
 pub(super) static LIBREOFFICE_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn libreoffice_runtime_cache() -> &'static std::sync::Mutex<LibreOfficeRuntimeCache> {
-    LIBREOFFICE_RUNTIME_CACHE.get_or_init(|| std::sync::Mutex::new(LibreOfficeRuntimeCache::default()))
+    LIBREOFFICE_RUNTIME_CACHE
+        .get_or_init(|| std::sync::Mutex::new(LibreOfficeRuntimeCache::default()))
 }
 
 pub(super) fn invalidate_libreoffice_runtime_cache() {
@@ -828,9 +833,10 @@ pub(super) fn resolve_libreoffice_runtime_quick() -> Option<LibreOfficeRuntimeIn
         if !metadata.is_file() {
             continue;
         }
-        if source == "managed" && libreoffice_install::ensure_app_local_libraries(
-            candidate.parent()?.parent()?
-        ).is_err() {
+        if source == "managed"
+            && libreoffice_install::ensure_app_local_libraries(candidate.parent()?.parent()?)
+                .is_err()
+        {
             continue;
         }
         return Some(LibreOfficeRuntimeInfo {
@@ -851,7 +857,11 @@ pub(super) fn is_libreoffice_runtime_available() -> bool {
             .command
             .as_deref()
             .map(std::path::Path::new)
-            .is_some_and(|path| std::fs::metadata(path).map(|meta| meta.is_file()).unwrap_or(false))
+            .is_some_and(|path| {
+                std::fs::metadata(path)
+                    .map(|meta| meta.is_file())
+                    .unwrap_or(false)
+            })
         {
             return true;
         }
@@ -988,7 +998,8 @@ pub(super) async fn download_libreoffice_runtime(
                     continue;
                 }
             };
-            let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+            let append =
+                resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
             if !append && resume_from > 0 {
                 resume_from = 0;
             }
@@ -1018,7 +1029,8 @@ pub(super) async fn download_libreoffice_runtime(
                     Ok(Some(chunk)) => {
                         downloaded = downloaded.saturating_add(chunk.len() as u64);
                         if downloaded > LIBREOFFICE_ARCHIVE_BYTES {
-                            failed = Some("PPT runtime package is larger than expected".to_string());
+                            failed =
+                                Some("PPT runtime package is larger than expected".to_string());
                             break;
                         }
                         if let Err(error) = file.write_all(&chunk) {
@@ -1147,4 +1159,3 @@ pub(super) fn cancel_dependency_downloads() {
     CANCEL_MODEL_DOWNLOAD.store(true, Ordering::SeqCst);
     CANCEL_LIBREOFFICE_DOWNLOAD.store(true, Ordering::SeqCst);
 }
-

@@ -25,6 +25,7 @@ export function onLangChange(cb) {
 // On launch, check if installer language changed (reinstall with different language)
 // If so, apply the new installer language. Otherwise respect user's saved preference.
 const checkInstallLang = () => {
+  if (document.documentElement.hasAttribute('data-tk-auxiliary')) return;
   tauriCorePromise.then(({ invoke }) => {
     invoke('get_install_config')
       .then((config) => {
@@ -105,7 +106,7 @@ function setLangInternal(lang) {
   document.body.classList.toggle('lang-zh', normalized === 'zh');
   applyTranslations();
   // Update system tray menu language
-  tauriCorePromise.then(({ invoke }) => {
+  if (!document.documentElement.hasAttribute('data-tk-auxiliary')) tauriCorePromise.then(({ invoke }) => {
     invoke('set_tray_lang', { lang: normalized }).catch(() => {});
   }).catch(() => {});
   // Fire registered callbacks

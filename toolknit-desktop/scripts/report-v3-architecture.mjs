@@ -178,10 +178,10 @@ const report = {
 
 if (process.argv.includes('--check')) {
   const failures = [];
-  if (report.desktopCatalog.count !== 70) failures.push(`expected 70 desktop tools, found ${report.desktopCatalog.count}`);
+  if (report.desktopCatalog.count !== 71) failures.push(`expected 71 desktop tools, found ${report.desktopCatalog.count}`);
   if (report.htmlContract.duplicateIds.length) failures.push(`duplicate HTML ids: ${report.htmlContract.duplicateIds.join(', ')}`);
-  if (report.rust.commandAttributeCount !== 143) failures.push(`expected 143 Tauri command implementations, found ${report.rust.commandAttributeCount}`);
-  if (report.rust.commandCount !== 142) failures.push(`expected 142 unique Tauri command names, found ${report.rust.commandCount}`);
+  if (report.rust.commandAttributeCount !== 144) failures.push(`expected 144 Tauri command implementations, found ${report.rust.commandAttributeCount}`);
+  if (report.rust.commandCount !== 143) failures.push(`expected 143 unique Tauri command names, found ${report.rust.commandCount}`);
   if (report.rust.testCount < 93) failures.push(`expected at least 93 Rust tests, found ${report.rust.testCount}`);
   if (report.mcp.toolCount !== 46) failures.push(`expected 46 MCP tools, found ${report.mcp.toolCount}`);
   if (failures.length) {

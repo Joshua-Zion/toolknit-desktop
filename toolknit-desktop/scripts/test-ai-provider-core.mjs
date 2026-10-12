@@ -20,6 +20,15 @@ assert.deepEqual(
   normalizeAiProviderConfig({ url: 'https://api.example.test/v1/chat/completions', model: ' test-model ' }),
   { url: 'https://api.example.test/v1/chat/completions', model: 'test-model' }
 );
+for (const [url, expected] of [
+  ['https://api.example.test/', 'https://api.example.test/v1/chat/completions'],
+  ['https://api.example.test/v1', 'https://api.example.test/v1/chat/completions'],
+  ['https://api.example.test/v1/', 'https://api.example.test/v1/chat/completions'],
+  ['https://api.example.test/chat/completions', 'https://api.example.test/chat/completions'],
+  ['https://api.example.test/custom/chat/completions', 'https://api.example.test/custom/chat/completions']
+]) {
+  assert.equal(normalizeAiProviderConfig({ url, model: 'test-model' }).url, expected);
+}
 assert.deepEqual(
   normalizeAiProviderConfig({ url: 'http://localhost:11434/v1/chat/completions', model: 'local-model' }),
   { url: 'http://localhost:11434/v1/chat/completions', model: 'local-model' }
@@ -446,6 +455,7 @@ globalThis.window = { __TAURI_INTERNALS__: { invoke: (command, args) => {
 } } };
 try {
   const runtime = createAiRequestRuntime({ getApiKey: async () => request.apiKey, getConfig: () => request, isTauri: true });
+  await assert.rejects(createAiRequestRuntime({getApiKey:async()=>'',getConfig:()=>request})(visionMessages),error=>error.code==='invalid_config');
   await assert.rejects(runtime(visionMessages, new AbortController().signal, 4096, { expectedProvider: { ...request, url: 'https://changed.test/api' } }), error => error.code === 'provider_changed');
   const controller = new AbortController();
   const pending = runtime(visionMessages, controller.signal, 4096);
@@ -456,3 +466,17 @@ try {
   assert.match(nativeId, /^[a-z0-9-]{36}$/);
 } finally { if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow; }
 console.log('Multimodal validation and native cancellation bridge passed');
+
+for (const [failure, key] of [
+  ['ai-provider:http_error:401','unauthorized'], ['ai-provider:http_error:403','forbidden'],
+  ['ai-provider:http_error:404','notFound'], ['ai-provider:http_error:429','rateLimited'],
+  ['ai-provider:http_error:507','providerUnavailable'], ['ai-provider:timeout','timeout'],
+  ['ai-provider:network_error','network'], ['ai-provider:invalid_response','invalidResponse']
+]) {
+  globalThis.window={__TAURI_INTERNALS__:{invoke:async()=>{throw failure;}}};
+  try {
+    const runtime=createAiRequestRuntime({getApiKey:async()=>request.apiKey,getConfig:()=>request,isTauri:true});
+    await assert.rejects(runtime(visionMessages),error=>error.message.startsWith(`home.aiRequestErrors.${key}`));
+  } finally { if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow; }
+}
+console.log('Shared AI failure messages passed');

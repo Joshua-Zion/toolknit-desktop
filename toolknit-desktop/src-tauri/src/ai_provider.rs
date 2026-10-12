@@ -78,14 +78,29 @@ fn validate_endpoint(raw_url: &str, allow_private_http: bool) -> Result<url::Url
 }
 
 fn valid_image_part(part: &serde_json::Value) -> bool {
-    let Some(image) = part.get("image_url") else { return false; };
-    let Some(url) = image.get("url").and_then(serde_json::Value::as_str) else { return false; };
-    let Some((header, data)) = url.split_once(',') else { return false; };
-    let detail_valid = image.get("detail").is_none_or(|detail| matches!(detail.as_str(), Some("auto" | "low" | "high")));
-    matches!(header, "data:image/png;base64" | "data:image/jpeg;base64" | "data:image/webp;base64")
-        && !data.is_empty() && data.len() % 4 == 0 && url.len() <= AI_PROVIDER_MAX_MULTIMODAL_BYTES
+    let Some(image) = part.get("image_url") else {
+        return false;
+    };
+    let Some(url) = image.get("url").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let Some((header, data)) = url.split_once(',') else {
+        return false;
+    };
+    let detail_valid = image
+        .get("detail")
+        .is_none_or(|detail| matches!(detail.as_str(), Some("auto" | "low" | "high")));
+    matches!(
+        header,
+        "data:image/png;base64" | "data:image/jpeg;base64" | "data:image/webp;base64"
+    ) && !data.is_empty()
+        && data.len() % 4 == 0
+        && url.len() <= AI_PROVIDER_MAX_MULTIMODAL_BYTES
         && data.len() - data.trim_end_matches('=').len() <= 2
-        && data.trim_end_matches('=').bytes().all(|c| c.is_ascii_alphanumeric() || c == b'+' || c == b'/')
+        && data
+            .trim_end_matches('=')
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'+' || c == b'/')
         && detail_valid
 }
 
@@ -103,28 +118,49 @@ fn validate_native_request(request: &AiProviderNativeRequest) -> Result<url::Url
         || request
             .max_tokens
             .is_some_and(|value| value == 0 || value > AI_PROVIDER_MAX_TOKENS)
-        || request.timeout_ms.is_some_and(|value| value == 0 || value > AI_PROVIDER_MAX_TIMEOUT_MS)
-        || request.reasoning_effort.as_deref().is_some_and(|value| !matches!(value, "low" | "high" | "max"))
+        || request
+            .timeout_ms
+            .is_some_and(|value| value == 0 || value > AI_PROVIDER_MAX_TIMEOUT_MS)
+        || request
+            .reasoning_effort
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "low" | "high" | "max"))
     {
         return Err("ai-provider:invalid_request".to_string());
     }
     let mut image_content_bytes: usize = 0;
     for message in &request.messages {
         let content_valid = match &message.content {
-            serde_json::Value::String(value) => value.chars().count() <= AI_PROVIDER_MAX_MESSAGE_CHARS,
+            serde_json::Value::String(value) => {
+                value.chars().count() <= AI_PROVIDER_MAX_MESSAGE_CHARS
+            }
             serde_json::Value::Array(parts) => {
-                let bytes = serde_json::to_vec(parts).map(|value| value.len()).unwrap_or(usize::MAX);
+                let bytes = serde_json::to_vec(parts)
+                    .map(|value| value.len())
+                    .unwrap_or(usize::MAX);
                 image_content_bytes = image_content_bytes.saturating_add(bytes);
                 bytes <= AI_PROVIDER_MAX_MULTIMODAL_BYTES
                     && message.role == "user"
                     && !parts.is_empty()
                     && parts.len() <= 8
-                    && parts.iter().filter_map(|part| part.get("text").and_then(serde_json::Value::as_str)).map(|text| text.chars().count()).sum::<usize>() <= AI_PROVIDER_MAX_MESSAGE_CHARS
+                    && parts
+                        .iter()
+                        .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+                        .map(|text| text.chars().count())
+                        .sum::<usize>()
+                        <= AI_PROVIDER_MAX_MESSAGE_CHARS
                     && parts.iter().all(|part| {
-                        let Some(kind) = part.get("type").and_then(serde_json::Value::as_str) else { return false; };
+                        let Some(kind) = part.get("type").and_then(serde_json::Value::as_str)
+                        else {
+                            return false;
+                        };
                         match kind {
-                            "text" => part.get("text").and_then(serde_json::Value::as_str)
-                                .is_some_and(|value| value.chars().count() <= AI_PROVIDER_MAX_MESSAGE_CHARS),
+                            "text" => part
+                                .get("text")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|value| {
+                                    value.chars().count() <= AI_PROVIDER_MAX_MESSAGE_CHARS
+                                }),
                             "image_url" => valid_image_part(part),
                             _ => false,
                         }
@@ -132,7 +168,10 @@ fn validate_native_request(request: &AiProviderNativeRequest) -> Result<url::Url
             }
             _ => false,
         };
-        if !matches!(message.role.as_str(), "system" | "user" | "assistant") || !content_valid || image_content_bytes > AI_PROVIDER_MAX_MULTIMODAL_BYTES {
+        if !matches!(message.role.as_str(), "system" | "user" | "assistant")
+            || !content_valid
+            || image_content_bytes > AI_PROVIDER_MAX_MULTIMODAL_BYTES
+        {
             return Err("ai-provider:invalid_request".to_string());
         }
     }
@@ -154,21 +193,34 @@ fn request_body(request: &AiProviderNativeRequest, endpoint: &url::Url) -> serde
         Some("api.deepseek.com") => &["deepseek-v4-pro", "deepseek-v4-flash"],
         _ => &[],
     };
-    if models.iter().any(|model| request.model.trim().eq_ignore_ascii_case(model)) {
-        body["reasoning_effort"] = serde_json::json!(request.reasoning_effort.as_deref().unwrap_or("low"));
+    if models
+        .iter()
+        .any(|model| request.model.trim().eq_ignore_ascii_case(model))
+    {
+        body["reasoning_effort"] =
+            serde_json::json!(request.reasoning_effort.as_deref().unwrap_or("low"));
     }
     body
 }
 
 fn provider_network_error(error: reqwest::Error) -> String {
-    if error.is_timeout() { "ai-provider:timeout" } else { "ai-provider:network_error" }.to_string()
+    if error.is_timeout() {
+        "ai-provider:timeout"
+    } else {
+        "ai-provider:network_error"
+    }
+    .to_string()
 }
 
 fn diagnostics_enabled(request: &AiProviderNativeRequest) -> bool {
     request.diagnostics && cfg!(any(debug_assertions, feature = "qa-devtools"))
 }
 
-fn diagnostic_error(code: String, request: &AiProviderNativeRequest, detail: serde_json::Value) -> String {
+fn diagnostic_error(
+    code: String,
+    request: &AiProviderNativeRequest,
+    detail: serde_json::Value,
+) -> String {
     if diagnostics_enabled(request) {
         // Local QA IPC only. The frontend projects and redacts this envelope
         // before constructing an Error or writing anything to the console.
@@ -179,8 +231,18 @@ fn diagnostic_error(code: String, request: &AiProviderNativeRequest, detail: ser
 }
 
 fn request_network_error(error: reqwest::Error, request: &AiProviderNativeRequest) -> String {
-    let reason = if error.is_timeout() { "timeout" } else if error.is_connect() { "connect" } else { "network_error" };
-    diagnostic_error(provider_network_error(error), request, serde_json::json!({"stage":"request", "reason":reason}))
+    let reason = if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "connect"
+    } else {
+        "network_error"
+    };
+    diagnostic_error(
+        provider_network_error(error),
+        request,
+        serde_json::json!({"stage":"request", "reason":reason}),
+    )
 }
 
 async fn error_response_diagnostics(response: &mut reqwest::Response) -> serde_json::Value {
@@ -189,7 +251,10 @@ async fn error_response_diagnostics(response: &mut reqwest::Response) -> serde_j
         "contentType":response.headers().get("content-type").and_then(|value| value.to_str().ok()),
         "requestId":response.headers().get("x-request-id").or_else(|| response.headers().get("request-id")).and_then(|value| value.to_str().ok())
     });
-    if response.content_length().is_some_and(|length| length > AI_DIAGNOSTIC_MAX_BYTES as u64) {
+    if response
+        .content_length()
+        .is_some_and(|length| length > AI_DIAGNOSTIC_MAX_BYTES as u64)
+    {
         detail["truncated"] = true.into();
         detail["reason"] = "body_too_large".into();
         return detail;
@@ -207,7 +272,10 @@ async fn error_response_diagnostics(response: &mut reqwest::Response) -> serde_j
     match tokio::time::timeout(std::time::Duration::from_secs(2), read).await {
         Ok(Ok(body)) => detail["body"] = body.into(),
         result => {
-            let reason = match result { Ok(Err(reason)) => reason, _ => "timeout" };
+            let reason = match result {
+                Ok(Err(reason)) => reason,
+                _ => "timeout",
+            };
             detail["reason"] = reason.into();
             detail["truncated"] = (reason == "body_too_large").into();
         }
@@ -237,7 +305,9 @@ fn completion_content(payload: &serde_json::Value) -> Result<String, String> {
         return Err("ai-provider:response_truncated".to_string());
     }
     let content = choice["message"]["content"].as_str().unwrap_or("");
-    if content.trim().is_empty() { return Err("ai-provider:empty_response".to_string()); }
+    if content.trim().is_empty() {
+        return Err("ai-provider:empty_response".to_string());
+    }
     Ok(content.to_string())
 }
 
@@ -255,7 +325,9 @@ async fn request_impl(
     let client = reqwest::Client::builder()
         .user_agent("ToolKnit/3.1.0 local-ai-provider")
         .connect_timeout(std::time::Duration::from_secs(8))
-        .timeout(std::time::Duration::from_millis(request.timeout_ms.unwrap_or(45_000)))
+        .timeout(std::time::Duration::from_millis(
+            request.timeout_ms.unwrap_or(45_000),
+        ))
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
         .build()
@@ -270,7 +342,9 @@ async fn request_impl(
         .map_err(|error| request_network_error(error, &request))?;
     if !response.status().is_success() {
         let code = format!("ai-provider:http_error:{}", response.status().as_u16());
-        if !diagnostics_enabled(&request) { return Err(code); }
+        if !diagnostics_enabled(&request) {
+            return Err(code);
+        }
         let detail = error_response_diagnostics(&mut response).await;
         return Err(diagnostic_error(code, &request, detail));
     }
@@ -282,28 +356,38 @@ async fn request_impl(
     }
 
     let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|error| if error.is_timeout() { "ai-provider:timeout".to_string() } else { "ai-provider:invalid_response".to_string() })?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        if error.is_timeout() {
+            "ai-provider:timeout".to_string()
+        } else {
+            "ai-provider:invalid_response".to_string()
+        }
+    })? {
         if bytes.len().saturating_add(chunk.len()) > AI_PROVIDER_MAX_RESPONSE_BYTES {
             return Err("ai-provider:response_too_large".to_string());
         }
         bytes.extend_from_slice(&chunk);
     }
-    let response_detail = |stage| serde_json::json!({
-        "stage":stage, "status": response.status().as_u16(),
-        "body": if diagnostics_enabled(&request) && bytes.len() <= AI_DIAGNOSTIC_MAX_BYTES {
-            Some(String::from_utf8_lossy(&bytes).into_owned())
-        } else { None }, "truncated":bytes.len() > AI_DIAGNOSTIC_MAX_BYTES
-    });
+    let response_detail = |stage| {
+        serde_json::json!({
+            "stage":stage, "status": response.status().as_u16(),
+            "body": if diagnostics_enabled(&request) && bytes.len() <= AI_DIAGNOSTIC_MAX_BYTES {
+                Some(String::from_utf8_lossy(&bytes).into_owned())
+            } else { None }, "truncated":bytes.len() > AI_DIAGNOSTIC_MAX_BYTES
+        })
+    };
     let payload: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
-        diagnostic_error("ai-provider:invalid_response".to_string(), &request, response_detail("response_parse"))
+        diagnostic_error(
+            "ai-provider:invalid_response".to_string(),
+            &request,
+            response_detail("response_parse"),
+        )
     })?;
     let content = completion_content(&payload).map_err(|code| {
         let mut detail = response_detail("completion");
-        if diagnostics_enabled(&request) { detail["completion"] = completion_diagnostics(&payload); }
+        if diagnostics_enabled(&request) {
+            detail["completion"] = completion_diagnostics(&payload);
+        }
         diagnostic_error(code, &request, detail)
     })?;
     Ok(AiProviderNativeResponse { content })
@@ -341,9 +425,19 @@ mod tests {
             {"type":"image_url", "image_url":{"url":"data:image/jpeg;base64,YWJj", "detail":"high"}}
         ]);
         assert!(validate_native_request(&request).is_ok());
-        assert!(request_body(&request, &validate_native_request(&request).unwrap())["messages"][0]["content"].is_array());
-        for image in ["https://example.test/image.jpg", "data:image/svg+xml;base64,YWJj", "data:image/jpeg;base64,invalid!", "data:image/jpeg;base64,"] {
-            request.messages[0].content = serde_json::json!([{"type":"image_url", "image_url":{"url":image}}]);
+        assert!(
+            request_body(&request, &validate_native_request(&request).unwrap())["messages"][0]
+                ["content"]
+                .is_array()
+        );
+        for image in [
+            "https://example.test/image.jpg",
+            "data:image/svg+xml;base64,YWJj",
+            "data:image/jpeg;base64,invalid!",
+            "data:image/jpeg;base64,",
+        ] {
+            request.messages[0].content =
+                serde_json::json!([{"type":"image_url", "image_url":{"url":image}}]);
             assert!(validate_native_request(&request).is_err());
         }
         request.messages[0].content = serde_json::json!([{"type":"image_url", "image_url":{"url":format!("data:image/jpeg;base64,{}", "a".repeat(5 * 1024 * 1024))}}]);
@@ -356,7 +450,8 @@ mod tests {
             "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions", "apiKey": "test-key",
             "model": "glm-5.3-flash", "messages": [{"role":"user","content":"Synthetic document"}],
             "maxTokens": 8192, "timeoutMs": 180000, "reasoningEffort":"low"
-        })).unwrap()
+        }))
+        .unwrap()
     }
 
     #[tokio::test]
@@ -364,7 +459,9 @@ mod tests {
         let mut request = test_request();
         request.request_id = Some("pre-dispatch-native-test".into());
         cancel_private_ai_completion("pre-dispatch-native-test".into()).unwrap();
-        assert!(matches!(request_private_ai_completion(request).await, Err(code) if code == "ai-provider:aborted"));
+        assert!(
+            matches!(request_private_ai_completion(request).await, Err(code) if code == "ai-provider:aborted")
+        );
     }
 
     #[test]
@@ -382,33 +479,57 @@ mod tests {
             request.model = model.into();
             for effort in ["low", "high", "max"] {
                 request.reasoning_effort = Some(effort.into());
-                assert_eq!(request_body(&request, &endpoint)["reasoning_effort"], effort);
+                assert_eq!(
+                    request_body(&request, &endpoint)["reasoning_effort"],
+                    effort
+                );
             }
         }
         request.reasoning_effort = Some("low".into());
         let other = url::Url::parse("https://api.example.com/v1/chat/completions").unwrap();
-        assert!(request_body(&request, &other).get("reasoning_effort").is_none());
-        let lookalike = url::Url::parse("https://open.bigmodel.cn.example.test/v1/chat/completions").unwrap();
-        assert!(request_body(&request, &lookalike).get("reasoning_effort").is_none());
+        assert!(request_body(&request, &other)
+            .get("reasoning_effort")
+            .is_none());
+        let lookalike =
+            url::Url::parse("https://open.bigmodel.cn.example.test/v1/chat/completions").unwrap();
+        assert!(request_body(&request, &lookalike)
+            .get("reasoning_effort")
+            .is_none());
         request.model = "glm-5.3-preview".into();
-        assert!(request_body(&request, &endpoint).get("reasoning_effort").is_none());
+        assert!(request_body(&request, &endpoint)
+            .get("reasoning_effort")
+            .is_none());
         request.model = "other-model".into();
-        assert!(request_body(&request, &endpoint).get("reasoning_effort").is_none());
+        assert!(request_body(&request, &endpoint)
+            .get("reasoning_effort")
+            .is_none());
         for timeout in [0, 180001, u64::MAX] {
             request.timeout_ms = Some(timeout);
             assert!(validate_native_request(&request).is_err());
         }
         request.timeout_ms = None;
         request.reasoning_effort = None;
-        assert!(validate_native_request(&request).is_ok(), "legacy requests remain valid");
+        assert!(
+            validate_native_request(&request).is_ok(),
+            "legacy requests remain valid"
+        );
     }
 
     #[test]
     fn official_models_share_low_default_without_overriding_explicit_effort() {
         for (url, models) in [
-            ("https://api.deepseek.com/chat/completions", ["deepseek-v4-pro", "deepseek-v4-flash"]),
-            ("https://api.deepseek.com/v1/chat/completions", [" DEEPSEEK-V4-PRO ", "deepseek-v4-flash"]),
-            ("https://open.bigmodel.cn/api/paas/v4/chat/completions", ["glm-5.3", "glm-5.3-flash"]),
+            (
+                "https://api.deepseek.com/chat/completions",
+                ["deepseek-v4-pro", "deepseek-v4-flash"],
+            ),
+            (
+                "https://api.deepseek.com/v1/chat/completions",
+                [" DEEPSEEK-V4-PRO ", "deepseek-v4-flash"],
+            ),
+            (
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                ["glm-5.3", "glm-5.3-flash"],
+            ),
         ] {
             for model in models {
                 let mut request = test_request();
@@ -424,10 +545,19 @@ mod tests {
             }
         }
         for (url, model) in [
-            ("https://api.deepseek.com.example.test/chat/completions", "deepseek-v4-pro"),
-            ("https://api.deepseek.com/chat/completions", "deepseek-v4-pro-preview"),
+            (
+                "https://api.deepseek.com.example.test/chat/completions",
+                "deepseek-v4-pro",
+            ),
+            (
+                "https://api.deepseek.com/chat/completions",
+                "deepseek-v4-pro-preview",
+            ),
             ("https://api.deepseek.com/chat/completions", "glm-5.3"),
-            ("https://open.bigmodel.cn/api/paas/v4/chat/completions", "deepseek-v4-pro"),
+            (
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                "deepseek-v4-pro",
+            ),
         ] {
             let mut request = test_request();
             request.url = url.into();
@@ -442,12 +572,27 @@ mod tests {
         let mut request = test_request();
         assert!(!diagnostics_enabled(&request));
         let detail = serde_json::json!({"body":"synthetic upstream error"});
-        assert_eq!(diagnostic_error("ai-provider:http_error:404".into(), &request, detail.clone()), "ai-provider:http_error:404");
+        assert_eq!(
+            diagnostic_error(
+                "ai-provider:http_error:404".into(),
+                &request,
+                detail.clone()
+            ),
+            "ai-provider:http_error:404"
+        );
         request.diagnostics = true;
         let enabled = cfg!(any(debug_assertions, feature = "qa-devtools"));
         assert_eq!(diagnostics_enabled(&request), enabled);
-        assert_eq!(diagnostic_error("ai-provider:http_error:404".into(), &request, detail).contains(":diagnostic:"), enabled);
-        assert!(request_body(&request, &validate_native_request(&request).unwrap()).get("diagnostics").is_none());
+        assert_eq!(
+            diagnostic_error("ai-provider:http_error:404".into(), &request, detail)
+                .contains(":diagnostic:"),
+            enabled
+        );
+        assert!(
+            request_body(&request, &validate_native_request(&request).unwrap())
+                .get("diagnostics")
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -460,15 +605,21 @@ mod tests {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut bytes = [0u8; 8192];
                 let _ = stream.read(&mut bytes);
-                let body = if size > AI_DIAGNOSTIC_MAX_BYTES { "x".repeat(size) }
-                    else { r#"{"error":{"code":"model_not_found","message":"No such model"}}"#.to_string() };
+                let body = if size > AI_DIAGNOSTIC_MAX_BYTES {
+                    "x".repeat(size)
+                } else {
+                    r#"{"error":{"code":"model_not_found","message":"No such model"}}"#.to_string()
+                };
                 let _ = write!(stream, "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nX-Request-Id: synthetic-404\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
             });
             let mut request = test_request();
             request.url = format!("http://{address}/v1/chat/completions");
             request.diagnostics = enabled;
             let expected_diagnostics = diagnostics_enabled(&request);
-            let error = match request_impl(request).await { Err(error) => error, Ok(_) => panic!("404 must reject") };
+            let error = match request_impl(request).await {
+                Err(error) => error,
+                Ok(_) => panic!("404 must reject"),
+            };
             assert!(error.starts_with("ai-provider:http_error:404"));
             if expected_diagnostics {
                 let (_, json) = error.split_once(":diagnostic:").unwrap();
@@ -477,8 +628,12 @@ mod tests {
                 if size > AI_DIAGNOSTIC_MAX_BYTES {
                     assert_eq!(detail["truncated"], true);
                     assert!(detail.get("body").is_none());
-                } else { assert!(detail["body"].as_str().unwrap().contains("model_not_found")); }
-            } else { assert_eq!(error, "ai-provider:http_error:404"); }
+                } else {
+                    assert!(detail["body"].as_str().unwrap().contains("model_not_found"));
+                }
+            } else {
+                assert_eq!(error, "ai-provider:http_error:404");
+            }
             server.join().unwrap();
         }
     }
@@ -492,21 +647,33 @@ mod tests {
         request.url = format!("http://{address}/v1/chat/completions?token=synthetic-secret");
         request.diagnostics = true;
         let expected_diagnostics = diagnostics_enabled(&request);
-        let error = match request_impl(request).await { Err(error) => error, Ok(_) => panic!("closed port must reject") };
+        let error = match request_impl(request).await {
+            Err(error) => error,
+            Ok(_) => panic!("closed port must reject"),
+        };
         assert!(error.starts_with("ai-provider:network_error"));
         assert!(!error.contains("synthetic-secret"));
         assert!(!error.contains("127.0.0.1"));
-        if expected_diagnostics { assert!(error.contains("connect")); }
+        if expected_diagnostics {
+            assert!(error.contains("connect"));
+        }
     }
 
     #[test]
     fn reasoning_only_and_truncated_responses_are_not_documents() {
         for content in ["", "{partial"] {
             let payload = serde_json::json!({"choices":[{"message":{"content":content,"reasoning_content":"not final output"},"finish_reason":"length"}]});
-            assert_eq!(completion_content(&payload).unwrap_err(), "ai-provider:response_truncated");
+            assert_eq!(
+                completion_content(&payload).unwrap_err(),
+                "ai-provider:response_truncated"
+            );
         }
-        let payload = serde_json::json!({"choices":[{"message":{"content":""},"finish_reason":"stop"}]});
-        assert_eq!(completion_content(&payload).unwrap_err(), "ai-provider:empty_response");
+        let payload =
+            serde_json::json!({"choices":[{"message":{"content":""},"finish_reason":"stop"}]});
+        assert_eq!(
+            completion_content(&payload).unwrap_err(),
+            "ai-provider:empty_response"
+        );
     }
 
     #[test]
@@ -552,7 +719,10 @@ mod tests {
         request.model = "glm-5.3".into();
         request.diagnostics = true;
         let enabled = diagnostics_enabled(&request);
-        let error = match request_impl(request).await { Err(error) => error, Ok(_) => panic!("truncated completion must reject") };
+        let error = match request_impl(request).await {
+            Err(error) => error,
+            Ok(_) => panic!("truncated completion must reject"),
+        };
         if enabled {
             let (_, json) = error.split_once(":diagnostic:").unwrap();
             let detail: serde_json::Value = serde_json::from_str(json).unwrap();
@@ -563,7 +733,9 @@ mod tests {
             assert_eq!(detail["completion"]["usage"]["completionTokens"], 8192);
             assert!(detail["body"].is_null());
             assert_eq!(detail["truncated"], true);
-        } else { assert_eq!(error, "ai-provider:response_truncated"); }
+        } else {
+            assert_eq!(error, "ai-provider:response_truncated");
+        }
         server.join().unwrap();
     }
 

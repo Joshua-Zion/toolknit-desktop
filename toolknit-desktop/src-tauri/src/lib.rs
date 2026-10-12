@@ -3,18 +3,18 @@
 //! Command implementations live in `native_runtime` and are progressively
 //! grouped into `commands/*`; this crate root only wires modules and exports
 //! the Tauri runner used by the binary entrypoint.
-mod rsa_legacy_windows;
-mod system_cleanup;
-mod onnx_segmenter;
-mod teleprompter_whisper;
-mod chinese_text;
 mod ai_provider;
 mod ai_provider_cancellation;
+mod chinese_text;
 mod clipboard_history;
 mod commands;
-mod platform;
-mod runtime;
 mod native_runtime;
+mod onnx_segmenter;
+mod platform;
+mod rsa_legacy_windows;
+mod runtime;
+mod system_cleanup;
+mod teleprompter_whisper;
 
 pub use native_runtime::run;
 
@@ -45,6 +45,8 @@ fn allow_webview_navigation(value: &url::Url) -> bool {
 // /custom-background/{access_token}/{filename}.
 // #[cfg(all(target_os = "windows", debug_assertions))] fn append_hardware_debug(_line: &str) {}
 
-pub(crate) fn decode_oriented_image(path: &std::path::Path) -> image::ImageResult<image::DynamicImage> {
+pub(crate) fn decode_oriented_image(
+    path: &std::path::Path,
+) -> image::ImageResult<image::DynamicImage> {
     native_runtime::decode_oriented_image(path)
 }

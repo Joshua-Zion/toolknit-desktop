@@ -1,4 +1,10 @@
 export const LAZY_TOOL_SPECS = Object.freeze({
+  'quick-screenshot': Object.freeze({
+    overlayId: 'quickScreenshotOverlay',
+    markup: () => import('./quick-screenshot/template.js'),
+    load: () => import('./quick-screenshot/tool.js'),
+    init: 'initQuickScreenshotTool'
+  }),
   'clipboard-history': Object.freeze({
     overlayId: 'clipboardHistoryOverlay',
     markup: () => import('./clipboard-history/template.js'),

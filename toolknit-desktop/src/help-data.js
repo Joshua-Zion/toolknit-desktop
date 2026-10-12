@@ -2,6 +2,10 @@ import { getLang } from './i18n.js';
 import { HELP_CONTENT_EN } from './help-data-en.js';
 
 export const HELP_CONTENT = {
+  'quick-screenshot': {
+    title: '快速截图',
+    html: `<div class="help-doc"><h2>快速截图</h2><p>Windows 桌面端默认使用 Alt+Q 开始截图，可在工具页修改或关闭快捷键。支持自动捕捉窗口、拖动选择区域、绿色边框、像素坐标和颜色放大镜。</p><h3>标注与输出</h3><p>支持矩形、圆形、箭头、画笔、马赛克和文字；可选择移动、八向缩放，双击编辑文字。Ctrl+Z 撤销，Ctrl+Y 或 Ctrl+Shift+Z 重做，Delete 删除，方向键微调，Shift 配合方向键调整 10 像素。Ctrl+S 保存，Ctrl+C 复制，Enter 确认，Escape 逐级取消操作或退出截图。</p><p>PNG/JPG 保存到设置的输出目录下 Screenshots 子目录，使用唯一名称，成功弹框可打开目录并选中结果。置顶查看窗口支持缩放、拖拽、保存和复制。可选右侧悬浮历史默认关闭，悬停展开、点击查看，本次运行最多保留 10 张，退出应用后不保留。</p><h3>文字识别与 AI</h3><p>本地 OCR 使用 Windows 已安装的 OCR 语言包，不需要 Key。AI 提取与翻译覆盖仅在主动使用后发送所选区域，需自行配置支持图像输入的模型并确认视觉能力；翻译覆盖可撤销，请核对结果。</p><h3>限制</h3><p>仅 Windows 桌面端支持实际截图和全局快捷键，浏览器只提供预览。单图最多 3200 万像素、编码数据 32 MiB；历史及查看窗口各有 64 MiB 容量限制，查看窗口最多 8 个。受保护或特殊 GPU 内容可能无法捕获。OCR、保存和复制进入原生执行后无法中途撤回，关闭只隔离迟到结果。</p></div>`
+  },
   'duplicate-file-cleanup': {
     title: '清理重复文件',
     html: `<div class="help-doc"><h2>清理重复文件</h2><p>支持“选择单个文件夹”或“选中全部文件夹”，后者扫描所有固定磁盘中允许扫描的目录。默认勾选文档、图片、音频、视频、压缩包共 42 个常用后缀，可逐项调整或全选/清空；未选类型时不能开始扫描。先过滤后缀和空文件，再按大小筛选、头尾抽样、SHA-256 完整校验与逐字节比较，只展示内容完全相同的重复组。不同名称或不同所选后缀也能识别，不查找相似图片，不调用 AI。</p><h3>选择与清理</h3><ol class="help-steps"><li>选择范围和类型，再点击“开始扫描”。加载动画下方显示本地一言，状态展示真实阶段、读取量及耗时。</li><li>结果按潜在可清理大小排序，展开手风琴查看文件，可搜索路径和名称、分页浏览或打开目录选中文件。</li><li>扫描后默认全部保留，不选择任何清理项。点击文件状态按钮切换“已保留／待清理”；支持本组全部保留、本组保留一份选择其余，以及全局相同操作。全局操作针对全部结果，包括搜索和分页之外的组。每组最多选择 N−1 份，最后一份不能选择清理，触发时显示提示；批量保留一份初始参考修改时间最早的文件，仅作建议。</li><li>确认后移入回收站。原生端重新校验扫描记录、保留项与内容，已变化的文件拒绝处理；结果弹框列出未成功项。</li></ol><h3>边界</h3><p>仅 Windows 桌面端执行磁盘操作。跳过系统/程序目录、登记的安装目录、AppData、缓存与开发依赖目录、空文件、云占位文件、只读/隐藏/系统文件及链接；普通文件夹模式不接受系统盘根目录。不按目录条目数截断，最多记录 100000 个符合类型条件的普通文件，结果容量为 100000 个重复文件；超限在扫描结束后显示具体原因和部分结果，不代表扫描完成所有目录。扫描记录有效期 30 分钟，过期或文件变化请重新扫描。</p><p>浏览器预览不执行真实磁盘扫描。返回、关闭或取消停止后续工作；已移入回收站的文件不会自动撤销，可在回收站恢复。移入回收站不等于立即释放磁盘空间。</p></div>`
@@ -18,8 +22,8 @@ export const HELP_CONTENT = {
     title: '功能概览',
     html: `<div class="help-doc">
       <h2>ToolKnit 功能概览</h2>
-      <p>ToolKnit 3.1 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前测试版本提供 12 个分类、70 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。基础文件处理在本机完成；AI 工具仅在用户主动调用后向所选服务发送必要内容。</p>
-      <p>V3.0 正式版包含 68 个桌面工具；PDF 转扫描件、清理重复文件为 V3.1 开发中的新增功能。</p>
+      <p>ToolKnit 3.1 是一款<strong>本地优先</strong>的 Windows 多功能工具箱，当前测试版本提供 12 个分类、71 个桌面工具，并通过 CLI / MCP 向 IDE Agent 暴露 46 项能力。基础文件处理在本机完成；AI 工具仅在用户主动调用后向所选服务发送必要内容。</p>
+      <p>V3.0 正式版包含 68 个桌面工具；PDF 转扫描件、清理重复文件和快速截图为 V3.1 开发中的新增功能。</p>
 
       <h3>工具分类一览</h3>
       <div class="help-tool-grid">
@@ -33,7 +37,7 @@ export const HELP_CONTENT = {
         <div class="help-tool-card"><div class="help-tool-card-name">创意工具</div><div class="help-tool-card-desc">配色提取、打字测试</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">清理工具</div><div class="help-tool-card-desc">扫描大文件、AI 元数据建议、移入回收站</div></div>
         <div class="help-tool-card"><div class="help-tool-card-name">硬件与系统工具</div><div class="help-tool-card-desc">只读查看整机、CPU、内存、显卡、主板、磁盘、网络和传感器；主动开启剪贴板历史监控</div></div>
-        <div class="help-tool-card"><div class="help-tool-card-name">AI 工具</div><div class="help-tool-card-desc">AI 润色、翻译、可编辑文档、可编辑表格</div></div>
+        <div class="help-tool-card"><div class="help-tool-card-name">AI 工具</div><div class="help-tool-card-desc">快速截图、AI PDF 转 Markdown、润色、翻译、可编辑文档、可编辑表格</div></div>
       </div>
 
       <h3>核心特性</h3>

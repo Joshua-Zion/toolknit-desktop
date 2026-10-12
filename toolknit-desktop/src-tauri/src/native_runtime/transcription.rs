@@ -82,7 +82,9 @@ pub(super) fn begin_model_download() -> Result<ModelDownloadGuard, String> {
     Ok(ModelDownloadGuard)
 }
 
-pub(super) fn transcription_model_spec(model_id: &str) -> Result<&'static TranscriptionModelSpec, String> {
+pub(super) fn transcription_model_spec(
+    model_id: &str,
+) -> Result<&'static TranscriptionModelSpec, String> {
     TRANSCRIPTION_MODELS
         .iter()
         .find(|model| model.id == model_id.trim().to_ascii_lowercase())
@@ -93,7 +95,9 @@ pub(super) fn transcription_models_dir() -> Result<std::path::PathBuf, String> {
     Ok(toolknit_app_data_dir()?.join(TRANSCRIPTION_MODEL_DIRECTORY))
 }
 
-pub(super) fn transcription_model_path(model: &TranscriptionModelSpec) -> Result<std::path::PathBuf, String> {
+pub(super) fn transcription_model_path(
+    model: &TranscriptionModelSpec,
+) -> Result<std::path::PathBuf, String> {
     Ok(transcription_models_dir()?.join(model.file_name))
 }
 
@@ -109,7 +113,9 @@ pub(super) fn read_transcription_model_config() -> TranscriptionModelConfig {
         .unwrap_or_default()
 }
 
-pub(super) fn write_transcription_model_config(config: &TranscriptionModelConfig) -> Result<(), String> {
+pub(super) fn write_transcription_model_config(
+    config: &TranscriptionModelConfig,
+) -> Result<(), String> {
     let path = transcription_model_config_path()?;
     let parent = path
         .parent()
@@ -290,8 +296,8 @@ pub(super) async fn start_teleprompter_recognition(
     let model = transcription_model_spec(&model_id)?;
     let model_path =
         installed_model_file(model)?.ok_or("transcription:model-not-installed".to_string())?;
-    let whisper_library = get_whisper_library_path()
-        .map_err(|_| "teleprompter:engine-unavailable".to_string())?;
+    let whisper_library =
+        get_whisper_library_path().map_err(|_| "teleprompter:engine-unavailable".to_string())?;
     let generation = state
         .generation
         .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
@@ -387,7 +393,9 @@ pub(super) async fn transcribe_teleprompter_audio(
         .lock()
         .map_err(|_| "teleprompter:state-unavailable".to_string())?
         .as_ref()
-        .is_some_and(|session| session.id == session_id && !session.cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        .is_some_and(|session| {
+            session.id == session_id && !session.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+        });
     if !is_current {
         return Err("teleprompter:stopped".to_string());
     }
@@ -1189,4 +1197,3 @@ pub(super) async fn transcribe_media(
         raw_txt_path: raw_txt_path.to_string_lossy().into_owned(),
     })
 }
-

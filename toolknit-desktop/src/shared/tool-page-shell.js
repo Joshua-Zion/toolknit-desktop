@@ -20,7 +20,7 @@ export function toolTopbarMarkup({ tag, title, closeAttr }) {
         </div>
       </div>
     </div>
-    <span class="tool-page-v2-title" aria-hidden="true">${title}</span>
+    ${title ? `<span class="tool-page-v2-title" aria-hidden="true">${title}</span>` : ''}
   </header>`;
 }
 function clickHost(selector, excludeRoot = null) {

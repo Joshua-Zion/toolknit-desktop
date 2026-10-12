@@ -1,5 +1,7 @@
 # ToolKnit Desktop V3.0 架构迁移报告
 
+> 2026-10-12 V3.1 增量：新增 AI 分类 `quick-screenshot`，独立 feature 持有工作台、截图编辑器、置顶查看器和可选历史悬浮窗，平台 adapter 与原生 `quick_screenshot` domain 持有系统能力；组合根仅装配上下文同步。复用工具导航、弹框、Toast、输出、AI 请求与有容量边界的 snapshot history，PDF 编辑器保留旧 history 导出契约。当前 71 个工具、12 分类（AI 6 项）、46 CLI/MCP，Tauri command 144 个实现/143 个唯一名称，HTML ID 1433 个、无重复，Rust 201 个测试。新增 command、事件、偏好及辅助 WebView 的角色权限边界见[快速截图维护说明](QUICK_SCREENSHOT.zh-CN.md)。历史窗在原 feature/native 边界内隔离 capture 会话事件，图片解码成功再更新并支持失败重试；新圆形 Logo 和展开后的标题区域均可拖动、点击展开约四张截图、×/Escape 收起后锚点跟随面板位移，历史最多 10 张/64 MiB。Windows 每次切换只提交一次位置/尺寸，移除逐帧宽度循环，380ms 展开与 260ms 收起由内部裁切动画完成，无新增命令或事件。截图恢复共用不激活、不改变层级的 Windows 路径，保留主应用最小化状态；历史窗显示不抢焦点。共享导航 title 可省略，查看器去除右侧重复标题，既有调用保持兼容。双主题/DPR 浏览器 8 场景、构建、架构、完整发布回归及 Rust 全量通过；两个真实 Windows 捕获/OCR smoke 此前通过，本轮未重跑。新悬浮窗实际动画、安装后热键、多屏 DPI、真实 AI 与长期窗口交互尚待桌面回归。下文保留历史统计。
+
 > 2026-10-11 设置/首页增量：`home-explorer-runtime.js` 通过现有 settings controller 持有 `toolknit_home_lazy_load`，默认每批显示 12 个工具，关闭仅改变卡片展示，不预加载工具模块。新增 `homeLazyLoadToggle` / `homeLazyLoadStatus`，当前 HTML ID 1433 个、无重复；工具/分类/CLI/MCP 数量及原生命令不变。支持作者控制器复用 modal session，以当前背景页层级覆盖并恢复交互/焦点；共享开关兼容 aria 状态，首页文字样式排除共享图标容器。双主题首页/设置与五类代表工具导航浏览器回归通过。
 
 > 2026-10-11 V3.1 增量：首页定制弹框与 Windows 自启动分别由 `app/home-custom-tools-runtime.js`、`app/autostart-runtime.js` 持有，组合根仅注入既有平台/翻译服务。弹框复用 modal session，网页按钮复用 tool-page-chrome，外链走既有 external-links；密钥页通过静态模板复用完整 tool-page-shell，返回与导航设置统一进入设置页。删除无入口的旧 PDF 模板及处理器，保留实际工具与素材。当前 70 个工具、12 分类、46 项 CLI/MCP；Tauri command 143 个实现、142 个唯一名称，HTML ID 1431 个、无重复，Rust 190 个测试（187 passed / 3 ignored）。

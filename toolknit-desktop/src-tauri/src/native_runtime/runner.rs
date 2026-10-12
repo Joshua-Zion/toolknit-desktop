@@ -1,5 +1,5 @@
-use super::*;
 use super::office;
+use super::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -7,7 +7,9 @@ pub fn run() {
     let mut context = tauri::generate_context!();
     if is_autostart_launch(std::env::args()) {
         for window in &mut context.config_mut().app.windows {
-            if window.label == "main" { window.visible = false; }
+            if window.label == "main" {
+                window.visible = false;
+            }
         }
     }
     tauri::Builder::default()
@@ -19,10 +21,12 @@ pub fn run() {
         })
         .manage(WindowCornerRadiusState::default())
         .manage(AutostartState::default())
+        .manage(quick_screenshot::ScreenshotState::default())
         .manage(crate::clipboard_history::ClipboardHistoryState::default())
         .manage(onnx_segmenter::MattingState::default())
         .manage(TeleprompterRecognitionState::default())
         .invoke_handler(tauri::generate_handler![
+            quick_screenshot::quick_screenshot,
             crate::clipboard_history::clipboard_history,
             crate::clipboard_history::copy_sensitive_text,
             open_url,
@@ -51,15 +55,15 @@ pub fn run() {
             transcribe_teleprompter_audio,
             stop_teleprompter_recognition,
             onnx_segmenter::list_matting_models,
-        onnx_segmenter::set_current_matting_model,
-        onnx_segmenter::download_matting_model,
+            onnx_segmenter::set_current_matting_model,
+            onnx_segmenter::download_matting_model,
             onnx_segmenter::cancel_matting_model_download,
             onnx_segmenter::delete_matting_model,
             onnx_segmenter::segment_image,
             onnx_segmenter::cancel_matting_segmentation,
             onnx_segmenter::discard_matting_preview,
             onnx_segmenter::export_segmented_image,
-        list_transcription_models,
+            list_transcription_models,
             set_current_transcription_model,
             delete_transcription_model,
             download_transcription_model,
@@ -174,7 +178,9 @@ pub fn run() {
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if !is_autostart_launch(argv) { show_main_window(app); }
+            if !is_autostart_launch(argv) {
+                show_main_window(app);
+            }
         }))
         .on_window_event(|window, event| {
             if window.label() == "main"
@@ -210,6 +216,9 @@ pub fn run() {
                     // lifecycle unless they opt into one explicitly.
                     _ => {}
                 }
+            }
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                quick_screenshot::closed(window.app_handle(), window.label());
             }
         })
         .setup(|app| {
@@ -261,14 +270,22 @@ pub fn run() {
             // 同步置顶状态到托盘菜单（可选）
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(debug_assertions)]
-                if app.config().app.windows.iter().any(|config| config.label == "main" && config.devtools == Some(true)) {
+                if app
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .any(|config| config.label == "main" && config.devtools == Some(true))
+                {
                     window.open_devtools();
                 }
                 if let Err(error) = fit_main_window_to_work_area(&window) {
                     log::warn!("Unable to fit main window to monitor work area: {error}");
                 }
                 let _ = window.set_always_on_top(false);
-                if is_autostart_launch(std::env::args()) { let _ = window.hide(); }
+                if is_autostart_launch(std::env::args()) {
+                    let _ = window.hide();
+                }
             }
 
             // 注册屏幕取色全局快捷键（如果用户已配置）。
@@ -279,6 +296,7 @@ pub fn run() {
                 }
             }
 
+            quick_screenshot::initialize(app.handle());
             Ok(())
         })
         .build(context)
@@ -303,5 +321,3 @@ pub(super) fn minimize_main_window(app: &tauri::AppHandle) {
         let _ = window.minimize();
     }
 }
-
-

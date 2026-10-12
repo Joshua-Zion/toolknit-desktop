@@ -300,13 +300,19 @@ export function normalizeAiProviderConfig({ url, model, allowPrivateHttp = false
   if (!isSecureEndpoint && !isLoopbackHttp && !isPrivateHttp) {
     throw new AiProviderError('insecure_http_not_allowed');
   }
+  // Accept the common provider settings users copy from documentation while
+  // preserving explicit custom endpoints for compatible services.
+  const pathname = endpoint.pathname.replace(/\/+$/, '') || '/';
+  if (pathname === '/' || pathname === '/v1') {
+    endpoint.pathname = '/v1/chat/completions';
+  }
   return { url: endpoint.href, model: model.trim() };
 }
 
 function nativeAiProviderError(error, request, diagnostics) {
   const value = typeof error === 'string' ? error : String(error?.message || error || '');
   const match = value.match(/^ai-provider:(http_error):(\d{3})(?=:diagnostic:|$)/);
-  const code = value.match(/^ai-provider:(aborted|timeout|network_error|invalid_config|invalid_request|invalid_response|response_too_large|response_truncated|empty_response)(?=:diagnostic:|$)/)?.[1];
+  const code = value.match(/^ai-provider:(aborted|timeout|network_error|native_transport_unavailable|private_http_requires_opt_in|insecure_http_not_allowed|provider_changed|invalid_config|invalid_request|invalid_response|response_too_large|response_truncated|empty_response)(?=:diagnostic:|$)/)?.[1];
   const result = new AiProviderError(match ? match[1] : code || 'network_error', match ? Number(match[2]) : null);
   const marker = ':diagnostic:';
   const index = value.indexOf(marker);

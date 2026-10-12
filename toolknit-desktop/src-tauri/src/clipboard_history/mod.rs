@@ -38,6 +38,32 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+pub(crate) fn copy_screenshot_image(png: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        windows::write(&Content::Image { png, width, height }, false, false)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (png, width, height);
+        Err("screenshot:windows-only".into())
+    }
+}
+pub(crate) fn copy_screenshot_text(text: String) -> Result<(), String> {
+    if text.len() > MAX_TEXT {
+        return Err("screenshot:text-too-large".into());
+    }
+    #[cfg(windows)]
+    {
+        windows::write(&Content::Text { text, rich: false }, false, false)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = text;
+        Err("screenshot:windows-only".into())
+    }
+}
+
 pub(crate) fn tray_label(lang: &str, enabled: bool) -> &'static str {
     match (lang == "zh", enabled) {
         (true, true) => "剪贴板历史：正在记录",

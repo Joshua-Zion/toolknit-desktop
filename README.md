@@ -36,7 +36,7 @@
 
 <p align="center">
   <a href="#v30-核心更新">3.0 正式版</a> ·
-  <a href="#完整功能目录">70 项工具</a> ·
+  <a href="#完整功能目录">71 项工具</a> ·
   <a href="#本地优先与隐私边界">隐私边界</a> ·
   <a href="#从源码运行">源码运行</a> ·
   <a href="#cli--mcp--agent">CLI / MCP</a>
@@ -67,7 +67,7 @@ ToolKnit Desktop 3.1 测试版是一套面向 Windows 的本地文件工作台�
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>70</h3><strong>桌面工具</strong></td>
+    <td align="center"><h3>71</h3><strong>桌面工具</strong></td>
     <td align="center"><h3>12</h3><strong>功能分类</strong></td>
     <td align="center"><h3>46</h3><strong>MCP 能力</strong></td>
     <td align="center"><h3>3</h3><strong>工作方式</strong></td>
@@ -182,7 +182,7 @@ ToolKnit 继续遵循本地优先原则：重型编辑器和算法模块按需�
 
 ## 完整功能目录
 
-下面按桌面端的 12 个分类列出当前源码中的全部 70 项工具，包含 V3.1 开发中的 PDF 转扫描件、清理重复文件；已发布 V3.0 为 68 项。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
+下面按桌面端的 12 个分类列出当前源码中的全部 71 项工具，包含 V3.1 开发中的 PDF 转扫描件、清理重复文件和快速截图；已发布 V3.0 为 68 项。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF 文档工具 · 14 项</h3></td></tr>
@@ -261,10 +261,12 @@ Markdown 编辑器提供 GFM、Mermaid、数学公式、标题大纲、草稿恢
 大文件清理先在本机扫描，可选择目录或扫描 C 盘中的大文件候选，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索；C 盘清理按低、中、高风险检查固定系统缓存空间。受保护目录、链接和系统属性会跳过，删除前逐项确认；大文件清理移入回收站，系统级 C 盘清理明确提示永久删除范围。
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI 工作台 · 5 项</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI 工作台 · 6 项</h3></td></tr>
 </table>
 
-`AI PDF 转 Markdown` · `AI 文字润色` · `AI 智能翻译` · `AI 文档生成` · `AI 表格生成`
+`AI PDF 转 Markdown` · `AI 文字润色` · `AI 智能翻译` · `AI 文档生成` · `AI 表格生成` · `快速截图`
+
+快速截图默认使用 Alt+Q，支持窗口捕捉、区域选择、标注、本地 Windows OCR、PNG/JPG 保存、置顶查看和可选悬浮历史。仅主动使用截图 AI 提取/翻译时发送所选区域，需要自行配置支持图像输入的模型并确认视觉能力。详见[快速截图说明](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md)。
 
 AI PDF 逐页分析页面图像并汇总为 Markdown；AI 文档支持多页 PDF、可编辑工程文件、预览、编辑与撤销；AI 表格支持 CSV、XLSX、PDF、PNG、可编辑项目、公式和图表修改。主动调用 AI 时，相关文字或页面图像会发送到你配置的模型服务。
 
@@ -288,7 +290,7 @@ AI PDF 逐页分析页面图像并汇总为 Markdown；AI 文档支持多页 PDF
 
 <img src="https://img.shields.io/badge/LOCAL-默认本地-0f766e?style=for-the-badge" alt="Local first" /> **默认本地**：桌面端的 PDF、PPT、图像、音频、视频、文本、计算器、硬件和清理工具在设备本地运行，源文件不会上传到 ToolKnit 服务器。
 
-<img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、AI PDF 转 Markdown、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿、AI 大文件复核或转写后的 `refine` 时，符合该功能说明的数据才会发送到你配置的模型服务；大文件清理只发送文件元数据，不发送文件内容。
+<img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、AI PDF 转 Markdown、截图 AI 提取/翻译、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿、AI 大文件复核或转写后的 `refine` 时，符合该功能说明的数据才会发送到你配置的模型服务；截图 AI 只发送所选区域，大文件清理只发送文件元数据，不发送文件内容。
 
 <img src="https://img.shields.io/badge/RUNTIME-按需依赖-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **按需依赖**：优先复用本机已有的 FFmpeg 与 LibreOffice；Whisper 模型和缺失运行时按需下载，支持依赖检测、校验和镜像源选择。
 

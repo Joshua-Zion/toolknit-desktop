@@ -26,6 +26,7 @@ const capabilityIds = testConfig.app.security.capabilities.map(capability => (
   typeof capability === 'string' ? capability : capability.identifier
 ));
 assert.ok(capabilityIds.includes('default'), 'QA config must retain default capabilities');
+assert.ok(capabilityIds.includes('screenshot-windows'), 'QA config must retain screenshot auxiliary window capabilities');
 assert.ok(capabilityIds.includes('qa-devtools'), 'QA config must include the QA capability');
 
 console.log('QA DevTools contract passed');

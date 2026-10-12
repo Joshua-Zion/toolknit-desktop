@@ -6,12 +6,16 @@ mod simplify_tests {
     fn simplify_converts_common_whisper_variants() {
         let converted = simplify_chinese_text("旗艦模型升級，創作與理解能力。");
         assert_eq!(converted, "旗舰模型升级，创作与理解能力。");
-        assert_eq!(simplify_chinese_text("English stays untouched 123"), "English stays untouched 123");
+        assert_eq!(
+            simplify_chinese_text("English stays untouched 123"),
+            "English stays untouched 123"
+        );
     }
 
     #[test]
     fn simplify_transcription_outputs_rewrites_temp_files() {
-        let dir = std::env::temp_dir().join(format!("toolknit-simplify-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("toolknit-simplify-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for name in ["transcript.srt", "transcript.txt"] {
             std::fs::write(dir.join(name), format!("{name}}}: 旗艦模型升級 {{}}")).unwrap();
@@ -34,11 +38,7 @@ mod simplify_tests {
     #[test]
     fn transcription_prepare_error_identifies_missing_audio() {
         assert_eq!(
-            transcription_prepare_error(
-                false,
-                false,
-                "Output file does not contain any stream"
-            ),
+            transcription_prepare_error(false, false, "Output file does not contain any stream"),
             Some("transcription:no-audio-stream")
         );
         assert_eq!(
@@ -67,7 +67,9 @@ mod simplify_tests {
 
     #[test]
     fn whisper_workspace_paths_are_ascii() {
-        assert!(is_ascii_path(std::path::Path::new(r"C:\ToolKnitTemp\run-1")));
+        assert!(is_ascii_path(std::path::Path::new(
+            r"C:\ToolKnitTemp\run-1"
+        )));
         assert!(!is_ascii_path(std::path::Path::new(r"C:\用户\run-1")));
     }
 

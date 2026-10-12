@@ -531,8 +531,7 @@ mod tests {
     }
 
     fn read_wav_mono_i16(path: &Path) -> Result<Vec<i16>, String> {
-        let bytes =
-            std::fs::read(path).map_err(|error| format!("read wav failed: {error}"))?;
+        let bytes = std::fs::read(path).map_err(|error| format!("read wav failed: {error}"))?;
         if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
             return Err("not a RIFF/WAVE file".to_string());
         }
@@ -540,8 +539,8 @@ mod tests {
         let mut data: Option<&[u8]> = None;
         while position + 8 <= bytes.len() {
             let id = &bytes[position..position + 4];
-            let size = u32::from_le_bytes(bytes[position + 4..position + 8].try_into().unwrap())
-                as usize;
+            let size =
+                u32::from_le_bytes(bytes[position + 4..position + 8].try_into().unwrap()) as usize;
             if id == b"data" {
                 let end = (position + 8 + size).min(bytes.len());
                 data = Some(&bytes[position + 8..end]);
@@ -559,45 +558,69 @@ mod tests {
     // Opt-in synthetic fixture only; never capture or log a user's microphone.
     #[test]
     fn rolling_synthetic_speech_benchmark() {
-        let Ok(model) = std::env::var("TOOLKNIT_TEST_WHISPER_MODEL") else { return };
-        let Ok(wav) = std::env::var("TOOLKNIT_TEST_TTS_WAV") else { return };
+        let Ok(model) = std::env::var("TOOLKNIT_TEST_WHISPER_MODEL") else {
+            return;
+        };
+        let Ok(wav) = std::env::var("TOOLKNIT_TEST_TTS_WAV") else {
+            return;
+        };
         let samples = read_wav_mono_i16(Path::new(&wav)).expect("synthetic mono 16k WAV");
-        let library = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("resources/whisper/Release/whisper.dll");
+        let library =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/whisper/Release/whisper.dll");
         let session = WhisperSession::load(&library, Path::new(&model)).expect("test model");
         let mut records = Vec::new();
         for seconds in [0.9_f32, 1.5, 2.1, 3.2, 4.8, 6.4, 8.0, 9.6, 11.2] {
             let end = ((seconds * 16_000.0) as usize).min(samples.len());
             let start = end.saturating_sub(51_200);
             let started = std::time::Instant::now();
-            let result = session.transcribe(samples[start..end].to_vec(), "zh", "",
-                Arc::new(AtomicBool::new(false))).expect("rolling inference");
+            let result = session
+                .transcribe(
+                    samples[start..end].to_vec(),
+                    "zh",
+                    "",
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .expect("rolling inference");
             records.push(serde_json::json!({
                 "start": start, "end": end, "ms": started.elapsed().as_millis(),
                 "text": result.text, "confidence": result.confidence
             }));
         }
-        println!("[rolling-synthetic] {}", serde_json::to_string(&records).unwrap());
+        println!(
+            "[rolling-synthetic] {}",
+            serde_json::to_string(&records).unwrap()
+        );
         if let Ok(output) = std::env::var("TOOLKNIT_TEST_ROLLING_OUTPUT") {
             std::fs::write(output, serde_json::to_vec_pretty(&records).unwrap()).unwrap();
         }
-        assert!(records.iter().any(|record| !record["text"].as_str().unwrap().is_empty()));
+        assert!(records
+            .iter()
+            .any(|record| !record["text"].as_str().unwrap().is_empty()));
     }
 
     #[test]
     fn weak_audio_synthetic_windows() {
-        let Ok(model) = std::env::var("TOOLKNIT_TEST_WHISPER_MODEL") else { return };
-        let Ok(input) = std::env::var("TOOLKNIT_TEST_AUDIO_WINDOWS") else { return };
-        let fixture: serde_json::Value = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
-        let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/whisper/Release/whisper.dll");
-        let session = WhisperSession::load(&library, Path::new(&model)).expect("synthetic test model");
+        let Ok(model) = std::env::var("TOOLKNIT_TEST_WHISPER_MODEL") else {
+            return;
+        };
+        let Ok(input) = std::env::var("TOOLKNIT_TEST_AUDIO_WINDOWS") else {
+            return;
+        };
+        let fixture: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
+        let library =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/whisper/Release/whisper.dll");
+        let session =
+            WhisperSession::load(&library, Path::new(&model)).expect("synthetic test model");
         let mut cases = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
             let mut records = Vec::new();
             for window in case["windows"].as_array().unwrap() {
                 let samples: Vec<i16> = serde_json::from_value(window["samples"].clone()).unwrap();
                 let started = std::time::Instant::now();
-                let result = session.transcribe(samples, "zh", "", Arc::new(AtomicBool::new(false))).unwrap();
+                let result = session
+                    .transcribe(samples, "zh", "", Arc::new(AtomicBool::new(false)))
+                    .unwrap();
                 records.push(serde_json::json!({"start":window["windowStart"], "end":window["windowEnd"], "utterance":window["utterance"], "ms":started.elapsed().as_millis(), "text":result.text, "confidence":result.confidence}));
             }
             cases.push(serde_json::json!({"name":case["name"], "records":records}));
@@ -642,12 +665,7 @@ mod tests {
         let session = WhisperSession::load(&library, model_path).expect("load model for tts test");
         let started = std::time::Instant::now();
         let result = session
-            .transcribe(
-                samples,
-                "zh",
-                "",
-                Arc::new(AtomicBool::new(false)),
-            )
+            .transcribe(samples, "zh", "", Arc::new(AtomicBool::new(false)))
             .expect("transcribe tts speech");
         let elapsed = started.elapsed();
         println!("[tts-e2e] transcript = {}", result.text);
@@ -664,7 +682,11 @@ mod tests {
         // identical in simplified and traditional output. Unicode escapes keep
         // this file ASCII-only for any console codepage.
         let expected: String = "\u{6a21}\u{578b}".to_string();
-        let got: String = result.text.chars().filter(|c| c.is_alphanumeric()).collect();
+        let got: String = result
+            .text
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect();
         assert!(
             got.contains(&expected),
             "expected transcript to contain {expected:?}, got {got:?}"

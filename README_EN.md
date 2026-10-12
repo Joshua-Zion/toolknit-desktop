@@ -36,7 +36,7 @@
 
 <p align="center">
   <a href="#whats-new-in-30">What's new</a> ·
-  <a href="#complete-tool-catalog">70 tools</a> ·
+  <a href="#complete-tool-catalog">71 tools</a> ·
   <a href="#local-first-privacy-boundaries">Privacy</a> ·
   <a href="#run-from-source">Run from source</a> ·
   <a href="#cli--mcp--agent">CLI / MCP</a>
@@ -67,7 +67,7 @@ The desktop app provides a visual workbench. Automation-ready capabilities are a
 
 <table width="100%" cellpadding="14" cellspacing="0">
   <tr>
-    <td align="center"><h3>70</h3><strong>Desktop tools</strong></td>
+    <td align="center"><h3>71</h3><strong>Desktop tools</strong></td>
     <td align="center"><h3>12</h3><strong>Categories</strong></td>
     <td align="center"><h3>46</h3><strong>MCP capabilities</strong></td>
     <td align="center"><h3>3</h3><strong>Ways to work</strong></td>
@@ -182,7 +182,7 @@ The 2.1 series adds 11 desktop tools and delivers a broader upgrade across custo
 
 ## Complete tool catalog
 
-The 12 desktop categories below contain all 70 tools in the current source, including PDF to Scanned PDF and Clean Duplicate Files under V3.1 development. Released V3.0 contains 68 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
+The 12 desktop categories below contain all 71 tools in the current source, including PDF to Scanned PDF, Clean Duplicate Files and Quick Screenshot under V3.1 development. Released V3.0 contains 68 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
   <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF tools · 14</h3></td></tr>
@@ -263,10 +263,12 @@ Duplicate cleanup uses size grouping, sampling, full hashing and byte comparison
 Large File Cleanup scans a selected directory or the C drive locally, then lets local rules and optional AI analyze only filenames, sizes, modification times, and directory clues. Protected paths, links, and system files are excluded. Confirmed large-file cleanup uses the Recycle Bin; C Drive Cleanup separately explains permanent removal of selected system caches and space items by risk level. File contents are not uploaded for AI review.
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI Workbench · 5</h3></td></tr>
+  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI Workbench · 6</h3></td></tr>
 </table>
 
-`AI PDF to Markdown` · `AI Polish` · `AI Translate` · `AI Document Generation` · `AI Table Generation`
+`AI PDF to Markdown` · `AI Polish` · `AI Translate` · `AI Document Generation` · `AI Table Generation` · `Quick Screenshot`
+
+Quick Screenshot uses Alt+Q by default, with window capture, region selection, annotations, local Windows OCR, PNG/JPG output, pinned viewers and optional floating history. AI extraction/translation sends only the selected region, requires an image-capable model configured by the user, and requires explicit confirmation of its vision capability. See the [screenshot guide](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md).
 
 AI PDF analyzes rendered pages and assembles Markdown. AI Documents support multi-page PDFs, editable projects, preview, editing, and undo. AI Tables support CSV, XLSX, PDF, PNG, editable projects, formulas, and charts. Relevant text or page images are sent to your configured model service when you explicitly invoke AI.
 
@@ -292,7 +294,7 @@ Validate, format, and minify JSON; process UTF-8 Base64; encode URL parameters; 
 
 <img src="https://img.shields.io/badge/LOCAL-Local%20by%20default-0f766e?style=for-the-badge" alt="Local by default" /> **Local by default**: Desktop PDF, PPT, image, audio, video, text, calculator, hardware, and cleanup tools run on the device. Source files are not uploaded to ToolKnit servers.
 
-<img src="https://img.shields.io/badge/AI-Explicit%20authorization-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **Explicit authorization**: Relevant data is sent to your configured model service only when you actively use AI Polish, AI Translate, AI Documents, AI Tables, AI PDF to Markdown, PPT text AI organization, AI PPT Outline, AI PPTX Draft, AI large-file review, or transcription `refine`. AI PDF analysis sends page images; AI large-file review sends file metadata, not file contents.
+<img src="https://img.shields.io/badge/AI-Explicit%20authorization-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **Explicit authorization**: Relevant data is sent to your configured model service only when you actively use AI Polish, AI Translate, AI Documents, AI Tables, AI PDF to Markdown, screenshot AI extraction/translation, PPT text AI organization, AI PPT Outline, AI PPTX Draft, AI large-file review, or transcription `refine`. AI PDF analysis sends page images; screenshot AI sends only the selected region; AI large-file review sends file metadata, not file contents.
 
 <img src="https://img.shields.io/badge/RUNTIME-On--demand%20dependencies-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **On-demand dependencies**: Existing FFmpeg and LibreOffice installations are reused when possible. Missing runtimes and Whisper models are downloaded as needed, with dependency detection, verification, and mirror selection.
 

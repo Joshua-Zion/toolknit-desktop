@@ -22,6 +22,7 @@ export default defineConfig(async ({ mode }) => ({
     rollupOptions: {
       input: {
         main: "index.html",
+        screenshot: "screenshot.html",
       },
     },
   },

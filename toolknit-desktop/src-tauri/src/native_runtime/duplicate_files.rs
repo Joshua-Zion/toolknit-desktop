@@ -13,11 +13,10 @@ const TTL: Duration = Duration::from_secs(1800);
 #[path = "duplicate_files/protection.rs"]
 mod protection;
 const COMMON_EXTENSIONS: &[&str] = &[
-    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "rtf", "odt",
-    "jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "svg", "heic",
-    "mp3", "wav", "flac", "aac", "m4a", "ogg", "wma",
-    "mp4", "mkv", "mov", "avi", "webm", "m4v", "wmv",
-    "zip", "7z", "rar", "tar", "gz", "bz2",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv", "rtf", "odt", "jpg",
+    "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "svg", "heic", "mp3", "wav", "flac", "aac",
+    "m4a", "ogg", "wma", "mp4", "mkv", "mov", "avi", "webm", "m4v", "wmv", "zip", "7z", "rar",
+    "tar", "gz", "bz2",
 ];
 
 fn extension_filter(values: Option<Vec<String>>) -> Result<HashSet<String>, String> {
@@ -25,11 +24,17 @@ fn extension_filter(values: Option<Vec<String>>) -> Result<HashSet<String>, Stri
     if values.is_empty() || values.len() > COMMON_EXTENSIONS.len() {
         return Err("Choose at least one supported file type".into());
     }
-    values.into_iter().map(|value| {
-        let value = value.to_ascii_lowercase();
-        if COMMON_EXTENSIONS.contains(&value.as_str()) { Ok(value) }
-        else { Err("Unsupported file type".into()) }
-    }).collect()
+    values
+        .into_iter()
+        .map(|value| {
+            let value = value.to_ascii_lowercase();
+            if COMMON_EXTENSIONS.contains(&value.as_str()) {
+                Ok(value)
+            } else {
+                Err("Unsupported file type".into())
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, Default, serde::Serialize)]
@@ -256,31 +261,47 @@ fn bucket_hash(
     // Two readers bound disk pressure; small buckets stay on the caller thread.
     let workers = if files.len() >= 16 { 2 } else { 1 };
     let work = || -> Result<(), String> {
-      loop {
-        s.guard.check()?;
-        let index = next.fetch_add(1, Ordering::Relaxed);
-        let Some(path) = files.get(index) else { break; };
-        let cached = if partial { None } else { cache.lock().unwrap().get(path).copied() };
-        let outcome = cached.map(Ok).unwrap_or_else(|| digest(path, partial, s));
-        match outcome {
-            Ok(hash) => {
-                if partial && std::fs::metadata(path).map(|m| m.len() <= 8192).unwrap_or(false) {
-                    cache.lock().unwrap().insert(path.clone(), hash);
+        loop {
+            s.guard.check()?;
+            let index = next.fetch_add(1, Ordering::Relaxed);
+            let Some(path) = files.get(index) else {
+                break;
+            };
+            let cached = if partial {
+                None
+            } else {
+                cache.lock().unwrap().get(path).copied()
+            };
+            let outcome = cached.map(Ok).unwrap_or_else(|| digest(path, partial, s));
+            match outcome {
+                Ok(hash) => {
+                    if partial
+                        && std::fs::metadata(path)
+                            .map(|m| m.len() <= 8192)
+                            .unwrap_or(false)
+                    {
+                        cache.lock().unwrap().insert(path.clone(), hash);
+                    }
+                    buckets
+                        .lock()
+                        .unwrap()
+                        .entry(hash)
+                        .or_default()
+                        .push(path.clone());
                 }
-                buckets.lock().unwrap().entry(hash).or_default().push(path.clone());
+                Err(error) => {
+                    s.guard.check()?;
+                    let _ = error;
+                    s.progress.lock().unwrap().skipped += 1;
+                }
             }
-            Err(error) => {
-                s.guard.check()?;
-                let _ = error;
-                s.progress.lock().unwrap().skipped += 1;
-            }
+            s.progress.lock().unwrap().checked_files += 1;
         }
-        s.progress.lock().unwrap().checked_files += 1;
-      }
-      Ok(())
+        Ok(())
     };
-    if workers == 1 { work()?; }
-    else {
+    if workers == 1 {
+        work()?;
+    } else {
         std::thread::scope(|scope| {
             let handles: Vec<_> = (0..workers).map(|_| scope.spawn(&work)).collect();
             for handle in handles {
@@ -289,16 +310,43 @@ fn bucket_hash(
             Ok::<_, String>(())
         })?;
     }
-    Ok(buckets.into_inner().unwrap().into_values().filter(|v| v.len() > 1).collect())
+    Ok(buckets
+        .into_inner()
+        .unwrap()
+        .into_values()
+        .filter(|v| v.len() > 1)
+        .collect())
 }
 #[cfg(test)]
 fn scan(roots: &[PathBuf], recursive: bool, s: &Session) -> Result<Vec<DuplicateGroup>, String> {
     scan_filtered(roots, recursive, s, None, &[])
 }
-fn scan_filtered(roots: &[PathBuf], recursive: bool, s: &Session, extensions: Option<&HashSet<String>>, installed: &[PathBuf]) -> Result<Vec<DuplicateGroup>, String> {
-    scan_with_limits(roots, recursive, s, extensions, installed, FILE_LIMIT, RESULT_LIMIT)
+fn scan_filtered(
+    roots: &[PathBuf],
+    recursive: bool,
+    s: &Session,
+    extensions: Option<&HashSet<String>>,
+    installed: &[PathBuf],
+) -> Result<Vec<DuplicateGroup>, String> {
+    scan_with_limits(
+        roots,
+        recursive,
+        s,
+        extensions,
+        installed,
+        FILE_LIMIT,
+        RESULT_LIMIT,
+    )
 }
-fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions: Option<&HashSet<String>>, installed: &[PathBuf], file_limit: usize, result_limit: usize) -> Result<Vec<DuplicateGroup>, String> {
+fn scan_with_limits(
+    roots: &[PathBuf],
+    recursive: bool,
+    s: &Session,
+    extensions: Option<&HashSet<String>>,
+    installed: &[PathBuf],
+    file_limit: usize,
+    result_limit: usize,
+) -> Result<Vec<DuplicateGroup>, String> {
     let started = Instant::now();
     let mut stage_started = started;
     s.progress.lock().unwrap().stage = "walking".into();
@@ -313,7 +361,10 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
     'walk: while let Some(directory) = stack.pop() {
         s.guard.check()?;
         if cleanup_guard::reject_links(&directory).is_err()
-            || installed.iter().any(|root| protection::contains(root, &directory)) {
+            || installed
+                .iter()
+                .any(|root| protection::contains(root, &directory))
+        {
             s.progress.lock().unwrap().skipped += 1;
             continue;
         }
@@ -339,8 +390,13 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
                 continue;
             };
             if metadata.is_file() {
-                let allowed = extensions.map(|list| path.extension().and_then(|v| v.to_str())
-                    .is_some_and(|v| list.contains(&v.to_ascii_lowercase()))).unwrap_or(true);
+                let allowed = extensions
+                    .map(|list| {
+                        path.extension()
+                            .and_then(|v| v.to_str())
+                            .is_some_and(|v| list.contains(&v.to_ascii_lowercase()))
+                    })
+                    .unwrap_or(true);
                 if metadata.len() == 0 || !allowed {
                     s.progress.lock().unwrap().filtered_files += 1;
                     continue;
@@ -354,7 +410,10 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
             }
             if metadata.is_dir() {
                 if should_skip_cleanup_dir(&path, &directory, &mut protected_dirs)
-                    || installed.iter().any(|root| protection::contains(root, &path)) {
+                    || installed
+                        .iter()
+                        .any(|root| protection::contains(root, &path))
+                {
                     s.progress.lock().unwrap().skipped += 1;
                 } else if recursive {
                     stack.push(path);
@@ -369,7 +428,10 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
                 s.progress.lock().unwrap().limit_reason = "files".into();
                 break 'walk;
             }
-            sizes.entry(metadata.len()).or_default().push((path, metadata));
+            sizes
+                .entry(metadata.len())
+                .or_default()
+                .push((path, metadata));
             s.progress.lock().unwrap().scanned_files += 1;
         }
     }
@@ -382,12 +444,20 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
             if let Ok(identity) = cleanup_guard::file_identity(&path) {
                 s.guard.record(&path, &metadata, identity);
                 recorded.push(path);
-            } else { s.progress.lock().unwrap().skipped += 1; }
+            } else {
+                s.progress.lock().unwrap().skipped += 1;
+            }
         }
-        if recorded.len() > 1 { candidates.push(recorded); }
+        if recorded.len() > 1 {
+            candidates.push(recorded);
+        }
     }
     let cache = Mutex::new(HashMap::new());
-    s.progress.lock().unwrap().stage_ms.insert("walking".into(), stage_started.elapsed().as_millis() as u64);
+    s.progress
+        .lock()
+        .unwrap()
+        .stage_ms
+        .insert("walking".into(), stage_started.elapsed().as_millis() as u64);
     stage_started = Instant::now();
     s.progress.lock().unwrap().candidate_files = candidates.iter().map(Vec::len).sum();
     s.progress.lock().unwrap().stage = "sampling".into();
@@ -395,7 +465,10 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
     for files in candidates {
         sampled.extend(bucket_hash(files, true, s, &cache)?);
     }
-    s.progress.lock().unwrap().stage_ms.insert("sampling".into(), stage_started.elapsed().as_millis() as u64);
+    s.progress.lock().unwrap().stage_ms.insert(
+        "sampling".into(),
+        stage_started.elapsed().as_millis() as u64,
+    );
     stage_started = Instant::now();
     s.progress.lock().unwrap().stage = "hashing".into();
     s.progress.lock().unwrap().checked_files = 0;
@@ -404,7 +477,11 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
     for files in sampled {
         hashed.extend(bucket_hash(files, false, s, &cache)?);
     }
-    s.progress.lock().unwrap().stage_ms.insert("hashing".into(), stage_started.elapsed().as_millis() as u64);
+    s.progress
+        .lock()
+        .unwrap()
+        .stage_ms
+        .insert("hashing".into(), stage_started.elapsed().as_millis() as u64);
     stage_started = Instant::now();
     s.guard.finish();
     s.progress.lock().unwrap().stage = "comparing".into();
@@ -414,7 +491,8 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
     let mut result_count = 0;
     for mut files in hashed {
         files.sort();
-        let (verified, limited) = verify_duplicates(files, s, result_limit.saturating_sub(result_count))?;
+        let (verified, limited) =
+            verify_duplicates(files, s, result_limit.saturating_sub(result_count))?;
         for bucket in verified {
             let mut members = Vec::new();
             for path in bucket {
@@ -446,19 +524,27 @@ fn scan_with_limits(roots: &[PathBuf], recursive: bool, s: &Session, extensions:
         }
         if limited {
             let mut p = s.progress.lock().unwrap();
-            p.truncated = true; p.limit_reason = "results".into();
+            p.truncated = true;
+            p.limit_reason = "results".into();
             break;
         }
     }
     s.guard.check()?;
     *s.groups.lock().unwrap() = groups.clone();
     s.progress.lock().unwrap().stage = "done".into();
-    s.progress.lock().unwrap().stage_ms.insert("comparing".into(), stage_started.elapsed().as_millis() as u64);
+    s.progress.lock().unwrap().stage_ms.insert(
+        "comparing".into(),
+        stage_started.elapsed().as_millis() as u64,
+    );
     s.progress.lock().unwrap().elapsed_ms = started.elapsed().as_millis() as u64;
     Ok(groups)
 }
 
-fn verify_duplicates(files: Vec<PathBuf>, s: &Session, remaining: usize) -> Result<(Vec<Vec<PathBuf>>, bool), String> {
+fn verify_duplicates(
+    files: Vec<PathBuf>,
+    s: &Session,
+    remaining: usize,
+) -> Result<(Vec<Vec<PathBuf>>, bool), String> {
     let mut verified: Vec<(File, Vec<PathBuf>)> = Vec::new();
     let mut confirmed = 0;
     let mut limited = false;
@@ -488,16 +574,30 @@ fn verify_duplicates(files: Vec<PathBuf>, s: &Session, remaining: usize) -> Resu
                 break;
             }
         }
-        if limited { break; }
-        if !matched { verified.push((file, vec![path])); }
+        if limited {
+            break;
+        }
+        if !matched {
+            verified.push((file, vec![path]));
+        }
     }
-    Ok((verified.into_iter().filter(|(_, paths)| paths.len() > 1).map(|(_, paths)| paths).collect(), limited))
+    Ok((
+        verified
+            .into_iter()
+            .filter(|(_, paths)| paths.len() > 1)
+            .map(|(_, paths)| paths)
+            .collect(),
+        limited,
+    ))
 }
 
 fn validate_plan(s: &Session, plans: &[DuplicateRemoval]) -> Result<(), String> {
     s.guard.check()?;
     let groups = s.groups.lock().map_err(|_| "Scan state unavailable")?;
-    let group_index: HashMap<_, _> = groups.iter().map(|group| (group.id.as_str(), group)).collect();
+    let group_index: HashMap<_, _> = groups
+        .iter()
+        .map(|group| (group.id.as_str(), group))
+        .collect();
     let mut selected = HashSet::new();
     let mut used_groups = HashSet::new();
     for plan in plans {
@@ -512,9 +612,7 @@ fn validate_plan(s: &Session, plans: &[DuplicateRemoval]) -> Result<(), String> 
             return Err("A keeper is required".into());
         }
         for path in &plan.paths {
-            if path == &plan.keep_path
-                || !members.contains(path.as_str())
-                || !selected.insert(path)
+            if path == &plan.keep_path || !members.contains(path.as_str()) || !selected.insert(path)
             {
                 return Err("Each duplicate group must preserve a file".into());
             }
@@ -566,7 +664,12 @@ fn recycle_with(
     plans: Vec<DuplicateRemoval>,
     recycle: impl Fn(&Path) -> Result<(), String>,
 ) -> Result<DuplicateRemovalResult, String> {
-    recycle_batches_with(s, plans, 1, |paths, validate| paths.iter().map(|path| validate(path).and_then(|_| recycle(path))).collect())
+    recycle_batches_with(s, plans, 1, |paths, validate| {
+        paths
+            .iter()
+            .map(|path| validate(path).and_then(|_| recycle(path)))
+            .collect()
+    })
 }
 
 fn recycle_batches_with(
@@ -582,7 +685,9 @@ fn recycle_batches_with(
     validate_plan(s, &plans)?;
     let started = Instant::now();
     let total: usize = plans.iter().map(|plan| plan.paths.len()).sum();
-    *s.cleanup_started.lock().map_err(|_| "Scan state unavailable")? = Some(started);
+    *s.cleanup_started
+        .lock()
+        .map_err(|_| "Scan state unavailable")? = Some(started);
     {
         let mut progress = s.progress.lock().map_err(|_| "Scan state unavailable")?;
         progress.cleanup_stage = "validating".into();
@@ -602,35 +707,62 @@ fn recycle_batches_with(
         unprocessed: 0,
         elapsed_ms: 0,
     };
-    let record = |result: &mut DuplicateRemovalResult, path: String, size: u64, outcome: Result<(), String>| {
+    let record = |result: &mut DuplicateRemovalResult,
+                  path: String,
+                  size: u64,
+                  outcome: Result<(), String>| {
         let mut progress = s.progress.lock().unwrap();
         progress.cleanup_completed += 1;
         if outcome.is_ok() {
             result.moved_bytes += size;
             progress.cleanup_succeeded += 1;
             progress.cleanup_bytes += size;
-        } else { progress.cleanup_failed += 1; }
-        result.items.push(RecycleBinMoveItem { path, ok: outcome.is_ok(), error: outcome.err() });
+        } else {
+            progress.cleanup_failed += 1;
+        }
+        result.items.push(RecycleBinMoveItem {
+            path,
+            ok: outcome.is_ok(),
+            error: outcome.err(),
+        });
     };
     // Keep retained handles alive across groups until their bounded Shell batch finishes.
     let mut pending: Vec<(String, PathBuf, u64, String, File)> = Vec::new();
-    let mut flush = |pending: &mut Vec<(String, PathBuf, u64, String, File)>, result: &mut DuplicateRemovalResult| {
-        if pending.is_empty() { return; }
+    let mut flush = |pending: &mut Vec<(String, PathBuf, u64, String, File)>,
+                     result: &mut DuplicateRemovalResult| {
+        if pending.is_empty() {
+            return;
+        }
         s.progress.lock().unwrap().cleanup_stage = "recycling".into();
-        let paths: Vec<_> = pending.iter().map(|(_, path, _, _, _)| path.clone()).collect();
+        let paths: Vec<_> = pending
+            .iter()
+            .map(|(_, path, _, _, _)| path.clone())
+            .collect();
         let validate = |path: &Path| {
-            let entry = pending.iter().find(|(_, candidate, _, _, _)| candidate == path)
+            let entry = pending
+                .iter()
+                .find(|(_, candidate, _, _, _)| candidate == path)
                 .ok_or("File is outside this cleanup batch")?;
             s.guard.validate(&entry.3)?;
             s.guard.validate(&cleanup_display_path(path)).map(|_| ())
         };
         let mut outcomes = recycle(&paths, &validate).into_iter();
         for (path, _, size, _, _keeper) in pending.drain(..) {
-            record(result, path, size, outcomes.next().unwrap_or_else(|| Err("Missing recycle result".into())));
+            record(
+                result,
+                path,
+                size,
+                outcomes
+                    .next()
+                    .unwrap_or_else(|| Err("Missing recycle result".into())),
+            );
         }
     };
     'plans: for plan in plans {
-        if s.guard.check().is_err() { result.cancelled = true; break; }
+        if s.guard.check().is_err() {
+            result.cancelled = true;
+            break;
+        }
         let keeper = s
             .guard
             .validate(&plan.keep_path)
@@ -642,32 +774,56 @@ fn recycle_batches_with(
                 }
             }
             Ok(mut keeper) => {
-                    for path in &plan.paths {
-                        if s.guard.check().is_err() { result.cancelled = true; break 'plans; }
-                        {
-                            let mut progress = s.progress.lock().unwrap();
-                            progress.cleanup_stage = "validating".into();
-                            progress.cleanup_current = Path::new(path).file_name().unwrap_or_default().to_string_lossy().into();
-                        }
-                        let outcome = (|| {
-                            let (canonical, size) = s.guard.validate(path)?;
-                            let mut candidate = read_file(&canonical)?;
-                            if !equal_files(&mut keeper, &mut candidate, s)? { return Err("Content changed; scan again".into()); }
-                            let retained = keeper.try_clone().map_err(|_| "Cannot lock retained file")?;
-                            Ok((canonical, size, retained))
-                        })();
-                        if s.guard.check().is_err() { result.cancelled = true; break 'plans; }
-                        s.progress.lock().unwrap().cleanup_verified += 1;
-                        match outcome {
-                            Ok((canonical, size, retained)) => pending.push((path.clone(), canonical, size, plan.keep_path.clone(), retained)),
-                            Err(error) => record(&mut result, path.clone(), 0, Err(error)),
-                        }
-                        if pending.len() >= batch_size.clamp(1, 32) { flush(&mut pending, &mut result); }
+                for path in &plan.paths {
+                    if s.guard.check().is_err() {
+                        result.cancelled = true;
+                        break 'plans;
                     }
+                    {
+                        let mut progress = s.progress.lock().unwrap();
+                        progress.cleanup_stage = "validating".into();
+                        progress.cleanup_current = Path::new(path)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into();
+                    }
+                    let outcome = (|| {
+                        let (canonical, size) = s.guard.validate(path)?;
+                        let mut candidate = read_file(&canonical)?;
+                        if !equal_files(&mut keeper, &mut candidate, s)? {
+                            return Err("Content changed; scan again".into());
+                        }
+                        let retained = keeper
+                            .try_clone()
+                            .map_err(|_| "Cannot lock retained file")?;
+                        Ok((canonical, size, retained))
+                    })();
+                    if s.guard.check().is_err() {
+                        result.cancelled = true;
+                        break 'plans;
+                    }
+                    s.progress.lock().unwrap().cleanup_verified += 1;
+                    match outcome {
+                        Ok((canonical, size, retained)) => pending.push((
+                            path.clone(),
+                            canonical,
+                            size,
+                            plan.keep_path.clone(),
+                            retained,
+                        )),
+                        Err(error) => record(&mut result, path.clone(), 0, Err(error)),
+                    }
+                    if pending.len() >= batch_size.clamp(1, 32) {
+                        flush(&mut pending, &mut result);
+                    }
+                }
             }
         }
     }
-    if !result.cancelled { flush(&mut pending, &mut result); }
+    if !result.cancelled {
+        flush(&mut pending, &mut result);
+    }
     let moved: HashSet<_> = result
         .items
         .iter()
@@ -745,18 +901,32 @@ pub(crate) fn cancel_duplicate_file_scan(scan_id: String) {
 #[tauri::command]
 pub(crate) fn get_duplicate_file_progress(scan_id: String) -> Result<DuplicateProgress, String> {
     // Read-only progress remains available after stopping; it grants no cleanup authority.
-    let session = sessions().lock().map_err(|_| "Scan state unavailable")?
-        .get(&scan_id).cloned().ok_or("Scan session expired; scan again")?;
-    if session.created.elapsed() >= TTL { return Err("Scan session expired; scan again".into()); }
+    let session = sessions()
+        .lock()
+        .map_err(|_| "Scan state unavailable")?
+        .get(&scan_id)
+        .cloned()
+        .ok_or("Scan session expired; scan again")?;
+    if session.created.elapsed() >= TTL {
+        return Err("Scan session expired; scan again".into());
+    }
     let result = session
         .progress
         .lock()
         .map_err(|_| "Scan state unavailable")?
         .clone();
     let mut result = result;
-    if result.stage != "done" { result.elapsed_ms = session.created.elapsed().as_millis() as u64; }
-    if !result.cleanup_stage.is_empty() && !matches!(result.cleanup_stage.as_str(), "done" | "stopped") {
-        if let Some(started) = *session.cleanup_started.lock().map_err(|_| "Scan state unavailable")? {
+    if result.stage != "done" {
+        result.elapsed_ms = session.created.elapsed().as_millis() as u64;
+    }
+    if !result.cleanup_stage.is_empty()
+        && !matches!(result.cleanup_stage.as_str(), "done" | "stopped")
+    {
+        if let Some(started) = *session
+            .cleanup_started
+            .lock()
+            .map_err(|_| "Scan state unavailable")?
+        {
             result.cleanup_elapsed_ms = started.elapsed().as_millis() as u64;
         }
     }
@@ -772,10 +942,15 @@ pub(crate) async fn recycle_duplicate_files(
         #[cfg(target_os = "windows")]
         {
             let recycler = RecycleBinBatch::new()?;
-            recycle_batches_with(&session, selections, 32, |paths, validate| recycler.move_batch(paths, validate))
+            recycle_batches_with(&session, selections, 32, |paths, validate| {
+                recycler.move_batch(paths, validate)
+            })
         }
         #[cfg(not(target_os = "windows"))]
-        { let _ = (session, selections); Err("Recycle bin cleanup is available on Windows only".into()) }
+        {
+            let _ = (session, selections);
+            Err("Recycle bin cleanup is available on Windows only".into())
+        }
     })
     .await
     .map_err(|_| "Cleanup worker failed")?
@@ -827,85 +1002,156 @@ mod tests {
     #[test]
     fn duplicate_files_capacity_counts_only_eligible_files() {
         let fixture = Fixture::new();
-        fixture.write("a.pdf", b"same"); fixture.write("b.pdf", b"same");
-        for n in 0..20 { fixture.write(&format!("skip-{n}.exe"), b"same"); }
+        fixture.write("a.pdf", b"same");
+        fixture.write("b.pdf", b"same");
+        for n in 0..20 {
+            fixture.write(&format!("skip-{n}.exe"), b"same");
+        }
         let types = extension_filter(Some(vec!["pdf".into()])).unwrap();
         let s = fresh();
-        let groups = scan_with_limits(std::slice::from_ref(&fixture.0), true, &s, Some(&types), &[], 2, 2).unwrap();
+        let groups = scan_with_limits(
+            std::slice::from_ref(&fixture.0),
+            true,
+            &s,
+            Some(&types),
+            &[],
+            2,
+            2,
+        )
+        .unwrap();
         assert_eq!(groups[0].files.len(), 2);
         let p = s.progress.lock().unwrap();
-        assert_eq!(p.visited_entries, 22); assert_eq!(p.filtered_files, 20);
-        assert!(!p.truncated, "Exact capacity is not overflow; filtered entries cannot end walking");
+        assert_eq!(p.visited_entries, 22);
+        assert_eq!(p.filtered_files, 20);
+        assert!(
+            !p.truncated,
+            "Exact capacity is not overflow; filtered entries cannot end walking"
+        );
         drop(p);
         fixture.write("c.pdf", b"same");
         let s = fresh();
-        let groups = scan_with_limits(std::slice::from_ref(&fixture.0), true, &s, Some(&types), &[], 2, 2).unwrap();
+        let groups = scan_with_limits(
+            std::slice::from_ref(&fixture.0),
+            true,
+            &s,
+            Some(&types),
+            &[],
+            2,
+            2,
+        )
+        .unwrap();
         assert_eq!(groups[0].files.len(), 2);
         let p = s.progress.lock().unwrap();
-        assert_eq!(p.scanned_files, 2); assert_eq!(p.limit_reason, "files");
-        assert_eq!(p.stage, "done"); assert!(p.truncated);
+        assert_eq!(p.scanned_files, 2);
+        assert_eq!(p.limit_reason, "files");
+        assert_eq!(p.stage, "done");
+        assert!(p.truncated);
     }
     #[test]
     fn duplicate_files_oversized_group_returns_confirmed_members() {
         let fixture = Fixture::new();
-        for n in 0..5 { fixture.write(&format!("{n}.pdf"), b"same"); }
+        for n in 0..5 {
+            fixture.write(&format!("{n}.pdf"), b"same");
+        }
         let s = fresh();
-        let groups = scan_with_limits(std::slice::from_ref(&fixture.0), true, &s, None, &[], 5, 3).unwrap();
-        assert_eq!(groups.len(), 1); assert_eq!(groups[0].files.len(), 3);
+        let groups =
+            scan_with_limits(std::slice::from_ref(&fixture.0), true, &s, None, &[], 5, 3).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 3);
         let p = s.progress.lock().unwrap();
-        assert!(p.truncated); assert_eq!(p.limit_reason, "results");
+        assert!(p.truncated);
+        assert_eq!(p.limit_reason, "results");
         assert_eq!(p.stage, "done");
     }
     #[test]
     fn duplicate_files_unique_candidates_do_not_consume_result_capacity() {
         let fixture = Fixture::new();
-        let paths = vec![fixture.write("a", b"1111"), fixture.write("b", b"2222"), fixture.write("c", b"3333"), fixture.write("d", b"3333")];
+        let paths = vec![
+            fixture.write("a", b"1111"),
+            fixture.write("b", b"2222"),
+            fixture.write("c", b"3333"),
+            fixture.write("d", b"3333"),
+        ];
         let s = fresh();
         scan(std::slice::from_ref(&fixture.0), true, &s).unwrap();
         let (groups, limited) = verify_duplicates(paths, &s, 2).unwrap();
-        assert!(!limited); assert_eq!(groups.len(), 1); assert_eq!(groups[0].len(), 2);
+        assert!(!limited);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 2);
     }
     #[test]
     fn duplicate_files_filters_before_reading_and_reuses_small_hashes() {
         let fixture = Fixture::new();
-        fixture.write("a.PDF", b"same"); fixture.write("b.pdf", b"same");
+        fixture.write("a.PDF", b"same");
+        fixture.write("b.pdf", b"same");
         fixture.write("unique.pdf", b"a longer unique file");
-        fixture.write("skip.exe", b"same"); fixture.write("skip.dll", b"same");
+        fixture.write("skip.exe", b"same");
+        fixture.write("skip.dll", b"same");
         fixture.write("empty.pdf", b"");
         let s = fresh();
         let types = extension_filter(Some(vec!["PDF".into()])).unwrap();
-        let groups = scan_filtered(std::slice::from_ref(&fixture.0), true, &s, Some(&types), &[]).unwrap();
-        assert_eq!(groups.len(), 1); assert_eq!(groups[0].files.len(), 2);
+        let groups = scan_filtered(
+            std::slice::from_ref(&fixture.0),
+            true,
+            &s,
+            Some(&types),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 2);
         let p = s.progress.lock().unwrap();
-        assert_eq!(p.scanned_files, 3); assert_eq!(p.filtered_files, 3);
+        assert_eq!(p.scanned_files, 3);
+        assert_eq!(p.filtered_files, 3);
         // Two full small-file samples + one byte comparison; no second digest or unique-file read.
         assert_eq!(p.read_bytes, 16);
-        assert_eq!(p.stage_ms.len(), 4); assert_eq!(p.visited_entries, 6);
+        assert_eq!(p.stage_ms.len(), 4);
+        assert_eq!(p.visited_entries, 6);
         assert!(extension_filter(Some(vec![])).is_err());
         assert!(extension_filter(Some(vec!["exe".into()])).is_err());
     }
     #[test]
     fn duplicate_files_skips_cache_and_explicit_install_locations() {
         let fixture = Fixture::new();
-        fixture.write("a.pdf", b"same"); fixture.write("b.pdf", b"same");
+        fixture.write("a.pdf", b"same");
+        fixture.write("b.pdf", b"same");
         for directory in ["cache", "node_modules", "InstalledApp"] {
             std::fs::create_dir(fixture.0.join(directory)).unwrap();
             fixture.write(&format!("{directory}/copy.pdf"), b"same");
         }
-        let s = fresh(); let types = extension_filter(None).unwrap();
-        let groups = scan_filtered(std::slice::from_ref(&fixture.0), true, &s, Some(&types), &[fixture.0.join("InstalledApp")]).unwrap();
-        assert_eq!(groups.len(), 1); assert_eq!(groups[0].files.len(), 2);
+        let s = fresh();
+        let types = extension_filter(None).unwrap();
+        let groups = scan_filtered(
+            std::slice::from_ref(&fixture.0),
+            true,
+            &s,
+            Some(&types),
+            &[fixture.0.join("InstalledApp")],
+        )
+        .unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 2);
         assert_eq!(s.progress.lock().unwrap().skipped, 3);
     }
     #[test]
     fn duplicate_files_bounded_workers_preserve_all_matches_and_cancellation() {
         let fixture = Fixture::new();
-        for n in 0..32 { fixture.write(&format!("{n:02}.txt"), b"identical"); }
-        let s = fresh(); let groups = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap();
-        assert_eq!(groups.len(), 1); assert_eq!(groups[0].files.len(), 32);
+        for n in 0..32 {
+            fixture.write(&format!("{n:02}.txt"), b"identical");
+        }
+        let s = fresh();
+        let groups = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].files.len(), 32);
         assert_eq!(s.progress.lock().unwrap().read_bytes, (32 + 31 * 2) * 9);
         s.guard.cancel();
-        assert!(bucket_hash(vec![fixture.0.join("00.txt"); 32], true, &s, &Mutex::new(HashMap::new())).is_err());
+        assert!(bucket_hash(
+            vec![fixture.0.join("00.txt"); 32],
+            true,
+            &s,
+            &Mutex::new(HashMap::new())
+        )
+        .is_err());
     }
     #[test]
     fn duplicate_files_sample_collision_is_not_duplicate() {
@@ -914,7 +1160,9 @@ mod tests {
         fixture.write("a", &data);
         data[10000] = 6;
         fixture.write("b", &data);
-        assert!(scan(std::slice::from_ref(&fixture.0), true, &fresh()).unwrap().is_empty());
+        assert!(scan(std::slice::from_ref(&fixture.0), true, &fresh())
+            .unwrap()
+            .is_empty());
     }
     #[test]
     fn duplicate_files_recursive_and_cancelled() {
@@ -922,8 +1170,15 @@ mod tests {
         fixture.write("a", b"same");
         std::fs::create_dir(fixture.0.join("nested")).unwrap();
         fixture.write("nested/b", b"same");
-        assert!(scan(std::slice::from_ref(&fixture.0), false, &fresh()).unwrap().is_empty());
-        assert_eq!(scan(std::slice::from_ref(&fixture.0), true, &fresh()).unwrap().len(), 1);
+        assert!(scan(std::slice::from_ref(&fixture.0), false, &fresh())
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            scan(std::slice::from_ref(&fixture.0), true, &fresh())
+                .unwrap()
+                .len(),
+            1
+        );
         let id = id();
         cancel(&id);
         assert!(begin(&id).is_err());
@@ -937,7 +1192,9 @@ mod tests {
         fixture.write("a", b"same");
         fixture.write("b", b"same");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         let plan = || DuplicateRemoval {
             group_id: group.id.clone(),
             keep_path: group.files[0].path.clone(),
@@ -960,7 +1217,9 @@ mod tests {
         fixture.write("b", b"same");
         let id = id();
         let s = begin(&id).unwrap();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         assert!(cleanup_guard::get(&id).is_err());
         let plan = DuplicateRemoval {
             group_id: group.id,
@@ -982,7 +1241,9 @@ mod tests {
         fixture.write("a", b"same");
         fixture.write("b", b"same");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         let plan = || DuplicateRemoval {
             group_id: group.id.clone(),
             keep_path: group.files[0].path.clone(),
@@ -1005,7 +1266,9 @@ mod tests {
         fixture.write("b", b"same");
         fixture.write("c", b"same");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         let plan = DuplicateRemoval {
             group_id: group.id,
             keep_path: group.files[0].path.clone(),
@@ -1030,7 +1293,9 @@ mod tests {
         fixture.write("a", b"same");
         fixture.write("b", b"same");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         let plan = || DuplicateRemoval {
             group_id: group.id.clone(),
             keep_path: group.files[0].path.clone(),
@@ -1050,7 +1315,9 @@ mod tests {
         fixture.write("b", b"same");
         fixture.write("c", b"same");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         let plan = || DuplicateRemoval {
             group_id: group.id.clone(),
             keep_path: group.files[0].path.clone(),
@@ -1082,12 +1349,18 @@ mod tests {
         let id = id();
         let s = begin(&id).unwrap();
         let groups = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap();
-        let retained: Vec<_> = groups.iter().map(|group| group.files[0].path.clone()).collect();
-        let plans = groups.into_iter().map(|group| DuplicateRemoval {
-            group_id: group.id,
-            keep_path: group.files[0].path.clone(),
-            paths: vec![group.files[1].path.clone()],
-        }).collect();
+        let retained: Vec<_> = groups
+            .iter()
+            .map(|group| group.files[0].path.clone())
+            .collect();
+        let plans = groups
+            .into_iter()
+            .map(|group| DuplicateRemoval {
+                group_id: group.id,
+                keep_path: group.files[0].path.clone(),
+                paths: vec![group.files[1].path.clone()],
+            })
+            .collect();
         let mut batches = Vec::new();
         let result = recycle_batches_with(&s, plans, 32, |paths, validate| {
             batches.push(paths.len());
@@ -1095,8 +1368,15 @@ mod tests {
             assert_eq!(progress.cleanup_stage, "recycling");
             assert_eq!(progress.cleanup_total, 35);
             assert!(progress.cleanup_completed < progress.cleanup_verified);
-            paths.iter().map(|path| validate(path).and_then(|_| std::fs::remove_file(path).map_err(|error| error.to_string()))).collect()
-        }).unwrap();
+            paths
+                .iter()
+                .map(|path| {
+                    validate(path)
+                        .and_then(|_| std::fs::remove_file(path).map_err(|error| error.to_string()))
+                })
+                .collect()
+        })
+        .unwrap();
         assert_eq!(batches, vec![32, 3]);
         assert_eq!(result.items.len(), 35);
         assert!(result.items.iter().all(|item| item.ok));
@@ -1108,19 +1388,30 @@ mod tests {
         assert_eq!(progress.cleanup_succeeded, 35);
         assert_eq!(progress.cleanup_failed, 0);
         cancel(&id);
-        assert!(get_duplicate_file_progress(id).is_ok(), "stop preserves read-only progress");
+        assert!(
+            get_duplicate_file_progress(id).is_ok(),
+            "stop preserves read-only progress"
+        );
     }
     #[test]
     fn duplicate_files_batch_rechecks_guard_before_queueing() {
         let fixture = Fixture::new();
-        fixture.write("a", b"same"); fixture.write("b", b"same");
+        fixture.write("a", b"same");
+        fixture.write("b", b"same");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
-        let plan = DuplicateRemoval { group_id: group.id, keep_path: group.files[0].path.clone(), paths: vec![group.files[1].path.clone()] };
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
+        let plan = DuplicateRemoval {
+            group_id: group.id,
+            keep_path: group.files[0].path.clone(),
+            paths: vec![group.files[1].path.clone()],
+        };
         let result = recycle_batches_with(&s, vec![plan], 32, |paths, validate| {
             s.guard.cancel();
             paths.iter().map(|path| validate(path)).collect()
-        }).unwrap();
+        })
+        .unwrap();
         assert!(result.cancelled);
         assert!(!result.items[0].ok);
         assert_eq!(result.moved_bytes, 0);
@@ -1153,16 +1444,32 @@ mod tests {
         fixture.write("b", b"ToolKnit disposable test");
         fixture.write("c", b"ToolKnit disposable test");
         let s = fresh();
-        let group = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap().remove(0);
+        let group = scan(std::slice::from_ref(&fixture.0), true, &s)
+            .unwrap()
+            .remove(0);
         let plan = DuplicateRemoval {
             group_id: group.id,
             keep_path: group.files[0].path.clone(),
-            paths: group.files[1..].iter().map(|file| file.path.clone()).collect(),
+            paths: group.files[1..]
+                .iter()
+                .map(|file| file.path.clone())
+                .collect(),
         };
         let recycler = RecycleBinBatch::new().unwrap();
-        let result = recycle_batches_with(&s, vec![plan], 32, |paths, validate| recycler.move_batch(paths, validate)).unwrap();
+        let result = recycle_batches_with(&s, vec![plan], 32, |paths, validate| {
+            recycler.move_batch(paths, validate)
+        })
+        .unwrap();
         assert_eq!(result.items.len(), 2);
-        assert!(result.items.iter().all(|item| item.ok), "{:?}", result.items.iter().filter_map(|item| item.error.as_ref()).collect::<Vec<_>>());
+        assert!(
+            result.items.iter().all(|item| item.ok),
+            "{:?}",
+            result
+                .items
+                .iter()
+                .filter_map(|item| item.error.as_ref())
+                .collect::<Vec<_>>()
+        );
         assert!(fixture.0.join("a").exists());
         assert!(!fixture.0.join("b").exists());
         assert!(!fixture.0.join("c").exists());
@@ -1175,20 +1482,33 @@ mod tests {
                 }
                 let s = fresh();
                 let groups = scan(std::slice::from_ref(&fixture.0), true, &s).unwrap();
-                let retained: Vec<_> = groups.iter().map(|group| group.files[0].path.clone()).collect();
-                let plans = groups.into_iter().map(|group| DuplicateRemoval {
-                    group_id: group.id,
-                    keep_path: group.files[0].path.clone(),
-                    paths: vec![group.files[1].path.clone()],
-                }).collect();
+                let retained: Vec<_> = groups
+                    .iter()
+                    .map(|group| group.files[0].path.clone())
+                    .collect();
+                let plans = groups
+                    .into_iter()
+                    .map(|group| DuplicateRemoval {
+                        group_id: group.id,
+                        keep_path: group.files[0].path.clone(),
+                        paths: vec![group.files[1].path.clone()],
+                    })
+                    .collect();
                 let started = Instant::now();
                 let result = if batch {
                     let recycler = RecycleBinBatch::new().unwrap();
-                    recycle_batches_with(&s, plans, 32, |paths, validate| recycler.move_batch(paths, validate))
+                    recycle_batches_with(&s, plans, 32, |paths, validate| {
+                        recycler.move_batch(paths, validate)
+                    })
                 } else {
                     recycle_with(&s, plans, move_single_file_to_recycle_bin)
-                }.unwrap();
-                println!("Disposable Windows recycle benchmark: {} files=64 elapsed_ms={}", if batch { "batch32" } else { "single" }, started.elapsed().as_millis());
+                }
+                .unwrap();
+                println!(
+                    "Disposable Windows recycle benchmark: {} files=64 elapsed_ms={}",
+                    if batch { "batch32" } else { "single" },
+                    started.elapsed().as_millis()
+                );
                 assert_eq!(result.items.len(), 64);
                 assert!(result.items.iter().all(|item| item.ok));
                 assert_eq!(result.moved_bytes, 64 * 8192);

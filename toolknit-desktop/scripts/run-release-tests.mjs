@@ -25,6 +25,7 @@ const releaseTests = [
   'test:pdf-text-markdown',
   'test:pdf-ai-markdown',
   'test:clipboard-history',
+  'test:quick-screenshot',
   'test:pdf-rotate',
   'test:pdf-rotate-tool-contract',
   'test:pdf-encrypt',

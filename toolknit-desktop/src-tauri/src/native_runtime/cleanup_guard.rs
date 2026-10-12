@@ -230,7 +230,9 @@ pub(super) fn cancel(id: &str) {
 impl ScanSession {
     pub(super) fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        if let Ok(mut files) = self.files.lock() { files.clear(); }
+        if let Ok(mut files) = self.files.lock() {
+            files.clear();
+        }
     }
     pub(super) fn check(&self) -> Result<(), String> {
         if self.cancelled.load(Ordering::SeqCst)

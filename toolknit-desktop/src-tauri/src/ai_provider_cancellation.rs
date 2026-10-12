@@ -20,29 +20,45 @@ fn prune(map: &mut HashMap<String, Entry>) {
 pub(super) struct RequestGuard(String);
 impl Drop for RequestGuard {
     fn drop(&mut self) {
-        if let Ok(mut map) = entries().lock() { map.remove(&self.0); }
+        if let Ok(mut map) = entries().lock() {
+            map.remove(&self.0);
+        }
     }
 }
 pub(super) fn register(id: &str) -> Result<(RequestGuard, oneshot::Receiver<()>), String> {
-    if !valid_id(id) { return Err("ai-provider:invalid_request".into()); }
-    let mut map = entries().lock().map_err(|_| "ai-provider:invalid_request")?;
+    if !valid_id(id) {
+        return Err("ai-provider:invalid_request".into());
+    }
+    let mut map = entries()
+        .lock()
+        .map_err(|_| "ai-provider:invalid_request")?;
     prune(&mut map);
     if matches!(map.get(id), Some(Entry::Cancelled(_))) {
         map.remove(id);
         return Err("ai-provider:aborted".into());
     }
-    if map.contains_key(id) || map.len() >= 256 { return Err("ai-provider:invalid_request".into()); }
+    if map.contains_key(id) || map.len() >= 256 {
+        return Err("ai-provider:invalid_request".into());
+    }
     let (sender, receiver) = oneshot::channel();
     map.insert(id.to_string(), Entry::Running(sender));
     Ok((RequestGuard(id.to_string()), receiver))
 }
 pub(super) fn cancel(id: &str) -> Result<(), String> {
-    if !valid_id(id) { return Err("ai-provider:invalid_request".into()); }
-    let mut map = entries().lock().map_err(|_| "ai-provider:invalid_request")?;
+    if !valid_id(id) {
+        return Err("ai-provider:invalid_request".into());
+    }
+    let mut map = entries()
+        .lock()
+        .map_err(|_| "ai-provider:invalid_request")?;
     prune(&mut map);
-    if let Some(Entry::Running(sender)) = map.remove(id) { let _ = sender.send(()); }
+    if let Some(Entry::Running(sender)) = map.remove(id) {
+        let _ = sender.send(());
+    }
     // IPC cancellation may arrive before the async request begins. Bound these tombstones.
-    if map.len() < 256 { map.insert(id.to_string(), Entry::Cancelled(Instant::now())); }
+    if map.len() < 256 {
+        map.insert(id.to_string(), Entry::Cancelled(Instant::now()));
+    }
     Ok(())
 }
 

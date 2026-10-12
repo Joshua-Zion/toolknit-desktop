@@ -567,13 +567,19 @@ mod tests {
         assert!(settings.resume_on_launch);
         assert_eq!(settings.retention_days, 14);
         assert_eq!(settings.excluded_apps, vec!["fixture.exe"]);
-        assert_eq!(std::fs::read(directory.join("resume.json")).unwrap(), b"true");
+        assert_eq!(
+            std::fs::read(directory.join("resume.json")).unwrap(),
+            b"true"
+        );
         store.save_monitoring_state(&settings, false).unwrap();
         drop(store);
 
         let store = Store::open(&directory).unwrap();
         assert!(!store.settings().unwrap().resume_on_launch);
-        assert_eq!(std::fs::read(directory.join("resume.json")).unwrap(), b"false");
+        assert_eq!(
+            std::fs::read(directory.join("resume.json")).unwrap(),
+            b"false"
+        );
         std::fs::remove_file(directory.join("resume.json")).unwrap();
         std::fs::create_dir(directory.join("resume.json")).unwrap();
         assert_eq!(
