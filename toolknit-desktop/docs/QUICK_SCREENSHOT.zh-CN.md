@@ -1,5 +1,9 @@
 # 快速截图维护说明
 
+当前测试包：2026-10-13 16:16:59 经用户授权重新生成 V3.1.0 x64 F12 安装包，包含截图剪贴板收录、翻译下载源/重试及白天管理按钮修复；版本、大小、SHA-256 与验证记录统一见根目录 [changelog.md](../../changelog.md)。下文旧包和“未重新打包”描述保留对应轮次的历史状态。
+
+后续源码修复：打开文件夹前退出截图、剪贴板历史图片置顶及普通文字选框贴合尚未纳入上述测试包。核心像素/输出契约、架构/构建、发布回归 100 项脚本（含安全 1329 项与 CLI/MCP）、Rust 206 passed/7 ignored、Edge 截图 8 场景及剪贴板双主题/中英文回归通过。浏览器断言先结束 capture 再调用 `open_path`，viewer 保持可用，普通文字缩短/改字号后选框重算；原生窗口及 Explorer 仍需安装后验收。
+
 ## 入口与交互
 
 V3.1 未发布版本的 AI 工作台新增 `quick-screenshot`，当前开发源码为 71 个工具、12 个分类，AI 分类 6 项，CLI/MCP 仍为 46 项。默认全局快捷键为 `Alt+Q`，可修改、重置或关闭；修改必须包含 Alt/Ctrl/Super 修饰键，冲突时反馈注册失败。关闭工具页面不等于关闭全局快捷键，退出应用后快捷键释放。
@@ -10,7 +14,11 @@ V3.1 未发布版本的 AI 工作台新增 `quick-screenshot`，当前开发源�
 
 `Ctrl+Z` 撤销，`Ctrl+Y` 或 `Ctrl+Shift+Z` 重做，`Ctrl+S` 保存，`Ctrl+C` 复制，Enter 确认。Escape 优先退出当前操作、取消选中或选区，最后取消截图；处理中取消不会让迟到结果写回新会话。确认复制结果并恢复截图前窗口的可见/最小化状态，不激活主应用、不改变它的前后层级，可选将结果加入历史；复制与保存不等于结束本次截图。隐藏在托盘的主应用不主动显示。仅明确置顶查看或点击查看器导航时打开并激活对应目标。
 
-PNG/JPG 导出复用输出目录运行时，写入 Screenshots 子目录，安全发布唯一文件名。成功弹框保留实际结果路径，“打开文件夹”复用资源管理器选中文件路径。独立查看窗口使用通用导航，支持缩放、适应窗口、原尺寸、拖拽、复制、保存和置顶开关，默认置顶。
+PNG/JPG 导出复用输出目录运行时，写入 Screenshots 子目录，安全发布唯一文件名。成功弹框保留实际结果路径；截图窗口点击“打开文件夹”先关闭弹框、结束本次截图，再复用资源管理器选中文件路径，避免截图遮罩挡住资源管理器。独立查看窗口的同一动作保留查看窗口。独立查看窗口使用通用导航，支持缩放、适应窗口、原尺寸、拖拽、复制、保存和置顶开关，默认置顶。
+
+普通文字标注以 Canvas 实际字形边界和 2px 内边距计算选框，添加、编辑、修改字号和缩放后重新收紧；中英文、多行、空行及下伸字符使用同一绘制和命中尺寸。译文覆盖标注保留原文遮盖范围，不套用普通文字收紧。默认标注颜色仍为红色。
+
+剪贴板历史图片可通过“打开置顶”复用同一查看器：原生剪贴板服务按记录 ID 解密读取 PNG，校验图片尺寸与编码后创建查看窗口。继续使用最多 8 个窗口/编码总量 64 MiB 的限制；不启动截图、不复制图片、不追加截图历史。不存在或非图片记录、窗口容量超限等失败返回剪贴板工具显示提示。
 
 查看器名称与版本仅显示在左侧标签，右侧不重复显示标题；共享导航在未提供 title 时省略标题节点，其余工具既有标题保持。历史窗改为点击展开，不消费悬停来调整窗口。展开时先在 Windows 主线程用一次 SetWindowPos 提交位置与尺寸，再通过内部面板的圆形裁切、轻微缩放和透明度完成 380ms 展开；前四张卡片错开进入。收起动画 260ms，结束后窗口一次恢复到圆形锚点；相同操作与动画期间重复点击去重，支持减少动态效果。
 
@@ -20,13 +28,25 @@ PNG/JPG 导出复用输出目录运行时，写入 Screenshots 子目录，安�
 
 ## 隐私与平台边界
 
-捕获、标注、复制、保存与 Windows OCR 在本机完成，不依赖 AI Key。本地 OCR 依赖 Windows 可用的 OCR 语言包和原生尺寸限制；识别失败不能静默转交 AI。浏览器预览不能执行系统截图、注册全局快捷键或操作真实辅助窗口。
+捕获、标注、复制、保存与 Windows OCR 在本机完成，不依赖 AI Key。本地 OCR 优先使用界面语言对应的已安装语言包，不可用时回退 Windows 用户语言；识别失败不能静默转交 AI。浏览器预览不能执行系统截图、注册全局快捷键或操作真实辅助窗口。
 
-AI 提取/翻译仅在主动点击 AI 按钮后发送所选区域，复用既有 AI 配置、密钥存储、请求与有界响应运行时。用户需配置支持图像输入的模型并确认视觉能力，声明绑定当前服务配置，改变服务后需重新确认。辅助窗口只同步服务元数据、视觉声明、主题和语言，不同步密钥。翻译先识别文字位置，再请求结构化译文，以标注形式覆盖原文，保留撤销；用户应核对识别和翻译结果。
+AI 提取/翻译仅在主动点击 AI 按钮后发送内容，复用既有 AI 配置、密钥存储、请求与有界响应运行时。AI 提取发送所选区域图像，仍要求模型支持图像输入，但不再需要手动确认；辅助窗口仅同步服务元数据、主题和语言，不同步密钥。AI 提取使用忠实转录提示、高细节 PNG（最长边最多 4096px，编码超限回退 JPEG）和 temperature=0，不要求模型总结、补全或改写。
+
+截图翻译只支持中文与英文，目标使用自定义下拉，保存到原生应用数据目录，不依赖不同 WebView 的 localStorage。设置中的本地翻译管理提供安装、取消、修复和卸载。翻译前检查依赖，未安装时仅提示前往设置，不识别、调用 AI 或自动下载。配置了 URL、模型与已存密钥时，本地 OCR 定位并合并相邻段落，AI 对照所需图像与编号框校正，再将文字交给本地引擎；无密钥时直接本地 OCR 与翻译。不支持图像、认证、网络、超时或非法结果均显示原因，只有用户确认后才使用原 OCR，不静默回退。
+
+`translation.js` 仅负责图像校正、段落分批与安全布局；每批最多 12 个文字块/约 2200 字符，输出预算 4096–16384 tokens。截断或结构错误先增加额度再拆失败批次，AI 识别总计最多 45 秒/24 次请求。共享 AI 请求 temperature 默认保持 0.7，截图提取/识别使用 0。本地翻译上限为 512 块、每块 8000 字节、合计 64000 字节、响应 256 KiB、请求 30 秒。取消与服务变更使旧结果失效；界面区分 OCR、图像校正、重试、本地翻译与排版，不用假进度承诺外部服务速度。
+
+本地运行时采用 MTranServer 4.0.33（Apache-2.0）与固定 Mozilla 中英文双向模型记录，首次下载 201,647,315 字节（约 192 MiB），安装后约 225 MiB。引擎来自[官方发布](https://github.com/xxnuo/MTranServer/releases/tag/v4.0.33)，模型来自 [Mozilla 翻译模型记录](https://firefox.settings.services.mozilla.com/v1/buckets/main-preview/collections/translations-models-v2/records)，7 个记录及原始/解压 SHA-256 保存在 `records.json`。模型来源与授权按上游记录维护，不把模型二进制提交或打入主安装包。下载到 staging，核验压缩/解压大小与哈希，双向试译成功后发布；失败保留旧版本、支持重试。安装/卸载互斥，路径拒绝 symlink/reparse，下载可以取消。
+
+引擎仅监听随机本地回环端口，使用随机令牌鉴权；禁用在线模型下载、UI、更新与请求日志，客户端只访问本地端点。进程由应用持有，空闲约 120 秒退出，应用退出释放；Windows Job kill-on-close 处理异常退出。目标语言持久保存，截图文字只在任务内存传递；仅 AI 识别阶段将必要图像与识别文字发往用户配置服务。
+
+编辑会话缓存一份未变化图像与语言的 OCR，以及同图像/语言/模型配置的成功校正结果，重复翻译替换旧译文而不识别旧译文；用户标注保留。译文只在选区内向右/下方空白扩展，避开其他 OCR 文字、既有标注与已放置译文，维持可读字号。放不下或超过标注容量时保留原图对应区域，显示部分覆盖数量及完整译文，用户可复制；覆盖可撤销。缓存随会话销毁释放。该策略不保证复杂背景上的精确文字擦除，用户应核对识别与翻译结果。
+
+编辑文字弹框提供圆形图标复制按钮，读取当前 textarea 内容，复用截图复制路径并保持弹框打开；输入内快捷键不触发截图确认。
 
 接口可填写网站根地址或 `/v1`，由共享 `normalizeAiProviderConfig` 在发请求时补全 `/v1/chat/completions`；已经填写的完整接口（包括 `/chat/completions` 与自定义路径）不改写，不修改已保存配置。缺密钥/配置、HTTP 401/403/404/429/5xx、网络、超时、空响应、截断或非法响应均提供可见双语提示。截图与查看器复用共享 Toast，`screenshot.html` 必须保留 `toastContainer` 挂载点；深色覆盖仅作用于截图辅助窗口。取消与模型切换让任务 revision 失效，避免迟到结果覆盖当前会话。
 
-本地 OCR 通过 `core.js` 的 `formatOcrText` 整理坐标：先按纵向位置分行，再按横向排列，较大的横向间隔用制表符区分列，较大的纵向间隔保留段落；无有效坐标时回退原识别文本。该整理不修正 OCR 识别错误，也不保证复杂多栏文档的阅读顺序。
+原生 OCR 对最长边不超过 1600px 的小图受控放大两倍，超过引擎尺寸限制的图像缩小到上限；统一灰度，深色像素占多数时反转背景。返回行/词坐标按宽高独立比例映射回原图，不改变选区坐标。`core.js` 根据词框重建文字，去除中文逐字空格，保留英文/代码空格；按纵向分行、横向排列，较大间隔保留分列与段落，无有效坐标时规范化原识别文本。预处理不能恢复原图不存在的细节，该整理不猜测修正字符，也不保证复杂多栏阅读顺序。
 
 截图使用 Windows GDI 与可见窗口枚举。保护内容、特殊 GPU/视频画面、远程桌面及不同 DPI 多屏仍需实际设备验证；不是所有窗口均保证可捕获。单图上限为 3200 万像素、编码数据 32 MiB；完整虚拟桌面同样受此限制。历史编码总量最多 64 MiB；查看窗口最多 8 个，查看图像编码总量最多 64 MiB。OCR、保存、复制一旦进入原生执行不能中途撤回，前端取消仅隔离迟到结果并恢复交互。
 
@@ -39,9 +59,18 @@ AI 提取/翻译仅在主动点击 AI 按钮后发送所选区域，复用既有
 | `src/platform/screenshot-runtime.js` | 既有 Tauri adapter 的截图调用与事件适配 |
 | `src/app/screenshot-context-runtime.js` | 主窗口到辅助窗口的主题、语言、模型元数据同步 |
 | `src-tauri/src/native_runtime/quick_screenshot/` | 原生窗口、快捷键、会话、捕获、OCR、输出与容量限制 |
+| `src/app/local-translation-runtime.js` | 设置安装管理、状态事件、共享弹层与生命周期 |
+| `src/platform/local-translation-runtime.js` | 本地翻译 command/event adapter |
+| `src-tauri/src/native_runtime/local_translation/` | 固定模型安装/校验、应用持有引擎、有界批量翻译与取消 |
 | `screenshot.html` | 辅助 WebView 入口，role 为 capture/viewer/history |
 
-新增原生命令 `quick_screenshot` 通过 `request.action` 分发，按照调用窗口角色验证允许操作，辅助窗口能力仅授予必要窗口/事件权限，不授予文件、Shell 或 HTTP 插件权限。新增事件为 `screenshot-opened`、`screenshot-ended`、`screenshot-context-changed`、`screenshot-history-changed`、`screenshot-preferences-changed`、`screenshot-error`、`screenshot-navigate`。截图偏好保存在应用数据目录 `quick-screenshot.json`，视觉声明使用 `toolknit.screenshot.vision-provider.v1`。内部 DOM 和中英文 key 由专项/集成测试核对，无 CLI/MCP 参数变更。
+新增原生命令 `quick_screenshot` 通过 `request.action` 分发，按照调用窗口角色验证允许操作，辅助窗口能力仅授予必要窗口/事件权限，不授予文件、Shell 或 HTTP 插件权限。新增事件为 `screenshot-opened`、`screenshot-ended`、`screenshot-context-changed`、`screenshot-history-changed`、`screenshot-preferences-changed`、`screenshot-error`、`screenshot-navigate`。截图偏好保存在应用数据目录 `quick-screenshot.json`；旧视觉声明键 `toolknit.screenshot.vision-provider.v1` 不再读取，不删除用户既有存储。OCR action 可选 `language: zh/en`，返回增加 `words` 坐标，未提供参数的调用兼容。内部 DOM 和中英文 key 由专项/集成测试核对，无 CLI/MCP 参数变更。
+
+`local_translation` 通过 `request.action` 提供 `status/target/install/cancel-install/remove/translate/cancel`。主窗口才能安装或卸载；翻译仅允许有有效截图 session 的 capture 窗口，history/viewer 禁止。新增 `local-translation-progress`（主窗口安装进度）与 `local-translation-changed`（状态）；目标语言保存在 `local-translation/target-language`，只接受 `zh-Hans/en`。并发任务、requestId 与取消均有界，结束重新核对 session；不新增 CLI/MCP。
+
+安装 request 可选 `source=auto/official/accelerated`，省略保持自动；拒绝任意 URL。自动优先固定 GitHub Release，网络或校验失败再用既有 `gh-proxy.com` 第三方加速；指定来源只尝试该引擎源。模型始终由固定 Mozilla CDN 清单提供，最多一次重试。响应及流读取采用 20 秒停滞上限，单文件总时限仍为 600 秒；取消/存储错误不换源。所有来源保持固定大小和 SHA-256 验证，完整缓存复用，部分文件重下，不宣称断点续传。进度新增 `source=official/accelerated/mozilla`，完成阶段为空；UI 复用依赖 source row，内部 DOM 新增 `localTranslationSourceOptions/SourceHint`，不新增偏好 key。
+
+截图确认/复制、查看器复制和提取文字复制使用 `clipboard_history::windows::write_captured_content`，复用 PNG/DIBV5/Unicode 与大小校验，但不写历史回放内部排除标记；收录必须经真实监听、设置过滤和后台存储，不直接插入历史。历史再次复制继续使用 `write` 并写入内部排除标记，敏感复制保持隐私格式。2026-10-13 隔离 Windows station/desktop 专项通过生产 screenshot wrappers 验证图像像素、透明度、文字、类型禁用、历史回放排除与停机；不触碰用户剪贴板。
 
 圆形悬浮窗复用既有 `expand` action，返回逻辑坐标 `origin` 与 `width/height` 供内部动画定位；没有新增原生命令、事件或偏好。内部 DOM 增加 `shotHistoryBubble`、`shotHistoryCount`、`shotHistoryPanel`，按钮 action 为 `expand-history`、`collapse-history`，中英文 `collapseHistory` 取代旧 `closeHistory`。控制器拥有动画、拖动和监听的生命周期，关闭时取消动画并隔离迟到更新。
 
@@ -50,6 +79,12 @@ AI 提取/翻译仅在主动点击 AI 按钮后发送所选区域，复用既有
 `screenshot-opened` 和 `screenshot-ended` 仅由 capture 角色订阅，history/viewer 不消费截图会话的结束事件。Tauri 前端事件监听默认目标为 Any，不能仅因原生从某个窗口 emit 就假设其他窗口收不到；历史列表由 `screenshot-history-changed` 更新，各角色通过自己的生命周期释放资源。
 
 ## 验证证据
+
+2026-10-13：截图核心/契约、共享 AI、架构、构建与完整发布回归 100 项脚本通过；完整 Rust 202 passed、7 ignored。Edge 截图 8 场景覆盖双主题/DPR/窄屏、依赖先行门禁、无 Key 不调用 AI、显式识别失败回退、超时/取消/迟到结果、实际下拉选项与持久化、实时复制、缓存、布局与撤销。安装管理 4 场景覆盖双主题 740×900/480、安装进度、取消、校验失败、修复、卸载、语言、焦点、Escape、关闭重开与销毁；入口为 `node scripts/test-local-translation-browser.mjs`。
+
+真实下载与本地双向试译通过；冷启动英译中 2 句约 4.39 秒，中译英 1 句约 0.97 秒，热启动英译中 20 段约 1.24 秒；State Drop 后确认回环端点关闭。真实测试入口：`cargo test --manifest-path src-tauri/Cargo.toml translation_real_install_and_bidirectional_smoke -- --ignored --nocapture --test-threads=1`，会下载固定依赖到应用数据目录，模型不进入仓库。上述为本机合成样本，不保证任意截图 15 秒；有 AI 时仍受识别服务延迟影响。本轮未读取用户密钥或真实调用模型，安装后截图交互与翻译质量仍需验收。
+
+Windows 原生 OCR 四组临时合成样本（白底、深色、小字、大尺寸）此前单独通过，坐标映射检查通过，约 0.9–2.5 秒。设置 `TOOLKNIT_SCREENSHOT_OCR_MATRIX` 为合成样本目录后运行 `cargo test --manifest-path src-tauri/Cargo.toml --lib screenshot_native_ocr_matrix -- --ignored --nocapture --test-threads=1`；不是通用准确率基准。
 
 2026-10-12：专项核心/像素/契约测试、架构和前端构建通过；Edge 浏览器专项通过白天/深色 1400×900 DPR1 与 740×480 DPR2 的选区、标注、撤销、OCR/AI 桥接、输出与重开，以及双主题查看器和历史悬浮窗。OCR/AI/系统窗口在浏览器专项中使用桥接夹具，不能作为原生验证。
 

@@ -268,7 +268,7 @@ Large File Cleanup scans a selected directory or the C drive locally, then lets 
 
 `AI PDF to Markdown` · `AI Polish` · `AI Translate` · `AI Document Generation` · `AI Table Generation` · `Quick Screenshot`
 
-Quick Screenshot uses Alt+Q by default, with window capture, region selection, annotations, local Windows OCR, PNG/JPG output, pinned viewers and optional floating history. AI extraction/translation sends only the selected region, requires an image-capable model configured by the user, and requires explicit confirmation of its vision capability. See the [screenshot guide](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md).
+Quick Screenshot uses Alt+Q by default, with window capture, region selection, annotations, local Windows OCR, PNG/JPG output, pinned viewers and optional floating history. Chinese/English screenshot translation uses optional local models installed from Settings. A configured AI service with a stored key assists image recognition; otherwise local OCR is used. Only AI extraction or assisted recognition sends the selected region to an image-capable model, with no manual vision checkbox. See the [screenshot guide](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md).
 
 AI PDF analyzes rendered pages and assembles Markdown. AI Documents support multi-page PDFs, editable projects, preview, editing, and undo. AI Tables support CSV, XLSX, PDF, PNG, editable projects, formulas, and charts. Relevant text or page images are sent to your configured model service when you explicitly invoke AI.
 
@@ -294,7 +294,7 @@ Validate, format, and minify JSON; process UTF-8 Base64; encode URL parameters; 
 
 <img src="https://img.shields.io/badge/LOCAL-Local%20by%20default-0f766e?style=for-the-badge" alt="Local by default" /> **Local by default**: Desktop PDF, PPT, image, audio, video, text, calculator, hardware, and cleanup tools run on the device. Source files are not uploaded to ToolKnit servers.
 
-<img src="https://img.shields.io/badge/AI-Explicit%20authorization-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **Explicit authorization**: Relevant data is sent to your configured model service only when you actively use AI Polish, AI Translate, AI Documents, AI Tables, AI PDF to Markdown, screenshot AI extraction/translation, PPT text AI organization, AI PPT Outline, AI PPTX Draft, AI large-file review, or transcription `refine`. AI PDF analysis sends page images; screenshot AI sends only the selected region; AI large-file review sends file metadata, not file contents.
+<img src="https://img.shields.io/badge/AI-Explicit%20authorization-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **Explicit authorization**: Relevant data is sent to your configured model service only when you actively use AI Polish, AI Translate, AI Documents, AI Tables, AI PDF to Markdown, screenshot AI extraction or translation-assisted recognition, PPT text AI organization, AI PPT Outline, AI PPTX Draft, AI large-file review, or transcription `refine`. AI PDF analysis sends page images; screenshot AI sends only the selected region while text translation runs locally; AI large-file review sends file metadata, not file contents.
 
 <img src="https://img.shields.io/badge/RUNTIME-On--demand%20dependencies-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **On-demand dependencies**: Existing FFmpeg and LibreOffice installations are reused when possible. Missing runtimes and Whisper models are downloaded as needed, with dependency detection, verification, and mirror selection.
 
@@ -463,34 +463,19 @@ Full documentation:
 - [English Agent guide](toolknit-desktop/docs/agent-guide.en.md)
 - [AI document project specification](toolknit-desktop/docs/ai-document-project-spec.md)
 
-## Contributors
+## Acknowledgements
 
-ToolKnit's code, documentation, tests, design, and issue reports are built through real collaboration. The avatar wall below reflects GitHub commit contributions; the list also thanks community members who helped with feature discussions, bug reports, reproduction, and planning.
-
-<p align="center">
-  <a href="https://github.com/ZihangDong/toolknit-desktop/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=ZihangDong/toolknit-desktop&max=48&columns=12" alt="ToolKnit contributors circular avatar wall" />
-  </a>
-</p>
-
-<p align="center"><sub>The avatar wall comes from GitHub contribution records; the community list is maintained from public Issue records.</sub></p>
-
-<p align="center"><strong>2.1.0 core contribution:</strong> Thanks to <a href="https://github.com/Joshua-Zion">Joshua-Zion</a> for the color-space conversion core and interaction ideas contributed through <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a>.</p>
+ToolKnit continues to improve through the people who contribute development, design, testing, and feedback. Special thanks to these three core contributors:
 
 <table cellpadding="12" cellspacing="0">
   <tr>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/qazk-lab"><img src="https://avatars.githubusercontent.com/u/295293290?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="qazk-lab" /><br /><sub><strong>qazk-lab</strong></sub></a><br /><sub>Feature ideas · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/1">#1</a> <a href="https://github.com/ZihangDong/toolknit-desktop/issues/2">#2</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/knightkun486"><img src="https://avatars.githubusercontent.com/u/302576851?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="knightkun486" /><br /><sub><strong>knightkun486</strong></sub></a><br /><sub>Feature ideas · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/13">Issue #13</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/lllll081926i"><img src="https://avatars.githubusercontent.com/u/118839342?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="lllll081926i" /><br /><sub><strong>lllll081926i</strong></sub></a><br /><sub>Bug report · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/14">Issue #14</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/xiaobai9009"><img src="https://avatars.githubusercontent.com/u/216056388?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="xiaobai9009" /><br /><sub><strong>xiaobai9009</strong></sub></a><br /><sub>Reproduction help · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/15">Issue #15</a></sub></td>
-  </tr>
-  <tr>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/nicemonkeyzh"><img src="https://avatars.githubusercontent.com/u/142147027?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="nicemonkeyzh" /><br /><sub><strong>nicemonkeyzh</strong></sub></a><br /><sub>Bug report and ideas · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/18">Issue #18</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/komhH12"><img src="https://avatars.githubusercontent.com/u/292717427?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="komhH12" /><br /><sub><strong>komhH12</strong></sub></a><br /><sub>CLI bug analysis · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/20">Issue #20</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/Moessif"><img src="https://avatars.githubusercontent.com/u/83865951?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="Moessif" /><br /><sub><strong>Moessif</strong></sub></a><br /><sub>Bug report and ideas · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/24">Issue #24</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/chengwei69"><img src="https://avatars.githubusercontent.com/u/249917740?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="chengwei69" /><br /><sub><strong>chengwei69</strong></sub></a><br /><sub>Feature planning · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/19">Issue #19</a></sub></td>
+    <td width="33%" align="center" valign="top"><a href="https://github.com/ZihangDong"><img src="https://avatars.githubusercontent.com/u/274734333?v=4&amp;s=160" width="88" height="88" alt="ZihangDong" /><br /><sub><strong>Zihang Dong</strong></sub></a><br /><sub>Project author · Product design, development, and maintenance</sub></td>
+    <td width="33%" align="center" valign="top"><a href="https://github.com/Joshua-Zion"><img src="https://avatars.githubusercontent.com/u/73597322?v=4&amp;s=160" width="88" height="88" alt="Joshua-Zion" /><br /><sub><strong>Joshua-Zion</strong></sub></a><br /><sub>Color-space conversion core and interaction improvements · <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> / <a href="https://github.com/ZihangDong/toolknit-desktop/pull/67">PR #67</a></sub></td>
+    <td width="33%" align="center" valign="top"><a href="https://github.com/hqyx2025"><img src="https://avatars.githubusercontent.com/u/246831866?v=4&amp;s=160" width="88" height="88" alt="hqyx2025" /><br /><sub><strong>hqyx2025</strong></sub></a><br /><sub>Project verification and bug testing</sub></td>
   </tr>
 </table>
+
+<p align="center"><sub>Special thanks to <a href="https://atomgit.com/">AtomGit</a> for hosting AIRI in China and helping users in mainland China access the project and download Releases faster.</sub></p>
 
 ## Support the project
 

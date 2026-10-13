@@ -12,6 +12,7 @@
       import { createAiSettingsRuntime } from './app/ai-settings-runtime.js';
       import { createExternalLinksRuntime } from './app/external-links-runtime.js';
       import { createAutostartRuntime } from './app/autostart-runtime.js';
+      import { createLocalTranslationSettings } from './app/local-translation-runtime.js';
       import { createHomeCustomToolsRuntime } from './app/home-custom-tools-runtime.js';
       import { createScreenshotContextRuntime } from './app/screenshot-context-runtime.js';
       import { createHomeExplorerRuntime } from './app/home-explorer-runtime.js';
@@ -1565,6 +1566,7 @@
       });
       void externalLinksRuntime.loadGithubActivity();
       createAutostartRuntime({ isTauri, tauriCorePromise, tauriEventPromise, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
+      createLocalTranslationSettings({ isTauri, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
       createHomeCustomToolsRuntime({ isTauri, tauriCorePromise, translate: t, notify: message => window.showToast?.(message) });
       createScreenshotContextRuntime({ isTauri, getAiPlatformConfig, getLang, onLangChange, translate: t, notify: message => window.showToast?.(message) });
 

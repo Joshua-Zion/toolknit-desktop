@@ -9,6 +9,7 @@
 - 相同内容仅存储一份加密实体，每次观察到的新复制仍保留独立时间线事件。来源应用与文字/路径可搜索；支持类型、日期、收藏过滤，50 条分页、批量删除和清空。
 - 新记录到达时保留当前阅读位置与预览，显示新记录入口。支持完整文字、图片缩放、图片另存、文件路径列表及再次复制；再次复制文件按 copy 处理，绝不恢复 cut 行为。
 - 查看文件记录不访问原路径；用户点击复制文件时才检查可用性，文件缺失时可改为复制路径。删除历史不会删除原文件或清空系统当前剪贴板。
+- 图片详情提供“打开置顶”，复用截图独立查看器，默认置顶并支持缩放、拖动、保存与复制。读取本地加密历史图片，不启动截图、不自动再次复制、不加入截图历史；最多 8 个查看窗口、编码总量 64 MiB。非图片不显示入口，执行中禁用图片操作，失败恢复按钮并提示原因。
 
 ## 模块与所有权
 
@@ -29,8 +30,8 @@
 
 - 首页/lazy ID：`clipboard-history`；overlay：`clipboardHistoryOverlay`；initializer：`initClipboardHistoryTool`。
 - UI DOM 统一采用 `clipboard*` 前缀，核心包括 `clipboardToggle`、`clipboardList`、`clipboardPreview`、`clipboardHistoryDialog`；静态模板通过契约测试检查 ID 唯一性。
-- Tauri `clipboard_history({ request })`，仅主窗口可调用。`request.action` 为 `status/start/stop/settings/list/detail/favorite/delete/clear/copy`。
-- `settings` 带完整 settings；`list` 带 query；detail/favorite/copy 带 id；delete 带 ids；clear 带 includeFavorites；copy 可带 paths，仅复制路径文字。
+- Tauri `clipboard_history({ request })`，仅主窗口可调用。`request.action` 为 `status/start/stop/settings/list/detail/favorite/delete/clear/copy/pin`。
+- `settings` 带完整 settings；`list` 带 query；detail/favorite/copy/pin 带 id；delete 带 ids；clear 带 includeFavorites；copy 可带 paths，仅复制路径文字。`pin` 只接受整数记录 ID，不接受外部路径或图像载荷；原生层读取并校验历史图片后调用查看器。生成式模板新增内部 DOM `clipboardOpenPinned`，不新增命令、事件或存储 key。
 - 事件 `clipboard-history-changed` 仅包含 revision，不广播剪贴板正文。页面按需重新查询。
 - Tauri `copy_sensitive_text({ text })` 供密码生成器使用；写入 Windows 隐私格式标记。原有普通复制契约保持不变。
 - 中英文键：`home.clipboardHistory.*`。不新增 CLI/MCP 剪贴板读取入口。
@@ -47,11 +48,15 @@
 
 默认无上传、无 AI 请求。排除应用按进程文件名匹配，尊重 `ExcludeClipboardContentFromMonitorProcessing`、`CanIncludeInClipboardHistory=0`、`Clipboard Viewer Ignore` 等标记；应用内部从历史复制使用自身标记防止循环记账。密码生成器同时设置不进系统历史和不同步云剪贴板的格式标记。
 
+新截图与 OCR 文字复制不同于历史回放：复用 `write_impl` 的格式和大小边界，但通过 `write_captured_content` 不写自身排除标记，因此监控开启且允许相应类型时正常收录。禁止直接插入历史绕开监控开关、类型或排除应用。隔离原生专项通过真实 `copy_screenshot_image/copy_screenshot_text` 验证；图片像素与透明度保持、历史回放仍排除、关闭图片采集或停止监听时不收录。新增内容生产方与历史回放必须明确区分，这是本轮复盘的维护约束。
+
 无法承诺识别所有密码：第三方应用可能不标记敏感内容，owner 也可能不可用；开启说明明确提示暂停或排除应用。加密保护静态文件，不能隔离同一登录用户下的恶意程序，也不能承诺删除历史等于磁盘安全擦除。
 
 系统格式通知不是无损消息队列。极快覆盖、延迟渲染、剪贴板占用、超限或不支持格式可能无法收录；界面显示跳过/失败计数，不伪造记录或时间。浏览器预览不读取系统剪贴板，只显示桌面能力提示。
 
 ## 验证
+
+2026-10-13 图片置顶增量：核心/请求契约覆盖精确 ID 载荷、拒绝额外路径/图像字段及错误映射；Edge 双主题/中英文回归覆盖图片入口、文字/文件隐藏入口、窗口容量错误的可见提示和重试恢复。完整 Rust 206 passed/7 ignored、发布回归 100 项脚本（含安全 1329 项、CLI/MCP）、架构/构建/集成检查通过。窗口使用合成桥接，真实桌面置顶交互待新版安装包验证；本轮尚未重新打包。
 
 - `npm run test:clipboard-history`：设置/时间、适配器、敏感复制、中英文、生命周期和入口契约。
 - `cargo test --manifest-path src-tauri/Cargo.toml clipboard_history --lib`：加密去重、事件、持久化、搜索分页、收藏、过期、篡改、容量回滚、文件路径和图片边界。

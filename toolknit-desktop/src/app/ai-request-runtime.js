@@ -20,6 +20,7 @@ export function createAiRequestRuntime({ getApiKey, getConfig, translate = value
         maxTokens,
         timeoutMs: options.timeoutMs,
         reasoningEffort: options.reasoningEffort,
+        temperature: options.temperature,
         diagnostics: options.diagnostics === true && (isTauri || Boolean(import.meta.env?.DEV)),
         signal,
         allowPrivateHttp: config.allowPrivateHttp,

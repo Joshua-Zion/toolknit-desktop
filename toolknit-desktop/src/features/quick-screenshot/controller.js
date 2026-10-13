@@ -2,7 +2,6 @@ import { t, applyTranslations, onLangChange } from '../../i18n.js';
 import { createLifecycleScope } from '../../app/tool-lifecycle.js';
 import { moveFocusOutOfHiddenRegion } from '../../shared/tool-page-shell.js';
 import { createScreenshotRuntime } from '../../platform/screenshot-runtime.js';
-import { VISION_KEY } from '../../app/screenshot-context-runtime.js';
 import { errorKey } from './core.js';
 export function createQuickScreenshotController({overlay,isTauri=false,getAiPlatformConfig=()=>({}),notify=()=>{},refreshIcons=()=>{}}) {
   const runtime=createScreenshotRuntime({isTauri}), scope=createLifecycleScope();
@@ -15,7 +14,6 @@ export function createQuickScreenshotController({overlay,isTauri=false,getAiPlat
     q('HistoryToggle').setAttribute('aria-checked',String(preferences.history));
     q('ShortcutStatus').textContent=tr(!runtime.available?'desktopOnly':preferences.registered?'shortcutActive':preferences.error?'shortcutConflict':'shortcutDisabled',{shortcut:preferences.registered||''});
     const provider=getAiPlatformConfig(); q('Provider').textContent=provider.model || tr('noModel');
-    try {q('Vision').checked=localStorage.getItem(VISION_KEY)===JSON.stringify(provider);} catch {q('Vision').checked=false;}
   }
   async function load() {
     const owner=revision;
@@ -32,10 +30,6 @@ export function createQuickScreenshotController({overlay,isTauri=false,getAiPlat
   scope.event(q('ShortcutReset'),'click',()=>void configure({...preferences,shortcut:'Alt+Q'}));
   scope.event(q('ShortcutDisable'),'click',()=>void configure({...preferences,shortcut:null}));
   scope.event(q('HistoryToggle'),'click',()=>void configure({...preferences,history:!preferences.history}));
-  scope.event(q('Vision'),'change',()=>{
-    try{if(q('Vision').checked)localStorage.setItem(VISION_KEY,JSON.stringify(getAiPlatformConfig()));else localStorage.removeItem(VISION_KEY);window.dispatchEvent(new Event('screenshot-provider-changed'));}
-    catch(e){q('Vision').checked=false;error(e);}
-  });
   scope.use(onLangChange(()=>{if(opened){applyTranslations();render();}}));
   void runtime.listen('screenshot-preferences-changed',()=>{if(opened)void load();}).then(unlisten=>scope.use(unlisten));
   scope.event(overlay,'click',e=>{if(e.target.closest('[data-screenshot-close]'))close();});

@@ -143,8 +143,10 @@ export async function checkSecondaryTheme(browser, url, output) {
       await openKey();
       assert.equal(await page.locator('#apiKeyInput').inputValue(), '');
       await page.locator('#apiKeyBack').hover();
-      await page.waitForFunction(() => getComputedStyle(document.querySelector('#apiKeyBack')).borderTopColor === 'rgb(0, 0, 0)');
-      assert.equal(await style('#apiKeyBack span', 'opacity'), '1');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('#apiKeyBack')).width === '64px');
+      assert.equal(await style('#apiKeyBack', 'backgroundColor'), 'rgb(17, 17, 17)');
+      assert.equal(await style('#apiKeyBack', 'borderRadius'), '999px');
+      assert.equal(await page.locator('#apiKeyBack svg').count(), 1);
       await click('#apiKeyBack');
       await page.setViewportSize({ width: 1400, height: 887 });
       await click('[data-theme-choice="dark"]');

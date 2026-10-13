@@ -371,6 +371,7 @@ async function requestAiCompletionImpl({
   maxTokens,
   timeoutMs,
   reasoningEffort,
+  temperature,
   signal,
   fetchImpl,
   nativeRequestImpl,
@@ -390,6 +391,7 @@ async function requestAiCompletionImpl({
     throw new AiProviderError('invalid_request');
   }
   if (reasoningEffort !== undefined && !['low', 'high', 'max'].includes(reasoningEffort)) throw new AiProviderError('invalid_request');
+  if (temperature !== undefined && (!Number.isFinite(temperature) || temperature < 0 || temperature > 2)) throw new AiProviderError('invalid_request');
   const requestFetch = fetchImpl ?? globalThis.fetch;
   if (typeof requestFetch !== 'function') {
     throw new AiProviderError('invalid_request');
@@ -398,7 +400,7 @@ async function requestAiCompletionImpl({
   const body = {
     model: config.model,
     messages,
-    temperature: 0.7,
+    temperature: temperature ?? 0.7,
     stream: false
   };
   if (maxTokens !== undefined) body.max_tokens = maxTokens;
@@ -430,6 +432,7 @@ async function requestAiCompletionImpl({
         maxTokens,
         timeoutMs,
         reasoningEffort: body.reasoning_effort ?? reasoningEffort,
+        ...(temperature !== undefined ? {temperature} : {}),
         ...(diagnostics === true ? { diagnostics: true } : {}),
         allowPrivateHttp: Boolean(allowPrivateHttp)
       }), signal);

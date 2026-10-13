@@ -266,7 +266,7 @@ Markdown 编辑器提供 GFM、Mermaid、数学公式、标题大纲、草稿恢
 
 `AI PDF 转 Markdown` · `AI 文字润色` · `AI 智能翻译` · `AI 文档生成` · `AI 表格生成` · `快速截图`
 
-快速截图默认使用 Alt+Q，支持窗口捕捉、区域选择、标注、本地 Windows OCR、PNG/JPG 保存、置顶查看和可选悬浮历史。仅主动使用截图 AI 提取/翻译时发送所选区域，需要自行配置支持图像输入的模型并确认视觉能力。详见[快速截图说明](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md)。
+快速截图默认使用 Alt+Q，支持窗口捕捉、区域选择、标注、本地 Windows OCR、PNG/JPG 保存、置顶查看和可选悬浮历史。截图中英文翻译使用设置中按需安装的本地模型；配置了 AI 服务和密钥时辅助图像识别，否则使用本地 OCR。仅主动使用 AI 提取或辅助识别时发送所选区域，需要支持图像输入的模型，无需手动确认视觉能力。详见[快速截图说明](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md)。
 
 AI PDF 逐页分析页面图像并汇总为 Markdown；AI 文档支持多页 PDF、可编辑工程文件、预览、编辑与撤销；AI 表格支持 CSV、XLSX、PDF、PNG、可编辑项目、公式和图表修改。主动调用 AI 时，相关文字或页面图像会发送到你配置的模型服务。
 
@@ -290,7 +290,7 @@ AI PDF 逐页分析页面图像并汇总为 Markdown；AI 文档支持多页 PDF
 
 <img src="https://img.shields.io/badge/LOCAL-默认本地-0f766e?style=for-the-badge" alt="Local first" /> **默认本地**：桌面端的 PDF、PPT、图像、音频、视频、文本、计算器、硬件和清理工具在设备本地运行，源文件不会上传到 ToolKnit 服务器。
 
-<img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、AI PDF 转 Markdown、截图 AI 提取/翻译、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿、AI 大文件复核或转写后的 `refine` 时，符合该功能说明的数据才会发送到你配置的模型服务；截图 AI 只发送所选区域，大文件清理只发送文件元数据，不发送文件内容。
+<img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、AI PDF 转 Markdown、截图 AI 提取/翻译辅助识别、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿、AI 大文件复核或转写后的 `refine` 时，符合该功能说明的数据才会发送到你配置的模型服务；截图 AI 只发送所选区域，截图文字翻译在本地完成，大文件清理只发送文件元数据，不发送文件内容。
 
 <img src="https://img.shields.io/badge/RUNTIME-按需依赖-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **按需依赖**：优先复用本机已有的 FFmpeg 与 LibreOffice；Whisper 模型和缺失运行时按需下载，支持依赖检测、校验和镜像源选择。
 
@@ -459,34 +459,30 @@ toolknit --help
 - [English Agent guide](toolknit-desktop/docs/agent-guide.en.md)
 - [AI 文档工程规范](toolknit-desktop/docs/ai-document-project-spec.md)
 
-## 贡献者
+## 鸣谢
 
-ToolKnit 的代码、文档、测试、设计和问题反馈都来自真实的协作。上方头像墙展示 GitHub 提交贡献，下面的名单特别感谢参与功能讨论、问题反馈、复现验证和需求规划的社区成员。
-
-<p align="center">
-  <a href="https://github.com/ZihangDong/toolknit-desktop/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=ZihangDong/toolknit-desktop&max=48&columns=12" alt="ToolKnit contributors circular avatar wall" />
-  </a>
-</p>
-
-<p align="center"><sub>头像墙来自 GitHub 贡献记录；社区名单根据公开 Issue 记录手工维护。</sub></p>
-
-<p align="center"><strong>2.1.0 核心贡献：</strong>感谢 <a href="https://github.com/Joshua-Zion">Joshua-Zion</a> 在 <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> 提供颜色空间转换核心与交互思路。</p>
+ToolKnit 的持续完善离不开每一位参与开发、设计、测试和反馈的人。这里特别鸣谢三位核心贡献者：
 
 <table cellpadding="12" cellspacing="0">
   <tr>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/qazk-lab"><img src="https://avatars.githubusercontent.com/u/295293290?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="qazk-lab" /><br /><sub><strong>qazk-lab</strong></sub></a><br /><sub>功能建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/1">#1</a> <a href="https://github.com/ZihangDong/toolknit-desktop/issues/2">#2</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/knightkun486"><img src="https://avatars.githubusercontent.com/u/302576851?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="knightkun486" /><br /><sub><strong>knightkun486</strong></sub></a><br /><sub>功能建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/13">Issue #13</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/lllll081926i"><img src="https://avatars.githubusercontent.com/u/118839342?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="lllll081926i" /><br /><sub><strong>lllll081926i</strong></sub></a><br /><sub>Bug 反馈 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/14">Issue #14</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/xiaobai9009"><img src="https://avatars.githubusercontent.com/u/216056388?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="xiaobai9009" /><br /><sub><strong>xiaobai9009</strong></sub></a><br /><sub>问题复现 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/15">Issue #15</a></sub></td>
+    <td width="96" align="center" valign="middle"><a href="https://github.com/ZihangDong"><img src="https://wsrv.nl/?url=avatars.githubusercontent.com%2Fu%2F274734333%3Fv%3D4%26s%3D160&amp;w=160&amp;h=160&amp;fit=cover&amp;mask=circle&amp;output=png" width="72" height="72" alt="ZihangDong 圆形头像" /></a></td>
+    <td valign="middle"><a href="https://github.com/ZihangDong"><strong>Zihang Dong</strong></a><br />项目作者 · 产品设计、开发与维护</td>
   </tr>
   <tr>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/nicemonkeyzh"><img src="https://avatars.githubusercontent.com/u/142147027?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="nicemonkeyzh" /><br /><sub><strong>nicemonkeyzh</strong></sub></a><br /><sub>Bug 反馈 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/18">Issue #18</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/komhH12"><img src="https://avatars.githubusercontent.com/u/292717427?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="komhH12" /><br /><sub><strong>komhH12</strong></sub></a><br /><sub>CLI Bug 与根因分析 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/20">Issue #20</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/Moessif"><img src="https://avatars.githubusercontent.com/u/83865951?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="Moessif" /><br /><sub><strong>Moessif</strong></sub></a><br /><sub>Bug 反馈与建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/24">Issue #24</a></sub></td>
-    <td width="25%" align="center" valign="top"><a href="https://github.com/chengwei69"><img src="https://avatars.githubusercontent.com/u/249917740?v=4&s=160" width="88" height="88" style="border-radius:50%;" alt="chengwei69" /><br /><sub><strong>chengwei69</strong></sub></a><br /><sub>功能规划建议 · <a href="https://github.com/ZihangDong/toolknit-desktop/issues/19">Issue #19</a></sub></td>
+    <td width="96" align="center" valign="middle"><a href="https://github.com/Joshua-Zion"><img src="https://wsrv.nl/?url=avatars.githubusercontent.com%2Fu%2F73597322%3Fv%3D4%26s%3D160&amp;w=160&amp;h=160&amp;fit=cover&amp;mask=circle&amp;output=png" width="72" height="72" alt="Joshua-Zion 圆形头像" /></a></td>
+    <td valign="middle"><a href="https://github.com/Joshua-Zion"><strong>Joshua-Zion</strong></a><br />颜色空间转换核心与交互增强 · <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> / <a href="https://github.com/ZihangDong/toolknit-desktop/pull/67">PR #67</a></td>
+  </tr>
+  <tr>
+    <td width="96" align="center" valign="middle"><a href="https://github.com/hqyx2025"><img src="https://wsrv.nl/?url=avatars.githubusercontent.com%2Fu%2F246831866%3Fv%3D4%26s%3D160&amp;w=160&amp;h=160&amp;fit=cover&amp;mask=circle&amp;output=png" width="72" height="72" alt="hqyx2025 圆形头像" /></a></td>
+    <td valign="middle"><a href="https://github.com/hqyx2025"><strong>hqyx2025</strong></a><br />项目查验测试与 Bug 测试</td>
   </tr>
 </table>
+
+<h3><a href="https://atomgit.com/"><img src="https://cdn-static.gitcode.com/static/images/logo-favicon.png" width="36" height="36" alt="AtomGit Logo" align="absmiddle" /></a> 特别感谢 <a href="https://atomgit.com/">AtomGit</a></h3>
+
+<p><strong>ToolKnit 推荐：让开源创意，更快被看见。</strong></p>
+
+<p><a href="https://atomgit.com/">AtomGit</a> 集代码托管、项目管理与开发协作于一体，连接开发者与开源项目。发现实用的开源工具，分享自己的作品，与更多开发者一起把好想法变成好项目。<a href="https://atomgit.com/"><strong>前往 AtomGit，探索更多开源可能。</strong></a></p>
 
 ## 捐赠支持
 

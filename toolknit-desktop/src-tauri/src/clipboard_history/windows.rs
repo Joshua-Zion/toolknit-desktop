@@ -468,6 +468,10 @@ fn unicode_bytes(text: &str) -> Vec<u8> {
 pub fn write(content: &Content, sensitive: bool, paths_only: bool) -> Result<(), String> {
     write_impl(content, sensitive, paths_only, true)
 }
+pub fn write_captured_content(content: &Content) -> Result<(), String> {
+    // New captures should reach the monitor; history replay keeps its exclusion marker.
+    write_impl(content, false, false, false)
+}
 fn write_impl(
     content: &Content,
     sensitive: bool,
@@ -653,27 +657,29 @@ mod tests {
         let image = image::RgbaImage::from_pixel(4, 3, image::Rgba([10, 20, 30, 160]));
         let mut png = std::io::Cursor::new(Vec::new());
         image.write_to(&mut png, image::ImageFormat::Png).unwrap();
-        write_impl(
-            &Content::Image {
-                png: png.into_inner(),
-                width: 4,
-                height: 3,
-            },
-            false,
-            false,
-            false,
-        )
-        .unwrap();
+        let png = png.into_inner();
+        super::super::copy_screenshot_image(png.clone(), 4, 3).unwrap();
         match rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap() {
-            Notice::Capture(capture) => assert!(matches!(
-                normalize(capture.raw).unwrap(),
-                Content::Image {
-                    width: 4,
-                    height: 3,
-                    ..
+            Notice::Capture(capture) => match normalize(capture.raw).unwrap() {
+                Content::Image { png, width, height } => {
+                    assert_eq!((width, height), (4, 3));
+                    assert_eq!(image::load_from_memory(&png).unwrap().into_rgba8(), image);
                 }
-            )),
+                _ => panic!("expected image content"),
+            },
             _ => panic!("expected image"),
+        }
+        write(&Content::Image { png: png.clone(), width: 4, height: 3 }, false, false).unwrap();
+        assert!(matches!(rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap(), Notice::Skipped));
+        settings.lock().unwrap().images = false;
+        super::super::copy_screenshot_image(png.clone(), 4, 3).unwrap();
+        assert!(matches!(rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap(), Notice::Skipped));
+        settings.lock().unwrap().images = true;
+        settings.lock().unwrap().text = true;
+        super::super::copy_screenshot_text("Synthetic screenshot OCR\n中文".into()).unwrap();
+        match rx.recv_timeout(std::time::Duration::from_secs(3)).unwrap() {
+            Notice::Capture(capture) => assert_eq!(normalize(capture.raw).unwrap().searchable(), "Synthetic screenshot OCR\n中文"),
+            _ => panic!("expected screenshot text"),
         }
         let paths = vec![std::env::current_exe()
             .unwrap()
@@ -708,7 +714,7 @@ mod tests {
         }
         generation.fetch_add(1, Ordering::SeqCst);
         monitor.stop();
-        write_impl(&text, false, false, false).unwrap();
+        super::super::copy_screenshot_image(png, 4, 3).unwrap();
         assert!(rx
             .recv_timeout(std::time::Duration::from_millis(100))
             .is_err());

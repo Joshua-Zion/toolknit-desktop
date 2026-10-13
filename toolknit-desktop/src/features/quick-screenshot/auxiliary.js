@@ -1,4 +1,4 @@
-import { createIcons, Scan, ScanText, ScanLine, MousePointer2, Square, Circle, MoveUpRight, Pencil, Grid2x2, Type, Sparkles, Languages, Undo2, Redo2, Eye, Download, Pin, X, Check, Copy, FolderOpen, Minus, Plus } from 'lucide';
+import { createIcons, Scan, ScanText, ScanLine, MousePointer2, Square, Circle, MoveUpRight, Pencil, Grid2x2, Type, Sparkles, Languages, Undo2, Redo2, Eye, Download, Pin, X, Check, Copy, FolderOpen, Minus, Plus, ChevronDown } from 'lucide';
 import { t, getLang, applyTranslations, setLangWithoutFade } from '../../i18n.js';
 import { tauriCorePromise, getCurrentWindow } from '../../platform/tauri-runtime.js';
 import { createScreenshotRuntime } from '../../platform/screenshot-runtime.js';
@@ -19,9 +19,10 @@ import '../../styles/components/window-surface.css';
 import '../../styles/components/navigation.css';
 import '../../tool-nav-unified.css';
 import '../../styles/components/toasts.css';
+import '../../styles/components/tool-custom-select.css';
 import './quick-screenshot.css';
 
-const icons={Scan,ScanText,ScanLine,MousePointer2,Square,Circle,MoveUpRight,Pencil,Grid2x2,Type,Sparkles,Languages,Undo2,Redo2,Eye,Download,Pin,X,Check,Copy,FolderOpen,Minus,Plus};
+const icons={Scan,ScanText,ScanLine,MousePointer2,Square,Circle,MoveUpRight,Pencil,Grid2x2,Type,Sparkles,Languages,Undo2,Redo2,Eye,Download,Pin,X,Check,Copy,FolderOpen,Minus,Plus,ChevronDown};
 const root=document.getElementById('screenshotRoot'), role=new URLSearchParams(location.search).get('role')||'capture';
 const isTauri=Boolean(window.__TAURI_INTERNALS__), runtime=createScreenshotRuntime({isTauri}), lifecycle=createLifecycleScope();
 const tr=(key,vars)=>t(`home.quickScreenshot.${key}`,vars), q=id=>document.getElementById(`shot${id}`);
@@ -30,7 +31,7 @@ const toast=createToastManager({getLanguage:getLang}), notify=message=>{
   else toast.show(message);
 };
 const output=createOutputRuntime({isTauri,tauriCorePromise,translate:t,notify});
-let context={},controller,bootRevision=0,disposed=false,dialogAction,dialogPath='',bootQueue=Promise.resolve();
+let context={},controller,bootRevision=0,disposed=false,dialogAction,dialogDismiss,dialogPath='',openingFolder=false,bootQueue=Promise.resolve();
 root.innerHTML=role==='history'?historyMarkup:role==='viewer'?viewerMarkup:captureMarkup;
 document.body.classList.add(`shot-${role}-body`);
 const dialogRoot=q('Dialog');
@@ -38,16 +39,32 @@ if(role==='history')lifecycle.event(root,'click',event=>{if(!controller&&event.t
 const modal=createModalSession({root:dialogRoot,background:role==='viewer'?q('Viewer'):q('Editor'),initialFocus:q('DialogOk'),onClose:()=>closeDialog()});
 function refresh(){applyTranslations();createIcons({icons});}
 function applyContext(next){context=next||{};document.documentElement.dataset.theme=context.theme==='light'?'light':'dark';setLangWithoutFade(context.lang==='en'?'en':'zh');refresh();controller?.contextChanged?.(context);}
-function closeDialog(){modal.close();dialogAction=null;}
-function showDialog(title,content,{onConfirm,folder='',copyText=''}={}){
-  closeDialog();dialogAction=onConfirm;dialogPath=folder;q('DialogTitle').textContent=title;q('DialogContent').replaceChildren(content);
+function closeDialog(){modal.close();dialogAction=null;const dismiss=dialogDismiss;dialogDismiss=null;dismiss?.();}
+function showDialog(title,content,{onConfirm,onDismiss,confirmLabel,folder='',copyText='',iconOnly=false}={}){
+  closeDialog();dialogAction=onConfirm;dialogDismiss=onDismiss;dialogPath=folder;q('DialogTitle').textContent=title;q('DialogContent').replaceChildren(content);
   q('DialogFolder').hidden=!folder;q('DialogCopy').hidden=!copyText;q('DialogCancel').hidden=!onConfirm;
-  q('DialogCopy').onclick=()=>{void controller?.copyText?.(copyText);};modal.open();refresh();
+  q('DialogCopy').classList.toggle('shot-copy-icon',iconOnly);
+  q('DialogCopy').querySelector('span').hidden=iconOnly;
+  q('DialogCopy').setAttribute('title',tr('copyText'));q('DialogCopy').setAttribute('aria-label',tr('copyText'));
+  q('DialogCopy').onclick=()=>{void controller?.copyText?.(typeof copyText==='function'?copyText():copyText);};modal.open();refresh();
+  if(confirmLabel)q('DialogOk').textContent=confirmLabel;
 }
 if(dialogRoot){
   lifecycle.event(q('DialogCancel'),'click',closeDialog);
-  lifecycle.event(q('DialogOk'),'click',()=>{const run=dialogAction;closeDialog();if(run)run();});
-  lifecycle.event(q('DialogFolder'),'click',()=>void output.openFolder(dialogPath));
+  lifecycle.event(q('DialogOk'),'click',()=>{const run=dialogAction;dialogDismiss=null;closeDialog();if(run)run();});
+  lifecycle.event(q('DialogFolder'),'click',async()=>{
+    if(openingFolder||!dialogPath)return;
+    const path=dialogPath,capture=controller;openingFolder=true;
+    try{
+      closeDialog();
+      if(role==='capture'){
+        if(!capture)throw new Error('screenshot:expired');
+        await capture.finishCapture();
+      }
+      await output.openFolder(path);
+    }catch(error){notify(tr(errorKey(error)));}
+    finally{openingFolder=false;}
+  });
 }
 const services={root,runtime,lifecycle,tr,q,notify,refresh,showDialog,closeDialog,output,isTauri,getContext:()=>context,getCurrentWindow,async save(payload,isCurrent=()=>!disposed){
   const directory=await output.getOutputDir('Screenshots');if(!isCurrent())return;

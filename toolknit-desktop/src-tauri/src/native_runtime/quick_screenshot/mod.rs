@@ -422,6 +422,22 @@ impl Drop for RestoreWindows {
         }
     }
 }
+pub(crate) fn open_clipboard_image(app: &tauri::AppHandle, png: Vec<u8>) -> Result<(), String> {
+    let (width, height) = image_dimensions(&png)?;
+    decode(&png)?;
+    let state = app.state::<ScreenshotState>();
+    let shot = Shot {
+        id: state.sequence.fetch_add(1, Ordering::SeqCst) + 1,
+        png: Arc::new(png),
+        width,
+        height,
+        time: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+    };
+    open_viewer(app, shot)
+}
 fn open_viewer(app: &tauri::AppHandle, shot: Shot) -> Result<(), String> {
     let label = format!("screenshot-viewer-{}", shot.id);
     if let Some(w) = app.get_webview_window(&label) {
@@ -896,9 +912,17 @@ pub(crate) async fn quick_screenshot(
                 };
                 let (width, height) = image_dimensions(&bytes)?;
                 if action == "ocr" {
-                    return tauri::async_runtime::spawn_blocking(move || ocr::recognize(bytes))
-                        .await
-                        .map_err(|_| "screenshot:ocr-failed")?;
+                    let language = match request.get("language").and_then(|v| v.as_str()) {
+                        Some("zh") => Some("zh".to_string()),
+                        Some("en") => Some("en".to_string()),
+                        None => None,
+                        _ => return Err("screenshot:invalid-request".into()),
+                    };
+                    return tauri::async_runtime::spawn_blocking(move || {
+                        ocr::recognize_with_language(bytes, language)
+                    })
+                    .await
+                    .map_err(|_| "screenshot:ocr-failed")?;
                 }
                 if action == "save" {
                     let directory = request["directory"]
@@ -990,7 +1014,7 @@ pub(crate) async fn quick_screenshot(
         _ => Err("screenshot:forbidden".into()),
     }
 }
-fn require_session(state: &ScreenshotState, request: &serde_json::Value) -> Result<(), String> {
+pub(super) fn require_session(state: &ScreenshotState, request: &serde_json::Value) -> Result<(), String> {
     if lock(&state.inner).session.as_ref().map(|s| s.id) != request["session"].as_u64() {
         Err("screenshot:expired".into())
     } else {

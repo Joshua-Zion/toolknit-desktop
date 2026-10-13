@@ -28,8 +28,6 @@ html[data-theme="light"] :is(.quick-screenshot,.shot-capture,.shot-viewer,.shot-
 .screenshot-switch span { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--shot-bg); transition: transform .2s; }
 .screenshot-switch[aria-checked="true"] { background: var(--shot-fg); }
 .screenshot-switch[aria-checked="true"] span { transform: translateX(18px); }
-.screenshot-check { display: flex; align-items: start; gap: 10px; font-size: 14px; line-height: 1.6; margin-bottom: 12px; }
-.screenshot-check input { margin-top: 5px; accent-color: var(--shot-fg); }
 .screenshot-page-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 36px; text-align: center; overflow: auto; }
 .screenshot-page-preview>svg { width: 80px; height: 80px; stroke-width: 1.2; margin-bottom: 28px; }
 .screenshot-page-preview h2 { font-size: 24px; margin: 0 0 12px; }
@@ -75,6 +73,10 @@ html[data-theme="dark"] body:is(.shot-capture-body,.shot-viewer-body) .app-toast
 .shot-dialog-panel h2 { font-size: 20px; margin-bottom: 18px; }
 .shot-dialog-panel p { user-select: text; overflow-wrap: anywhere; font-size: 14px; line-height: 1.7; }
 .shot-dialog-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.shot-dialog-actions .shot-copy-icon { width: 40px; height: 40px; min-width: 40px; padding: 0; border-radius: 50%; }
+.shot-language .tool-custom-select { width: 122px; }
+.shot-toolbar .tool-custom-select-trigger { width: 122px; height: 32px; min-height: 32px; justify-content: space-between; padding: 0 9px; border: 1px solid var(--shot-line); color: var(--shot-fg); background: var(--shot-panel); box-shadow: none; }
+.shot-toolbar .tool-custom-select-trigger:hover { background: var(--shot-panel); box-shadow: none; }
 .shot-text-input { width: 100%; min-height: 170px; max-height: 45vh; padding: 12px; resize: vertical; user-select: text; background: var(--shot-panel); color: var(--shot-fg); border: 1px solid var(--shot-line); border-radius: 5px; font-size: 16px; line-height: 1.7; }
 .shot-viewer { display: flex; flex-direction: column; height: 100vh; background: var(--shot-bg); }
 .shot-viewer .tool-page-v2-topbar { position: relative; flex-shrink: 0; }

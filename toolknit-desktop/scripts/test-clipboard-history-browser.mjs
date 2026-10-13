@@ -16,7 +16,7 @@ import { DEFAULT_SETTINGS } from '/src/features/clipboard-history/core.js';
 export function setup() {
   document.body.insertAdjacentHTML('beforeend', markup);
   let enabled = false, records = [], listeners = new Set(), sequence = 0, settings = { ...DEFAULT_SETTINGS }, held = null;
-  const calls = []; let holdNext = false;
+  const calls = []; let holdNext = false, pinError = '';
   const status = () => ({ enabled, total: records.length, today: records.length, bytes: records.reduce((n,r)=>n+r.bytes,0), startedAt: enabled ? Date.now() : null, captured: records.length, skipped: 0, failed: 0, settings, latestId: sequence });
   const emit = () => listeners.forEach(fn=>fn());
   const runtime = { available:true, subscribe:async fn=>{listeners.add(fn);return ()=>listeners.delete(fn);}, request:async request=>{
@@ -33,12 +33,13 @@ export function setup() {
     if (request.action==='detail') { const result=structuredClone(records.find(r=>r.id===request.id)); if(holdNext){holdNext=false;return new Promise(resolve=>held=()=>resolve(result));}return result; }
     if (request.action==='favorite') records.find(r=>r.id===request.id).favorite=request.favorite;
     if (request.action==='copy') records.find(r=>r.id===request.id).usedAt=Date.now();
+    if (request.action==='pin'&&pinError) throw pinError;
     if (request.action==='delete') records=records.filter(r=>!request.ids.includes(r.id));
     if (request.action==='clear') records=records.filter(r=>!request.includeFavorites&&r.favorite);
     emit();return status();
   }};
   const tool=initClipboardHistoryTool({overlay:document.getElementById('clipboardHistoryOverlay'),clipboardRuntime:runtime,refreshIcons:()=>createIcons({icons}),notify:()=>{}});
-  window.fixture={tool,calls,status,setLang,listeners,hold:()=>{holdNext=true;},release:()=>{held?.();held=null;},
+  window.fixture={tool,calls,status,setLang,listeners,setPinError:value=>{pinError=value;},hold:()=>{holdNext=true;},release:()=>{held?.();held=null;},
     push(extra={}) {if(!enabled)return; const record={id:++sequence,capturedAt:Date.now()+sequence,offsetMinutes:480,kind:'text',favorite:false,source:'QA-editor.exe',preview:'Meeting notes: launch checklist',text:'Meeting notes: launch checklist\\n中文与 English 内容\\n<img src=x onerror=window.unsafe=true>',bytes:184,count:94,rich:false,paths:[],filesAvailable:true,...extra};records.unshift(record);emit();return record.id;},
     image() {const c=document.createElement('canvas');c.width=480;c.height=300;const x=c.getContext('2d');x.fillStyle='#f5f6f7';x.fillRect(0,0,480,300);x.fillStyle='#27684d';x.fillRect(30,40,150,200);x.fillStyle='#cc424f';x.fillRect(205,100,245,140);x.fillStyle='#141518';x.font='24px sans-serif';x.fillText('Clipboard image sample',35,280);const image=c.toDataURL();return this.push({kind:'image',image,thumbnail:image,width:480,height:300,count:0,bytes:5028,preview:''});}
   };tool.open();
@@ -94,11 +95,22 @@ try {
     await page.evaluate(()=>window.fixture.push());
     await page.waitForSelector('[data-entry-id="1"]'); await page.locator('[data-entry-id="1"]').click();
     await page.waitForSelector('#clipboardPreview pre'); assert.equal(await page.evaluate(()=>window.unsafe),undefined);
+    assert.equal(await page.locator('#clipboardOpenPinned').isVisible(),false,'text records have no image viewer action');
     assert.match(await page.locator('#clipboardMetadata').innerText(),/UTC\+08:00/);
     await page.evaluate(()=>window.fixture.image());
     await page.waitForSelector('#clipboardNew:not([hidden])');
     assert.match(await page.locator('#clipboardPreview').innerText(),/Meeting notes/,'new entries must not replace the selected preview');
     await page.locator('#clipboardNew').click(); await page.locator('[data-entry-id="2"]').click(); await page.waitForSelector('#clipboardPreview img');
+    await page.locator('#clipboardOpenPinned').click();
+    await page.waitForFunction(()=>window.fixture.calls.some(r=>r.action==='pin'));
+    assert.deepEqual(await page.evaluate(()=>window.fixture.calls.findLast(r=>r.action==='pin')),{action:'pin',id:2},'pin sends only the selected native record ID');
+    await page.evaluate(()=>window.fixture.setPinError('screenshot:viewer-limit'));
+    await page.locator('#clipboardOpenPinned').click();
+    await page.waitForSelector('#clipboardError:not([hidden])');
+    assert.match(await page.locator('#clipboardError').innerText(),/窗口|viewers/);
+    assert.ok(await page.locator('#clipboardOpenPinned').isEnabled(),'viewer failure restores the action');
+    await page.evaluate(()=>window.fixture.setPinError(''));
+    await page.locator('#clipboardOpenPinned').click();await page.waitForSelector('#clipboardError',{state:'hidden'});
     await screenshot(page,`${theme}-image`);
     await page.locator('#clipboardZoom').click(); await page.waitForSelector('#clipboardHistoryDialog.visible'); await screenshot(page,`${theme}-zoom`); await page.keyboard.press('Escape');
     await page.locator('#clipboardFavorite').click(); await page.waitForFunction(()=>document.querySelector('#clipboardFavorite').getAttribute('aria-pressed')==='true');

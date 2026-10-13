@@ -35,7 +35,7 @@ ${toolTopbarMarkup({ tag: 'CLIPBOARD · TOOL PAGE 3.1', title: 'CLIPBOARD', clos
         <div id="clipboardDetailContent" hidden><div class="clipboard-detail-head"><div><span id="clipboardDetailType" class="pdf-merge-v2-section-kicker"></span><h2 ${text('details')}></h2></div>${command('DetailBack','arrow-left','backList')}</div>
           <dl id="clipboardMetadata" class="clipboard-metadata"></dl>
           <div id="clipboardPreview" class="clipboard-preview" tabindex="0"></div><p id="clipboardDetailNote" class="clipboard-muted"></p>
-          <div class="clipboard-detail-actions">${command('Copy','copy','copy')}${command('CopyPaths','files','copyPaths','hidden')}${command('SaveImage','download','saveImage','hidden')}${command('Zoom','maximize','zoom','hidden')}${command('Favorite','star','favorite','aria-pressed="false"')}${command('Delete','trash-2','delete')}</div>
+          <div class="clipboard-detail-actions">${command('Copy','copy','copy')}${command('CopyPaths','files','copyPaths','hidden')}${command('SaveImage','download','saveImage','hidden')}${command('OpenPinned','pin','openPinned','hidden')}${command('Zoom','maximize','zoom','hidden')}${command('Favorite','star','favorite','aria-pressed="false"')}${command('Delete','trash-2','delete')}</div>
         </div>
       </section>
     </div>

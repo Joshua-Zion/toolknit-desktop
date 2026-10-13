@@ -39,3 +39,21 @@
         <div class="transcription-model-list" id="libreOfficeRuntimeList"></div>
       </div>
     </div>
+<div class="transcription-model-overlay" id="localTranslationOverlay" aria-hidden="true" inert role="dialog" aria-modal="true" aria-labelledby="localTranslationTitle">
+  <div class="transcription-model-panel">
+    <div class="transcription-model-header"><div><span class="tools-eyebrow">LOCAL TRANSLATION</span><h2 id="localTranslationTitle" data-i18n="settings.localTranslation.title"></h2></div><button class="pdf-page-workspace-close" type="button" id="localTranslationClose" data-i18n-aria-label="common.close"><i data-lucide="x"></i></button></div>
+    <p class="transcription-model-intro" data-i18n="settings.localTranslation.hint"></p>
+    <p class="transcription-model-intro" data-i18n="settings.localTranslation.privacy"></p>
+    <div class="transcription-source-row" role="group" data-i18n-aria-label="home.transcription.sourceLabel">
+      <span data-i18n="home.transcription.sourceLabel">下载源</span>
+      <div class="audio-convert-format-options" id="localTranslationSourceOptions">
+        <button type="button" class="audio-convert-format-option active" data-source="auto" aria-pressed="true" data-i18n="home.transcription.sourceAuto">自动</button>
+        <button type="button" class="audio-convert-format-option" data-source="official" aria-pressed="false" data-i18n="home.transcription.sourceOfficial">官方</button>
+        <button type="button" class="audio-convert-format-option" data-source="accelerated" aria-pressed="false" data-i18n="settings.localTranslation.sourceAccelerated">GitHub 加速</button>
+      </div>
+    </div>
+    <p class="transcription-model-intro" id="localTranslationSourceHint" data-i18n="settings.localTranslation.sourceHint"></p>
+    <p id="localTranslationStatus" role="status" aria-live="polite"></p><progress id="localTranslationProgress" hidden></progress><span id="localTranslationBytes" hidden></span>
+    <div class="transcription-model-actions local-translation-actions"><button class="settings-btn" id="localTranslationInstall" type="button"></button><button class="settings-btn" id="localTranslationCancel" type="button" data-i18n="common.cancel" hidden></button><button class="settings-btn" id="localTranslationRemove" type="button" data-i18n="settings.localTranslation.remove" hidden></button></div>
+  </div>
+</div>

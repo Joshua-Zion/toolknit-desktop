@@ -21,6 +21,8 @@ pub(super) struct AiProviderNativeRequest {
     messages: Vec<AiProviderNativeMessage>,
     max_tokens: Option<u32>,
     #[serde(default)]
+    temperature: Option<f64>,
+    #[serde(default)]
     timeout_ms: Option<u64>,
     #[serde(default)]
     reasoning_effort: Option<String>,
@@ -116,6 +118,9 @@ fn validate_native_request(request: &AiProviderNativeRequest) -> Result<url::Url
         || request.messages.is_empty()
         || request.messages.len() > AI_PROVIDER_MAX_MESSAGES
         || request
+            .temperature
+            .is_some_and(|value| !value.is_finite() || !(0.0..=2.0).contains(&value))
+        || request
             .max_tokens
             .is_some_and(|value| value == 0 || value > AI_PROVIDER_MAX_TOKENS)
         || request
@@ -182,7 +187,7 @@ fn request_body(request: &AiProviderNativeRequest, endpoint: &url::Url) -> serde
     let mut body = serde_json::json!({
         "model": request.model.trim(),
         "messages": request.messages,
-        "temperature": 0.7,
+        "temperature": request.temperature.unwrap_or(0.7),
         "stream": false,
     });
     if let Some(max_tokens) = request.max_tokens {
@@ -452,6 +457,19 @@ mod tests {
             "maxTokens": 8192, "timeoutMs": 180000, "reasoningEffort":"low"
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn optional_temperature_preserves_defaults_and_bounds() {
+        let mut request = test_request();
+        let endpoint = validate_native_request(&request).unwrap();
+        assert_eq!(request_body(&request, &endpoint)["temperature"], 0.7);
+        request.temperature = Some(0.0);
+        assert_eq!(request_body(&request, &endpoint)["temperature"], 0.0);
+        for value in [-1.0, 3.0, f64::NAN] {
+            request.temperature = Some(value);
+            assert!(validate_native_request(&request).is_err());
+        }
     }
 
     #[tokio::test]
@@ -806,6 +824,7 @@ mod tests {
             }],
             max_tokens: Some(100),
             timeout_ms: None,
+            temperature: None,
             reasoning_effort: None,
             allow_private_http: false,
             diagnostics: false,

@@ -1,6 +1,5 @@
 import { createScreenshotRuntime } from '../platform/screenshot-runtime.js';
 import { createLifecycleScope } from './tool-lifecycle.js';
-export const VISION_KEY = 'toolknit.screenshot.vision-provider.v1';
 // Auxiliary WebViews have isolated storage. Mirror metadata, never credentials.
 export function createScreenshotContextRuntime({ isTauri, getAiPlatformConfig, getLang, onLangChange, notify, translate } = {}) {
   if (!isTauri) return;
@@ -11,9 +10,7 @@ export function createScreenshotContextRuntime({ isTauri, getAiPlatformConfig, g
     timer=setTimeout(()=>{
       if(disposed) return;
       const provider=getAiPlatformConfig();
-      let vision=false;
-      try { vision=localStorage.getItem(VISION_KEY)===JSON.stringify(provider); } catch { /* optional preference */ }
-      void runtime.call('context',{context:{theme:document.documentElement.dataset.theme || 'dark',lang:getLang(),provider,vision}}).catch(()=>{});
+      void runtime.call('context',{context:{theme:document.documentElement.dataset.theme || 'dark',lang:getLang(),provider}}).catch(()=>{});
     },100);
   };
   const observer=new MutationObserver(sync); observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});

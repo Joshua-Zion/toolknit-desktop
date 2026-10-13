@@ -41,7 +41,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 pub(crate) fn copy_screenshot_image(png: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
     #[cfg(windows)]
     {
-        windows::write(&Content::Image { png, width, height }, false, false)
+        windows::write_captured_content(&Content::Image { png, width, height })
     }
     #[cfg(not(windows))]
     {
@@ -55,7 +55,7 @@ pub(crate) fn copy_screenshot_text(text: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        windows::write(&Content::Text { text, rich: false }, false, false)
+        windows::write_captured_content(&Content::Text { text, rich: false })
     }
     #[cfg(not(windows))]
     {
@@ -368,6 +368,13 @@ impl Service {
             Request::Detail { id } => {
                 return serde_json::to_value(lock(&self.store).detail(id)?)
                     .map_err(|_| "clipboard:response-failed".into())
+            }
+            Request::Pin { id } => {
+                let content = lock(&self.store).content(id)?;
+                let Content::Image { png, .. } = content else {
+                    return Err("clipboard:image-invalid".into());
+                };
+                crate::native_runtime::open_clipboard_image(&self.app, png)?;
             }
             Request::Favorite { id, favorite } => {
                 lock(&self.store).favorite(id, favorite)?;

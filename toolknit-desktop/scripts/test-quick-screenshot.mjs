@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createCanvas } from '@napi-rs/canvas';
-import { rectangle, moveRect, resizeRect, resizeAnnotation, windowAt, parseTranslations, formatOcrText, fitText, isPaintStroke, errorKey } from '../src/features/quick-screenshot/core.js';
+import { rectangle, moveRect, resizeRect, resizeAnnotation, windowAt, parseTranslations, formatOcrText, ocrLines, normalizeOcrText, fitText, annotationTextLayout, tightenTextAnnotation, isPaintStroke, errorKey } from '../src/features/quick-screenshot/core.js';
+import { translationBatches, translationBudget, translationBlocks, resolveTranslationBatches, createTranslationRequestBudget, layoutTranslations } from '../src/features/quick-screenshot/translation.js';
 import { composeScreenshot } from '../src/features/quick-screenshot/renderer.js';
 import { createSnapshotHistory } from '../src/shared/snapshot-history.js';
 
@@ -22,6 +23,50 @@ assert.equal(formatOcrText({text:'fallback',lines:[
   {id:3,text:'下一行',x:10,y:80,width:50,height:16}
 ]}), 'hello world\n下一行');
 assert.equal(formatOcrText({text:'fallback'}), 'fallback');
+assert.equal(normalizeOcrText('我 先 检 查 内 容 ，然后运行 git status --short\n下一行'), '我先检查内容，然后运行 git status --short\n下一行');
+const words=[{text:'Hello',x:10,y:10,width:28,height:14},{text:'world',x:40,y:10,width:30,height:14}];
+assert.equal(formatOcrText({lines:[{text:'bad fallback',x:10,y:10,width:60,height:14,words}]}),'Hello world');
+assert.equal(ocrLines({lines:[{id:9,text:'我 先 检 查',x:10,y:10,width:60,height:14},null,{text:'bad',x:0,y:0,width:0,height:0}]}).length,1);
+assert.deepEqual(translationBatches(Array.from({length:81},(_,id)=>({id,text:'hello'}))).map(batch=>batch.length),[12,12,12,12,12,12,9]);
+assert.deepEqual(translationBatches([{id:0,text:'x'.repeat(4000)},{id:1,text:'y'.repeat(3000)}]).map(batch=>batch.length),[1,1]);
+assert.ok(translationBudget([{text:'short'}]) < translationBudget([{text:'x'.repeat(2000)}]));
+assert.ok(translationBudget([{text:'short'}])>=4096,'short text also needs room for reasoning and JSON');
+assert.throws(()=>parseTranslations('[null,null]',lines),/invalid-translation/);
+assert.throws(()=>parseTranslations('broken json',lines),/invalid-translation/);
+const paragraphs=translationBlocks([
+  {id:0,text:'A wrapped',x:10,y:10,width:100,height:16},
+  {id:1,text:'sentence.',x:10,y:32,width:90,height:16},
+  {id:2,text:'- Another item',x:10,y:54,width:120,height:16},
+  {id:3,text:'Separate column',x:240,y:54,width:140,height:16}
+]);
+assert.equal(paragraphs.length,3);assert.equal(paragraphs[0].text,'A wrapped\nsentence.');
+assert.equal(paragraphs[0].height,38);assert.equal(paragraphs[0].fontHeight,16);
+const response=batch=>JSON.stringify(batch.map(line=>({id:line.id,text:`Translated ${line.id}`})));
+const truncated=()=>Object.assign(new Error('truncated'),{code:'response_truncated'});
+const retries=[];
+const recovered=await resolveTranslationBatches(lines,async(batch,tokens)=>{
+  retries.push(tokens);if(retries.length===1)throw truncated();return response(batch);
+});
+assert.equal(recovered.lines.length,2);assert.equal(recovered.failed.length,0);assert.equal(retries[1],16384);
+const splitCalls=[];
+const split=await resolveTranslationBatches(lines,async(batch)=>{
+  splitCalls.push(batch.length);if(batch.length>1)throw truncated();return response(batch);
+});
+assert.deepEqual(splitCalls,[2,2,1,1]);assert.equal(split.lines.length,2);
+const partial=await resolveTranslationBatches(lines,async(batch)=>{
+  if(batch.some(line=>line.id===2))return 'not JSON';return response(batch);
+});
+assert.deepEqual(partial.lines.map(line=>line.id),[1]);assert.equal(partial.failed[0].line.id,2);
+let requests=0;
+const stopped=await resolveTranslationBatches(lines,async()=>{requests++;throw Object.assign(new Error('unauthorized'),{code:'http_error',status:401});});
+assert.equal(requests,1);assert.equal(stopped.failed.length,2);
+const exhausted=await resolveTranslationBatches(lines,async()=>{throw new Error('must not request');},{budget:{requests:24,deadline:100,now:()=>0}});
+assert.equal(exhausted.lines.length,0);assert.equal(exhausted.failed.length,2);
+const timedOut=await resolveTranslationBatches(lines,async()=>{throw new Error('must not request');},{budget:{requests:0,deadline:100,now:()=>100}});
+assert.equal(timedOut.failed[0].error.code,'timeout');
+const cancellation=new AbortController();
+await assert.rejects(()=>resolveTranslationBatches(lines,async()=>{cancellation.abort();return response(lines);},{signal:cancellation.signal}),/aborted/);
+assert.ok(createTranslationRequestBudget().deadline>Date.now());
 assert.equal(formatOcrText({lines:[
   {text:'第二段',x:10,y:100,width:60,height:16},
   {text:'中文',x:10,y:10,width:30,height:16},
@@ -55,6 +100,42 @@ assert.notDeepEqual(pixel(edgeMosaic,2,2),pixel(ctx,2,2),'a mosaic click at the 
 assert.deepEqual(pixel(edgeMosaic,30,30),pixel(ctx,30,30));
 assert.ok(isPaintStroke(stroke)&&isPaintStroke(dot)&&!isPaintStroke({kind:'rectangle'}));
 const fitted=fitText(ctx,'A longer sentence that should wrap',110,90,24);
+const blank=createCanvas(320,200);
+for(const text of ['Short', '中文测试', 'Ágj italic?', 'First line\n第二行', 'First\n\nLast', 'A longer sentence that wraps across several lines']) {
+  const item=tightenTextAnnotation(ctx,{kind:'text',text,x:10,y:10,width:160,height:170,font:28,color:'#ff0000'});
+  const layout=annotationTextLayout(ctx,item);
+  assert.ok(layout.fits && item.width<=160 && item.height<=170,text);
+  assert.deepEqual(tightenTextAnnotation(ctx,item),item,'tightening must be stable across redraws');
+  const rendered=composeScreenshot(blank,{x:0,y:0,width:320,height:200},[item]);
+  const data=rendered.getContext('2d').getImageData(0,0,320,200).data;
+  let left=320,right=0,top=200,bottom=0;
+  for(let y=0;y<200;y++)for(let x=0;x<320;x++)if(data[(y*320+x)*4+3]){
+    left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);
+  }
+  assert.ok(left>=item.x && top>=item.y && right<item.x+item.width && bottom<item.y+item.height,'ink stays inside the selection');
+  assert.ok(item.x+item.width-right<=10 && item.y+item.height-bottom<=6,'selection hugs visible ink');
+}
+const longText=tightenTextAnnotation(ctx,{kind:'text',text:'Long text annotation',x:10,y:10,width:300,height:170,font:28});
+const shortText=tightenTextAnnotation(ctx,{...longText,text:'短',width:300,height:170});
+assert.ok(shortText.width<longText.width/2,'editing to shorter text shrinks its selection');
+const largerText=tightenTextAnnotation(ctx,{...shortText,font:48,width:300,height:170});
+assert.ok(largerText.width>shortText.width && largerText.height>shortText.height,'font changes update both dimensions');
+const narrowText=tightenTextAnnotation(ctx,{...longText,width:70,height:170});
+assert.ok(narrowText.width<=70 && annotationTextLayout(ctx,narrowText).lines.length>1,'resizing wraps text and stays bounded');
+const cover={...longText,cover:true,width:280,height:90};
+assert.deepEqual(tightenTextAnnotation(ctx,cover),cover,'translation cover geometry must remain unchanged');
+assert.throws(()=>tightenTextAnnotation(ctx,{...longText,width:5,height:5}),/text-overflow/);
+const sources=[{id:0,text:'a',x:10,y:10,width:30,height:20},{id:1,text:'b',x:10,y:80,width:120,height:20}];
+const laid=layoutTranslations(ctx,[{id:0,text:'A longer translated sentence'}, {id:1,text:'Next'}],sources,300,200);
+assert.equal(laid.layers.length,2);
+assert.ok(laid.layers[0].width>sources[0].width,'translated boxes expand into free space');
+for(const layer of laid.layers){
+  assert.ok(layer.x>=0 && layer.y>=0 && layer.x+layer.width<=300 && layer.y+layer.height<=200);
+  assert.ok(fitText(ctx,layer.text,layer.width,layer.height,layer.font).fits);
+}
+const crowded=layoutTranslations(ctx,[{id:0,text:'x'.repeat(4000)}],sources,140,110,[{x:42,y:0,width:98,height:110}]);
+assert.equal(crowded.layers.length,0);assert.equal(crowded.skipped.length,1);
+assert.ok(composeScreenshot(source,{x:0,y:0,width:300,height:200},laid.layers.map(layer=>({...layer,kind:'text',cover:true,color:'#111'}))));
 assert.ok(fitted.fits && fitted.lines.length>1);
 assert.equal(fitText(ctx,'x'.repeat(4000),20,10,24).fits,false);
 assert.throws(()=>composeScreenshot(source,crop,[{kind:'text',text:'x'.repeat(4000),x:40,y:20,width:20,height:10,color:'#000',font:24}]),/text-overflow/);
@@ -70,6 +151,10 @@ history.withLock(()=>assert.equal(history.commit(),false));
 const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
 const zh=JSON.parse(read('../src/locales/zh.json')).home.quickScreenshot;
 const en=JSON.parse(read('../src/locales/en.json')).home.quickScreenshot;
+const settingsZh=JSON.parse(read('../src/locales/zh.json')).settings.localTranslation;
+const settingsEn=JSON.parse(read('../src/locales/en.json')).settings.localTranslation;
+assert.deepEqual(Object.keys(settingsZh).sort(),Object.keys(settingsEn).sort());
+for(const key of Object.keys(settingsZh))assert.ok(settingsZh[key]&&settingsEn[key],key);
 assert.deepEqual(Object.keys(zh).sort(),Object.keys(en).sort());
 for(const key of Object.keys(zh)){assert.ok(zh[key] && en[key],key);}
 assert.match(read('../index.html'),/data-tool="quick-screenshot"/);

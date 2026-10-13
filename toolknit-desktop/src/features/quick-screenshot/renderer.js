@@ -1,4 +1,4 @@
-import { fitText, handlePoints, isPaintStroke } from './core.js';
+import { annotationTextLayout, handlePoints, isPaintStroke } from './core.js';
 
 export function createPaintScratch() {
   return { pixels: document.createElement('canvas'), mask: document.createElement('canvas') };
@@ -42,10 +42,10 @@ export function paintAnnotation(ctx, item, source, scratch) {
   if(item.kind==='mosaic')paintMosaic(ctx,item,source,scratch);
   if(item.kind==='text'){
     if(item.cover){ctx.fillStyle=item.background||'#ffffff';ctx.fillRect(x,y,w,h);ctx.fillStyle=item.color;}
-    const fitted=fitText(ctx,item.text,w,h,item.font||28);
+    const fitted=annotationTextLayout(ctx,item);
     ctx.font=`${fitted.size}px sans-serif`;ctx.textBaseline='top';
     const lines=fitted.lines;
-    ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();lines.forEach((line,i)=>ctx.fillText(line,x+2,y+2+i*fitted.size*1.25));
+    ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();lines.forEach((line,i)=>ctx.fillText(line,x+fitted.offsetX,y+fitted.offsetY+i*fitted.size*1.25));
   }
   ctx.restore();
 }
@@ -54,7 +54,7 @@ export function composeScreenshot(source, crop, items, scratch=createPaintScratc
   const ctx=canvas.getContext('2d');ctx.drawImage(source,crop.x,crop.y,crop.width,crop.height,0,0,canvas.width,canvas.height);
   ctx.save();ctx.translate(-crop.x,-crop.y);
   for(const item of items){
-    if(item.kind==='text'&&!fitText(ctx,item.text,item.width,item.height,item.font||28).fits)throw new Error('screenshot:text-overflow');
+    if(item.kind==='text'&&!annotationTextLayout(ctx,item).fits)throw new Error('screenshot:text-overflow');
     paintAnnotation(ctx,item,source,scratch);
   }
   ctx.restore();return canvas;

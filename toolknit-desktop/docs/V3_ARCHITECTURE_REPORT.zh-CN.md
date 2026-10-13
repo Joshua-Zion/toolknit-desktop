@@ -1,5 +1,13 @@
 # ToolKnit Desktop V3.0 架构迁移报告
 
+> 2026-10-13 截图交互增量：普通文字的字形度量与选框收紧归 screenshot core，绘制/导出复用同一布局；译文覆盖保留块范围。保存成功打开位置由辅助窗口先结束 capture，再调用既有输出 runtime；viewer 不退出。剪贴板 `pin` action 仅传整数记录 ID，原生 clipboard service 从加密存储读取 PNG，经内部 native runtime 桥复用截图查看器，feature 不互相导入。新增生成式内部 DOM `clipboardOpenPinned`；静态 HTML ID 仍为 1446，无重复，命令/事件/存储及 CLI/MCP 不变。Rust 213 测试（206 passed/7 ignored）、架构/构建/核心契约、Edge 截图 8 场景和剪贴板双主题/中英文回归通过；实际 Explorer 选中文件与原生置顶窗口尚待安装后验收。本轮未重新打包。
+
+> 本轮补充：完整发布回归 100 项 npm 脚本通过（安全 1329 项、CLI/MCP、架构、构建和产物审计），集成检查无缺失工具/翻译键。维护复盘：跨工具入口共享原生服务、只传存储 ID；普通文字选框按实际字形验证，浏览器点击选框内部需避开八点节点命中区。
+
+> 2026-10-13 后续修复：截图新内容与历史回放在 `clipboard_history/windows.rs` 写入边界区分，复用格式转换，不绕开监控过滤。翻译下载源选择归 app settings runtime，固定源与有界失败切换归 native installer；安装 request 兼容新增可选 `source`，进度新增来源，不新增命令/事件/storage key。新增两个内部 DOM ID，当前 HTML ID 1446 无重复；Rust 212 测试（205 passed/7 ignored）。双主题安装管理 12 场景与隔离 Windows 原生监听通过；完整发布回归 100 项 npm 脚本（含安全 1329 项、CLI/MCP、架构、构建与产物审计）及共享主题浏览器全套通过，包含依赖弹框 48 布局。源码范围、源可用性和安装包限制见根日志与截图维护说明。
+
+> 2026-10-13 V3.1 增量：截图移除手动视觉声明；OCR 预处理与坐标映射归 native domain，词框行文整理归 core；段落分批/预算、截断恢复和安全布局归 feature `translation.js`，控制器编排依赖门禁、可选 AI 图像校正、本地翻译、缓存与取消。新增 `native_runtime/local_translation/` 持有固定引擎/模型下载校验、原子安装、有界翻译、进程与会话权限；`platform/local-translation-runtime.js` 提供 adapter，`app/local-translation-runtime.js` 持有设置管理，组合根仅接线。新增 `local_translation` command、进度/状态事件及原生目标语言偏好；CLI/MCP 不变。共享 AI 可选 temperature 默认兼容。当前 71 工具/12 分类/46 CLI/MCP，145 command 实现/144 唯一名称、1444 HTML ID 无重复、209 Rust 测试（202 passed/7 ignored）。完整发布回归 100 项、截图浏览器 8 场景和设置安装 4 场景通过；真实下载/双向本地试译及进程退出验证通过，真实 OCR 四样本矩阵此前通过。模型不进主包，实测与外部 AI 延迟限制见[截图维护说明](QUICK_SCREENSHOT.zh-CN.md)。
+
 > 2026-10-12 V3.1 增量：新增 AI 分类 `quick-screenshot`，独立 feature 持有工作台、截图编辑器、置顶查看器和可选历史悬浮窗，平台 adapter 与原生 `quick_screenshot` domain 持有系统能力；组合根仅装配上下文同步。复用工具导航、弹框、Toast、输出、AI 请求与有容量边界的 snapshot history，PDF 编辑器保留旧 history 导出契约。当前 71 个工具、12 分类（AI 6 项）、46 CLI/MCP，Tauri command 144 个实现/143 个唯一名称，HTML ID 1433 个、无重复，Rust 201 个测试。新增 command、事件、偏好及辅助 WebView 的角色权限边界见[快速截图维护说明](QUICK_SCREENSHOT.zh-CN.md)。历史窗在原 feature/native 边界内隔离 capture 会话事件，图片解码成功再更新并支持失败重试；新圆形 Logo 和展开后的标题区域均可拖动、点击展开约四张截图、×/Escape 收起后锚点跟随面板位移，历史最多 10 张/64 MiB。Windows 每次切换只提交一次位置/尺寸，移除逐帧宽度循环，380ms 展开与 260ms 收起由内部裁切动画完成，无新增命令或事件。截图恢复共用不激活、不改变层级的 Windows 路径，保留主应用最小化状态；历史窗显示不抢焦点。共享导航 title 可省略，查看器去除右侧重复标题，既有调用保持兼容。双主题/DPR 浏览器 8 场景、构建、架构、完整发布回归及 Rust 全量通过；两个真实 Windows 捕获/OCR smoke 此前通过，本轮未重跑。新悬浮窗实际动画、安装后热键、多屏 DPI、真实 AI 与长期窗口交互尚待桌面回归。下文保留历史统计。
 
 > 2026-10-11 设置/首页增量：`home-explorer-runtime.js` 通过现有 settings controller 持有 `toolknit_home_lazy_load`，默认每批显示 12 个工具，关闭仅改变卡片展示，不预加载工具模块。新增 `homeLazyLoadToggle` / `homeLazyLoadStatus`，当前 HTML ID 1433 个、无重复；工具/分类/CLI/MCP 数量及原生命令不变。支持作者控制器复用 modal session，以当前背景页层级覆盖并恢复交互/焦点；共享开关兼容 aria 状态，首页文字样式排除共享图标容器。双主题首页/设置与五类代表工具导航浏览器回归通过。

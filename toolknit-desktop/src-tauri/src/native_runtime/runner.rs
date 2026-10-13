@@ -22,11 +22,13 @@ pub fn run() {
         .manage(WindowCornerRadiusState::default())
         .manage(AutostartState::default())
         .manage(quick_screenshot::ScreenshotState::default())
+        .manage(local_translation::TranslationState::default())
         .manage(crate::clipboard_history::ClipboardHistoryState::default())
         .manage(onnx_segmenter::MattingState::default())
         .manage(TeleprompterRecognitionState::default())
         .invoke_handler(tauri::generate_handler![
             quick_screenshot::quick_screenshot,
+            local_translation::local_translation,
             crate::clipboard_history::clipboard_history,
             crate::clipboard_history::copy_sensitive_text,
             open_url,
@@ -302,6 +304,9 @@ pub fn run() {
         .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                local_translation::shutdown(app);
+            }
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 crate::clipboard_history::on_exit_requested(app, &api, code);
             }

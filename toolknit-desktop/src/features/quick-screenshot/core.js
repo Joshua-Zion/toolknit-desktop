@@ -31,11 +31,13 @@ export function windowAt(desktop, point) {
   return rectangle({x:r.x-desktop.bounds.x,y:r.y-desktop.bounds.y},{x:r.x+r.width-desktop.bounds.x,y:r.y+r.height-desktop.bounds.y},desktop.bounds.width,desktop.bounds.height);
 }
 export function parseTranslations(raw, lines) {
-  const value = JSON.parse(String(raw).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
+  let value;
+  try { value = JSON.parse(String(raw).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')); }
+  catch { throw new Error('screenshot:invalid-translation'); }
   if (!Array.isArray(value) || value.length !== lines.length) throw new Error('screenshot:invalid-translation');
   const mapped=new Map();
   for (const item of value) {
-    if (!Number.isInteger(item.id) || mapped.has(item.id) || !lines.some(l=>l.id===item.id) || typeof item.text!=='string' || !item.text.trim() || item.text.length>4000) throw new Error('screenshot:invalid-translation');
+    if (!item || !Number.isInteger(item.id) || mapped.has(item.id) || !lines.some(l=>l.id===item.id) || typeof item.text!=='string' || !item.text.trim() || item.text.length>4000) throw new Error('screenshot:invalid-translation');
     mapped.set(item.id,item.text.trim());
   }
   return lines.map(line=>({...line,text:mapped.get(line.id)}));
@@ -54,16 +56,52 @@ export function fitText(ctx, text, width, height, preferred=28) {
   do { ctx.font=`${size}px sans-serif`; lines=textLines(ctx,text,Math.max(1,width-4)); if (lines.length*size*1.25<=height-4 || size<=8) break; size--; } while (true);
   return {size,lines,fits:lines.length*size*1.25<=height-4 && lines.every(line=>ctx.measureText(line).width<=width-4)};
 }
+export function annotationTextLayout(ctx, item) {
+  if (item.cover) return { ...fitText(ctx,item.text,item.width,item.height,item.font||28), offsetX:2,offsetY:2 };
+  const size=clamp(item.font||28,8,120);
+  ctx.font=`${size}px sans-serif`;ctx.textBaseline='top';
+  const lines=textLines(ctx,item.text,Math.max(1,item.width-4));
+  let left=0,right=0,top=Infinity,bottom=-Infinity;
+  lines.forEach((line,index)=>{
+    const metrics=ctx.measureText(line), y=index*size*1.25;
+    left=Math.min(left,-(metrics.actualBoundingBoxLeft||0));
+    right=Math.max(right,metrics.width,metrics.actualBoundingBoxRight||0);
+    top=Math.min(top,y-(metrics.actualBoundingBoxAscent||0));
+    bottom=Math.max(bottom,y+(Number.isFinite(metrics.actualBoundingBoxDescent)&&line?metrics.actualBoundingBoxDescent:size));
+  });
+  const width=Math.ceil(right-left)+4,height=Math.ceil(bottom-top)+4;
+  return {size,lines,width,height,offsetX:2-left,offsetY:2-top,fits:width<=item.width&&height<=item.height};
+}
+export function tightenTextAnnotation(ctx, item) {
+  if(item.cover)return item;
+  for(let font=clamp(item.font||28,8,120);font>=8;font--){
+    const layout=annotationTextLayout(ctx,{...item,font});
+    if(layout.fits)return {...item,font,width:layout.width,height:layout.height};
+  }
+  throw new Error('screenshot:text-overflow');
+}
 function hasCjk(value) { return /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7a3]/u.test(value); }
+export function normalizeOcrText(value) {
+  // Remove OCR-inserted CJK spaces, retaining code/Latin spacing and line breaks.
+  return String(value || '').replace(/([\u3040-\u30ff\u3400-\u9fff])[ \u00a0]+(?=[\u3040-\u30ff\u3400-\u9fff，。！？；：、）】》])/gu, '$1')
+    .replace(/([（【《])[ \u00a0]+(?=[\u3400-\u9fff])/gu, '$1').trim();
+}
+export function ocrLines(result) {
+  return (Array.isArray(result?.lines) ? result.lines : []).filter(line => line && typeof line.text === 'string')
+    .slice().sort((a,b) => a.y-b.y || a.x-b.x).map((line, index) => ({
+    ...line, id: index,
+    text: normalizeOcrText(Array.isArray(line.words) && line.words.length ? joinOcrLine(line.words) : line.text)
+  })).filter(line => line.text && [line.x,line.y,line.width,line.height].every(Number.isFinite) && line.width > 0 && line.height > 0);
+}
 function joinOcrLine(lines) {
   return lines.reduce((result, line, index) => {
-    const text = String(line.text || '').trim();
+    const text = normalizeOcrText(line.text);
     if (!text) return result;
     if (!result) return text;
     const previous = lines[index - 1];
     const gap = Number(line.x) - (Number(previous.x) + Number(previous.width));
     const height = Math.max(1, Math.min(Number(previous.height) || 16, Number(line.height) || 16));
-    const needsSpace = gap > Math.max(3, height * 0.18)
+    const needsSpace = gap > 0
       && !hasCjk(result.slice(-1)) && !hasCjk(text.slice(0, 1))
       && !/^[,.;:!?%)\]}]/.test(text) && !/[([{]$/.test(result);
     const columnGap = gap > height * 2;
@@ -71,11 +109,12 @@ function joinOcrLine(lines) {
   }, '');
 }
 export function formatOcrText(result) {
-  const fallback = String(result?.text || '').trim();
+  const fallback = normalizeOcrText(result?.text);
   const lines = Array.isArray(result?.lines)
     ? result.lines.filter(line => typeof line?.text === 'string' && line.text.trim())
       .map((line, index) => ({
         ...line,
+        text: normalizeOcrText(Array.isArray(line.words) && line.words.length ? joinOcrLine(line.words) : line.text),
         id: Number.isInteger(line.id) ? line.id : index,
         x: Number(line.x), y: Number(line.y), width: Number(line.width), height: Number(line.height)
       }))
@@ -105,6 +144,7 @@ export function formatOcrText(result) {
   }).join('').trim() || fallback;
 }
 export function errorKey(error) {
+  if(String(error?.message||error).startsWith('translation:'))return ({'not-installed':'localMissing','cancelled':'cancelled','timeout':'localTimeout','busy':'busy','desktop-only':'desktopOnly'})[String(error?.message||error).slice(12)]||'localFailure';
   const code=String(error?.code || error?.message || error).replace(/^screenshot:/,'');
   if (code==='text-overflow') return 'textOverflow';
   if (code==='annotation-limit') return 'annotationLimit';

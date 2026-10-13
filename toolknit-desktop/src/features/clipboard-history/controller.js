@@ -87,7 +87,7 @@ export function createClipboardHistoryController({ overlay, isTauri = false, cli
     if (detail.kind === 'image' && detail.image?.startsWith('data:image/png;base64,')) { const image = node('img'); image.src = detail.image; image.alt = tr('typeImage'); q('Preview').append(image); }
     if (detail.kind === 'files') { const list = node('ul'); for (const path of detail.paths) list.append(node('li', '', path)); q('Preview').append(list); }
     q('DetailNote').textContent = detail.rich ? tr('richNote') : detail.kind === 'files' ? tr('filesNote') : '';
-    for (const id of ['SaveImage', 'Zoom']) q(id).hidden = detail.kind !== 'image';
+    for (const id of ['SaveImage', 'Zoom', 'OpenPinned']) { q(id).hidden = detail.kind !== 'image'; q(id).disabled = busy; }
     q('CopyPaths').hidden = detail.kind !== 'files'; q('Copy').disabled = busy;
     q('Favorite').setAttribute('aria-pressed', String(detail.favorite));
     q('Favorite').querySelector('span').textContent = tr(detail.favorite ? 'unfavorite' : 'favorite');
@@ -123,7 +123,7 @@ export function createClipboardHistoryController({ overlay, isTauri = false, cli
   }
   async function mutate(request, { reload = false } = {}) {
     if (busy || !session || !runtime.available) return false;
-    const owner = session; busy = true; statusRevision++; clearError(); renderStatus();
+    const owner = session; busy = true; statusRevision++; clearError(); renderStatus(); renderDetail();
     try {
       const result = await runtime.request(request);
       if (!current(owner)) return false;
@@ -196,6 +196,7 @@ export function createClipboardHistoryController({ overlay, isTauri = false, cli
   listen('DetailBack', 'click', () => { overlay.classList.remove('has-detail'); });
   listen('Copy', 'click', async () => { if (detail && await mutate({ action: 'copy', id: detail.id })) { notify(tr('copied')); if (detail) void selectEntry(detail.id); } });
   listen('CopyPaths', 'click', async () => { if (detail && await mutate({ action: 'copy', id: detail.id, paths: true })) notify(tr('copied')); });
+  listen('OpenPinned', 'click', async () => { if (detail?.kind === 'image') await mutate({ action: 'pin', id: detail.id }); });
   listen('Favorite', 'click', async () => { if (!detail) return; const id = detail.id; if (await mutate({ action: 'favorite', id, favorite: !detail.favorite }, { reload: true })) await selectEntry(id); });
   const deleteItems = ids => confirm('deleteTitle', 'deleteDescription', async () => { if (!await mutate({ action: 'delete', ids }, { reload: true })) return false; if (ids.includes(detail?.id)) { detail = null; renderDetail(); } return true; });
   listen('Delete', 'click', () => { if (detail) deleteItems([detail.id]); }); listen('DeleteSelected', 'click', () => deleteItems([...selected]));

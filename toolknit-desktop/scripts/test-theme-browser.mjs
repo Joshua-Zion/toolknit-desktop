@@ -34,6 +34,12 @@ const settled = () => page.waitForFunction(() => {
   const veil = document.querySelector('[data-tk-page-transition-veil]');
   return !veil || getComputedStyle(veil).visibility === 'hidden';
 });
+const settingsTypeSizes = () => page.locator('#settingsOverlay').evaluate(overlay => {
+  const selectors = ['.settings-v2-poster h1', '.settings-v2-poster p', '.settings-v2-head h2',
+    '.settings-v2-btn', '.settings-v2-choice', '.settings-v2-link-card', '.settings-v2-hint',
+    '.settings-v2-path', '.settings-v2-toggle-copy strong', '.settings-v2-toggle-copy span'];
+  return Object.fromEntries(selectors.map(selector => [selector, getComputedStyle(overlay.querySelector(selector)).fontSize]));
+});
 async function settings() { await page.locator('#homeV2Settings').click(); await settled(); }
 async function home() { await page.locator('#settingsBack').click(); await settled(); }
 async function select(theme) {
@@ -74,6 +80,11 @@ async function checkSettingsLayout() {
     const first = cards[0].getBoundingClientRect();
     const language = [...overlay.querySelectorAll('.lang-options .lang-option')].map(n => n.getBoundingClientRect());
     const failures = [];
+    const models = overlay.querySelector('#offlineModelSummary').closest('article').getBoundingClientRect();
+    const matting = overlay.querySelector('#mattingModelStatus').closest('article').getBoundingClientRect();
+    const grid = overlay.querySelector('.settings-v2-grid').getBoundingClientRect();
+    if (Math.abs(models.width - matting.width) > 1 || Math.abs(matting.right - grid.right) > 1
+      || (innerWidth > 720 && Math.abs(models.top - matting.top) > 1)) failures.push('model cards equal width and right alignment');
     for (const card of cards) {
       const box = card.getBoundingClientRect();
       const style = getComputedStyle(card);
@@ -153,6 +164,7 @@ try {
     return [s.backgroundColor, s.backgroundImage, s.color, s.borderRadius];
   });
   await capture('dark-settings');
+  const darkTypeSizes = await settingsTypeSizes();
   done('fresh light theme, switching to dark and settings controls');
 
   // A generated local video exercises playback without user files or downloads.
@@ -189,7 +201,7 @@ try {
   assert.equal(await color('.settings-v2-poster'), 'rgb(231, 232, 234)');
   assert.equal(await page.locator('.settings-v2-poster').evaluate(n => getComputedStyle(n, '::before').display), 'none');
   assert.match(await color('#settingsOverlay .settings-content', 'backgroundImage'), /linear-gradient/);
-  assert.equal(await color('.settings-v2-head h2', 'fontSize'), '20px');
+  assert.deepEqual(await settingsTypeSizes(), darkTypeSizes, 'light settings reuse dark typography sizes');
   assert.equal(await color('.settings-v2-path'), 'rgba(0, 0, 0, 0)', 'status text does not introduce nested cards');
   await checkSettingsLayout();
   await page.locator('.settings-v2-layout').evaluate(n => { n.scrollTop = 0; });

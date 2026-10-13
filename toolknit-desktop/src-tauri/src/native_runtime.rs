@@ -42,6 +42,8 @@ use system_runtime::*;
 mod office;
 use office::{libreoffice_candidates, LibreOfficeRuntimeInfo};
 mod quick_screenshot;
+pub(crate) use quick_screenshot::open_clipboard_image;
+mod local_translation;
 mod runner;
 pub use runner::run;
 use runner::{minimize_main_window, show_main_window};

@@ -125,6 +125,17 @@ const content = await requestAiCompletion({
 assert.equal(content, 'World');
 assert.equal(sentBody.max_tokens, 100);
 assert.equal(sentBody.stream, false);
+assert.equal(sentBody.temperature, 0.7);
+for (const temperature of [0, 1.2]) {
+  await requestAiCompletion({...request, temperature, fetchImpl:async(_url,options)=>{
+    assert.equal(JSON.parse(options.body).temperature,temperature);
+    return new Response(JSON.stringify({choices:[{message:{content:'ok'}}]}));
+  }});
+  await requestAiCompletion({...request,temperature,nativeRequestImpl:async value=>{
+    assert.equal(value.temperature,temperature);return {content:'ok'};
+  }});
+}
+for (const temperature of [-1,3,NaN,'0']) await assert.rejects(requestAiCompletion({...request,temperature}),error=>error.code==='invalid_request');
 
 let errorTextRead = false;
 await assert.rejects(
