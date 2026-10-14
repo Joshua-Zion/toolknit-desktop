@@ -40,7 +40,7 @@ use media_runtime::*;
 pub(super) mod system_runtime;
 use system_runtime::*;
 mod office;
-use office::{libreoffice_candidates, LibreOfficeRuntimeInfo};
+use office::LibreOfficeRuntimeInfo;
 mod quick_screenshot;
 pub(crate) use quick_screenshot::open_clipboard_image;
 mod local_translation;

@@ -107,8 +107,18 @@ pub(super) async fn translate(dir:&Path,state:&TranslationState,texts:&[String],
     #[test] fn translation_preserves_already_target_text_and_numbers(){assert!(already_target("Hello", "en"));assert!(already_target("你好", "zh-Hans"));assert!(!already_target("你好世界", "en"));assert!(!already_target("Hello world", "zh-Hans"));assert!(already_target("12345", "zh-Hans"));}
     #[tokio::test] #[ignore = "Downloads and executes the pinned optional local translation engine"]
     async fn translation_real_install_and_bidirectional_smoke(){
-        let state=TranslationState::default();let root=root().unwrap();
-        if !complete(&installed(&root)){install::install(&root,&state,DownloadSource::Auto,|p|{if p.phase!="download" {println!("{}",p.phase);}}).await.unwrap();}
+        let state=TranslationState::default();
+        let root=std::env::temp_dir().join(format!("toolknit-translation-smoke-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        if !complete(&installed(&root)) {
+            let last=Mutex::new((String::new(),0));
+            tokio::time::timeout(Duration::from_secs(600),install::install(&root,&state,DownloadSource::Auto,|p|{
+                let mut last=last.lock().unwrap();
+                if last.0 != format!("{}:{}",p.phase,p.source) || p.received.saturating_sub(last.1)>10*1024*1024 {
+                    println!("{} {} {}/{}",p.phase,p.source,p.received,p.total);
+                    *last=(format!("{}:{}",p.phase,p.source),p.received);
+                }
+            })).await.expect("real install exceeded 600 seconds").unwrap();
+        }
         let started=Instant::now();let cancel=AtomicBool::new(false);
         let texts=vec!["This application processes your files locally.".into(),"Select a screenshot to translate the text.".into()];
         let result=translate(&installed(&root),&state,&texts,"zh-Hans",&cancel).await.unwrap();
@@ -122,5 +132,6 @@ pub(super) async fn translate(dir:&Path,state:&TranslationState,texts:&[String],
         assert_eq!(result.len(),20);assert!(result.iter().all(|s|s.chars().any(is_han)));
         let endpoint=state.engine.lock().await.as_ref().unwrap().endpoint.clone();
         drop(state);assert!(reqwest::Client::builder().no_proxy().build().unwrap().post(endpoint).send().await.is_err());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

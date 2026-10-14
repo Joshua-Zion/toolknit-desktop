@@ -828,7 +828,7 @@
               } catch (error) {
                 transcriptionModelProgress.delete(model.id);
                 renderTranscriptionModels();
-                window.showToast?.(String(error));
+                window.showToast?.(dependencyErrorMessage(error));
               }
             });
             actions.append(install);
@@ -952,7 +952,7 @@
               ffmpegRuntimeProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: 0 }; renderFfmpegRuntime();
               const { invoke } = await tauriCorePromise; await invoke('download_ffmpeg_runtime', { source: resolvedFfmpegDownloadSource() });
               ffmpegRuntimeProgress = null; await refreshFfmpegRuntime();
-            } catch (error) { ffmpegRuntimeProgress = null; renderFfmpegRuntime(); window.showToast?.(String(error?.message || error)); }
+            } catch (error) { ffmpegRuntimeProgress = null; renderFfmpegRuntime(); window.showToast?.(dependencyErrorMessage(error)); }
           });
           actions.append(install);
         }
@@ -1181,7 +1181,7 @@
 
       function resolvedModelDownloadSource() {
         if (transcriptionDownloadSource !== 'auto') return transcriptionDownloadSource;
-        return getLang() === 'en' ? 'official' : 'china';
+        return getLang() === 'en' ? 'auto-official' : 'auto-china';
       }
 
       // Shared dependency helpers own the field mapping and progress labels.
@@ -1647,7 +1647,7 @@
         if (mattingDownloadPromise) return mattingDownloadPromise;
         const operation = (async () => {
           const { invoke } = await tauriCorePromise;
-          await invoke('download_matting_model', { modelId: 'modnet', source });
+          await invoke('download_matting_model', { modelId: 'modnet', source: source === 'auto' ? (getLang() === 'en' ? 'auto-official' : 'auto-china') : source });
           await invoke('set_current_matting_model', { modelId: 'modnet' });
         })();
         mattingDownloadPromise = operation;
@@ -1764,7 +1764,7 @@
                   await handler();
                 } catch (error) {
                   console.error('[BgRemoval] matting model action failed:', error);
-                  window.showToast?.(t('settings.mattingActionFailed'));
+                  window.showToast?.(String(error).includes('dependency-download:') ? dependencyErrorMessage(error) : t('settings.mattingActionFailed'));
                 } finally {
                   button.disabled = false;
                   queueMattingManagerRender();

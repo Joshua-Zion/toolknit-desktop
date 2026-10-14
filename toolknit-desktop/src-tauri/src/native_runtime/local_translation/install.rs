@@ -1,4 +1,5 @@
 use super::*;
+use crate::platform::dependency_download;
 use std::io::{Read, Write};
 use tokio::io::AsyncWriteExt;
 
@@ -13,10 +14,26 @@ async fn download(client: &reqwest::Client, url: &str, source: &str, path: &Path
         *received+=size;report(Progress{phase:"download".into(),received:*received,total:DOWNLOAD_BYTES,source:source.into()});return Ok(());
     }
     let part=path.with_extension("part");
-    let mut response=network(client.get(url).send(), &state.install_cancel, Duration::from_secs(20)).await?;
-    if !response.status().is_success()||response.content_length().is_some_and(|n|n!=size){return Err("translation:download".into());}
-    let mut output=tokio::fs::File::create(&part).await.map_err(|_|"translation:storage")?;
-    let mut count=0u64;
+    let metadata = match std::fs::symlink_metadata(&part) {
+        Ok(meta) => {
+            if !regular_size(&part, meta.len()) { return Err("translation:storage".into()); }
+            Some(meta)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return Err("translation:storage".into()),
+    };
+    let mut count=metadata.map(|m|m.len()).unwrap_or(0);
+    if count > size || (count == size && hash_file(&part).await? != hash) {
+        std::fs::remove_file(&part).map_err(|_|"translation:storage")?;
+        count=0;
+    }
+    if count < size {
+    let mut request=client.get(url);
+    if count>0 { request=request.header(reqwest::header::RANGE,format!("bytes={count}-")); }
+    let mut response=network(request.send(), &state.install_cancel, Duration::from_secs(20)).await?;
+    count=dependency_download::response_offset(&response,count,size).map_err(|_|"translation:download")?;
+    let mut output=tokio::fs::OpenOptions::new().create(true).write(true)
+        .append(count>0).truncate(count==0).open(&part).await.map_err(|_|"translation:storage")?;
     let mut last_report=Instant::now();
     while let Some(chunk)=network(response.chunk(), &state.install_cancel, Duration::from_secs(20)).await? {
         check_cancel(&state.install_cancel)?;count+=chunk.len() as u64;
@@ -28,7 +45,12 @@ async fn download(client: &reqwest::Client, url: &str, source: &str, path: &Path
         }
     }
     output.flush().await.map_err(|_|"translation:storage")?;drop(output);
-    if count!=size||hash_file(&part).await?!=hash {return Err("translation:checksum".into());}
+    }
+    if count!=size { return Err("translation:download".into()); }
+    if hash_file(&part).await?!=hash {
+        std::fs::remove_file(&part).map_err(|_|"translation:storage")?;
+        return Err("translation:checksum".into());
+    }
     check_cancel(&state.install_cancel)?;
     if path.exists(){std::fs::remove_file(path).map_err(|_|"translation:storage")?;}
     std::fs::rename(part,path).map_err(|_|"translation:storage")?;
@@ -103,6 +125,38 @@ pub(super) async fn install(root: &Path,state: &TranslationState,source: Downloa
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+
+    #[tokio::test]
+    async fn translation_resumes_partial_and_reuses_completed_partial() {
+        use tokio::io::AsyncReadExt;
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address=listener.local_addr().unwrap();
+        let server=tokio::spawn(async move {
+            let (mut stream,_)=listener.accept().await.unwrap();
+            let mut request=[0;2048];
+            let n=stream.read(&mut request).await.unwrap();
+            assert!(String::from_utf8_lossy(&request[..n]).to_lowercase().contains("range: bytes=2-"));
+            stream.write_all(b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 2-3/4\r\nContent-Length: 2\r\nConnection: close\r\n\r\nod").await.unwrap();
+        });
+        let root=std::env::temp_dir().join(format!("toolknit-translation-resume-{}",std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path=root.join("engine");
+        let hash=format!("{:x}",Sha256::digest(b"good"));
+        let client=reqwest::Client::builder().no_proxy().build().unwrap();
+        let state=TranslationState::default();
+        let mut received=0;
+        std::fs::write(path.with_extension("part"),b"go").unwrap();
+        download(&client,&format!("http://{address}/good"),"test",&path,4,&hash,&state,&mut received,&|_|{}).await.unwrap();
+        server.await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(),b"good");
+        assert_eq!(received,4);
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(path.with_extension("part"),b"good").unwrap();
+        download(&client,"http://127.0.0.1:1/unreachable","test",&path,4,&hash,&state,&mut received,&|_|{}).await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(),b"good");
+        assert_eq!(received,8);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[tokio::test]
     async fn translation_download_fallback_cache_and_failure_boundaries() {
