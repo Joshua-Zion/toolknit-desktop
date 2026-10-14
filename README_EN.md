@@ -1,437 +1,114 @@
 <div align="center">
 
-<img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop — ToolKnit spider web hero" width="100%" />
+<img src="assets/readme/v3.1/01-hero.webp" alt="ToolKnit Desktop: a boy and his head-perched spider make everyday desktop work simpler" width="100%" />
 
-<h1>ToolKnit Desktop 3.1</h1>
+# ToolKnit Desktop 3.1
 
-<p><strong>Local file workbench · Desktop, web, and AI Agent workflows</strong></p>
+**One toolbox for the little tasks scattered across your desktop.**
 
-<p>
-  Bring PDF, PPT, image, audio/video, Markdown, developer, and AI work into one clear, reliable, reusable tool system.
-</p>
+71 desktop tools · 12 categories · Local file workflows · CLI / MCP
 
-<p>
-  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/Primary%20entry-ToolKnit.com-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open ToolKnit.com" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/Desktop-Windows%20download-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Download the Windows desktop app" /></a>
-  <a href="#cli--mcp--agent"><img src="https://img.shields.io/badge/CLI%20%2B%20MCP-Agent%20workflow-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="CLI and MCP Agent workflow" /></a>
-</p>
-
-<p>
-  <a href="README.md"><img src="https://img.shields.io/badge/Language-Simplified%20Chinese-475569?style=for-the-badge&labelColor=334155" alt="Simplified Chinese README" /></a>
-  <img src="https://img.shields.io/badge/Version-3.1.0%20Preview-0f766e?style=for-the-badge&labelColor=115e59" alt="ToolKnit Desktop 3.1.0 preview" />
-  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
-  <img src="https://img.shields.io/badge/Local--first-Files%20stay%20local-0f766e?style=for-the-badge" alt="Local-first" />
-  <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-334155?style=for-the-badge" alt="PolyForm Noncommercial license" /></a>
-</p>
-
-<p>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers"><img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Stars&color=f59e0b" alt="GitHub stars" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/network/members"><img src="https://img.shields.io/github/forks/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Forks&color=64748b" alt="GitHub forks" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/issues"><img src="https://img.shields.io/github/issues/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Issues&color=ef4444" alt="GitHub issues" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/graphs/contributors"><img src="https://img.shields.io/github/contributors/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Contributors&color=8b5cf6" alt="GitHub contributors" /></a>
-</p>
+[Download for Windows](https://toolknit.com/exe.html) · [Open the web app](https://toolknit.com) · [简体中文](README.md)
 
 </div>
 
-<p align="center">
-  <a href="#whats-new-in-30">What's new</a> ·
-  <a href="#complete-tool-catalog">71 tools</a> ·
-  <a href="#local-first-privacy-boundaries">Privacy</a> ·
-  <a href="#run-from-source">Run from source</a> ·
-  <a href="#cli--mcp--agent">CLI / MCP</a>
-</p>
-
-<table cellpadding="18" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/WEB-ToolKnit.com-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="ToolKnit.com web version" /> <strong>Start with the web version</strong></p>
-      <p>No installation required. Open the official web version in your browser.</p>
-      <p><a href="https://toolknit.com"><strong>Open ToolKnit.com</strong></a></p>
-      <sub>Ideal for a quick start, cross-platform access, or situations where a desktop install is not convenient.</sub>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>Use the desktop app</strong></p>
-      <p>A local-first Windows app for long-running file work, offline processing, and visual editing.</p>
-      <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>View desktop downloads</strong></a></p>
-      <sub>Get Windows installers, SHA-256 checksums, and full release notes from GitHub Releases.</sub>
-    </td>
-  </tr>
-</table>
-
-## ToolKnit 3.1 Preview
-
-ToolKnit Desktop 3.1 preview is a local file workbench for Windows. It brings everyday file processing, image and Markdown creation, developer tools, AI content production, professional document workflows, and IDE Agent automation into one product system. V3.1 is not released; V3.0 remains the latest public release.
-
-The desktop app provides a visual workbench. Automation-ready capabilities are also available through the CLI and MCP Agents, while the web app offers access without installation. Each interface has its own documented feature catalog.
-
-<table width="100%" cellpadding="14" cellspacing="0">
-  <tr>
-    <td align="center"><h3>71</h3><strong>Desktop tools</strong></td>
-    <td align="center"><h3>12</h3><strong>Categories</strong></td>
-    <td align="center"><h3>46</h3><strong>MCP capabilities</strong></td>
-    <td align="center"><h3>3</h3><strong>Ways to work</strong></td>
-    <td align="center"><h3>Windows</h3><strong>Launch platform</strong></td>
-    <td align="center"><h3>Local-first</h3><strong>Privacy model</strong></td>
-  </tr>
-</table>
-
-## What's new in 3.0
-
-Compared with v2.3.1, V3.0 expands the desktop catalog from 65 to 68 tools, retaining 12 categories and 46 CLI/MCP capabilities. It also improves both themes, PDF/PPT workflows, cleanup safety, and startup behavior.
-
-### New tools
-
-- `PDF Text to Markdown`: extract selectable PDF text locally without an AI key, reconstruct basic structure, retain page references, and continue editing in the existing Markdown editor. Scanned documents are directed to the AI vision tool.
-- `AI PDF to Markdown`: analyze pages with a vision model, assemble structured Markdown, and retain source-page references, a document summary, retry, and cancellation.
-- `Windows Clipboard History`: explicitly enable monitoring to record subsequent text, PNG images, and file paths in a timeline with search, filters, favorites, image previews, and local encryption. Existing Win+V history is not imported, and monitoring stops when the app exits.
-
-### Improvements across the app
-
-- `Light and dark themes`: consistent empty, upload, processing, result, error, focus, and disabled states across tools, settings, and help. Startup and theme transitions reduce visible font and layout changes.
-- `PDF and PPT workbenches`: shared previews, page selection, export controls, and result dialogs; PDF page editing and undo/redo; richer PPT outlines, editable drafts, and local image assets.
-- `AI workflows`: clearer outline explanations, local image assets, and editable PPTX drafts, with shared key validation, error recovery, and output checks across writing, translation, documents, tables, and PPT tools.
-- `Media and offline tools`: fixes for initial and continuous video preview playback, automatic preview expansion after uploading a video for GIF conversion, and on-demand FFmpeg, LibreOffice, Whisper, and local vision runtimes.
-- `Cleanup safety`: AI large-file cleanup supports full C-drive scanning while excluding protected system directories, links, and system files, with fresh checks before deletion. C Drive Cleanup explains risk levels. Users still need to inspect results before choosing what to remove.
-- `Color-space comparison`: HSV/HSL color wheels and HEX input, alongside linked color-space controls, gamut checks, and both themes.
-- `Application stability`: closing or switching tools releases workers, canvases, listeners, tasks, and temporary resources; stale asynchronous results cannot update a new session.
-
-The current development version is `3.1.0`, shared by the desktop app, Tauri bundle, Rust crate, and `@toolknit/cli`; V3.1 has not been released. V3.0 remains the published baseline. Published desktop installers are available through [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases), and the command-line tool through [npm](https://www.npmjs.com/package/@toolknit/cli).
-
-### Existing capabilities
-
-The 2.1 series adds 11 desktop tools and delivers a broader upgrade across custom backgrounds, glass interactions, local dependency reuse, task lifecycle management, and failure recovery. Heavy editors and algorithm modules load on demand, while Workers, canvases, listeners, and temporary resources are released when a tool closes.
-
-<table cellpadding="16" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/MARKDOWN-Document%20Studio-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Markdown Document Studio" /></p>
-      <h3>Markdown Document Editor</h3>
-      <p>Edit with split-screen GFM, Mermaid, and math previews, plus a heading outline, local drafts, and Markdown or self-contained HTML export.</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/IMAGE-Crop%20%26%20Color-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image crop and color tools" /></p>
-      <h3>Image Crop and Smart Color Replace</h3>
-      <p>Crop with ratio presets, composition guides, center snapping, and source-resolution export; replace colors with sampling, thresholds, feathering, and connected-region protection.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/COLOR-8%20Spaces-db2777?style=for-the-badge" alt="Eight color spaces" /></p>
-      <h3>Color Space Compare</h3>
-      <p>Inspect eight linked color spaces, test sRGB, Display P3, Adobe RGB, and Rec.2020 gamut membership, and adjust components on visual tracks.</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/DEVELOPER-Local%20Toolbox-475569?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Local developer toolbox" /></p>
-      <h3>Developer Tools Category</h3>
-      <p>Adds JSON formatting, Base64 and URL codecs, batch UUID v4 generation, and local JWT inspection. Inputs and results remain in the current session.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/CRYPTO-17%20Modules-7c3aed?style=for-the-badge" alt="Hash and Crypto workbench" /></p>
-      <h3>Hash &amp; Crypto</h3>
-      <p>Covers 17 digest, file hash, HMAC, symmetric, and asymmetric modules. Legacy algorithms are marked for compatibility only, and sensitive data is never persisted to history.</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/WORKSPACE-Custom%20Background-0f766e?style=for-the-badge" alt="Custom background workspace" /></p>
-      <h3>Custom Background and Glass Workbench</h3>
-      <p>Use image or video wallpapers across a unified glass interface, with restrained water-film card feedback and stronger readability on complex backgrounds.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/PDF-Safer%20Editing-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Safer PDF editing" /></p>
-      <h3>PDF Editing and Safe Output</h3>
-      <p>Adds page duplication, blank pages, batch selection, repeatable text edits, and unsaved-change protection before close, replace, or reset actions.</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/RUNTIME-Reuse%20Local%20Dependencies-2563eb?style=for-the-badge" alt="Reuse local dependencies" /></p>
-      <h3>Dependency Reuse and Performance</h3>
-      <p>Detects existing FFmpeg and LibreOffice installations first, downsamples preview work, discards stale tasks, and releases background resources when pages close.</p>
-    </td>
-  </tr>
-</table>
+## 01 / Fewer apps, more things done
 
-<p align="center"><sub>Thanks to <a href="https://github.com/Joshua-Zion">Joshua-Zion</a>: the color-space core builds on <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a>, and V3.0 adapts color-wheel and input improvements from <a href="https://github.com/ZihangDong/toolknit-desktop/pull/67">PR #67</a>.</sub></p>
+Crop a PDF page. Find the text you just copied. Annotate a screenshot. Remove an image background.
+Small jobs often mean switching between several applications.
 
-## Three ways to work
+ToolKnit brings PDF, PPT, image, audio, video, text, system and developer tools together.
+Use the desktop app for local files, the web app for quick access, and CLI or Agents for suitable automated workflows.
 
-<table cellpadding="16" cellspacing="0">
-  <tr>
-    <td width="33%" valign="top">
-      <p><img src="https://img.shields.io/badge/WEB-TOOLKNIT.COM-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web ToolKnit.com" /></p>
-      <h3>Web</h3>
-      <p>Ready immediately, with no installation. Good for quick processing and cross-platform access.</p>
-      <a href="https://toolknit.com">Open ToolKnit.com</a>
-    </td>
-    <td width="33%" valign="top">
-      <p><img src="https://img.shields.io/badge/DESKTOP-WINDOWS-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Desktop Windows" /></p>
-      <h3>Desktop</h3>
-      <p>Files stay on your device, with preview, drag-and-drop, batch processing, visual editing, and dependency management.</p>
-      <a href="https://github.com/ZihangDong/toolknit-desktop/releases">View Releases</a>
-    </td>
-    <td width="33%" valign="top">
-      <p><img src="https://img.shields.io/badge/CLI%20%2B%20MCP-AGENT-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="CLI MCP Agent" /></p>
-      <h3>CLI and Agent</h3>
-      <p>For scripts, batch jobs, CI, and IDE Agents that call verifiable local capabilities in natural language.</p>
-      <a href="#cli--mcp--agent">See the integration guide</a>
-    </td>
-  </tr>
-</table>
+[Recording mode](#02--keep-the-things-you-want-to-remember) · [Screenshots](#03--a-screenshot-is-just-the-start) · [Tool catalog](#complete-tool-catalog) · [Get started](#08--get-started) · [License](#source-license)
 
-## Complete tool catalog
+## 02 / Keep the things you want to remember
 
-The 12 desktop categories below contain all 71 tools in the current source, including PDF to Scanned PDF, Clean Duplicate Files and Quick Screenshot under V3.1 development. Released V3.0 contains 68 tools. Names correspond to in-app entries; CLI and MCP capabilities use the same input/output contracts as each tool becomes ready.
+![The boy enables recording, copies a note and captures a screenshot; the spider stores them in history](assets/readme/v3.1/02-record.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF tools · 14</h3></td></tr>
-</table>
+**Enable one mode in Settings to bring three features together.**
 
-`PDF Merge` · `PDF Split` · `Add PDF Page Numbers` · `Crop PDF` · `PDF to Image` · `PDF to Scanned PDF` · `PDF Text to Markdown` · `PDF Editor` · `PDF Page Rotate` · `PDF Encrypt` · `PDF Decrypt` · `PDF Compress` · `PDF Enhance` · `Excel to PDF`
+| Enabled together | What it does |
+| --- | --- |
+| Start with Windows | Keeps ToolKnit ready in the system tray after a restart |
+| Live clipboard monitoring | Records newly copied text, images and file paths |
+| Floating screenshot history | A draggable Logo opens your recent confirmed screenshots |
 
-PDF to Scanned PDF rasterizes pages locally, with faithful, grayscale and natural effects, page selection and 150/200/300 DPI. Page dimensions and visible orientation are retained. Selectable text, links, forms and original digital signatures are not retained; OCR remains possible.
+Recording mode is opt-in. Turning it off restores the relevant settings from before activation; the individual controls remain available.
+It does not log keystrokes, browsing or all system activity. Monitoring stops when the application fully exits.
 
-Supports drag sorting, page-by-page preview, selected-page export, page numbering, lossless cropping, rotation, text replacement, text and image insertion, append merge, password protection, scanned-document enhancement, multiple compression levels, and local workbook rendering. PDFs, workbooks, passwords, and exported results are processed locally by default.
+## 03 / A screenshot is just the start
 
-PDF Text to Markdown extracts an existing text layer locally without an API key. AI PDF to Markdown sends selected page images to your configured vision model when you start conversion. Both workflows import results into the shared Markdown editor for preview, editing and export.
+![The boy captures a region, annotates it, extracts and translates text, then pins the picture](assets/readme/v3.1/03-screenshot.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PPT-Presentation%20Studio-d24726?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white" alt="PPT Presentation Studio" /></td><td align="right" style="border:0;"><h3 align="right">PPT tools · 7</h3></td></tr>
-</table>
+**Press `Alt + Q` by default to capture a window or region.** You can change or disable the shortcut.
 
-`PPT to PDF` · `PPT to Image` · `PPT Image Extractor` · `PPT Text Extractor` · `PPT Compress` · `AI PPT Outline` · `AI PPT Draft / PPTX`
+Annotate with rectangles, circles, arrows, pen strokes, brush-style mosaic and text.
+Undo, redo, and hold to compare with the original. Copy or save PNG / JPG, then zoom, pan or pin the result in an independent viewer.
+Open the floating history panel to revisit earlier screenshots.
 
-Supports page rendering, page selection, PNG/JPG/WebP output, duplicate asset filtering, title/body/notes extraction, Markdown/TXT/JSON export, media cleanup, and structured outlines plus editable PPTX drafts generated from a brief and source material. The PPT rendering runtime is downloaded on demand.
+| Task | How it works |
+| --- | --- |
+| Extract text | Local Windows OCR; small text, complex backgrounds and layouts can reduce accuracy |
+| AI extraction | Sends the selected region to your configured image-capable model for text extraction |
+| Screenshot translation | Requires the local Chinese / English model installed in Settings; recognition is followed by local translation and an image overlay |
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">Image tools · 7</h3></td></tr>
-</table>
+Screenshot translation supports **Chinese and English only**. With a configured AI URL, model and saved key, local OCR locates text and AI corrects it against the image before local translation. Without AI configuration, it uses local OCR directly.
+AI correction failures explain the cause and require your confirmation before falling back to OCR. If text cannot fit, the full translation remains available to copy.
 
-`Image Crop` · `Smart Color Replace` · `Background Removal` · `Image Format Converter` · `Image Compressor` · `Long Image Stitcher` · `Icon Generator`
+Translation components are downloaded on demand: approximately **192 MiB downloaded / 225 MiB installed**, separate from the main installer.
+Local translation time is not the whole screenshot workflow time; external AI latency depends on the provider. Check recognition and translation results.
 
-Supports ratio presets and composition guides for cropping, connected-region color replacement, local-model background removal, JPG/PNG/WebP/BMP/GIF/SVG conversion, batch compression, horizontal/vertical/seamless stitching of images or PDF pages, and multi-size PNG, ICO, and SVG icon generation with ZIP output.
+## 04 / Find what you copied
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">Audio tools · 4</h3></td></tr>
-</table>
+![The spider retrieves text and a picture from clipboard history; the boy opens the picture in a pinned viewer](assets/readme/v3.1/04-clipboard.webp)
 
-`Audio Format Converter` · `BPM Detector` · `Audio Cutter` · `Audio Extractor`
+**The note you copied a moment ago does not have to disappear.**
 
-Supports MP3, AAC, WAV, FLAC, ALAC, OGG, WMA, and other formats, offline BPM analysis, waveform-based cutting, and audio extraction from video. FFmpeg is installed on demand, and source files are never overwritten.
+Clipboard history keeps a timeline of text, images and file paths with search, filters, favorites and local encryption.
+Open an image record directly in the pinned viewer. Confirmed ToolKnit screenshots copied to the clipboard are captured while monitoring is enabled.
+The monitoring preference persists across restarts.
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/VIDEO-Frame%20Studio-dc2626?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Frame Studio" /></td><td align="right" style="border:0;"><h3 align="right">Video tools · 3</h3></td></tr>
-</table>
+Only new clipboard content after activation is recorded; existing Windows Win + V history is not imported.
+Clipboard content can be sensitive, so pause monitoring and clear records as needed.
 
-`Video Format Converter` · `HD Video Frame` · `Video to GIF`
+## 05 / Keep file work in one place
 
-Supports MP4, AVI, MKV, MOV, WebM, FLV, WMV, TS, M4V, and other formats, exact-time PNG/JPG frame export, and palette-optimized GIF creation from clips up to 30 seconds.
+![The boy works with PDF and PPT files while the spider keeps one copy and recycles duplicates](assets/readme/v3.1/05-files.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">Text and transcription · 5</h3></td></tr>
-</table>
+**Move from preview to output with fewer detours.**
 
-`Markdown Document Editor` · `Audio/Video Transcription` · `Teleprompter` · `Text Statistics` · `Text Formatter`
+| Workflow | Common tasks |
+| --- | --- |
+| PDF | Merge, split, crop, page numbers, rotate, export images, compress, encrypt, decrypt, edit and extract text / Markdown |
+| PPT | Export PDF / images, extract pictures and text, compress, generate AI outlines or editable PPTX drafts |
+| Cleanup | Analyze large files, clean C drive and scan duplicates by file type |
 
-The Markdown editor provides GFM, Mermaid, math, a heading outline, draft recovery, and offline export. After downloading a Whisper model locally, the app can transcribe Chinese and English audio/video offline and export TXT, SRT, and JSON; the same local recognition can drive teleprompter voice following. Text Statistics and Text Formatter help inspect and clean up plain text.
+Text-layer PDF extraction does not require an AI key; scanned documents and complex layouts can use AI vision workflows.
+Duplicates are checked by content. Nothing is selected for deletion by default, at least one file is kept per group, and files are rechecked before being moved to the Recycle Bin.
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/UTILITY-Calculator-2563eb?style=for-the-badge" alt="Calculator utility" /></td><td align="right" style="border:0;"><h3 align="right">Calculator tools · 5</h3></td></tr>
-</table>
+File tools preserve originals by default and write results to the output directory.
+**Visual covering in the PDF editor is not secure redaction**, and a scanned-style PDF does not prevent copying.
+Cleanup safeguards cannot replace your judgment about your files.
 
-`Body Fat Calculator` · `Timestamp Calculator` · `Mortgage Calculator` · `Interest Calculator` · `Password Generator`
+## 06 / A workbench for pictures and sound
 
-Covers health estimates, Unix timestamp conversion, mortgage payments, simple/compound interest, and secure random password generation for quick desktop calculations.
+![The boy and spider work with a photo, filmstrip and waveform on a sparse black-and-white desk](assets/readme/v3.1/06-media.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20%26%20Typing-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color and typing tools" /></td><td align="right" style="border:0;"><h3 align="right">Creative tools · 3</h3></td></tr>
-</table>
+Crop, compress, convert and stitch images; generate icons or remove backgrounds with a local model.
+Convert audio and video, trim audio, extract sound, capture video frames, create GIFs, transcribe offline and edit Markdown.
 
-`Color Extractor` · `Color Space Compare` · `Typing Test`
+FFmpeg, LibreOffice, transcription and background-removal models are detected and installed on demand.
+Existing usable runtimes are reused where supported. WPS / Microsoft Office is not LibreOffice and cannot substitute for conversion workflows that need `soffice`.
 
-Extract dominant image colors and palette shares, compare eight linked color spaces with common gamut checks, or practice Chinese and English typing with timing, speed, accuracy, and result statistics.
+## 07 / Work by hand, or hand it to an Agent
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">Cleanup tools · 3</h3></td></tr>
-</table>
-
-`AI Large File Cleanup` · `C Drive Cleanup` · `Clean Duplicate Files`
-
-Duplicate cleanup uses size grouping, sampling, full hashing and byte comparison locally. Choose one keeper per group and recycle extras in one action. Contents are verified again before recycling; changed files are rejected. No uploads or similar-image matching. See in-app help for scan limits and protected files.
-
-Large File Cleanup scans a selected directory or the C drive locally, then lets local rules and optional AI analyze only filenames, sizes, modification times, and directory clues. Protected paths, links, and system files are excluded. Confirmed large-file cleanup uses the Recycle Bin; C Drive Cleanup separately explains permanent removal of selected system caches and space items by risk level. File contents are not uploaded for AI review.
-
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI Workbench · 6</h3></td></tr>
-</table>
-
-`AI PDF to Markdown` · `AI Polish` · `AI Translate` · `AI Document Generation` · `AI Table Generation` · `Quick Screenshot`
-
-Quick Screenshot uses Alt+Q by default, with window capture, region selection, annotations, local Windows OCR, PNG/JPG output, pinned viewers and optional floating history. Chinese/English screenshot translation uses optional local models installed from Settings. A configured AI service with a stored key assists image recognition; otherwise local OCR is used. Only AI extraction or assisted recognition sends the selected region to an image-capable model, with no manual vision checkbox. See the [screenshot guide](toolknit-desktop/docs/QUICK_SCREENSHOT.zh-CN.md).
-
-AI PDF analyzes rendered pages and assembles Markdown. AI Documents support multi-page PDFs, editable projects, preview, editing, and undo. AI Tables support CSV, XLSX, PDF, PNG, editable projects, formulas, and charts. Relevant text or page images are sent to your configured model service when you explicitly invoke AI.
-
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/HARDWARE-System%20Inspector-0078d4?style=for-the-badge&logo=windows11&logoColor=white" alt="System Inspector" /></td><td align="right" style="border:0;"><h3 align="right">Hardware and system tools · 8</h3></td></tr>
-</table>
-
-`System Overview` · `CPU and Memory` · `GPU and Displays` · `Mainboard and Firmware` · `Storage Health` · `Network Devices` · `Power Sensors` · `Windows Clipboard History`
-
-Read-only views cover Windows, device model, CPU, memory, graphics, displays, mainboard, BIOS, Secure Boot, TPM, virtualization, disks, network, and power sensors. The CPU and Memory page also provides live status refresh.
-
-Clipboard History records subsequent copies of text, images and file paths after you enable monitoring. It provides a searchable timeline, filters, favorites and local encryption; existing Win+V history is not imported and monitoring stops when the app exits.
+![A terminal sends file tasks to the boy and spider's workbench](assets/readme/v3.1/07-agent.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/DEVELOPER-Local%20Toolbox-475569?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Local Developer Toolbox" /></td><td align="right" style="border:0;"><h3 align="right">Developer tools · 6</h3></td></tr>
-</table>
-
-`JSON Formatter` · `Base64 Codec` · `URL Codec` · `UUID Generator` · `JWT Viewer` · `Hash & Crypto`
-
-Validate, format, and minify JSON; process UTF-8 Base64; encode URL parameters; generate UUID v4 batches; inspect JWT Header and Payload; and run digest, file hash, HMAC, symmetric, and asymmetric workflows locally. Sensitive input is not persisted, and current-session data is cleared when the page closes.
-
-## Local-first privacy boundaries
-
-<img src="https://img.shields.io/badge/LOCAL-Local%20by%20default-0f766e?style=for-the-badge" alt="Local by default" /> **Local by default**: Desktop PDF, PPT, image, audio, video, text, calculator, hardware, and cleanup tools run on the device. Source files are not uploaded to ToolKnit servers.
-
-<img src="https://img.shields.io/badge/AI-Explicit%20authorization-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **Explicit authorization**: Relevant data is sent to your configured model service only when you actively use AI Polish, AI Translate, AI Documents, AI Tables, AI PDF to Markdown, screenshot AI extraction or translation-assisted recognition, PPT text AI organization, AI PPT Outline, AI PPTX Draft, AI large-file review, or transcription `refine`. AI PDF analysis sends page images; screenshot AI sends only the selected region while text translation runs locally; AI large-file review sends file metadata, not file contents.
-
-<img src="https://img.shields.io/badge/RUNTIME-On--demand%20dependencies-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **On-demand dependencies**: Existing FFmpeg and LibreOffice installations are reused when possible. Missing runtimes and Whisper models are downloaded as needed, with dependency detection, verification, and mirror selection.
-
-Desktop AI keys are encrypted with Windows DPAPI, and clipboard history stays on the device. Update checks, public version metadata, and dependency downloads still use the network; local-first does not mean the app never connects to the internet.
-
-CLI and MCP require explicit input and output paths by default and do not overwrite existing files. Sensitive inputs such as passwords are not written to logs, JSON output, filenames, or Agent replies.
-
-## Technology stack
-
-ToolKnit 3.0 combines a lightweight desktop container with local file engines. The web app, desktop app, CLI, and MCP share clear input/output boundaries.
-
-<table cellpadding="10" cellspacing="0">
-  <tr>
-    <td width="22%"><strong>Desktop container</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/Tauri-2.x-ffc131?style=for-the-badge&logo=tauri&logoColor=111827" alt="Tauri 2" />
-      <img src="https://img.shields.io/badge/Rust-Desktop%20Runtime-dea584?style=for-the-badge&logo=rust&logoColor=111827" alt="Rust" />
-      <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>Interface and build</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/Vite-Frontend-646cff?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-      <img src="https://img.shields.io/badge/JavaScript-UI%20Logic-f7df1e?style=for-the-badge&logo=javascript&logoColor=111827" alt="JavaScript" />
-      <img src="https://img.shields.io/badge/HTML5%20%2B%20CSS3-Interface-e34f26?style=for-the-badge&logo=html5&logoColor=white" alt="HTML5 and CSS3" />
-      <img src="https://img.shields.io/badge/Canvas%20%2B%20WebGL-Visual%20Effects-111827?style=for-the-badge" alt="Canvas and WebGL" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>Documents and data</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/PDF.js-PDF%20Rendering-f04b23?style=for-the-badge" alt="PDF.js" />
-      <img src="https://img.shields.io/badge/pdf--lib-PDF%20Editing-334155?style=for-the-badge" alt="pdf-lib" />
-      <img src="https://img.shields.io/badge/ExcelJS-XLSX%20Projects-217346?style=for-the-badge" alt="ExcelJS" />
-      <img src="https://img.shields.io/badge/Chart.js-Data%20Charts-ff6384?style=for-the-badge" alt="Chart.js" />
-      <img src="https://img.shields.io/badge/JSZip-Archive%20Output-475569?style=for-the-badge" alt="JSZip" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>Editing and algorithms</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/CodeMirror-6-111827?style=for-the-badge" alt="CodeMirror 6" />
-      <img src="https://img.shields.io/badge/Markdown--it-GFM-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Markdown it" />
-      <img src="https://img.shields.io/badge/Mermaid-Diagrams-ff3670?style=for-the-badge" alt="Mermaid" />
-      <img src="https://img.shields.io/badge/KaTeX-Math-0f766e?style=for-the-badge" alt="KaTeX" />
-      <img src="https://img.shields.io/badge/Noble-Crypto-7c3aed?style=for-the-badge" alt="Noble cryptography" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>Media and runtimes</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/FFmpeg-Audio%20%2F%20Video-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
-      <img src="https://img.shields.io/badge/Whisper-Offline%20Transcription-111827?style=for-the-badge" alt="Whisper" />
-      <img src="https://img.shields.io/badge/LibreOffice-Office%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
-      <img src="https://img.shields.io/badge/Three.js-3D%20Effects-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>Automation interfaces</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/Node.js-CLI%20Runtime-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
-      <img src="https://img.shields.io/badge/CLI-Batch%20processing-7c3aed?style=for-the-badge" alt="CLI" />
-      <img src="https://img.shields.io/badge/MCP-Agent%20Tools-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="MCP Agent tools" />
-      <img src="https://img.shields.io/badge/JSON-Inspectable%20Contracts-475569?style=for-the-badge" alt="JSON contracts" />
-    </td>
-  </tr>
-</table>
+**Desktop for visual interaction. CLI for batches. Agents for orchestration.**
 
-## Product previews
-
-<p align="center">
-  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop custom wallpaper and glass workbench" width="100%" />
-</p>
-
-<p align="center"><sub>ToolKnit workbench home · Custom wallpaper · Glass cards · Unified search and category navigation</sub></p>
-
-<p align="center"><strong>ToolKnit.com web version · ready to use</strong></p>
-<a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>
-
-<details>
-  <summary><strong>View category screenshots</strong></summary>
-
-<p align="center"><sub>Category screenshots use a consistent 1400 x 900 canvas so the preview set stays aligned.</sub></p>
-
-<table cellpadding="8" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top"><strong>PDF</strong><br /><img src="assets/readme/categories/category-pdf.png" alt="PDF tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>PPT</strong><br /><img src="assets/readme/categories/category-ppt.png" alt="PPT tools" width="100%" /></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>AI and content workflows</strong><br /><img src="assets/readme/categories/category-ai.png" alt="AI and content tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>Image</strong><br /><img src="assets/readme/categories/category-image.png" alt="Image tools" width="100%" /></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>Audio &amp; Video</strong><br /><img src="assets/readme/categories/category-audio-video.png" alt="Audio and video tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>Text</strong><br /><img src="assets/readme/categories/category-text.png" alt="Text tools" width="100%" /></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>Hardware</strong><br /><img src="assets/readme/categories/category-hardware.png" alt="Hardware tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>Calculators and other tools</strong><br /><img src="assets/readme/categories/category-calculator.png" alt="Calculator tools" width="100%" /></td>
-  </tr>
-</table>
-</details>
-
-## Download and run
-
-### Use the web version
-
-Open [ToolKnit.com](https://toolknit.com) to start using the web tools without installing anything.
-
-### Install the Windows desktop app
-
-Get Windows installers, release notes, and matching `.sha256` files from [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases). Download only from this repository's Release page and verify the SHA-256 checksum before running the installer.
-
-**Code signing:** The applicable Release notes and [code-signing policy](CODE_SIGNING_POLICY.md) describe each installer's actual signing status and scope.
-
-**System requirements:** Windows 10 1803 (build 17134) or later, or Windows 11, with Microsoft Edge WebView2 Runtime. The installer includes a WebView2 bootstrapper, which needs a network connection to download a missing runtime. Windows 7, 8, 8.1, and older Windows 10 builds are not supported.
-
-### Run from source
-
-```powershell
-git clone --branch "ToolKnit-Desktop-V3.0-正式版" --single-branch https://github.com/ZihangDong/toolknit-desktop.git
-Set-Location toolknit-desktop\toolknit-desktop
-npm ci
-npm run tauri dev
-```
-
-Desktop builds require Node.js `22.12+`; Node.js 24 is recommended to match GitHub Actions and meet both Vite 8 and Mermaid 12 requirements. Native Windows builds also need Rust stable, Visual Studio C++ Build Tools, the Windows SDK, and WebView2. See the [Windows build guide](BUILD.md).
-
-The repository includes source, required resources, tests, and third-party licenses. Local keys, signing credentials, browser sessions, test outputs, and installers must stay out of commits. Signing workflows obtain credentials through GitHub Actions Secrets.
-
-## CLI / MCP / Agent
-
-ToolKnit exposes automation-ready local file capabilities to command-line users, scripts, and MCP-capable IDE Agents. The desktop app handles visual preview and interaction, the CLI handles batch processing, and Agents orchestrate workflows in natural language.
-
-### Install the CLI
+Suitable automated tasks are available through `@toolknit/cli` and **46 CLI / MCP capabilities**.
+Their scope differs from the desktop catalog; not all 71 desktop tools are callable from the CLI.
 
 ```powershell
 npm install --global @toolknit/cli
@@ -439,9 +116,8 @@ toolknit doctor --json
 toolknit --help
 ```
 
-### Configure MCP
-
-Add the following entry to Trae, Cursor, VS Code, or another MCP-capable client:
+<details>
+<summary><strong>Connect an MCP-compatible client</strong></summary>
 
 ```json
 {
@@ -454,80 +130,110 @@ Add the following entry to Trae, Cursor, VS Code, or another MCP-capable client:
 }
 ```
 
-Core file tools and non-AI PPT tools do not need an AI key. AI Documents, AI Tables, PPT text organization, AI PPT Outline, AI PPTX Draft, and transcription `refine` require `DEEPSEEK_API_KEY` or `TOOLKNIT_AI_API_KEY` in the CLI/MCP process environment.
+Basic file capabilities do not require an AI key. AI workflows require `DEEPSEEK_API_KEY` or `TOOLKNIT_AI_API_KEY` in the CLI / MCP process environment, as specified by the command contract.
 
-Full documentation:
+[CLI / MCP contract](toolknit-desktop/docs/cli-agent.md) · [English Agent guide](toolknit-desktop/docs/agent-guide.en.md) · [中文 Agent 手册](toolknit-desktop/docs/agent-guide.zh-CN.md)
 
-- [CLI and MCP contract](toolknit-desktop/docs/cli-agent.md)
-- [Chinese Agent guide](toolknit-desktop/docs/agent-guide.zh-CN.md)
-- [English Agent guide](toolknit-desktop/docs/agent-guide.en.md)
-- [AI document project specification](toolknit-desktop/docs/ai-document-project-spec.md)
+</details>
 
-## Acknowledgements
+## The actual workspaces
 
-ToolKnit continues to improve through the people who contribute development, design, testing, and feedback. Special thanks to these three core contributors:
+### Windows desktop
 
-<table cellpadding="12" cellspacing="0">
-  <tr>
-    <td width="33%" align="center" valign="top"><a href="https://github.com/ZihangDong"><img src="https://avatars.githubusercontent.com/u/274734333?v=4&amp;s=160" width="88" height="88" alt="ZihangDong" /><br /><sub><strong>Zihang Dong</strong></sub></a><br /><sub>Project author · Product design, development, and maintenance</sub></td>
-    <td width="33%" align="center" valign="top"><a href="https://github.com/Joshua-Zion"><img src="https://avatars.githubusercontent.com/u/73597322?v=4&amp;s=160" width="88" height="88" alt="Joshua-Zion" /><br /><sub><strong>Joshua-Zion</strong></sub></a><br /><sub>Color-space conversion core and interaction improvements · <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> / <a href="https://github.com/ZihangDong/toolknit-desktop/pull/67">PR #67</a></sub></td>
-    <td width="33%" align="center" valign="top"><a href="https://github.com/hqyx2025"><img src="https://avatars.githubusercontent.com/u/246831866?v=4&amp;s=160" width="88" height="88" alt="hqyx2025" /><br /><sub><strong>hqyx2025</strong></sub></a><br /><sub>Project verification and bug testing</sub></td>
-  </tr>
-</table>
+![ToolKnit Desktop 3.1 home screen in grayscale](assets/readme/v3.1/desktop-home.webp)
 
-<p align="center"><sub>Special thanks to <a href="https://atomgit.com/">AtomGit</a> for hosting AIRI in China and helping users in mainland China access the project and download Releases faster.</sub></p>
+An actual capture of this repository's 3.1 home interface, rendered in a browser and converted to grayscale. Native file, shortcut and system features require the installed Windows app.
 
-## Support the project
+### No-install web app
 
-Keeping ToolKnit free and continuously updated currently costs the author more than CNY 500 per month for AI-assisted development and testing alone, paid out of pocket. Carrying that cost alone is becoming difficult. If ToolKnit helps your work, a one-time donation supports AI testing, compatibility devices, dependency mirrors, documentation maintenance, and future development.
+![ToolKnit website tool catalog in grayscale](assets/readme/v3.1/web-home.webp)
 
-After confirmation, supporters may join the ToolKnit preview group to test upcoming builds and submit feature ideas. The group is for discussion, testing, and collecting requirements; a donation is not a purchase of functionality and does not guarantee implementation or priority.
+An actual capture of [ToolKnit.com](https://toolknit.com), converted to grayscale. Desktop and web tool scopes, dependencies and offline support follow each product's own documentation.
 
-<p align="center">
-  <img src="assets/readme/donation-support.webp" alt="Alipay and WeChat donation QR codes for ToolKnit" width="100%" />
-</p>
+The comics share the approved Chinese-language artwork in both READMEs. Their accessible descriptions and the surrounding English text explain each scene and feature.
 
-## Thanks to supporters
+## 08 / Get started
 
-<p align="center">
-  <img src="assets/readme/supporters-thanks.webp" alt="Thanks to ToolKnit supporters" width="100%" />
-</p>
+![The boy and spider wave beside a tidy desk: one developer, improved together](assets/readme/v3.1/08-start.webp)
 
-## Star history
+| Entry | Best for |
+| --- | --- |
+| [Download for Windows](https://toolknit.com/exe.html) | Local file workflows, recording mode and screenshots |
+| [Open ToolKnit.com](https://toolknit.com) | Quick access and cross-platform use without installation |
+| [Install the CLI](https://www.npmjs.com/package/@toolknit/cli) | Scripts, batch processing and MCP Agents |
 
-<p>The star history chart is provided by <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">Star History</a>. Click the chart to open the official history page.</p>
+Requires Windows 10 **1803 / build 17134 or later**, or Windows 11, and Microsoft Edge WebView2 Runtime.
+The installer embeds the WebView2 bootstrapper; downloading a missing runtime still requires a network connection. Windows 7 / 8 / 8.1 are unsupported.
+Available installer versions follow the download page. See the [code signing policy](CODE_SIGNING_POLICY.md) for signing status.
 
-<p align="center">
-  <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">
-    <img src="https://api.star-history.com/chart?repos=ZihangDong/toolknit-desktop&amp;type=date&amp;legend=top-left&amp;sealed_token=EEoF4uyEt78cKNHZvUBEUdT5yBOuWINv90m_TWMMcy6U8sziyyBtrHlNdiHMyYXLcobnnBnywdq7HDcegwIk0Yz4IZQieMCISiRGhbR2JeweVhmBWpGlwQPb1EQB_6ZlH62IB9O1vzTDofo6dhca9fEGaXwNwNbOe5u4ZR4-McXwDHUCSiZ234AMgx3j" alt="ToolKnit GitHub star history from Star History" width="100%" />
-  </a>
-</p>
+### Local first, with clear boundaries
 
-<p align="center">
-  <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers"><img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=GitHub%20Stars&color=f59e0b" alt="GitHub stars" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop"><img src="https://img.shields.io/github/last-commit/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Last%20Commit&color=475569" alt="Last commit" /></a>
-</p>
+Ordinary file tasks run locally by default. When you actively use an AI feature, necessary file content or screenshot regions are sent to your configured provider.
+Dependency downloads and update checks need a connection; installed offline capabilities do not require an AI key.
+File-size, page, pixel and batch limits vary by tool; support is not unlimited for every format.
 
-## Contributing
+### Run from source
 
-- Submit a reproducible [bug report](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=bug_report.yml).
-- Submit a [feature request](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=feature_request.yml).
-- Read the [contribution guide](CONTRIBUTING.md) for development, testing, and pull request workflows.
-- Use the [build guide](BUILD.md) to run the desktop app locally.
-- Review the [code-signing policy](CODE_SIGNING_POLICY.md) for signing requirements and scope.
+```powershell
+git clone https://github.com/ZihangDong/toolknit-desktop.git
+Set-Location toolknit-desktop
+git switch codex/readme-v3.1-comic-preview
+Set-Location toolknit-desktop
+npm ci
+npm run tauri dev
+```
 
-## Web product and brand boundary
+Requires Node.js **22.12+** (24 recommended), Rust stable, Visual Studio C++ Build Tools, Windows SDK and WebView2.
+The repository root holds documentation; the nested `toolknit-desktop/` directory is the npm / Tauri project.
+See the [build guide](BUILD.md). This branch previews the README and does not announce an installer release.
 
-[ToolKnit.com](https://toolknit.com) is the companion web product, offering a no-install experience and continuously updated online capabilities. This source-available desktop repository focuses on Windows local file processing, CLI, and MCP. Hosted services and brand assets are not licensed with the source.
+## Complete tool catalog
 
-## License
+<details>
+<summary><strong>Expand 71 desktop tools / 12 categories</strong></summary>
 
-From 2026-10-14, newly licensed author-owned code and modifications use [PolyForm Noncommercial 1.0.0](LICENSE). Noncommercial use, modification and distribution must comply with the license and preserve required notices. Commercial use requires separate permission from the author (WeChat: wunanvip6). Copyright remains with each author. This is source-available software, not OSI-approved open source.
+| Category | Count | Tools |
+| --- | ---: | --- |
+| PDF | 14 | Merge, split, page numbers, crop, export images, scanned-style PDF, text / Markdown extraction, editor, rotate, encrypt, decrypt, compress, text enhancement, Excel to PDF |
+| PPT | 7 | Export PDF, export images, extract images, AI text extraction, compress, AI outline, AI draft / PPTX |
+| Image | 7 | Crop, smart color replacement, background removal, format conversion, compress, stitch, icon generator |
+| Audio | 4 | Format conversion, BPM measurement, trim, extract audio |
+| Video | 3 | Format conversion, full-resolution frame, GIF clipping |
+| Text | 5 | Markdown editor, media transcription, teleprompter, text statistics, text formatting |
+| Calculator | 5 | Body fat, timestamp, mortgage, interest, password generator |
+| Creative | 3 | Palette extraction, color-space comparison, typing test |
+| Cleanup | 3 | AI large-file cleanup, C drive cleanup, duplicate files |
+| AI | 6 | PDF to Markdown, text polishing, translation, document generation, spreadsheet generation, quick screenshot |
+| Hardware | 8 | System overview, CPU / memory, GPU / displays, motherboard / firmware, storage / health, network / devices, power / sensors, clipboard history |
+| Developer | 6 | JSON formatting, Base64, URL encoding / decoding, UUID, JWT viewer, Hash & Crypto |
 
-Existing Apache-2.0 grants are not withdrawn. Unchanged code previously distributed under Apache-2.0 and third-party contributions retain their original permissions; see [Apache-2.0](LICENSES/Apache-2.0.txt), [NOTICE](NOTICE) and version history. Dependencies, fonts, models and runtimes retain their own licenses.
+</details>
 
-The license does not grant rights to the ToolKnit name, logos, visual identity, domains, official website, hosted web services, service accounts, or other independently operated products. See [NOTICE](NOTICE).
+## One developer, improved together
 
-<p align="center">
-  <sub>ToolKnit Desktop 3.0 · Local-first tools for real work</sub>
-</p>
+| Contributor | Contribution |
+| --- | --- |
+| [Zihang Dong](https://github.com/ZihangDong) | Author, product design, development and maintenance |
+| [Joshua-Zion](https://github.com/Joshua-Zion) | Color-space conversion and interaction: [PR #23](https://github.com/ZihangDong/toolknit-desktop/pull/23), [PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67) |
+| [hqyx2025](https://github.com/hqyx2025) | Project verification and bug testing |
+
+Thanks to [AtomGit](https://atomgit.com/) for code hosting and developer collaboration. Repository mirror: [AtomGit / ToolKnit Desktop](https://atomgit.com/ZihangDong/toolknit-desktop).
+
+[Report a bug](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=bug_report.yml) · [Suggest a feature](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=feature_request.yml) · [Contribution guide](CONTRIBUTING.md)
+
+If ToolKnit saves you time, a Star or [one-time donation](assets/readme/donation-support.webp) helps support development, AI testing and maintenance.
+[Thank you to our supporters](assets/readme/supporters-thanks.webp). Donations do not purchase a feature or promise implementation.
+Custom tools and commercial licensing: WeChat **wunanvip6**; email [2645149786@qq.com](mailto:2645149786@qq.com).
+
+The comics were created with AI assistance, referencing the sparse black-and-white linework of [handraw-style / FH-023 · Deadpan Doodle](https://github.com/yang0/handraw-style/blob/master/images/individual/FH/FH-023.webp).
+They depict new scenes with the project characters rather than reproducing the reference illustration. See the [asset notes](assets/readme/README.md).
+
+## Source license
+
+From **2026-10-14**, newly licensed author code and modifications use [PolyForm Noncommercial 1.0.0](LICENSE).
+Noncommercial use, modification and redistribution must follow the license and preserve required notices; contact the author for commercial permission. Copyright remains with the respective authors.
+This is a source-available noncommercial license, **not an OSI-approved open-source license**.
+
+Previously granted Apache-2.0 rights are not revoked. Unmodified code previously released under Apache-2.0 and third-party contributions retain their original grants.
+See [Apache-2.0](LICENSES/Apache-2.0.txt), [NOTICE](NOTICE) and version history.
+Third-party dependencies, fonts, models and runtimes retain their own licenses. ToolKnit branding, domains and hosted web services are not licensed by the source license.
