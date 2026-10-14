@@ -239,6 +239,8 @@ PDF 压缩的保结构/图像化、目标字节、写入和共享核心边界见
 
 ## 提交与发布
 
+- 版本检查、强制更新弹框与许可变更按 [版本与许可维护说明](UPDATE_AND_LICENSE_MAINTENANCE.zh-CN.md) 核对；准备好官网安装包后再发布正式标签，保留既有 Apache-2.0 和第三方授权。
+
 - 每个独立阶段使用一个语义明确的本地 Git checkpoint。
 - 提交前检查 `git status`、`git diff --check`、测试结果和生成物是否被忽略。
 - V3.0 架构阶段不得自动推送 GitHub、发布 npm、创建 Release 或修改版本号；这些动作必须由用户单独确认。

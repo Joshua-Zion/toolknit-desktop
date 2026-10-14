@@ -7,7 +7,7 @@
     "": {
       "name": "@toolknit/cli",
       "version": "3.1.0",
-      "license": "Apache-2.0",
+      "license": "PolyForm-Noncommercial-1.0.0",
       "dependencies": {
         "@napi-rs/canvas": "^1.0.1",
         "chart.js": "^4.5.1",

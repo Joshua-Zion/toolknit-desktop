@@ -1,5 +1,5 @@
 import donationTemplate from './templates/donation.html?raw';
-import updatePreviewTemplate from './templates/update-preview.html?raw';
+import updateDialogTemplate from './templates/update-dialog.html?raw';
 import settingsTemplate from './templates/settings.html?raw';
 import helpTemplate from './templates/help.html?raw';
 import legalTemplate from './templates/legal.html?raw';
@@ -19,9 +19,9 @@ const STATIC_TEMPLATE_SPECS = Object.freeze([
     rootSelector: '#donationOverlay'
   }),
   Object.freeze({
-    name: 'update-preview',
-    markup: updatePreviewTemplate,
-    rootSelector: '#updatePreviewOverlay'
+    name: 'update-dialog',
+    markup: updateDialogTemplate,
+    rootSelector: '#updateDialog'
   }),
   Object.freeze({
     name: 'settings',

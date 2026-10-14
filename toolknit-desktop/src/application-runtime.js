@@ -3,8 +3,8 @@
       import { initLightRays } from './lightrays.js';
       import { initPlasma } from './plasma.js';
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
-      import { initUpdatePreview } from './update-preview.js';
-      import { compareVersions, createUpdateService, UPDATE_RELEASES_PAGE } from './update-service.js';
+      import { initUpdateDialog } from './update-dialog.js';
+      import { compareVersions, createUpdateService, UPDATE_DOWNLOAD_PAGE } from './update-service.js';
       import { readResponseTextLimited } from './core/bounded-response.js';
       import { createLazyToolRegistry } from './app/lazy-tool-registry.js';
       import { initUiSoundController } from './app/ui-sound-controller.js';
@@ -20,7 +20,7 @@
       import { createFontSettingsRuntime } from './app/font-settings-runtime.js';
       import { createStartupRuntime } from './app/startup-runtime.js';
       import { createWindowRuntime } from './app/window-runtime.js';
-      import { createUpdateRuntime } from './app/update-runtime.js';
+      import { createUpdateRuntime, scheduleAutomaticUpdateCheck } from './app/update-runtime.js';
       import { createModalRuntime } from './app/modal-runtime.js';
       import { createPageTransitionRuntime } from './app/page-transition-runtime.js';
       import { createThemeRuntime } from './app/theme-runtime.js';
@@ -335,7 +335,7 @@
           region.setAttribute('data-tauri-drag-region', '');
         });
 
-        const headerSelector = '.settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header, .update-preview-stage-topbar';
+        const headerSelector = '.settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header';
         document.querySelectorAll(headerSelector).forEach(header => {
           if (header.dataset.tkWindowDragBound === '1') return;
           header.dataset.tkWindowDragBound = '1';
@@ -685,7 +685,7 @@
       const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
       const openReleasePageBtn = document.getElementById('openReleasePageBtn');
       const APP_VERSION_FALLBACK = '3.1.0';
-      let updatePreviewController = null;
+      let updateDialogController = null;
       const updateRuntime = createUpdateRuntime({
         isTauri,
         fallbackVersion: APP_VERSION_FALLBACK,
@@ -695,8 +695,8 @@
         statusElement: versionUpdateStatus,
         checkButton: checkVersionUpdateBtn,
         releaseButton: openReleasePageBtn,
-        getPreviewController: () => updatePreviewController,
-        openExternalUrl: url => openExternalUrl(url || UPDATE_RELEASES_PAGE),
+        getDialogController: () => updateDialogController,
+        openExternalUrl: url => openExternalUrl(url || UPDATE_DOWNLOAD_PAGE),
         loadAppVersion: async () => (await loadTauriApp()).getVersion()
       });
       const updateService = updateRuntime.service;
@@ -704,12 +704,9 @@
       const renderVersionUpdateStatus = updateRuntime.render;
       const setVersionUpdateState = updateRuntime.setState;
       const runVersionUpdateCheck = updateRuntime.runCheck;
-      const getLastVersionUpdateResult = updateRuntime.getLastResult;
 
       checkVersionUpdateBtn?.addEventListener('click', () => void runVersionUpdateCheck());
-      openReleasePageBtn?.addEventListener('click', () => {
-        void openExternalUrl(getLastVersionUpdateResult()?.release?.htmlUrl || UPDATE_RELEASES_PAGE);
-      });
+      openReleasePageBtn?.addEventListener('click', () => void updateRuntime.openReleasePage());
 
       void getLocalAppVersion().then(version => {
         setVersionUpdateState('neutral', version);
@@ -2003,43 +2000,17 @@
       if (isAiDocEditorDemoEntry) void lazyFeatureRegistry.open('ai-doc');
       if (isAiTableDemoEntry) void lazyFeatureRegistry.open('ai-table');
 
-      updatePreviewController = initUpdatePreview({
+      updateDialogController = initUpdateDialog({
         openExternalUrl,
-        notify: message => window.showToast?.(message),
         refreshBackgroundRendering: syncHomeV2Background,
-        refreshIcons: () => createIcons({ icons }),
-        onUpdate: async release => {
-          // The updater public key is not configured yet. Keep the current
-          // release action honest: it opens the verified GitHub Release where
-          // the installer and its SHA-256 checksum are published together.
-          await openExternalUrl(release.htmlUrl || UPDATE_RELEASES_PAGE);
-        },
-        onDefer: release => updateService.defer(release.version)
+        refreshIcons: () => createIcons({ icons })
       });
 
-      function scheduleAutomaticUpdateCheck() {
-        if (!isTauri) return;
-        const checkWhenIdle = () => {
-          if (document.hidden || !appRoot?.classList.contains('is-v2-home')) return;
-          void runVersionUpdateCheck({ force: false, showUpdate: false }).then(result => {
-            if (!result) return;
-            void getLocalAppVersion().then(localVersion => {
-              if (updateService.shouldPrompt(result, localVersion)) {
-                updatePreviewController?.open({ ...result.release, currentVersion: localVersion });
-              }
-            });
-          });
-        };
-        window.setTimeout(() => {
-          if ('requestIdleCallback' in window) {
-            window.requestIdleCallback(checkWhenIdle, { timeout: 3_000 });
-          } else {
-            checkWhenIdle();
-          }
-        }, 5_000);
-      }
-
-scheduleAutomaticUpdateCheck();
+      scheduleAutomaticUpdateCheck({
+        enabled: isTauri && !isScreenPickerWindow,
+        runtime: updateRuntime,
+        getDialogController: () => updateDialogController
+      });
 
       createStartupRuntime({
         fontsReady: fontSettingsRuntime.ready,

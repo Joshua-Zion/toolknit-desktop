@@ -1,4 +1,7 @@
-/** Update status, version lookup, and release-check concurrency boundary. */
+import { UPDATE_DOWNLOAD_PAGE } from '../update-service.js';
+import { createLifecycleScope } from './tool-lifecycle.js';
+
+/** Update status, version lookup, and tag-check concurrency boundary. */
 export function createUpdateRuntime({
   isTauri = false,
   fallbackVersion = '0.0.0',
@@ -8,12 +11,11 @@ export function createUpdateRuntime({
   statusElement = null,
   checkButton = null,
   releaseButton = null,
-  getPreviewController = () => null,
+  getDialogController = () => null,
   openExternalUrl = async () => {},
   loadAppVersion = async () => fallbackVersion
 } = {}) {
   let running = false;
-  let lastResult = null;
   let state = { kind: 'neutral', version: fallbackVersion };
 
   const getLocalAppVersion = async () => {
@@ -57,10 +59,9 @@ export function createUpdateRuntime({
     try {
       const localVersion = await getLocalAppVersion();
       const result = await updateService.check({ force });
-      lastResult = result;
       if (compareVersions(result.release.version, localVersion) > 0) {
         setState('available', result.release.version);
-        if (showUpdate) getPreviewController()?.open({ ...result.release, currentVersion: localVersion });
+        if (showUpdate) getDialogController()?.open({ ...result.release, currentVersion: localVersion });
       } else setState('up-to-date', localVersion);
       return result;
     } catch (error) {
@@ -74,13 +75,49 @@ export function createUpdateRuntime({
   };
 
   return Object.freeze({
-    getLastResult: () => lastResult,
     getLocalAppVersion,
     getState: () => ({ ...state }),
-    openReleasePage: () => openExternalUrl(lastResult?.release?.htmlUrl),
+    openReleasePage: () => openExternalUrl(UPDATE_DOWNLOAD_PAGE),
     render,
     runCheck,
     service: updateService,
     setState
   });
+}
+
+export function scheduleAutomaticUpdateCheck({
+  enabled = false,
+  runtime,
+  getDialogController = () => null,
+  document: doc = globalThis.document,
+  window: win = globalThis.window,
+  delayMs = 5_000
+} = {}) {
+  const scope = createLifecycleScope();
+  if (!enabled) return scope.dispose;
+  let ready = false;
+  let running = false;
+  let completed = false;
+
+  async function checkWhenVisible() {
+    if (!ready || running || completed || scope.disposed || doc.hidden) return;
+    running = true;
+    const token = scope.token();
+    try {
+      const result = await runtime.runCheck({ force: false, showUpdate: false });
+      if (!scope.isCurrent(token) || !result) return;
+      completed = true;
+      const currentVersion = await runtime.getLocalAppVersion();
+      if (scope.isCurrent(token) && runtime.service.shouldPrompt(result, currentVersion)) {
+        getDialogController()?.open({ ...result.release, currentVersion });
+      }
+    } catch { /* Optional automatic check retries on visibility or connectivity. */ }
+    finally { running = false; }
+  }
+
+  scope.event(doc, 'visibilitychange', () => void checkWhenVisible());
+  scope.event(win, 'online', () => void checkWhenVisible());
+  scope.event(win, 'pagehide', scope.dispose);
+  scope.timeout(() => { ready = true; void checkWhenVisible(); }, delayMs);
+  return scope.dispose;
 }

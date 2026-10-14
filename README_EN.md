@@ -22,7 +22,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-Files%20stay%20local-0f766e?style=for-the-badge" alt="Local-first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-334155?style=for-the-badge" alt="Apache 2.0 license" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-334155?style=for-the-badge" alt="PolyForm Noncommercial license" /></a>
 </p>
 
 <p>
@@ -518,11 +518,13 @@ After confirmation, supporters may join the ToolKnit preview group to test upcom
 
 ## Web product and brand boundary
 
-[ToolKnit.com](https://toolknit.com) is the companion web product, offering a no-install experience and continuously updated online capabilities. This open-source desktop repository focuses on Windows local file processing, CLI, and MCP. The web service, domains, accounts, hosted operations, and other brand assets are outside this repository's open-source license.
+[ToolKnit.com](https://toolknit.com) is the companion web product, offering a no-install experience and continuously updated online capabilities. This source-available desktop repository focuses on Windows local file processing, CLI, and MCP. Hosted services and brand assets are not licensed with the source.
 
 ## License
 
-ToolKnit Desktop and the CLI/MCP source code are released under the [Apache License 2.0](LICENSE).
+From 2026-10-14, newly licensed author-owned code and modifications use [PolyForm Noncommercial 1.0.0](LICENSE). Noncommercial use, modification and distribution must comply with the license and preserve required notices. Commercial use requires separate permission from the author (WeChat: wunanvip6). Copyright remains with each author. This is source-available software, not OSI-approved open source.
+
+Existing Apache-2.0 grants are not withdrawn. Unchanged code previously distributed under Apache-2.0 and third-party contributions retain their original permissions; see [Apache-2.0](LICENSES/Apache-2.0.txt), [NOTICE](NOTICE) and version history. Dependencies, fonts, models and runtimes retain their own licenses.
 
 The license does not grant rights to the ToolKnit name, logos, visual identity, domains, official website, hosted web services, service accounts, or other independently operated products. See [NOTICE](NOTICE).
 

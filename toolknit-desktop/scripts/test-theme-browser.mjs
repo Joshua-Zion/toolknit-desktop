@@ -7,7 +7,7 @@ import { preview } from 'vite';
 import { checkHelpTheme } from './lib/help-theme-browser.mjs';
 import { checkSecondaryTheme } from './lib/secondary-theme-browser.mjs';
 import { checkDependencyTheme } from './lib/dependency-theme-browser.mjs';
-import { checkUpdatePreviewTheme } from './lib/update-preview-theme-browser.mjs';
+import { checkUpdateDialogTheme } from './lib/update-dialog-theme-browser.mjs';
 
 const require = createRequire(process.env.TOOLKNIT_TEST_MODULES
   ? path.join(process.env.TOOLKNIT_TEST_MODULES, 'package.json') : import.meta.url);
@@ -107,7 +107,7 @@ async function checkSettingsLayout() {
     if (entries.length !== 9 || meta.length !== 3 || [...entries, ...meta].some(n => !n.getBoundingClientRect().height)) failures.push('sidebar information missing');
     if (getComputedStyle(aside).borderRadius !== '32px' || aside.scrollWidth > aside.clientWidth + 1) failures.push('sidebar corners or overflow');
     for (const node of overlay.querySelectorAll('.settings-v2-topbar button, .settings-v2-btn, .settings-v2-choice, .settings-v2-icon-btn, .settings-v2-link-card, .settings-v2-radius-input')) {
-      const radius = node.matches('.tk-nav-settings, .tk-nav-minimize, .tk-nav-maximize, .tk-nav-close') ? '6px' : '999px';
+      const radius = node.matches('.tk-nav-help, .tk-nav-feedback, .tk-nav-settings, .tk-nav-minimize, .tk-nav-maximize, .tk-nav-close') ? '6px' : '999px';
       if (getComputedStyle(node).borderRadius !== radius) failures.push(`control corners: ${node.id || node.className}`);
     }
     aside.scrollTop = aside.scrollHeight;
@@ -516,7 +516,7 @@ try {
   done(await checkHelpTheme(browser, url, path.join(output, 'help')));
   done(await checkSecondaryTheme(browser, url, path.join(output, 'secondary')));
   done(await checkDependencyTheme(browser, url, path.join(output, 'dependency')));
-  done(await checkUpdatePreviewTheme(browser, url, path.join(output, 'update-preview')));
+  done(await checkUpdateDialogTheme(browser, url, path.join(output, 'update-dialog')));
   assert.deepEqual(report.errors, []);
   report.status = 'passed';
 } catch (error) {

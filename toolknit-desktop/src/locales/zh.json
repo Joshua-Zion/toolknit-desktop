@@ -1,4 +1,19 @@
 {
+  "updateDialog": {
+    "kicker": "新版本已就位",
+    "title": "给工具箱升个级吧",
+    "quip0": "新版已经热身完毕，旧版可以下班啦。带上你的好奇心，去看看工具箱又长了什么本事！",
+    "quip1": "工具箱又偷偷练了一阵子。这次带着新本事回来，等你领它上岗！",
+    "quip2": "作者又和 Bug 较量了一番。新版已到场，给它一个表现的机会吧！",
+    "current": "当前版本",
+    "latest": "最新版本",
+    "download": "去官网下载新版",
+    "opening": "正在打开下载页…",
+    "retry": "重新打开下载页",
+    "opened": "下载页已打开，安装完成后请重新启动 ToolKnit。",
+    "failed": "未能打开浏览器，请重试或手动访问 toolknit.com/exe.html。",
+    "note": "请下载并安装新版，再重新打开 ToolKnit。你的本地文件不会被更新改动。"
+  },
   "recordingMode": {
     "title": "一键记录模式",
     "promptTitle": "是否要打开一键记录模式？",
@@ -4396,6 +4411,7 @@
       "modelReady": "模型已就绪",
       "modelDownloadFailed": "模型下载失败，请重试",
       "modelMissing": "模型未安装，正在引导安装",
+      "runtimeMissing": "抠图运行组件无法加载，请重新安装最新版程序；若仍失败，请安装 Microsoft Visual C++ 2015–2022 运行库（x64）后重试。",
       "segmentFailed": "抠图失败，请重试或更换图片",
       "previewTitle": "透明预览",
       "emptyTitle": "选择一张图片开始",
@@ -4562,8 +4578,8 @@
     "versionInfo": "版本信息",
     "versionUpdateTitle": "检查版本更新",
     "checkUpdate": "检查更新",
-    "versionUpdateHint": "通过 GitHub Releases 获取最新版本号，并与本地版本比对。",
-    "openReleasePage": "前往 GitHub 下载最新版",
+    "versionUpdateHint": "通过 GitHub 与 AtomGit 的正式版本标签检查更新，新版本从官网下载。",
+    "openReleasePage": "前往官网下载最新版",
     "versionCurrent": "当前版本 {version}",
     "versionChecking": "正在检查更新...",
     "versionUpToDate": "已是最新版本（{version}）",

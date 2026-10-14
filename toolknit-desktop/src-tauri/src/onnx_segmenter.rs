@@ -220,25 +220,37 @@ fn get_onnxruntime_dll_path() -> Result<PathBuf, String> {
     Err("matting:onnxruntime-dll-missing".to_string())
 }
 
-/// onnxruntime resolves its DirectML dependency by module name, so preload it
-/// from the model directory with search flags that include the DLL's own
-/// folder (same approach as the whisper ggml backends).
-fn preload_directml(dll_dir: &Path) {
-    #[cfg(target_os = "windows")]
-    {
-        let direct_ml = dll_dir.join("DirectML.dll");
-        if direct_ml.is_file() {
-            unsafe {
-                use libloading::os::windows::{
-                    Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
-                };
-                let _ = Library::load_with_flags(
-                    &direct_ml,
-                    LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
-                );
-            }
+#[cfg(target_os = "windows")]
+fn preload_onnx_libraries(dll: &Path) -> Result<(), String> {
+    use libloading::os::windows::{
+        Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+    };
+
+    let flags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+    let runtime = unsafe { Library::load_with_flags(dll, flags) }
+        .map_err(|error| format!("matting:onnxruntime-load-failed:{error}"))?;
+    let direct_ml = dll.parent().map(|directory| directory.join("DirectML.dll"));
+
+    // Keep the handles alive for the process. ORT and DirectML resolve their
+    // imports by module name after initialization, so an immediately dropped
+    // preload does not make the dependency available reliably.
+    static LIBRARIES: OnceLock<Mutex<Vec<libloading::Library>>> = OnceLock::new();
+    let libraries = LIBRARIES.get_or_init(|| Mutex::new(Vec::new()));
+    let mut loaded = libraries
+        .lock()
+        .map_err(|_| "matting:onnxruntime-loader-busy".to_string())?;
+    loaded.push(runtime.into());
+    if let Some(direct_ml) = direct_ml.filter(|path| path.is_file()) {
+        if let Ok(library) = unsafe { Library::load_with_flags(&direct_ml, flags) } {
+            loaded.push(library.into());
         }
     }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn preload_onnx_libraries(_dll: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 fn matting_runtime() -> &'static Mutex<MattingRuntime> {
@@ -251,9 +263,7 @@ fn ort_dylib_ready() -> Result<(), String> {
     PREPARED
         .get_or_init(|| {
             let dll = get_onnxruntime_dll_path()?;
-            if let Some(parent) = dll.parent() {
-                preload_directml(parent);
-            }
+            preload_onnx_libraries(&dll)?;
             std::env::set_var("ORT_DYLIB_PATH", &dll);
             Ok(())
         })

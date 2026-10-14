@@ -46,6 +46,9 @@
       "icons/icon.ico"
     ],
     "resources": [
+      "../LICENSE",
+      "../NOTICE",
+      "../LICENSES/Apache-2.0.txt",
       "../src/core/opencc/LICENSE.txt",
       "../src/core/opencc/NOTICE.txt",
       "resources/qpdf/qpdf.exe",
@@ -67,6 +70,10 @@
       "resources/whisper/Release/ggml.dll",
       "resources/onnxruntime/onnxruntime.dll",
       "resources/onnxruntime/DirectML.dll",
+      "resources/onnxruntime/msvcp140.dll",
+      "resources/onnxruntime/msvcp140_1.dll",
+      "resources/onnxruntime/vcruntime140.dll",
+      "resources/onnxruntime/vcruntime140_1.dll",
       "resources/whisper/Release/ggml-base.dll",
       "resources/whisper/Release/ggml-cpu-alderlake.dll",
       "resources/whisper/Release/ggml-cpu-cannonlake.dll",

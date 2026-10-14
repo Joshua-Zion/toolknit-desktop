@@ -43,7 +43,7 @@ export function createHomeController({
   }
 
   const syncHomeBackground = () => {
-    if (!appRoot?.classList.contains('is-v2-home') || root.body?.classList.contains('update-preview-open')) return;
+    if (!appRoot?.classList.contains('is-v2-home') || root.body?.classList.contains('update-dialog-open')) return;
     syncCustomBackground();
   };
   const syncHomeShell = category => {

@@ -198,7 +198,9 @@ check(aiProviderSource.includes('await reader.cancel()'), 'Oversized AI HTTPS st
 
 const updateServiceSource = read('toolknit-desktop/src/update-service.js');
 check(updateServiceSource.includes('readResponseTextLimited(response, MAX_UPDATE_API_BYTES)'), 'Update API responses must have a streaming size limit');
-check(updateServiceSource.includes('readResponseTextLimited(response, MAX_UPDATE_NOTES_BYTES)'), 'Update note responses must have a streaming size limit');
+check(!updateServiceSource.includes('raw.githubusercontent.com'), 'Updates must not depend on raw release notes');
+check(updateServiceSource.includes('https://api.atomgit.com/api/v5/repos/ZihangDong/toolknit-desktop/tags'), 'Updates must include AtomGit tags');
+check(updateServiceSource.includes("UPDATE_DOWNLOAD_PAGE = 'https://toolknit.com/exe.html'"), 'Update destination must be fixed');
 check(externalLinksSource.includes('readResponseTextLimited(response, GITHUB_RESPONSE_MAX_BYTES)'), 'Homepage GitHub responses must have a streaming size limit');
 const boundedResponseSource = read('toolknit-desktop/src/core/bounded-response.js');
 check(boundedResponseSource.includes('await reader.cancel()'), 'Oversized remote JSON streams must be cancelled immediately');

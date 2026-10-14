@@ -1,4 +1,19 @@
 {
+  "updateDialog": {
+    "kicker": "A new version is ready",
+    "title": "Time to refresh your toolkit",
+    "quip0": "The new version is warmed up and ready. Let the old one clock out, and see what your toolkit has learned!",
+    "quip1": "Your toolkit has been practicing in secret. It is back with a few new tricks, ready for its next shift!",
+    "quip2": "The author went another round with the bugs. The new version is here. Give it a chance to show its work!",
+    "current": "Current version",
+    "latest": "Latest version",
+    "download": "Get the update on our website",
+    "opening": "Opening the download page…",
+    "retry": "Try opening the download page again",
+    "opened": "The download page is open. Restart ToolKnit after installing the update.",
+    "failed": "Could not open your browser. Retry or visit toolknit.com/exe.html manually.",
+    "note": "Download and install the new version, then reopen ToolKnit. Your local files will not be changed by the update."
+  },
   "recordingMode": {
     "title": "One-click Recording",
     "promptTitle": "Enable one-click recording?",
@@ -4396,6 +4411,7 @@
       "modelReady": "Model ready",
       "modelDownloadFailed": "Model download failed, please retry",
       "modelMissing": "Model missing — opening the installer",
+      "runtimeMissing": "The cutout runtime could not load. Reinstall the latest app; if it still fails, install the Microsoft Visual C++ 2015–2022 Redistributable (x64) and retry.",
       "segmentFailed": "Segmentation failed. Try another image.",
       "previewTitle": "Transparent preview",
       "emptyTitle": "Choose an image to begin",
@@ -4562,8 +4578,8 @@
     "versionInfo": "Version",
     "versionUpdateTitle": "Check for updates",
     "checkUpdate": "Check for updates",
-    "versionUpdateHint": "Fetches the latest release from GitHub and compares it with the installed version.",
-    "openReleasePage": "Download on GitHub",
+    "versionUpdateHint": "Checks stable version tags on GitHub and AtomGit. Download new versions from the official website.",
+    "openReleasePage": "Download from official website",
     "versionCurrent": "Current version {version}",
     "versionChecking": "Checking for updates...",
     "versionUpToDate": "You're up to date ({version})",

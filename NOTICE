@@ -1,10 +1,23 @@
 ToolKnit Desktop
+Required Notice: Copyright 2026 Zihang Dong (https://toolknit.com)
 Copyright 2026 ToolKnit contributors
 
-The Apache License 2.0 applies to the source code published in this
-repository for ToolKnit Desktop and its CLI/MCP components.
+From the license change on 2026-10-14, newly licensed author-owned code
+and modifications are available under PolyForm Noncommercial 1.0.0.
+Noncommercial use, modification and distribution must comply with LICENSE,
+including preservation of required notices. Commercial use requires a
+separate license from the author (WeChat: wunanvip6).
+This is source-available software, not OSI-approved open-source software.
 
-This license does not grant permission to use the ToolKnit name, logos,
-visual identity, domains, official website, hosted web service, service
-accounts, or other brand identifiers. Those rights are reserved by their
-respective owner.
+Previously granted Apache-2.0 rights are not withdrawn. Unchanged code
+previously distributed under Apache-2.0 remains available under that
+license; see LICENSES/Apache-2.0.txt and the relevant version history.
+In particular, the Joshua-Zion PR #67 adaptations in
+src/features/color-space-compare/core.js and wheel.js retain Apache-2.0.
+Third-party code, dependencies, fonts, models and runtimes retain their
+own licenses and notices; PolyForm does not replace those terms.
+Contributors retain copyright in their own work.
+
+No license grants rights to the ToolKnit name, logos, visual identity,
+domains, official website, hosted web service, service accounts, or other
+brand identifiers. Those rights remain with their respective owners.

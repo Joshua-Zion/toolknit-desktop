@@ -22,7 +22,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
   <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-334155?style=for-the-badge" alt="Apache 2.0 license" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial-334155?style=for-the-badge" alt="PolyForm Noncommercial license" /></a>
 </p>
 
 <p>
@@ -524,11 +524,13 @@ ToolKnit 的持续完善离不开每一位参与开发、设计、测试和反�
 
 ## 网页端与品牌边界
 
-[ToolKnit.com](https://toolknit.com) 是同名网页端产品，提供无需安装的在线体验和持续更新的网页能力。桌面端开源仓库专注于 Windows 本地文件处理、CLI 和 MCP；网页端的服务、域名、账号、托管服务和运营能力不属于本仓库的开源授权范围。
+[ToolKnit.com](https://toolknit.com) 是同名网页端产品，提供无需安装的在线体验和持续更新的网页能力。桌面端源码可见仓库专注于 Windows 本地文件处理、CLI 和 MCP；网页端服务与品牌资产不随源码许可授权。
 
-## 开源协议
+## 源码许可
 
-ToolKnit Desktop 和 CLI/MCP 源代码采用 [Apache License 2.0](LICENSE) 开源。
+自 2026-10-14 起，新授权的作者代码及修改采用 [PolyForm Noncommercial 1.0.0](LICENSE)。非商业使用、修改与分发须遵守许可并保留必要声明；商业用途需联系作者（微信：wunanvip6）另行授权。版权仍归各自作者所有。这是源码可见的非商业许可，不是 OSI 定义的开源许可。
+
+此前已授予的 Apache-2.0 权利不撤销；此前按 Apache-2.0 发布的未改动代码及第三方贡献继续保留原授权，详见 [Apache-2.0](LICENSES/Apache-2.0.txt)、[NOTICE](NOTICE) 和版本历史。第三方依赖、字体、模型及运行时仍遵循各自许可。
 
 该协议不授予 ToolKnit 名称、Logo、视觉标识、域名、官网、托管网页服务、服务账号或其他独立运营产品的使用权。详见 [NOTICE](NOTICE)。
 

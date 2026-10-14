@@ -751,7 +751,11 @@ export function initBgRemovalTool({
       const message = String(error?.message || error || '');
       if (/cancelled/i.test(message) || epoch !== operationEpoch) return;
       console.error('[BgRemoval] segment failed:', error);
-      const key = /model-not-installed/i.test(message) ? 'modelMissing' : 'segmentFailed';
+      const key = /model-not-installed/i.test(message)
+        ? 'modelMissing'
+        : /onnxruntime-(?:load-failed|dll-missing|loader-busy)/i.test(message)
+          ? 'runtimeMissing'
+          : 'segmentFailed';
       setState('error', key, undefined, { status: 'error' });
       notify(copy(key));
     } finally {

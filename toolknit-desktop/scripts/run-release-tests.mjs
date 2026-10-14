@@ -6,6 +6,7 @@ const releaseTests = [
   'test:windows-installer',
   'test:release-version',
   'test:update-service',
+  'test:license',
   'test:window-radius',
   'test:theme',
   'test:startup',

@@ -123,6 +123,7 @@ export async function checkHelpTheme(browser, url, output) {
       assert.equal(await style('#helpBackBtn', 'backgroundColor'), 'rgb(17, 17, 17)');
       assert.equal(await style('#helpBackBtn', 'transform'), 'none');
       await capture('help-back-hover');
+      await page.locator('#helpBackBtn').focus();
       await page.keyboard.press('Escape');
       await settle();
       await page.waitForFunction(() => !document.querySelector('#helpOverlay').classList.contains('visible'));
@@ -133,7 +134,8 @@ export async function checkHelpTheme(browser, url, output) {
         assert.equal(await page.locator('#legalNav .active').getAttribute('data-legal-section'), section);
         assert.equal(await page.locator('#legalTopTag').textContent(), section === 'usage-policy'
           ? 'ToolKnit Usage Policy' : 'ToolKnit Program Declaration');
-        assert.equal(await page.locator('#legalOverlay .tk-nav-actions button:visible').count(), 6);
+        assert.equal(await page.locator('#legalOverlay .tk-nav-actions button:visible').count(), 8);
+        assert.equal(await page.locator('#legalOverlay [data-tool-help]:visible, #legalOverlay [data-tool-feedback]:visible').count(), 2);
         await click('#legalOverlay .tk-nav-support');
         await page.waitForSelector('#donationOverlay.visible');
         await click('#donationOverlay .donation-close');
@@ -167,7 +169,7 @@ export async function checkHelpTheme(browser, url, output) {
       assert.equal(await style('#legalOverlay', 'display'), 'block');
       assert.equal(await style('#legalOverlay', 'backgroundColor'), 'rgb(5, 5, 6)');
       assert.equal(await style('#legalOverlay .tk-tool-nav', 'backgroundColor'), 'rgb(8, 8, 9)');
-      assert.equal(await page.locator('#legalOverlay .tk-nav-actions button:visible').count(), 6);
+      assert.equal(await page.locator('#legalOverlay .tk-nav-actions button:visible').count(), 8);
       await capture('dark-legal');
       for (const role of ['web', 'support']) {
         const button = page.locator(`#legalOverlay .tk-nav-${role}`);

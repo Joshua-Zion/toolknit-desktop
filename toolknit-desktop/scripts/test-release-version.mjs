@@ -12,7 +12,7 @@ const readStaticHtml = async () => (await Promise.all([
   'src/app/templates/settings.html',
   'src/app/templates/feedback.html',
   'src/app/templates/donation.html',
-  'src/app/templates/update-preview.html'
+  'src/app/templates/update-dialog.html'
 ].map(readText))).join('\n');
 
 function escapeRegExp(value) {
@@ -208,17 +208,11 @@ for (const source of [
   for (const version of versions) assert.equal(version, fullVersion, `${source} user agent version must match package.json`);
 }
 
-const previewSource = await readText('src/update-preview.js');
-for (const name of ['current', 'latest']) {
-  assert.equal(captureExactlyOnce(previewSource, new RegExp(`${name}: '([^']+)'`), `Preview ${name} version`), fullVersion);
-  assert.equal(captureExactlyOnce(indexHtml, new RegExp(`data-update-version="${name}">([^<]+)<`), `Preview ${name} markup version`), fullVersion);
-}
-assert.equal(captureExactlyOnce(indexHtml, /data-update-release="brand-version">(\d+\.\d+) PREVIEW</, 'Preview brand version'), seriesVersion);
-assert.equal(captureExactlyOnce(indexHtml, /data-update-release="edition">TOOLKNIT DESKTOP · V(\d+\.\d+)</, 'Preview edition version'), seriesVersion);
-for (const source of [previewSource, indexHtml]) {
-  for (const version of captures(source, /WHAT(?:\\)?'S NEW · (\d+\.\d+)/)) assert.equal(version, seriesVersion);
-}
-for (const source of [zhHelpSource, enHelpSource, previewSource, await readText('src/app/templates/update-preview.html')]) {
+const dialogSource = await readText('src/update-dialog.js');
+assert.match(dialogSource, /stableTagVersion\(value\?\.version\)/, 'Latest version must come from validated stable tags');
+assert.match(dialogSource, /normalizeVersion\(value\?\.currentVersion\)/, 'Installed version must be validated separately');
+assert.doesNotMatch(dialogSource, /current: '\d|latest: '\d/, 'Update dialog must not contain fabricated versions');
+for (const source of [zhHelpSource, enHelpSource, dialogSource, await readText('src/app/templates/update-dialog.html')]) {
   for (const version of captures(source, /\bToolKnit (\d+\.\d+)\b/)) assert.equal(version, seriesVersion);
 }
 assert.match(await readText('../README_EN.md'), new RegExp(`<h1>ToolKnit Desktop ${escapeRegExp(seriesVersion)}<\\/h1>`));
