@@ -3,12 +3,15 @@ import { spawnSync } from 'node:child_process';
 const releaseTests = [
   'test:source-inventory',
   'test:security-release',
+  'test:windows-installer',
   'test:release-version',
   'test:update-service',
   'test:window-radius',
   'test:theme',
   'test:startup',
   'test:architecture',
+  // Rust's generate_context! embeds frontendDist even during library tests.
+  'build',
   'test:animation-policy',
   'test:system-cleanup',
   'test:cleanup-tools-contract',
@@ -25,6 +28,7 @@ const releaseTests = [
   'test:pdf-text-markdown',
   'test:pdf-ai-markdown',
   'test:clipboard-history',
+  'test:recording-mode',
   'test:quick-screenshot',
   'test:pdf-rotate',
   'test:pdf-rotate-tool-contract',
@@ -99,7 +103,6 @@ const releaseTests = [
   'test:cli-package',
   'test:cli-clean-worktree',
   'test:cli-agent',
-  'build',
   'test:release-artifacts'
 ];
 

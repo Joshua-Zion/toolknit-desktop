@@ -1,4 +1,21 @@
 {
+  "recordingMode": {
+    "title": "One-click Recording",
+    "promptTitle": "Enable one-click recording?",
+    "hint": "Enable startup, live clipboard monitoring and floating screenshot history. Records stay local. Pause monitoring before copying sensitive information.",
+    "help": "About one-click recording",
+    "close": "Close",
+    "closeForever": "Never show again",
+    "unavailable": "Windows desktop only",
+    "busy": "Synchronizing three settings…",
+    "on": "Recording · All three features enabled",
+    "off": "One-click recording is off",
+    "enabled": "One-click recording enabled",
+    "disabled": "Previous settings restored",
+    "statusError": "Cannot read status. Reopen the window to retry.",
+    "error": "Setup failed. Restoration was attempted; please retry.",
+    "rollbackError": "Some settings could not be restored. Check startup, clipboard monitoring and screenshot history."
+  },
   "app": {
     "loading": "Loading...",
     "title": "ToolKnit Desktop"
@@ -4772,6 +4789,7 @@
     }
   },
   "common": {
+    "windowControlFailed": "Window action failed. Please retry or restore the window from the system tray.",
     "openLinkFailed": "The link could not be opened. Please try again later.",
     "minimize": "Minimize",
     "maximize": "Maximize",

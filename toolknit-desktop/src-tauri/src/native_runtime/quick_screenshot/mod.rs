@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 mod capture;
 mod ocr;
@@ -45,6 +45,7 @@ impl Default for Preferences {
 struct Shot {
     id: u64,
     png: Arc<Vec<u8>>,
+    thumbnail: Arc<OnceLock<Result<String, String>>>,
     width: u32,
     height: u32,
     time: u64,
@@ -150,6 +151,20 @@ fn shot_json(shot: &Shot, full: bool) -> serde_json::Value {
         .into();
     }
     value
+}
+fn shot_thumbnail(shot: &Shot) -> Result<&str, String> {
+    // Clones in history and viewers share one bounded preview; originals stay intact.
+    shot.thumbnail
+        .get_or_init(|| {
+            let thumbnail = decode(&shot.png)?.thumbnail(300, 180);
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            thumbnail
+                .write_to(&mut bytes, image::ImageFormat::Png)
+                .map_err(|_| "screenshot:invalid-image".to_string())?;
+            Ok(format!("data:image/png;base64,{}", STANDARD.encode(bytes.into_inner())))
+        })
+        .as_deref()
+        .map_err(Clone::clone)
 }
 fn window_builder<'a>(
     app: &'a tauri::AppHandle,
@@ -429,6 +444,7 @@ pub(crate) fn open_clipboard_image(app: &tauri::AppHandle, png: Vec<u8>) -> Resu
     let shot = Shot {
         id: state.sequence.fetch_add(1, Ordering::SeqCst) + 1,
         png: Arc::new(png),
+        thumbnail: Arc::new(OnceLock::new()),
         width,
         height,
         time: std::time::SystemTime::now()
@@ -696,6 +712,7 @@ pub(crate) async fn quick_screenshot(
             if p.history {
                 emit_history(&app);
             }
+            let _ = app.emit_to("main", "screenshot-preferences-changed", ());
             Ok(
                 serde_json::json!({"shortcut":p.shortcut,"history":p.history,"registered":lock(&state.inner).registered}),
             )
@@ -737,7 +754,7 @@ pub(crate) async fn quick_screenshot(
                 .ok_or("screenshot:invalid-request")?;
             match target {
                 "website" => open_url("https://toolknit.com".into())?,
-                "settings" | "support" => {
+                "settings" | "support" | "help" | "feedback" => {
                     let main_window = app
                         .get_webview_window("main")
                         .ok_or("screenshot:window-failed")?;
@@ -777,16 +794,7 @@ pub(crate) async fn quick_screenshot(
                 let mut result = Vec::new();
                 for shot in list {
                     let mut item = shot_json(&shot, false);
-                    let thumbnail = decode(&shot.png)?.thumbnail(300, 180);
-                    let mut bytes = std::io::Cursor::new(Vec::new());
-                    thumbnail
-                        .write_to(&mut bytes, image::ImageFormat::Png)
-                        .map_err(|_| "screenshot:invalid-image")?;
-                    item["image"] = format!(
-                        "data:image/png;base64,{}",
-                        STANDARD.encode(bytes.into_inner())
-                    )
-                    .into();
+                    item["image"] = shot_thumbnail(&shot)?.into();
                     result.push(item);
                 }
                 Ok(result.into())
@@ -973,6 +981,7 @@ pub(crate) async fn quick_screenshot(
                     let shot = Shot {
                         id,
                         png: Arc::new(bytes),
+                        thumbnail: Arc::new(OnceLock::new()),
                         width,
                         height,
                         time: std::time::SystemTime::now()
@@ -1025,6 +1034,29 @@ pub(super) fn require_session(state: &ScreenshotState, request: &serde_json::Val
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn screenshot_thumbnail_is_shared_and_viewer_keeps_original() {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::RgbImage::new(1200, 720)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let shot = Shot {
+            id: 1,
+            png: Arc::new(bytes.into_inner()),
+            thumbnail: Arc::new(OnceLock::new()),
+            width: 1200,
+            height: 720,
+            time: 0,
+        };
+        let clone = shot.clone();
+        let preview = shot_thumbnail(&shot).unwrap();
+        assert!(std::ptr::eq(preview, shot_thumbnail(&clone).unwrap()));
+        let preview_bytes = png_from_data(&serde_json::json!(preview)).unwrap();
+        assert_eq!(image_dimensions(&preview_bytes).unwrap(), (300, 180));
+        let original = png_from_data(&shot_json(&clone, true)["image"]).unwrap();
+        assert_eq!(original, *shot.png);
+        assert_eq!(image_dimensions(&original).unwrap(), (1200, 720));
+    }
     #[test]
     fn screenshot_dimensions_are_bounded() {
         assert!(check_pixels(0, 10).is_err());

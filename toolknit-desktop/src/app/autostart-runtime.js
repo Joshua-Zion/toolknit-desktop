@@ -28,7 +28,7 @@ export function createAutostartRuntime({ root = document, isTauri = false, tauri
     if (scope.isCurrent(revision)) render();
   };
   if (toggle) scope.event(toggle, 'click', async () => {
-    if (busy || !current.supported || failed) return;
+    if (busy || !current.supported || failed || root.documentElement?.hasAttribute('data-recording-mode-busy')) return;
     const revision = scope.invalidate();
     busy = true;
     render();

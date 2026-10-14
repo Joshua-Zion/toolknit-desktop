@@ -21,7 +21,7 @@ export function createQuickScreenshotController({overlay,isTauri=false,getAiPlat
     render();
   }
   async function configure(next) {
-    if(busy)return;busy=true;render();const owner=revision;
+    if(busy||document.documentElement.hasAttribute('data-recording-mode-busy'))return;busy=true;render();const owner=revision;
     try {const p=await runtime.call('configure',{preferences:{shortcut:next.shortcut,history:next.history}});if(owner!==revision||!opened)return;preferences=p;q('Shortcut').value=p.shortcut||'';q('PageError').hidden=true;notify(tr('settingsSaved'));}
     catch(e){if(owner===revision&&opened)error(e);}finally{busy=false;if(opened)render();}
   }

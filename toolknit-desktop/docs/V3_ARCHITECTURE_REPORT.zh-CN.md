@@ -1,5 +1,9 @@
 # ToolKnit Desktop V3.0 架构迁移报告
 
+> 2026-10-13 稳定性增量：窗口操作队列、回复超时与恢复同步归 `app/window-runtime.js`，转场动画等待兜底归 `app/page-transition-runtime.js`，模型状态 revision 归 `app/local-translation-runtime.js`，首页 hover RAF 与即时搜索归 `app/home-controller.js`。截图预览缓存归 native `quick_screenshot::Shot` 的共享 `OnceLock`，DOM/解码复用归 history controller；原图查看契约不变。本轮不新增原生命令、事件、存储或 DOM 契约，新增双语错误提示。当前 71 工具/12 分类/46 CLI/MCP，1454 HTML ID 无重复、145 命令实现/144 唯一名称、214 Rust 测试（207 passed/7 ignored）。完整发布 101 项与双主题浏览器专项通过；源码责任边界、证据和原生复现限制见[维护报告](V3_STABILITY_REVIEW_20261013.zh-CN.md)。
+
+> 2026-10-13 一键记录增量：组合状态与事务归 `app/recording-mode-state.js`，DOM/订阅归 `app/recording-mode-runtime.js`，原生命令归 `platform/recording-mode-runtime.js`，样式归 `styles/pages/recording-mode.css`。使用 `toolknit.recording-mode.snapshot.v1` 和 `toolknit.recording-mode.prompt-dismissed.v1`；失败回滚、恢复原设置、原生状态核验及生命周期取消有专项测试。新增 8 个内部 DOM ID、导航 `data-tool-help/feedback` 和截图偏好通知 `screenshot-preferences-changed`；沿用原生命令与 CLI/MCP。帮助/反馈由共享导航分发，modal session 持有来源页、焦点与输入锁。当前 71 工具/12 分类/46 CLI/MCP，1454 HTML ID 无重复，144 唯一原生命令。完整发布 101 项 npm 门禁通过，Rust 206 passed/7 ignored；Edge 双主题、响应式与组合模式浏览器专项通过，真实登录/重启未代替为模拟验证。
+
 > 2026-10-13 截图交互增量：普通文字的字形度量与选框收紧归 screenshot core，绘制/导出复用同一布局；译文覆盖保留块范围。保存成功打开位置由辅助窗口先结束 capture，再调用既有输出 runtime；viewer 不退出。剪贴板 `pin` action 仅传整数记录 ID，原生 clipboard service 从加密存储读取 PNG，经内部 native runtime 桥复用截图查看器，feature 不互相导入。新增生成式内部 DOM `clipboardOpenPinned`；静态 HTML ID 仍为 1446，无重复，命令/事件/存储及 CLI/MCP 不变。Rust 213 测试（206 passed/7 ignored）、架构/构建/核心契约、Edge 截图 8 场景和剪贴板双主题/中英文回归通过；实际 Explorer 选中文件与原生置顶窗口尚待安装后验收。本轮未重新打包。
 
 > 本轮补充：完整发布回归 100 项 npm 脚本通过（安全 1329 项、CLI/MCP、架构、构建和产物审计），集成检查无缺失工具/翻译键。维护复盘：跨工具入口共享原生服务、只传存储 ID；普通文字选框按实际字形验证，浏览器点击选框内部需避开八点节点命中区。

@@ -57,6 +57,8 @@ export function bindGlobalToolPageChrome({
   root = globalThis.document,
   onWebsite = () => {},
   onSupport = () => {},
+  onHelp = () => {},
+  onFeedback = () => {},
   onSettings = () => {},
   onToolBack = () => {},
   onWindowAction = () => {}
@@ -73,6 +75,7 @@ export function bindGlobalToolPageChrome({
     return visible ? overlay : null;
   };
   const actionButton = target => target?.closest?.([
+    '[data-tool-help]', '[data-tool-feedback]',
     '[data-tool-website]', '[data-home-link="website"]', '[data-ppt-host-action="website"]',
     '[data-excel-action="website"]', '[data-tele-action="website"]',
     '[data-audio-convert-action="website"]', '[data-audio-extract-action="website"]',
@@ -148,7 +151,9 @@ export function bindGlobalToolPageChrome({
       '[data-audio-convert-action="website"]', '[data-audio-extract-action="website"]',
       '[data-bgr-action="website"]'
     ].join(', '));
-    if (!isWindow && !settings && !support && !website) return;
+    const help = button.hasAttribute?.('data-tool-help');
+    const feedback = button.hasAttribute?.('data-tool-feedback');
+    if (!isWindow && !settings && !support && !website && !help && !feedback) return;
     event.preventDefault?.();
     event.stopPropagation?.();
     if (isWindow) {
@@ -157,6 +162,10 @@ export function bindGlobalToolPageChrome({
         || button.dataset.windowAction
         || button.dataset.action;
       if (action) onWindowAction(action, { event, button, overlay });
+    } else if (help) {
+      onHelp({ event, button, overlay });
+    } else if (feedback) {
+      onFeedback({ event, button, overlay });
     } else if (settings) {
       moveFocusOutOfHiddenRegion(overlay);
       onSettings({ event, button, overlay });
@@ -191,6 +200,11 @@ export function bindToolPageChrome(root, onClose) {
     if (event.target.closest('[data-tool-settings]')) {
       event.preventDefault();
       clickHost('#settingsBtn');
+      return;
+    }
+    if (event.target.closest('[data-tool-help], [data-tool-feedback]')) {
+      event.preventDefault();
+      clickHost(event.target.closest('[data-tool-help]') ? '.home-v2-topbar [data-tool-help]' : '.home-v2-topbar [data-tool-feedback]', root);
       return;
     }
     const windowButton = event.target.closest('[data-tool-window]');

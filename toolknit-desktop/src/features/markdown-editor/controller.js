@@ -105,7 +105,7 @@ export function createMarkdownEditorController({
   const helpAction = overlay.querySelector('[data-md-help]');
   const draftState = overlay.querySelector('[data-md-draft-state]');
   const count = overlay.querySelector('[data-md-count]');
-  const renderer = createMarkdownRenderer();
+  const renderer = createMarkdownRenderer('mathml');
   const exportRenderer = createMarkdownRenderer('mathml');
   const tr = (key, values) => t(`home.markdownEditor.${key}`, values);
   const sidebar = overlay.querySelector('.md-outline-panel');
@@ -285,7 +285,7 @@ export function createMarkdownEditorController({
     const headings = extractMarkdownHeadingsFromTokens(tokens);
     const html = renderer.renderer.render(tokens, renderer.options, env);
     const clean = DOMPurify.sanitize(html, {
-      USE_PROFILES: { html: true, svg: true, svgFilters: true },
+      USE_PROFILES: { html: true, svg: true, svgFilters: true, mathMl: true },
       ADD_ATTR: ['aria-hidden']
     });
     if (!isOpenSession(owner) || revision !== renderRevision) return;
@@ -452,7 +452,7 @@ export function createMarkdownEditorController({
   async function renderedForExport(owner) {
     let html = exportRenderer.render(sourceForRender(currentText()));
     html = DOMPurify.sanitize(html, {
-      USE_PROFILES: { html: true, svg: true, svgFilters: true }
+      USE_PROFILES: { html: true, svg: true, svgFilters: true, mathMl: true }
     });
     const host = document.createElement('div');
     host.replaceChildren(safeLivePreviewFragment(html, []));

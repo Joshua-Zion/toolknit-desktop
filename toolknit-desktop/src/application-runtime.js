@@ -12,6 +12,7 @@
       import { createAiSettingsRuntime } from './app/ai-settings-runtime.js';
       import { createExternalLinksRuntime } from './app/external-links-runtime.js';
       import { createAutostartRuntime } from './app/autostart-runtime.js';
+      import { createRecordingModeRuntime } from './app/recording-mode-runtime.js';
       import { createLocalTranslationSettings } from './app/local-translation-runtime.js';
       import { createHomeCustomToolsRuntime } from './app/home-custom-tools-runtime.js';
       import { createScreenshotContextRuntime } from './app/screenshot-context-runtime.js';
@@ -178,6 +179,7 @@
         getTheme: themeRuntime.get,
         onThemeChange: themeRuntime.subscribe,
         translate: t,
+        notify: message => window.showToast?.(message),
         refreshIcons: () => createIcons({ icons })
       });
       const {
@@ -1540,6 +1542,25 @@
       });
       const openExternalUrl = externalLinksRuntime.openExternalUrl;
       const donationController = createDonationController({ openExternalUrl });
+      const currentNavigationPage = () => Array.from(document.querySelectorAll('[id$="Overlay"].visible, [id$="Workspace"].visible, [id$="Dialog"].visible'))
+        .filter(page => !page.inert).sort((a, b) => (Number.parseInt(getComputedStyle(b).zIndex, 10) || 0) - (Number.parseInt(getComputedStyle(a).zIndex, 10) || 0))[0];
+      const openNavigationPage = (page, overlay) => {
+        overlay ||= currentNavigationPage();
+        const background = overlay?.id === 'donationOverlay' ? donationController.getBackground() : overlay;
+        if (overlay?.id === 'donationOverlay') donationController.close();
+        return page === 'help' ? openHelpOverlay('overview', background) : openFeedbackOverlay(background);
+      };
+      const openNavigationSettings = (overlay = currentNavigationPage()) => {
+        if (overlay?.id === 'donationOverlay') {
+          const background = donationController.getBackground();
+          donationController.close();
+          if (helpCenterRuntime.navigateToSettings(background)) return;
+          return openSettingsOverlay();
+        }
+        if (overlay?.id === 'apiKeyOverlay') return aiSettingsRuntime.closeApiKeySettings();
+        if (helpCenterRuntime.navigateToSettings(overlay)) return;
+        return openSettingsOverlay();
+      };
       // Tool overlays are mounted lazily and still contain both current and
       // legacy chrome attributes. Keep one capture-phase owner so every page
       // has working top actions without duplicating feature listeners.
@@ -1547,28 +1568,22 @@
         root: document,
         onWebsite: () => { void openExternalUrl('https://toolknit.com'); },
         onSupport: ({ overlay } = {}) => { void donationController.open({ background: overlay }); },
-        onSettings: ({ overlay } = {}) => {
-          if (overlay?.id === 'donationOverlay') {
-            return pageTransition.run(() => {
-              donationController.close();
-              showSettingsOverlay();
-            });
-          }
-          if (overlay?.id === 'apiKeyOverlay') {
-            aiSettingsRuntime.closeApiKeySettings();
-            return;
-          }
-          if (helpCenterRuntime?.navigateToSettings?.(overlay)) return;
-          return openSettingsOverlay();
-        },
+        onHelp: ({ overlay }) => { void openNavigationPage('help', overlay); },
+        onFeedback: ({ overlay }) => { void openNavigationPage('feedback', overlay); },
+        onSettings: ({ overlay } = {}) => openNavigationSettings(overlay),
         onToolBack: ({ overlay }) => lazyFeatureRegistry?.closeFromChrome(overlay) ?? false,
         onWindowAction: action => { void handleWindowControlAction(action); }
       });
       void externalLinksRuntime.loadGithubActivity();
       createAutostartRuntime({ isTauri, tauriCorePromise, tauriEventPromise, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
+      createRecordingModeRuntime({ isTauri, translate: t, onLanguageChange: onLangChange, onOpenHelp: openHelpOverlay, notify: message => window.showToast?.(message) });
       createLocalTranslationSettings({ isTauri, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
       createHomeCustomToolsRuntime({ isTauri, tauriCorePromise, translate: t, notify: message => window.showToast?.(message) });
-      createScreenshotContextRuntime({ isTauri, getAiPlatformConfig, getLang, onLangChange, translate: t, notify: message => window.showToast?.(message) });
+      createScreenshotContextRuntime({ isTauri, getAiPlatformConfig, getLang, onLangChange, translate: t, onNavigate: target => {
+        if (target === 'help' || target === 'feedback') return openNavigationPage(target);
+        if (target === 'support') return donationController.open({ background: currentNavigationPage() });
+        if (target === 'settings') return openNavigationSettings();
+      }, notify: message => window.showToast?.(message) });
 
 
       const callDeepSeek = createAiRequestRuntime({

@@ -17,11 +17,10 @@ export function setModalInteractivity(root, interactive) {
 }
 
 /** Session-owned focus and background locking for sibling page workspaces. */
-export function createModalSession({ root, background, initialFocus, onClose, canClose = () => true } = {}) {
+export function createModalSession({ root, background, initialFocus, onClose, canClose = () => true, documentRef = root?.ownerDocument || globalThis.document } = {}) {
   let scope = null;
   let returnFocus = null;
   let backgroundInteractive = false;
-  const documentRef = root?.ownerDocument || globalThis.document;
 
   function close({ restore = true } = {}) {
     if (!scope) return;

@@ -44,7 +44,11 @@ try{
         if(command!=='local_translation')throw Error(command);
         const action=args.request.action;window.__calls.push(action);window.__requests.push(structuredClone(args.request));
         const status=()=>({ready:window.__ready,installing:false,progress:{},targetLanguage:'zh-Hans'});
-        if(action==='status')return status();
+        if(action==='status'){
+          const snapshot=status();
+          if(window.__deferStatus)return new Promise(resolve=>{window.__finishStatus=()=>resolve(snapshot);});
+          return snapshot;
+        }
         if(action==='remove'){window.__ready=false;return status();}
         if(action==='cancel-install'){window.__finish(false,'translation:cancelled');return null;}
         if(action==='install'){
@@ -90,8 +94,13 @@ try{
     assert.equal(await source.locator('[aria-pressed="true"]').getAttribute('data-source'),'auto');
     await source.locator('[data-source="accelerated"]').click();
     assert.equal(await source.locator('[aria-pressed="true"]').getAttribute('data-source'),'accelerated');
+    await page.evaluate(()=>{window.__deferStatus=true;void window.__manager.refresh();});
+    await page.waitForFunction(()=>Boolean(window.__finishStatus));
     await page.locator('#localTranslationInstall').click();
     await page.waitForFunction(()=>document.getElementById('localTranslationProgress').value===100);
+    await page.evaluate(()=>{window.__deferStatus=false;window.__finishStatus();});
+    await page.waitForTimeout(30);
+    assert.ok(await page.locator('#localTranslationCancel').isVisible(),'late idle status must not erase installation progress');
     assert.equal(await page.evaluate(()=>window.__requests.find(r=>r.action==='install').source),'accelerated');
     assert.match(await page.locator('#localTranslationStatus').textContent(),/GitHub/);
     assert.equal(await source.locator('button:disabled').count(),3,'source cannot change mid-install');

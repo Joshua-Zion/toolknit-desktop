@@ -1,4 +1,21 @@
 {
+  "recordingMode": {
+    "title": "一键记录模式",
+    "promptTitle": "是否要打开一键记录模式？",
+    "hint": "开启自启动、剪贴板实时监控和截图悬浮历史。记录仅保存在本机，请在复制敏感信息前暂停监控。",
+    "help": "一键记录模式说明",
+    "close": "关闭",
+    "closeForever": "永久关闭",
+    "unavailable": "仅 Windows 桌面版可用",
+    "busy": "正在同步三项设置…",
+    "on": "正在记录 · 三项功能已开启",
+    "off": "未开启一键记录模式",
+    "enabled": "一键记录模式已开启",
+    "disabled": "已恢复开启前的设置",
+    "statusError": "状态读取失败，请重新打开窗口重试",
+    "error": "设置未完成，已尝试恢复原状态，请重试",
+    "rollbackError": "部分设置未能恢复，请检查自启动、剪贴板监控和截图历史开关"
+  },
   "app": {
     "loading": "正在加载...",
     "title": "ToolKnit 桌面版"
@@ -4772,6 +4789,7 @@
     }
   },
   "common": {
+    "windowControlFailed": "窗口操作未完成，请重试；也可从系统托盘恢复窗口。",
     "openLinkFailed": "无法打开链接，请稍后重试。",
     "minimize": "最小化",
     "maximize": "最大化",

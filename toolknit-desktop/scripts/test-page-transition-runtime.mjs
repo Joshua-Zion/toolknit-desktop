@@ -188,4 +188,14 @@ for (const phase of ['cover', 'action', 'page-fade']) {
   assert.equal(h.veil().isConnected, false);
   h.runtime.dispose();
 }
+{
+  const h = harness();
+  h.doc.getAnimations = () => [{ effect: { target: { matches: () => true } },
+    transitionProperty: 'opacity', finished: new Promise(() => {}) }];
+  assert.equal(await h.runtime.run(() => 'restored'), 'restored', 'lost animation completion cannot strand navigation');
+  assert.equal(h.veil().style.visibility, 'hidden');
+  h.doc.getAnimations = () => [];
+  assert.equal(await h.runtime.run(() => 'next'), 'next', 'navigation still works after animation timeout');
+  h.runtime.dispose();
+}
 console.log('Page transition runtime ownership, cancellation and integration contracts passed');

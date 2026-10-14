@@ -1,4 +1,4 @@
-import { Globe2, ExternalLink, Heart, HeartHandshake, Settings, Minus, Square, X } from 'lucide';
+import { Globe2, ExternalLink, Heart, HeartHandshake, CircleHelp, BookOpen, MessageCircleWarning, MessageSquare, Settings, Minus, Square, X } from 'lucide';
 
 const headers = '.home-v2-topbar, .pdf-merge-v2-topbar, .tool-page-v2-topbar, .settings-v2-topbar, .help-v2-topbar, .teleprompter-topbar, .bg-removal-topbar, .donation-page-topbar';
 const backSelector = '.pdf-merge-v2-back, .tool-page-v2-back, .settings-v2-back, .help-back-btn, .teleprompter-back, .bg-removal-back, .ppt-draft-editor-back';
@@ -70,6 +70,22 @@ export function prepareToolPageChrome(root = globalThis.document) {
   if (root.matches?.(headers)) list.unshift(root);
   for (const header of list) {
     header.classList.add('tk-tool-nav');
+    const cluster = header.querySelector('.home-v2-window-cluster');
+    const settings = cluster?.querySelector('.home-v2-icon-button, .tool-page-v2-icon');
+    if (settings) for (const [action, key] of [['help', 'settings.helpCenter'], ['feedback', 'settings.feedbackBug']]) {
+      if (header.querySelector(`[data-tool-${action}]`)) continue;
+      const button = header.ownerDocument.createElement('button');
+      button.type = 'button';
+      button.className = 'tool-page-v2-icon home-v2-icon-button';
+      button.setAttribute(`data-tool-${action}`, '');
+      button.setAttribute('data-i18n-title', key);
+      button.setAttribute('data-i18n-aria-label', key);
+      const english = header.ownerDocument.documentElement?.lang?.startsWith('en');
+      button.setAttribute('title', action === 'help' ? (english ? 'Help Center' : '帮助中心') : (english ? 'Feedback BUG' : '反馈 BUG'));
+      button.setAttribute('aria-label', button.title);
+      cluster.insertBefore(button, settings);
+    }
+    cluster?.classList.add('tk-nav-extended-cluster');
     header.querySelector(':scope > :is(.pdf-merge-v2-topbar-left, .tool-page-v2-topbar-left, .settings-v2-topbar-left, .help-v2-topbar-left, .ppt-draft-editor-topbar-left, .teleprompter-topbar-left, .bg-removal-topbar-left)')?.classList.add('tk-nav-left');
     header.querySelector(':scope > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions)')?.classList.add('tk-nav-actions');
     for (const tag of header.querySelectorAll('.pdf-merge-v2-top-tag, .tool-page-v2-tag, .settings-v2-top-tag, .help-v2-top-tag, .ppt-draft-editor-top-tag')) tag.classList.add('tk-nav-tag');
@@ -79,8 +95,9 @@ export function prepareToolPageChrome(root = globalThis.document) {
       else if (button.matches('.home-v2-nav-link, .tool-page-v2-nav-link')) prepareWebButton(button);
       else if (button.matches('.home-v2-icon-button, .tool-page-v2-icon, .home-v2-window-button')) {
         const action = button.getAttribute('data-tool-window') || button.getAttribute('data-ppt-window-action') || button.getAttribute('data-window-action') || button.getAttribute('data-action');
-        const motion = ['minimize', 'maximize', 'close'].includes(action) ? action : 'settings';
-        prepareButton(button, motion, [{ settings: Settings, minimize: Minus, maximize: Square, close: X }[motion]]);
+        const motion = button.hasAttribute('data-tool-help') ? 'help' : button.hasAttribute('data-tool-feedback') ? 'feedback' : ['minimize', 'maximize', 'close'].includes(action) ? action : 'settings';
+        const definitions = { help: [CircleHelp, BookOpen], feedback: [MessageCircleWarning, MessageSquare], settings: [Settings], minimize: [Minus], maximize: [Square], close: [X] };
+        prepareButton(button, motion, definitions[motion]);
       }
     }
   }

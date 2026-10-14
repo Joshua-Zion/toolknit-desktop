@@ -380,12 +380,24 @@ try{
     const visibleCards=await shelf.page.locator('#shotHistoryList').evaluate(el=>[...el.children].filter(c=>{const r=c.getBoundingClientRect(),p=el.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom+1;}).length);
     assert.equal(visibleCards,4,'four cards fit without scrolling');
     assert.ok(await shelf.page.locator('#shotHistoryList').evaluate(el=>el.scrollHeight>el.clientHeight),'older images scroll');
+    await shelf.page.evaluate(()=>{
+      window.__existingCards=[...document.querySelectorAll('.shot-history-item')];
+      window.__imageDecodes=0;
+      const decode=HTMLImageElement.prototype.decode;
+      HTMLImageElement.prototype.decode=function(){window.__imageDecodes++;return decode.call(this);};
+      window.__shotEmit('screenshot-history-changed');
+    });
+    await shelf.page.waitForTimeout(100);
+    assert.equal(await shelf.page.evaluate(()=>window.__imageDecodes),0,'unchanged history reuses decoded thumbnails');
+    assert.ok(await shelf.page.evaluate(()=>window.__existingCards.every((card,i)=>card===document.querySelectorAll('.shot-history-item')[i])));
     assert.equal(await shelf.page.locator('#shotHistoryPanel').getAttribute('aria-hidden'),'false');
     assert.equal(await shelf.page.locator('#shotHistoryBubble').getAttribute('aria-expanded'),'true');
     await shelf.page.evaluate(()=>window.__shotEmit('screenshot-ended'));
     assert.equal(await shelf.page.locator('.shot-history-item').count(),6,'finishing a capture must not dispose the history window');
     await shelf.page.evaluate(()=>{window.__shotHistory.unshift({...window.__shotHistory[0],id:9});window.__shotEmit('screenshot-history-changed');});
     await shelf.page.waitForFunction(()=>document.querySelector('.shot-history-item')?.dataset.shotId==='9');
+    assert.equal(await shelf.page.evaluate(()=>window.__imageDecodes),1,'only the newly inserted thumbnail is decoded');
+    assert.ok(await shelf.page.evaluate(()=>window.__existingCards.every(card=>card.isConnected)),'adding a capture preserves existing card nodes');
     assert.equal(await shelf.page.locator('#shotHistory').getAttribute('data-state'),'expanded','new captures must preserve the open panel');
     assert.equal(await shelf.page.locator('.shot-history-item').count(),7);
     await shelf.page.evaluate(()=>{window.__shotHistoryFailure=true;window.__shotEmit('screenshot-history-changed');});

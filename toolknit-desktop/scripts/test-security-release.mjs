@@ -88,7 +88,7 @@ check(installerTemplate.includes('${IfNot} ${AtLeastWin10}'), 'NSIS installer mu
 check(installerTemplate.includes('${VersionCompare} "17134" "$0" $1'), 'NSIS installer must reject Windows 10 builds older than 1803');
 check(installerTemplate.includes("ExecWait '\"$6\" ${WEBVIEW2INSTALLERARGS} /install' $1"), 'WebView2 bootstrapper path must be quoted for profiles containing spaces');
 check(installerTemplate.includes('${OrIf} $1 = 3010'), 'WebView2 reboot-required success must not be reported as an installation failure');
-check(installerTemplate.includes('$(webview2AbortError)$\\n$\\n$(webview2InstallError)'), 'WebView2 failures must expose the bootstrapper exit code to users');
+check(installerTemplate.includes('code $WebView2ExitCode') && installerTemplate.includes('$(webview2Recovery)'), 'WebView2 failures must expose the bootstrapper exit code and recovery options to users');
 
 const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repositoryRoot })
   .toString('utf8')

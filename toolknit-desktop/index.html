@@ -1741,8 +1741,22 @@
           </div>
         </div>
       </div>
+    <aside class="recording-mode-prompt" id="recordingModePrompt" aria-labelledby="recordingModePromptTitle" hidden>
+      <div class="recording-mode-dismissal" id="recordingModeDismissal">
+        <button class="recording-mode-dismiss" id="recordingModeDismiss" type="button" aria-expanded="false" aria-controls="recordingModeDismissMenu" data-i18n-title="common.close" data-i18n-aria-label="common.close"><i data-lucide="x"></i></button>
+        <div class="recording-mode-dismiss-menu" id="recordingModeDismissMenu" hidden>
+          <button type="button" data-recording-mode-dismiss="session" data-i18n="recordingMode.close">关闭</button>
+          <button type="button" data-recording-mode-dismiss="permanent" data-i18n="recordingMode.closeForever">永久关闭</button>
+        </div>
+      </div>
+      <h2 id="recordingModePromptTitle" data-i18n="recordingMode.promptTitle">是否要打开一键记录模式？</h2>
+      <p data-i18n="recordingMode.hint">开启自启动、剪贴板实时监控和截图悬浮历史。记录仅保存在本机，请在复制敏感信息前暂停监控。</p>
+      <div class="recording-mode-prompt-footer">
+        <button class="recording-mode-help" type="button" data-recording-mode-help data-i18n="recordingMode.help">一键记录模式说明</button>
+        <button class="settings-v2-switch" id="recordingModePromptToggle" type="button" aria-pressed="false" disabled data-i18n-aria-label="recordingMode.title"></button>
+      </div>
+    </aside>
     </div>
-
     <script type="module" src="./src/help-data.js"></script>
     <script type="module" src="./src/main.js"></script>
 

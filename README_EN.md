@@ -96,7 +96,7 @@ Compared with v2.3.1, V3.0 expands the desktop catalog from 65 to 68 tools, reta
 - `Color-space comparison`: HSV/HSL color wheels and HEX input, alongside linked color-space controls, gamut checks, and both themes.
 - `Application stability`: closing or switching tools releases workers, canvases, listeners, tasks, and temporary resources; stale asynchronous results cannot update a new session.
 
-The desktop app, Tauri bundle, Rust crate, and `@toolknit/cli` share version `3.0.0`. Desktop installers are available through [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases), and the command-line tool through [npm](https://www.npmjs.com/package/@toolknit/cli).
+The current development version is `3.1.0`, shared by the desktop app, Tauri bundle, Rust crate, and `@toolknit/cli`; V3.1 has not been released. V3.0 remains the published baseline. Published desktop installers are available through [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases), and the command-line tool through [npm](https://www.npmjs.com/package/@toolknit/cli).
 
 ### Existing capabilities
 
@@ -423,7 +423,7 @@ npm ci
 npm run tauri dev
 ```
 
-Node.js 24 is recommended to match GitHub Actions; Vite 8 requires Node.js `20.19+` or `22.12+`. Native Windows builds also need Rust stable, Visual Studio C++ Build Tools, the Windows SDK, and WebView2. See the [Windows build guide](BUILD.md).
+Desktop builds require Node.js `22.12+`; Node.js 24 is recommended to match GitHub Actions and meet both Vite 8 and Mermaid 12 requirements. Native Windows builds also need Rust stable, Visual Studio C++ Build Tools, the Windows SDK, and WebView2. See the [Windows build guide](BUILD.md).
 
 The repository includes source, required resources, tests, and third-party licenses. Local keys, signing credentials, browser sessions, test outputs, and installers must stay out of commits. Signing workflows obtain credentials through GitHub Actions Secrets.
 

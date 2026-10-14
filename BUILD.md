@@ -5,7 +5,7 @@
 ## 环境要求
 
 - Windows 10/11
-- [Node.js](https://nodejs.org/) `20.12.0` 或更高版本
+- [Node.js](https://nodejs.org/) `22.12.0` 或更高版本，建议使用 Node.js 24（与 CI 一致；满足 Vite 8 与 Mermaid 12 的构建要求）
 - [Rust](https://www.rust-lang.org/tools/install) stable
 - 稳定网络连接，用于下载 npm、Rust 依赖，以及按需下载 FFmpeg/离线识别模型
 

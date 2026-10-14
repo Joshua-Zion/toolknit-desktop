@@ -419,7 +419,7 @@ npm ci
 npm run tauri dev
 ```
 
-建议使用 Node.js 24，与 GitHub Actions 一致；Vite 8 要求 Node.js `20.19+` 或 `22.12+`。构建 Windows 桌面端还需要 Rust stable、Visual Studio C++ Build Tools、Windows SDK 和 WebView2。详细步骤见 [Windows 构建指南](BUILD.md)。
+桌面端构建需要 Node.js `22.12+`，建议使用 Node.js 24，与 GitHub Actions 一致；该要求同时满足 Vite 8 和 Mermaid 12。构建 Windows 桌面端还需要 Rust stable、Visual Studio C++ Build Tools、Windows SDK 和 WebView2。详细步骤见 [Windows 构建指南](BUILD.md)。
 
 仓库保留构建所需的源码、资源、测试与第三方许可。本地密钥、签名凭据、浏览器会话、测试输出和安装包不应提交；签名工作流通过 GitHub Actions Secrets 读取凭据。
 

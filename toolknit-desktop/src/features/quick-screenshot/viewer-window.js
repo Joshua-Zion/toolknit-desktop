@@ -16,7 +16,7 @@ export async function createController({runtime,tr,q,notify,save,getCurrentWindo
     try{if(value==='copy'){await runtime.call('copy');if(!disposed)notify(tr('copied'));}if(value==='save')await save({format:'png'},()=>!disposed);}catch{if(!disposed)notify(tr('failed'));}finally{busy=false;}
   }
   scope.event(q('Viewer'),'click',e=>{const b=e.target.closest('[data-shot-action]');if(b)void action(b.dataset.shotAction);if(e.target.closest('[data-shot-back]'))close();});
-  scope.use(bindGlobalToolPageChrome({onToolBack:()=>{close();return true;},onWebsite:()=>navigate('website'),onSupport:()=>navigate('support'),onSettings:()=>navigate('settings'),onWindowAction:a=>{void (a==='close'?native.close():a==='minimize'?native.minimize():native.toggleMaximize()).catch(()=>notify(tr('failed')));}}));
+  scope.use(bindGlobalToolPageChrome({onToolBack:()=>{close();return true;},onWebsite:()=>navigate('website'),onSupport:()=>navigate('support'),onHelp:()=>navigate('help'),onFeedback:()=>navigate('feedback'),onSettings:()=>navigate('settings'),onWindowAction:a=>{void (a==='close'?native.close():a==='minimize'?native.minimize():native.toggleMaximize()).catch(()=>notify(tr('failed')));}}));
   scope.event(q('Pin'),'change',async()=>{const enabled=q('Pin').checked;try{await native.setAlwaysOnTop(enabled);}catch{q('Pin').checked=!enabled;notify(tr('failed'));}});
   scope.event(stage,'wheel',e=>{e.preventDefault();zoom=clamp(zoom*(e.deltaY<0?1.1:1/1.1),.02,8);render();},{passive:false});
   scope.event(stage,'pointerdown',e=>{drag={px:e.clientX,py:e.clientY,x,y};stage.setPointerCapture(e.pointerId);});

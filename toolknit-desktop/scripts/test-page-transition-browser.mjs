@@ -118,7 +118,7 @@ async function checkSettingsNavigation(label) {
       back: back && measure(root.querySelector(back)),
       website: measure(root.querySelector('.home-v2-nav-link')),
       support: measure(root.querySelector('.home-v2-support-top')),
-      icon: measure(root.querySelector('.home-v2-icon-button'))
+      icon: measure(root.querySelector('.tk-nav-settings'))
     });
     const layout = settings.querySelector('.settings-v2-layout');
     const header = settings.querySelector('.settings-v2-topbar');
@@ -152,7 +152,7 @@ async function checkSettingsNavigation(label) {
     const palette = metrics.theme === 'light' ? metrics.home : metrics.tool;
     assert.equal(metrics.settings[part].color, palette[part].color, `${label}: ${part} contrast`);
   }
-  assert.equal(metrics.settings.icon.background, metrics.theme === 'light' ? 'rgb(238, 238, 238)' : 'rgb(23, 23, 23)', `${label}: settings remains selected`);
+  assert.equal(metrics.settings.icon.background, metrics.theme === 'light' ? 'rgb(238, 238, 238)' : 'rgb(30, 30, 33)', `${label}: settings remains selected`);
   if (metrics.width > 780) {
     assert.equal(metrics.settings.header.height, 68, `${label}: desktop height is 68px`);
     assert.equal(metrics.settings.header.height, metrics.home.header.height);
@@ -205,7 +205,8 @@ try {
   await trace('#pdfEditorBack', '#pdfEditorOverlay', '.app', 'editor-return', { opening: false });
   await trace('#homeV2Settings', '.app', '#settingsOverlay', 'home-to-settings');
   await trace('#helpLink', '#settingsOverlay', '#helpOverlay', 'settings-to-help');
-  await trace('#helpBackBtn', '#helpOverlay', '.app', 'help-to-home', { opening: false });
+  await trace('#helpBackBtn', '#helpOverlay', '#settingsOverlay', 'help-to-settings', { opening: false });
+  await trace('#settingsBack', '#settingsOverlay', '.app', 'settings-to-home', { opening: false });
 
   await page.evaluate(() => {
     setTimeout(() => document.querySelector('[data-home-tool="pdf-split"]').click(), 150);

@@ -59,7 +59,7 @@ try {
     assert.equal(await page.locator('[data-md-success-open-folder]').textContent(),'Open folder');
     await page.locator('[data-md-success-ok]').click();
   }
-  assert.deepEqual(await page.evaluate(()=>window.mdQA.folders),['C:/qa-output/Markdown/report-2','C:/qa-output/Markdown']);
+  assert.deepEqual(await page.evaluate(()=>window.mdQA.folders),['C:/qa-output/Markdown/report-2/report.md','C:/qa-output/Markdown/report-2.html']);
   const calls=await page.evaluate(()=>window.mdQA.calls);
   assert.equal(calls[0].args.outputRoot,'C:/qa-output');
   assert.match(new TextDecoder().decode(Uint8Array.from(calls[0].args.markdownBytes)),/first<br>second/);

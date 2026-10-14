@@ -70,6 +70,10 @@ toolknit-desktop-changelog.md
 .codex-backups/
 .mimosa/
 
+# Private maintenance skills are not repository or release assets
+.codex/
+SKILL.md
+
 # 第三方参考项目
 开发文件/
 _research/

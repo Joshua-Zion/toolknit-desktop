@@ -4,7 +4,6 @@ import { createHomeWeaving } from './home-weaving.js';
 /** Owns the home shell, category navigation and legacy category search. */
 export function createHomeController({
   root = document,
-  transitionMask = root.getElementById?.('transitionMask'),
   appRoot = root.querySelector?.('.app'),
   mainContent = root.querySelector?.('.main-content'),
   onOpenTool,
@@ -19,6 +18,29 @@ export function createHomeController({
   const view = root.defaultView || globalThis.window;
   let switching = false;
   let bound = false;
+  let hoverFrame = 0;
+  let hoverTarget = null;
+  const clearHover = () => {
+    if (hoverFrame) view?.cancelAnimationFrame?.(hoverFrame);
+    hoverFrame = 0;
+    hoverTarget = null;
+  };
+  scope.use(clearHover);
+  function updateHover(target, event) {
+    if (root.hidden || !view?.requestAnimationFrame) return;
+    hoverTarget = { target, x: event.clientX, y: event.clientY };
+    if (hoverFrame) return;
+    hoverFrame = view.requestAnimationFrame(() => {
+      hoverFrame = 0;
+      const pointer = hoverTarget;
+      hoverTarget = null;
+      if (!pointer || scope.disposed || root.hidden) return;
+      const rect = pointer.target.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      pointer.target.style.setProperty('--mouse-x', `${((pointer.x - rect.left) / rect.width) * 100}%`);
+      pointer.target.style.setProperty('--mouse-y', `${((pointer.y - rect.top) / rect.height) * 100}%`);
+    });
+  }
 
   const syncHomeBackground = () => {
     if (!appRoot?.classList.contains('is-v2-home') || root.body?.classList.contains('update-preview-open')) return;
@@ -65,11 +87,8 @@ export function createHomeController({
       card.setAttribute('tabindex', '0');
       const toolName = card.querySelector('.tool-name');
       if (toolName) card.setAttribute('aria-label', toolName.textContent || translate('common.tool'));
-      scope.event(card, 'mousemove', event => {
-        const rect = card.getBoundingClientRect();
-        card.style.setProperty('--mouse-x', `${((event.clientX - rect.left) / rect.width) * 100}%`);
-        card.style.setProperty('--mouse-y', `${((event.clientY - rect.top) / rect.height) * 100}%`);
-      });
+      scope.event(card, 'mousemove', event => updateHover(card, event));
+      scope.event(card, 'mouseleave', clearHover);
       scope.event(card, 'keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
@@ -77,11 +96,8 @@ export function createHomeController({
       });
     });
     root.querySelectorAll('.audio-list-item').forEach(item => {
-      scope.event(item, 'mousemove', event => {
-        const rect = item.getBoundingClientRect();
-        item.style.setProperty('--mouse-x', `${((event.clientX - rect.left) / rect.width) * 100}%`);
-        item.style.setProperty('--mouse-y', `${((event.clientY - rect.top) / rect.height) * 100}%`);
-      });
+      scope.event(item, 'mousemove', event => updateHover(item, event));
+      scope.event(item, 'mouseleave', clearHover);
       scope.event(item, 'keydown', event => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
@@ -95,36 +111,21 @@ export function createHomeController({
     const searchButton = root.getElementById?.('audioSearchBtn');
     const clearButton = root.getElementById?.('audioClearBtn');
     const footer = root.getElementById?.('audioSearchFooter');
-    let busy = false;
-    const setMask = visible => transitionMask?.classList.toggle('visible', visible);
     const clear = () => {
-      if (busy) return;
-      busy = true;
-      setMask(true);
-      scope.timeout(() => {
-        root.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = ''; });
-        if (searchInput) { searchInput.value = ''; searchInput.style.display = ''; }
-        if (searchButton) searchButton.style.display = '';
-        if (clearButton) clearButton.style.display = 'none';
-        if (footer) footer.style.display = 'none';
-        setMask(false);
-        busy = false;
-      }, 1000);
+      root.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = ''; });
+      if (searchInput) { searchInput.value = ''; searchInput.style.display = ''; }
+      if (searchButton) searchButton.style.display = '';
+      if (clearButton) clearButton.style.display = 'none';
+      if (footer) footer.style.display = 'none';
     };
     const search = () => {
-      if (busy || !searchInput) return;
-      busy = true;
-      setMask(true);
-      scope.timeout(() => {
-        const query = searchInput.value.trim().toLowerCase();
-        root.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none'; });
-        searchInput.style.display = 'none';
-        if (searchButton) searchButton.style.display = 'none';
-        if (clearButton) clearButton.style.display = 'block';
-        if (footer) footer.style.display = 'flex';
-        setMask(false);
-        busy = false;
-      }, 1000);
+      if (!searchInput) return;
+      const query = searchInput.value.trim().toLowerCase();
+      root.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none'; });
+      searchInput.style.display = 'none';
+      if (searchButton) searchButton.style.display = 'none';
+      if (clearButton) clearButton.style.display = 'block';
+      if (footer) footer.style.display = 'flex';
     };
     if (searchButton) scope.event(searchButton, 'click', search);
     if (searchInput) scope.event(searchInput, 'keydown', event => { if (event.key === 'Enter') search(); });
@@ -136,28 +137,17 @@ export function createHomeController({
       const button = section.querySelector('.tools-search-btn');
       const clear = section.querySelector('.tools-clear-btn');
       if (!input || !button) return;
-      let sectionBusy = false;
       const reset = () => {
-        if (sectionBusy) return;
-        sectionBusy = true;
-        setMask(true);
-        scope.timeout(() => {
-          section.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = ''; });
-          input.value = ''; input.style.display = ''; button.style.display = '';
-          if (clear) clear.style.display = 'none';
-          setMask(false); sectionBusy = false;
-        }, 1000);
+        section.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = ''; });
+        input.value = ''; input.style.display = ''; button.style.display = '';
+        if (clear) clear.style.display = 'none';
       };
       const run = () => {
-        if (sectionBusy || !input.value.trim()) return;
-        sectionBusy = true; setMask(true);
-        scope.timeout(() => {
-          const query = input.value.trim().toLowerCase();
-          section.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none'; });
-          input.style.display = 'none'; button.style.display = 'none';
-          if (clear) clear.style.display = 'block';
-          setMask(false); sectionBusy = false;
-        }, 1000);
+        if (!input.value.trim()) return;
+        const query = input.value.trim().toLowerCase();
+        section.querySelectorAll('.audio-list-item').forEach(item => { item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none'; });
+        input.style.display = 'none'; button.style.display = 'none';
+        if (clear) clear.style.display = 'block';
       };
       scope.event(button, 'click', run);
       scope.event(input, 'keydown', event => { if (event.key === 'Enter') run(); });
@@ -171,6 +161,7 @@ export function createHomeController({
     scope.use(createHomeWeaving({ root }).dispose);
     installCardInteractions();
     installSearch();
+    scope.event(root, 'visibilitychange', () => { if (root.hidden) clearHover(); });
     syncHomeShell(root.querySelector('.content-section.active')?.dataset.category || 'home');
     root.querySelectorAll('.nav-item').forEach(item => scope.event(item, 'click', () => {
       if (item.dataset.category && !item.classList.contains('active')) switchCategory(item.dataset.category);

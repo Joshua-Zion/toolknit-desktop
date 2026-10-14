@@ -142,6 +142,11 @@ html[data-theme="light"] .tk-tool-nav {
   -webkit-app-region: no-drag;
 }
 .tk-tool-nav :is(.home-v2-window-controls, .tool-page-v2-window-controls) { display: flex; align-items: center; gap: 0; margin-left: 0; }
+.tk-tool-nav .tk-nav-extended-cluster { width: 227px; flex-basis: 227px; }
+.tk-tool-nav :is(.tk-nav-help, .tk-nav-feedback) { width: 34px; min-width: 34px; height: 34px; min-height: 34px; flex: 0 0 34px; padding: 0; border-radius: 6px; }
+.tk-tool-nav :is(.tk-nav-help, .tk-nav-feedback):hover { color: var(--tk-nav-ink); background: var(--tk-nav-hover); }
+:is(.tk-nav-help, .tk-nav-feedback):hover .tk-nav-current { opacity: 0; transform: scale(.58) rotate(-18deg); }
+:is(.tk-nav-help, .tk-nav-feedback):hover .tk-nav-alternate { opacity: 1; transform: scale(1) rotate(0); }
 .tk-tool-nav :is(.tk-nav-settings, .tk-nav-minimize, .tk-nav-maximize, .tk-nav-close) {
   width: 34px;
   min-width: 34px;

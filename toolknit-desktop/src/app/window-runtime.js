@@ -26,14 +26,17 @@ export function createWindowRuntime({
   getTheme = () => 'dark',
   onThemeChange = () => () => {},
   translate = key => key,
-  refreshIcons = () => {}
+  refreshIcons = () => {},
+  notify = () => {},
+  actionTimeoutMs = 4000
 } = {}) {
   const scope = createLifecycleScope();
   let chromeQueue = Promise.resolve();
   let chromeTimer = 0;
   let radiusTimer = null;
   let frameTimer = 0;
-  let maximizeQueue = Promise.resolve();
+  let actionQueue = Promise.resolve();
+  const pendingActions = new Map();
   let appliedShadow = null;
   let appliedSurface = null;
   let requestedRadius = null;
@@ -204,9 +207,11 @@ export function createWindowRuntime({
   const observeFrame = () => {
     if (scope.disposed || observingFrame || !isTauri || !appWindow || isScreenPickerWindow) return;
     observingFrame = true;
-    ['onResized', 'onScaleChanged'].forEach(method => {
+    ['onResized', 'onScaleChanged', 'onFocusChanged'].forEach(method => {
       if (typeof appWindow[method] !== 'function') return;
-      appWindow[method](scheduleFrameSync)
+      appWindow[method](event => {
+        if (method !== 'onFocusChanged' || event.payload) scheduleFrameSync();
+      })
         .then(unlisten => scope.use(unlisten))
         .catch(error => console.warn(`Native window ${method} listener failed:`, error));
     });
@@ -218,28 +223,31 @@ export function createWindowRuntime({
     radiusTimer = windowRef?.setTimeout?.(() => apply(read()), 80) || null;
   };
 
-  const toggleMaximize = () => {
-    if (scope.disposed || !isTauri || !appWindow || isScreenPickerWindow) return Promise.resolve();
-    maximizeQueue = maximizeQueue
-      .catch(() => undefined)
-      .then(async () => {
-        if (scope.disposed) return;
-        await appWindow.toggleMaximize();
-        await syncFrame();
-        scheduleChromeRepair();
-        syncAfterLayout();
+  const handleControl = action => {
+    if (scope.disposed || !isTauri || !appWindow || isScreenPickerWindow || !['minimize', 'maximize', 'close'].includes(action)) return Promise.resolve();
+    if (pendingActions.has(action)) return pendingActions.get(action);
+    const task = actionQueue.then(async () => {
+      if (scope.disposed) return;
+      // A missing native reply must not strand every later window command.
+      let release = () => {};
+      const expired = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Window action timed out')), actionTimeoutMs);
+        release = scope.use(() => { clearTimeout(timer); resolve(); });
       });
-    return maximizeQueue;
+      try {
+        const operation = action === 'close' ? appWindow.hide()
+          : action === 'minimize' ? appWindow.minimize() : appWindow.toggleMaximize();
+        await Promise.race([operation, expired]);
+        if (!scope.disposed && action === 'maximize') scheduleFrameSync();
+      } catch {
+        if (!scope.disposed) notify(translate('common.windowControlFailed'));
+      } finally { release(); }
+    }).finally(() => pendingActions.delete(action));
+    pendingActions.set(action, task);
+    actionQueue = task.catch(() => {});
+    return task;
   };
-
-  const handleControl = async action => {
-    if (scope.disposed || !isTauri || !appWindow || isScreenPickerWindow || !action) return;
-    try {
-      if (action === 'minimize') await appWindow.minimize();
-      else if (action === 'maximize') await toggleMaximize();
-      else if (action === 'close') await appWindow.hide();
-    } catch (error) { console.error('Window control failed:', error); }
-  };
+  const toggleMaximize = () => handleControl('maximize');
 
   const save = setting => {
     const normalized = {
@@ -265,6 +273,10 @@ export function createWindowRuntime({
   if (isTauri && appWindow && !isScreenPickerWindow) {
     scope.use(onThemeChange(() => { void repairChrome(); }));
     if (windowRef?.addEventListener) scope.event(windowRef, 'pagehide', event => { if (!event.persisted) dispose(); });
+    if (windowRef?.addEventListener) scope.event(windowRef, 'focus', scheduleFrameSync);
+    if (documentRef?.addEventListener) scope.event(documentRef, 'visibilitychange', () => {
+      if (!documentRef.hidden) scheduleFrameSync();
+    });
     void syncFrame().then(repairChrome);
   }
 

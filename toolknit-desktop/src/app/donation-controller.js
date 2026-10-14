@@ -31,6 +31,7 @@ export function createDonationController({ openExternalUrl } = {}) {
   let wasPlayingBeforeHidden = false;
   let modalSession = null;
   let previousZIndex = '';
+  let currentBackground = null;
 
   const clearPlayback = () => {
     if (timer !== null) window.clearTimeout(timer);
@@ -144,6 +145,7 @@ export function createDonationController({ openExternalUrl } = {}) {
   const open = ({ background } = {}) => {
     if (lifecycle.disposed || overlay.classList.contains('visible')) return;
     const page = background || document.activeElement?.closest('[id$="Overlay"], [id$="Workspace"], [id$="Dialog"]') || document.querySelector('.app');
+    currentBackground = page;
     previousZIndex = overlay.style.zIndex;
     const backgroundZ = Number.parseInt(page ? getComputedStyle(page).zIndex : '0', 10) || 0;
     const overlayZ = Number.parseInt(getComputedStyle(overlay).zIndex, 10) || 0;
@@ -159,6 +161,7 @@ export function createDonationController({ openExternalUrl } = {}) {
     if (!overlay.classList.contains('visible')) return;
     modalSession?.close();
     modalSession = null;
+    currentBackground = null;
     overlay.style.zIndex = previousZIndex;
     document.body.classList.remove('donation-open');
     clearPlayback();
@@ -195,6 +198,7 @@ export function createDonationController({ openExternalUrl } = {}) {
   return {
     open,
     close,
+    getBackground: () => currentBackground,
     dispose() {
       close();
       lifecycle.dispose();

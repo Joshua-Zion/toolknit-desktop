@@ -3,6 +3,7 @@ import { createLifecycleScope } from '../../app/tool-lifecycle.js';
 export async function createController({runtime,tr,q,refresh,getCurrentWindow},data){
   const scope=createLifecycleScope(),root=q('History'),panel=q('HistoryPanel'),bubble=q('HistoryBubble');
   let disposed=false,revision=0,state='collapsed',animation,drag,suppressClick=false;
+  const cards=new Map();
   const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
   function setState(next){state=next;root.dataset.state=next;}
   function origin(point={x:48,y:48}){
@@ -55,13 +56,25 @@ export async function createController({runtime,tr,q,refresh,getCurrentWindow},d
     try{
       const list=await runtime.call('history');if(disposed||current!==revision)return;
       const items=await Promise.all(list.map(async shot=>{
+        const cached=cards.get(String(shot.id));
+        if(cached&&cached.image===shot.image)return {shot,button:cached.button,image:shot.image};
         const b=document.createElement('button');b.type='button';b.className='shot-history-item';b.dataset.shotId=String(shot.id);b.setAttribute('aria-label',tr('viewScreenshot'));
         const image=document.createElement('img');image.src=shot.image;image.alt='';image.draggable=false;
         const info=document.createElement('span');info.className='shot-history-info';info.textContent=`${new Date(shot.time).toLocaleTimeString(data.context?.lang==='en'?'en':'zh-CN')}  ·  ${shot.width} × ${shot.height}`;
-        b.append(image,info);await image.decode();return b;
+        b.append(image,info);await image.decode();return {shot,button:b,image:shot.image};
       }));
       if(disposed||current!==revision)return;
-      const scroll=q('HistoryList').scrollTop;q('HistoryList').replaceChildren(...items);q('HistoryList').scrollTop=scroll;
+      const ids=new Set(list.map(shot=>String(shot.id)));
+      for(const id of cards.keys())if(!ids.has(id))cards.delete(id);
+      const container=q('HistoryList'),scroll=container.scrollTop;
+      items.forEach(({shot,button,image},index)=>{
+        cards.set(String(shot.id),{button,image});
+        button.setAttribute('aria-label',tr('viewScreenshot'));
+        button.querySelector('.shot-history-info').textContent=`${new Date(shot.time).toLocaleTimeString(data.context?.lang==='en'?'en':'zh-CN')}  ·  ${shot.width} × ${shot.height}`;
+        if(container.children[index]!==button)container.insertBefore(button,container.children[index]||null);
+      });
+      for(const child of [...container.children])if(!ids.has(child.dataset.shotId))child.remove();
+      container.scrollTop=scroll;
       q('HistoryEmpty').hidden=list.length>0;q('HistoryStatus').hidden=true;delete bubble.dataset.error;
       q('HistoryCount').textContent=String(list.length);q('HistoryCount').hidden=!list.length;refresh();
     }catch{if(!disposed&&current===revision)showError();}
@@ -88,7 +101,7 @@ export async function createController({runtime,tr,q,refresh,getCurrentWindow},d
     if(item&&state==='expanded')void runtime.call('viewer',{id:Number(item.dataset.shotId)}).catch(error=>{if(!disposed)showError(String(error).includes('viewer-limit')?'viewerLimit':'failed');});
   });
   scope.event(window,'keydown',e=>{if(e.key==='Escape'){e.preventDefault();void collapse();}});
-  function dispose(){disposed=true;revision++;animation?.cancel();scope.dispose();q('HistoryList').replaceChildren();}
+  function dispose(){disposed=true;revision++;animation?.cancel();scope.dispose();cards.clear();q('HistoryList').replaceChildren();}
   try{
     const unlisten=await runtime.listen('screenshot-history-changed',()=>void update());
     if(disposed)unlisten();else scope.use(unlisten);

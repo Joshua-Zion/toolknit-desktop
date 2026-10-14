@@ -10,6 +10,7 @@ export function createLocalTranslationSettings({root=document,isTauri=false,tran
   const scope=createLifecycleScope(),runtime=createLocalTranslationRuntime({isTauri});
   const tr=(key,vars)=>translate(`settings.localTranslation.${key}`,vars);
   let state={ready:false,installing:false,progress:{}},pending=false,error='',source='auto';
+  let revision=0;
   const modal=createModalSession({root:q('Overlay'),background:root.getElementById('settingsOverlay'),initialFocus:q('Install'),onClose:close});
   function render() {
     if(scope.disposed)return;
@@ -34,8 +35,9 @@ export function createLocalTranslationSettings({root=document,isTauri=false,tran
     if(q('Overlay').contains(focused)&&(focused.hidden||focused.disabled))q('Close').focus({preventScroll:true});
   }
   async function refresh(){
-    if(!isTauri||pending||scope.disposed)return;
-    try{const value=await runtime.call('status');if(!scope.disposed){state=value;render();}}catch{if(!scope.disposed){error='error';render();}}
+    if(!isTauri||pending||state.installing||scope.disposed)return;
+    const current=++revision;
+    try{const value=await runtime.call('status');if(!scope.disposed&&current===revision){state=value;render();}}catch{if(!scope.disposed&&current===revision){error='error';render();}}
   }
   function close(){modal.close();}
   scope.event(q('Manage'),'click',()=>{error='';modal.open();render();void refresh();});scope.event(q('Close'),'click',close);
@@ -46,7 +48,7 @@ export function createLocalTranslationSettings({root=document,isTauri=false,tran
     source=button.dataset.source;render();
   });
   async function change(action){
-    if(pending||state.installing)return;pending=true;error='';render();
+    if(pending||state.installing)return;revision++;pending=true;error='';render();
     try{const value=await runtime.call(action,action==='install'?{source}:{});if(!scope.disposed){state=value;notify(tr(action==='install'?'installed':'removed'));}}
     catch(e){if(!scope.disposed){error=String(e).includes('cancelled')?'cancelled':String(e).includes('checksum')?'checksumError':String(e).includes('translation:download')?'downloadError':'error';notify(tr(error));}}
     finally{pending=false;if(!scope.disposed){state.installing=false;render();void refresh();}}
@@ -55,7 +57,7 @@ export function createLocalTranslationSettings({root=document,isTauri=false,tran
   for(const [name,handler] of [
     ['local-translation-progress',progress=>{state={...state,installing:true,progress};render();}],
     ['local-translation-changed',value=>{state=value;render();}]
-  ]) void runtime.listen(name,value=>{if(!scope.disposed)handler(value);}).then(unlisten=>scope.use(unlisten)).catch(()=>{});
+  ]) void runtime.listen(name,value=>{if(!scope.disposed){revision++;handler(value);}}).then(unlisten=>scope.use(unlisten)).catch(()=>{});
   if(onLanguageChange)scope.use(onLanguageChange(render));scope.use(()=>modal.dispose());
   if(root.defaultView){scope.event(root.defaultView,'focus',()=>void refresh());scope.event(root.defaultView,'pagehide',()=>{if(state.installing)void runtime.call('cancel-install').catch(()=>{});scope.dispose();},{once:true});}
   render();void refresh();return {refresh,dispose:scope.dispose};

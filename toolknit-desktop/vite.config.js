@@ -19,6 +19,7 @@ export default defineConfig(async ({ mode }) => ({
     },
   },
   build: {
+    sourcemap: false,
     rollupOptions: {
       input: {
         main: "index.html",
