@@ -84,6 +84,7 @@ They are not extra product screenshots embedded in the current README.
 | `supporters-thanks.webp` | Supporter thanks, still linked from the README |
 | `categories/` | Historical tool gallery; see [its notes](categories/README.md) |
 | `star-growth.svg` | Previous decorative Star chart |
+| `sponsors/` | Sponsor logos and banners retained from the main branch |
 
 Before refreshing assets, inspect references in both READMEs and other docs.
 Keep versioned directories coherent, update this manifest with the exports,

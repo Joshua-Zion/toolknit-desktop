@@ -264,6 +264,8 @@ Windows 10 **1803 / build 17134 及以上**或 Windows 11；需要 Microsoft Edg
 
 感谢 [AtomGit](https://atomgit.com/) 提供代码托管与开发协作平台。仓库镜像：[AtomGit / ToolKnit Desktop](https://atomgit.com/ZihangDong/toolknit-desktop)。
 
+**ToolKnit 推荐：让开源创意，更快被看见。** AtomGit 集代码托管、项目管理与开发协作于一体，连接开发者与开源项目。发现实用的开源工具，分享自己的作品，与更多开发者一起把好想法变成好项目。[前往 AtomGit，探索更多开源可能。](https://atomgit.com/)
+
 [反馈 Bug](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=bug_report.yml) · [提出建议](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=feature_request.yml) · [贡献指南](CONTRIBUTING.md)
 
 如果 ToolKnit 帮你省下了时间，欢迎 Star 或[一次性捐赠支持](assets/readme/donation-support.webp)。

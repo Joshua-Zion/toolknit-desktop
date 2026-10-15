@@ -267,6 +267,8 @@ File-size, page, pixel and batch limits vary by tool; support is not unlimited f
 
 Thanks to [AtomGit](https://atomgit.com/) for code hosting and developer collaboration. Repository mirror: [AtomGit / ToolKnit Desktop](https://atomgit.com/ZihangDong/toolknit-desktop).
 
+**ToolKnit recommends: help open-source ideas reach more people.** AtomGit brings code hosting, project management and developer collaboration together. Discover useful tools, share your work and build good ideas with other developers. [Explore AtomGit.](https://atomgit.com/)
+
 [Report a bug](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=bug_report.yml) · [Suggest a feature](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=feature_request.yml) · [Contribution guide](CONTRIBUTING.md)
 
 If ToolKnit saves you time, a Star or [one-time donation](assets/readme/donation-support.webp) helps support development, AI testing and maintenance.
