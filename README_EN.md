@@ -12,7 +12,60 @@
 
 </div>
 
+## About the project and me
+
+<p><img src="assets/readme/v3.1/spider-wave.svg" alt="The ToolKnit spider blinks and waves hello" width="88" height="88" /></p>
+
+Hi, I am Zihang Dong, an independent developer turning everyday annoyances into small tools.
+ToolKnit is a spider weaving a growing web: each need adds a thread, more tools take shape, and people discover them and help make them better.
+The boy is me; the spider on his head is the toolbox's little companion.
+
+### Try the web app first
+
+Open **[ToolKnit.com](https://toolknit.com)** without installing anything, using a modern browser on Windows, macOS, Linux or a phone.
+There are currently **95 web tools** across PDF, images, video, audio, text, calculators, time, creative tasks, AI and self-tests.
+Most need no account. Supported file tasks run locally in the browser; AI and online services explain their network requirements in each tool.
+
+### Then bring it to your desktop
+
+For recurring file tasks, clipboard history and quick captures, [install the Windows app](https://toolknit.com/exe.html) with **71 desktop tools**.
+Set your output folder first, favorite frequently used tools, and install heavy models only when needed. Enable **one-click recording mode** to combine startup, clipboard monitoring and floating screenshot history, then capture with `Alt + Q`.
+See [Get started](#08--get-started) for installation requirements and instructions.
+
+### People weaving it together
+
+<table width="100%">
+<tr>
+<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong's avatar" /><br /><strong>Zihang Dong</strong></a><br />Product design · Development · Maintenance</td>
+<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion's avatar" /><br /><strong>Joshua-Zion</strong></a><br />Color spaces · Interaction improvements</td>
+<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025's avatar" /><br /><strong>hqyx2025</strong></a><br />Project verification · Bug testing</td>
+</tr>
+</table>
+
+Thanks to everyone who uses, tests and improves ToolKnit. Joshua-Zion's contributions: [PR #23](https://github.com/ZihangDong/toolknit-desktop/pull/23), [PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67).
+
+### Contents
+
+[01 The idea](#01--fewer-apps-more-things-done) · [02 Recording mode](#02--keep-the-things-you-want-to-remember) · [03 Screenshots](#03--a-screenshot-is-just-the-start) · [04 Clipboard](#04--find-what-you-copied)
+
+[05 Files](#05--keep-file-work-in-one-place) · [06 Pictures and sound](#06--a-workbench-for-pictures-and-sound) · [07 CLI / Agents](#07--work-by-hand-or-hand-it-to-an-agent) · [Actual screenshots](#the-actual-workspaces)
+
+[08 Get started](#08--get-started) · [Tool catalog](#complete-tool-catalog) · [Support and feedback](#support-and-feedback) · [License](#source-license) · [Star History](#star-history)
+
+<table width="100%">
+<tr>
+<td width="50%"><strong>MaLiang AI / 马良 AI</strong><br />Author-recommended AI gateway<br /><a href="https://www.mlai.online/register?aff=5Q2VVMD7YJVB">Explore MaLiang AI →</a></td>
+<td width="50%"><strong>Doufu AI / 豆腐 AI</strong><br />Author-recommended multi-model gateway<br /><a href="https://doufuapi.com/register?aff=TWKCBH9RGLN3">Explore Doufu AI →</a></td>
+</tr>
+</table>
+
+These are referral links. Pricing, model capabilities and availability are determined by the providers.
+
 ## 01 / Fewer apps, more things done
+
+[↑ Back to contents](#contents)
+
+Start with one small tool, then weave more of the desktop's everyday friction into one web.
 
 Crop a PDF page. Find the text you just copied. Annotate a screenshot. Remove an image background.
 Small jobs often mean switching between several applications.
@@ -20,9 +73,9 @@ Small jobs often mean switching between several applications.
 ToolKnit brings PDF, PPT, image, audio, video, text, system and developer tools together.
 Use the desktop app for local files, the web app for quick access, and CLI or Agents for suitable automated workflows.
 
-[Recording mode](#02--keep-the-things-you-want-to-remember) · [Screenshots](#03--a-screenshot-is-just-the-start) · [Tool catalog](#complete-tool-catalog) · [Get started](#08--get-started) · [License](#source-license)
-
 ## 02 / Keep the things you want to remember
+
+[↑ Back to contents](#contents)
 
 ![The boy enables recording, copies a note and captures a screenshot; the spider stores them in history](assets/readme/v3.1/02-record.webp)
 
@@ -38,6 +91,8 @@ Recording mode is opt-in. Turning it off restores the relevant settings from bef
 It does not log keystrokes, browsing or all system activity. Monitoring stops when the application fully exits.
 
 ## 03 / A screenshot is just the start
+
+[↑ Back to contents](#contents)
 
 ![The boy captures a region, annotates it, extracts and translates text, then pins the picture](assets/readme/v3.1/03-screenshot.webp)
 
@@ -61,6 +116,8 @@ Local translation time is not the whole screenshot workflow time; external AI la
 
 ## 04 / Find what you copied
 
+[↑ Back to contents](#contents)
+
 ![The spider retrieves text and a picture from clipboard history; the boy opens the picture in a pinned viewer](assets/readme/v3.1/04-clipboard.webp)
 
 **The note you copied a moment ago does not have to disappear.**
@@ -73,6 +130,8 @@ Only new clipboard content after activation is recorded; existing Windows Win + 
 Clipboard content can be sensitive, so pause monitoring and clear records as needed.
 
 ## 05 / Keep file work in one place
+
+[↑ Back to contents](#contents)
 
 ![The boy works with PDF and PPT files while the spider keeps one copy and recycles duplicates](assets/readme/v3.1/05-files.webp)
 
@@ -93,6 +152,8 @@ Cleanup safeguards cannot replace your judgment about your files.
 
 ## 06 / A workbench for pictures and sound
 
+[↑ Back to contents](#contents)
+
 ![The boy and spider work with a photo, filmstrip and waveform on a sparse black-and-white desk](assets/readme/v3.1/06-media.webp)
 
 Crop, compress, convert and stitch images; generate icons or remove backgrounds with a local model.
@@ -102,6 +163,8 @@ FFmpeg, LibreOffice, transcription and background-removal models are detected an
 Existing usable runtimes are reused where supported. WPS / Microsoft Office is not LibreOffice and cannot substitute for conversion workflows that need `soffice`.
 
 ## 07 / Work by hand, or hand it to an Agent
+
+[↑ Back to contents](#contents)
 
 ![A terminal sends file tasks to the boy and spider's workbench](assets/readme/v3.1/07-agent.webp)
 
@@ -153,6 +216,8 @@ An actual capture of [ToolKnit.com](https://toolknit.com), converted to grayscal
 The comics share the approved Chinese-language artwork in both READMEs. Their accessible descriptions and the surrounding English text explain each scene and feature.
 
 ## 08 / Get started
+
+[↑ Back to contents](#contents)
 
 ![The boy and spider wave beside a tidy desk: one developer, improved together](assets/readme/v3.1/08-start.webp)
 
@@ -209,13 +274,7 @@ See the [build guide](BUILD.md). This branch previews the README and does not an
 
 </details>
 
-## One developer, improved together
-
-| Contributor | Contribution |
-| --- | --- |
-| [Zihang Dong](https://github.com/ZihangDong) | Author, product design, development and maintenance |
-| [Joshua-Zion](https://github.com/Joshua-Zion) | Color-space conversion and interaction: [PR #23](https://github.com/ZihangDong/toolknit-desktop/pull/23), [PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67) |
-| [hqyx2025](https://github.com/hqyx2025) | Project verification and bug testing |
+## Support and feedback
 
 Thanks to [AtomGit](https://atomgit.com/) for code hosting and developer collaboration. Repository mirror: [AtomGit / ToolKnit Desktop](https://atomgit.com/ZihangDong/toolknit-desktop).
 
@@ -224,9 +283,6 @@ Thanks to [AtomGit](https://atomgit.com/) for code hosting and developer collabo
 If ToolKnit saves you time, a Star or [one-time donation](assets/readme/donation-support.webp) helps support development, AI testing and maintenance.
 [Thank you to our supporters](assets/readme/supporters-thanks.webp). Donations do not purchase a feature or promise implementation.
 Custom tools and commercial licensing: WeChat **wunanvip6**; email [2645149786@qq.com](mailto:2645149786@qq.com).
-
-The comics were created with AI assistance, referencing the sparse black-and-white linework of [handraw-style / FH-023 · Deadpan Doodle](https://github.com/yang0/handraw-style/blob/master/images/individual/FH/FH-023.webp).
-They depict new scenes with the project characters rather than reproducing the reference illustration. See the [asset notes](assets/readme/README.md).
 
 ## Source license
 
@@ -237,3 +293,7 @@ This is a source-available noncommercial license, **not an OSI-approved open-sou
 Previously granted Apache-2.0 rights are not revoked. Unmodified code previously released under Apache-2.0 and third-party contributions retain their original grants.
 See [Apache-2.0](LICENSES/Apache-2.0.txt), [NOTICE](NOTICE) and version history.
 Third-party dependencies, fonts, models and runtimes retain their own licenses. ToolKnit branding, domains and hosted web services are not licensed by the source license.
+
+## Star History
+
+[![ToolKnit GitHub stars, updated by Star History](https://api.star-history.com/chart?repos=ZihangDong/toolknit-desktop&type=date&legend=top-left&sealed_token=EEoF4uyEt78cKNHZvUBEUdT5yBOuWINv90m_TWMMcy6U8sziyyBtrHlNdiHMyYXLcobnnBnywdq7HDcegwIk0Yz4IZQieMCISiRGhbR2JeweVhmBWpGlwQPb1EQB_6ZlH62IB9O1vzTDofo6dhca9fEGaXwNwNbOe5u4ZR4-McXwDHUCSiZ234AMgx3j)](https://star-history.com/#ZihangDong/toolknit-desktop&Date)

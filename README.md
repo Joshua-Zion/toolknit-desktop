@@ -12,17 +12,70 @@
 
 </div>
 
+## 关于项目和我
+
+<p><img src="assets/readme/v3.1/spider-wave.svg" alt="眨眨眼、挥挥手的 ToolKnit 小蜘蛛" width="88" height="88" /></p>
+
+你好，我是董子航，一个喜欢把日常麻烦做成小工具的独立开发者。
+ToolKnit 像一只不停织网的蜘蛛：一个需求牵出一根线，越来越多的工具被织出来，慢慢被大家发现、使用，再一起变得更好。
+小男孩是我，头顶的蜘蛛是这个工具箱的小伙伴。
+
+### 先用网页端
+
+打开 **[ToolKnit.com](https://toolknit.com)**，无需安装，在 Windows、macOS、Linux 或手机的现代浏览器中都能访问。
+目前有 **95 项网页工具**，覆盖 PDF、图片、视频、音频、文本、计算、时间、创意、AI 与自测。
+多数工具无需注册；支持的文件任务在浏览器本地处理，AI 和在线服务的联网要求以具体工具说明为准。
+
+### 再用桌面端
+
+需要长期处理文件、找回复制内容或快速截图？[安装 Windows 桌面端](https://toolknit.com/exe.html)，把 **71 项工具**放到电脑里。
+首次使用先设置输出目录；常用工具可收藏，重型模型按需安装。打开**一键记录模式**，让开机自启、剪贴板实时监控和截图历史悬浮窗一起就位，再用 `Alt + Q` 开始截图。
+安装环境与详细步骤见[开始使用](#08--开始使用)。
+
+### 一起把它织好
+
+<table width="100%">
+<tr>
+<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong 的头像" /><br /><strong>Zihang Dong</strong></a><br />产品设计 · 开发 · 维护</td>
+<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion 的头像" /><br /><strong>Joshua-Zion</strong></a><br />颜色空间转换 · 交互增强</td>
+<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025 的头像" /><br /><strong>hqyx2025</strong></a><br />项目查验 · Bug 测试</td>
+</tr>
+</table>
+
+感谢每一位使用、反馈与贡献的朋友。Joshua-Zion 的贡献见 [PR #23](https://github.com/ZihangDong/toolknit-desktop/pull/23)、[PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67)。
+
+### 目录
+
+[01 项目理念](#01--少开几个软件多做一点事情) · [02 一键记录](#02--一键记录让灵感留下来) · [03 快速截图](#03--截图之后还能继续处理) · [04 剪贴板](#04--复制过的内容随时找回来)
+
+[05 文件处理](#05--把文件处理集中在一个地方) · [06 图片与声音](#06--图片与声音也有自己的工具台) · [07 CLI / Agent](#07--你来操作也能交给-agent) · [真实截图](#看看真实的工作台)
+
+[08 开始使用](#08--开始使用) · [完整工具目录](#完整工具目录) · [支持与反馈](#支持与反馈) · [源码许可](#源码许可) · [Star History](#star-history)
+
+<table width="100%">
+<tr>
+<td width="50%"><strong>马良 AI</strong><br />作者推荐中转站 · 低价不降智<br /><a href="https://www.mlai.online/register?aff=5Q2VVMD7YJVB">了解马良 AI →</a></td>
+<td width="50%"><strong>豆腐 AI</strong><br />作者推荐中转站 · 多模型接口<br /><a href="https://doufuapi.com/register?aff=TWKCBH9RGLN3">了解豆腐 AI →</a></td>
+</tr>
+</table>
+
+推荐链接含推广标识；服务价格、模型能力与可用性以服务商为准。
+
 ## 01 / 少开几个软件，多做一点事情
 
-裁一页 PDF，找回刚才复制的文字，给截图标两笔，把图片里的背景去掉。
-事情不大，却经常要在几个软件之间来回切换。
+[↑ 返回目录](#目录)
+
+从一个小工具开始，把越来越多的桌面麻烦织进同一张网。
 
 ToolKnit 把 PDF、PPT、图片、音视频、文字、系统与开发者工具放在一起：
 用桌面端处理本地文件，用网页端快速体验，也能把适合自动化的任务交给 CLI 和 Agent。
 
-[一键记录](#02--一键记录让灵感留下来) · [快速截图](#03--截图之后还能继续处理) · [完整目录](#完整工具目录) · [开始使用](#08--开始使用) · [许可](#源码许可)
+裁一页 PDF，找回刚才复制的文字，给截图标两笔，把图片里的背景去掉。
+事情不大，却经常要在几个软件之间来回切换。
 
 ## 02 / 一键记录，让灵感留下来
+
+[↑ 返回目录](#目录)
 
 ![一键开启，复制与截图，历史随时找回：小男孩继续工作，蜘蛛收好内容](assets/readme/v3.1/02-record.webp)
 
@@ -38,6 +91,8 @@ ToolKnit 把 PDF、PPT、图片、音视频、文字、系统与开发者工具�
 它不会记录键盘输入、浏览行为或系统里的所有活动，完全退出程序后停止监控。
 
 ## 03 / 截图之后，还能继续处理
+
+[↑ 返回目录](#目录)
 
 ![截图、标注、识别翻译与桌面置顶的黑白漫画](assets/readme/v3.1/03-screenshot.webp)
 
@@ -61,6 +116,8 @@ AI 校正失败会说明原因，需你确认才回退到 OCR。文本放不下�
 
 ## 04 / 复制过的内容，随时找回来
 
+[↑ 返回目录](#目录)
+
 ![蜘蛛从历史记录中找回文字和图片，小男孩把图片打开置顶](assets/readme/v3.1/04-clipboard.webp)
 
 **不必再问：刚才那段话，我到底复制到哪去了？**
@@ -72,6 +129,8 @@ AI 校正失败会说明原因，需你确认才回退到 OCR。文本放不下�
 只记录开启之后的新内容，不会导入系统既有的 Win + V 历史。请留意剪贴板可能包含的隐私内容，按需暂停和清理。
 
 ## 05 / 把文件处理，集中在一个地方
+
+[↑ 返回目录](#目录)
 
 ![小男孩处理 PDF 和 PPT，蜘蛛在重复文件中保留一份](assets/readme/v3.1/05-files.webp)
 
@@ -91,6 +150,8 @@ AI 校正失败会说明原因，需你确认才回退到 OCR。文本放不下�
 
 ## 06 / 图片与声音，也有自己的工具台
 
+[↑ 返回目录](#目录)
+
 ![小男孩与蜘蛛在一个简洁工作台上处理图片、胶片和声波](assets/readme/v3.1/06-media.webp)
 
 图片裁剪、压缩、格式转换、长图拼接、图标生成与本地模型抠图；
@@ -101,6 +162,8 @@ FFmpeg、LibreOffice、离线识别与抠图模型按需检测、安装。
 WPS / Microsoft Office 不等同于 LibreOffice，不能替代需要 `soffice` 的转换链路。
 
 ## 07 / 你来操作，也能交给 Agent
+
+[↑ 返回目录](#目录)
 
 ![电脑旁的终端把文件任务送到工作台，小男孩与蜘蛛一起处理](assets/readme/v3.1/07-agent.webp)
 
@@ -150,6 +213,8 @@ toolknit --help
 [ToolKnit.com](https://toolknit.com) 的真实首页截图，统一转为灰度展示。网页端与桌面端的工具范围、依赖与离线能力分别以各端说明为准。
 
 ## 08 / 开始使用
+
+[↑ 返回目录](#目录)
 
 ![小男孩与头顶的蜘蛛挥手：一个人开发，一起把它变好](assets/readme/v3.1/08-start.webp)
 
@@ -206,13 +271,7 @@ npm run tauri dev
 
 </details>
 
-## 一个人开发，一起把它变好
-
-| 参与者 | 贡献 |
-| --- | --- |
-| [Zihang Dong](https://github.com/ZihangDong) | 作者、产品设计、开发与维护 |
-| [Joshua-Zion](https://github.com/Joshua-Zion) | 颜色空间转换与交互增强：[PR #23](https://github.com/ZihangDong/toolknit-desktop/pull/23)、[PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67) |
-| [hqyx2025](https://github.com/hqyx2025) | 项目查验与 Bug 测试 |
+## 支持与反馈
 
 感谢 [AtomGit](https://atomgit.com/) 提供代码托管与开发协作平台。仓库镜像：[AtomGit / ToolKnit Desktop](https://atomgit.com/ZihangDong/toolknit-desktop)。
 
@@ -221,9 +280,6 @@ npm run tauri dev
 如果 ToolKnit 帮你省下了时间，欢迎 Star 或[一次性捐赠支持](assets/readme/donation-support.webp)。
 [感谢支持者](assets/readme/supporters-thanks.webp)。捐赠用于开发、AI 测试与维护，不代表购买功能或承诺实现需求。
 定制工具与商业授权：微信 **wunanvip6**；联系邮箱：[2645149786@qq.com](mailto:2645149786@qq.com)。
-
-漫画由 AI 辅助创作，参考 [handraw-style / FH-023 · Deadpan Doodle](https://github.com/yang0/handraw-style/blob/master/images/individual/FH/FH-023.webp) 的疏朗黑白笔触。
-这是项目角色的新场景创作，不是原参考图的复制；[素材说明](assets/readme/README.md)记录图片来源与处理方式。
 
 ## 源码许可
 
@@ -234,3 +290,7 @@ npm run tauri dev
 此前已授予的 Apache-2.0 权利不撤销；此前按 Apache-2.0 发布的未改动代码及第三方贡献保留原授权。
 详见 [Apache-2.0](LICENSES/Apache-2.0.txt)、[NOTICE](NOTICE) 和版本历史。
 第三方依赖、字体、模型与运行时遵循各自许可；ToolKnit 品牌、域名与托管网页服务不随源码许可授权。
+
+## Star History
+
+[![ToolKnit 的 GitHub 星标历史，由 Star History 动态更新](https://api.star-history.com/chart?repos=ZihangDong/toolknit-desktop&type=date&legend=top-left&sealed_token=EEoF4uyEt78cKNHZvUBEUdT5yBOuWINv90m_TWMMcy6U8sziyyBtrHlNdiHMyYXLcobnnBnywdq7HDcegwIk0Yz4IZQieMCISiRGhbR2JeweVhmBWpGlwQPb1EQB_6ZlH62IB9O1vzTDofo6dhca9fEGaXwNwNbOe5u4ZR4-McXwDHUCSiZ234AMgx3j)](https://star-history.com/#ZihangDong/toolknit-desktop&Date)

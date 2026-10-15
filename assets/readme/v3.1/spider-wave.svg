@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88" role="img" aria-labelledby="title">
+  <title id="title">ToolKnit spider waves hello</title>
+  <rect width="88" height="88" rx="44" fill="#fff"/>
+  <g fill="none" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 39 18 30 12 36M29 48 14 48 9 57M31 56 20 66 15 64M56 48 73 48 79 57M55 56 66 66 72 64"/>
+    <g>
+      <path d="M57 39 69 27 73 16"/>
+      <animateTransform attributeName="transform" type="rotate" values="0 57 39;14 57 39;-8 57 39;0 57 39;0 57 39" dur="3s" repeatCount="indefinite"/>
+    </g>
+  </g>
+  <ellipse cx="44" cy="45" rx="20" ry="21" fill="#111"/>
+  <g fill="#fff">
+    <ellipse cx="37" cy="42" rx="3" ry="4"><animate attributeName="ry" values="4;4;.3;.3;4;4" keyTimes="0;.79;.8;.83;.84;1" dur="4s" repeatCount="indefinite"/></ellipse>
+    <ellipse cx="51" cy="42" rx="3" ry="4"><animate attributeName="ry" values="4;4;.3;.3;4;4" keyTimes="0;.79;.8;.83;.84;1" dur="4s" repeatCount="indefinite"/></ellipse>
+  </g>
+  <path d="M38 53 Q44 58 50 53" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+</svg>
