@@ -1,307 +1,1577 @@
-import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { LAZY_TOOL_SPECS } from '../src/features/lazy-tools.js';
+// AI background removal via ONNX Runtime (DirectML with CPU fallback).
+// Mirrors the whisper runtime pattern: dynamically loaded DLL next to the
+// executable, models downloaded on demand with hash verification, and a
+// process-wide session cache keyed by the current model.
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const readText = filePath => readFile(path.join(projectRoot, filePath), 'utf8');
-const readJson = async filePath => JSON.parse(await readText(filePath));
-const readStaticHtml = async () => (await Promise.all([
-  'index.html',
-  'src/app/templates/settings.html',
-  'src/app/templates/feedback.html',
-  'src/app/templates/donation.html',
-  'src/app/templates/update-dialog.html'
-].map(readText))).join('\n');
+use std::{
+    collections::HashSet,
+    panic::{catch_unwind, AssertUnwindSafe},
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, MutexGuard, OnceLock,
+    },
+};
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+use crate::platform::dependency_download;
+use image::GenericImageView;
+use ndarray::Array4;
+use ort::{
+    execution_providers::{CPUExecutionProvider, DirectMLExecutionProvider},
+    session::{builder::GraphOptimizationLevel, Session},
+};
+use std::time::Instant;
+use tauri::Emitter;
+
+const MATTING_MODEL_DIRECTORY: &str = "models";
+const MATTING_MODEL_CONFIG: &str = "matting-model.json";
+const MAX_PREVIEW_EDGE: u32 = 4096;
+const MAX_SOURCE_PIXELS: u64 = 120_000_000;
+const MAX_EXPORT_PIXELS: u64 = 80_000_000;
+const MAX_MASK_BYTES: usize = 64 * 1024 * 1024;
+
+pub struct MattingModelSpec {
+    pub id: &'static str,
+    pub file_name: &'static str,
+    pub display_name: &'static str,
+    pub bytes: u64,
+    pub sha256: &'static str,
+    pub input_size: u32,
+    pub note: &'static str,
 }
 
-function captures(text, pattern) {
-  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
-  return [...text.matchAll(new RegExp(pattern.source, flags))].map(match => match[1]);
+pub const MATTING_MODELS: [MattingModelSpec; 1] = [MattingModelSpec {
+    id: "modnet",
+    file_name: "modnet.onnx",
+    display_name: "MODNet 人像精修",
+    bytes: 25_888_640,
+    sha256: "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+    input_size: 512,
+    note: "轻量人像专用，适合证件照",
+}];
+
+#[derive(serde::Serialize, Clone)]
+pub struct MattingModelStatus {
+    pub id: String,
+    pub display_name: String,
+    pub note: String,
+    pub bytes: u64,
+    pub installed: bool,
+    pub current: bool,
 }
 
-function captureExactlyOnce(text, pattern, label) {
-  const values = captures(text, pattern);
-  assert.equal(values.length, 1, `${label} must occur exactly once, found ${values.length}`);
-  return values[0];
+#[derive(serde::Serialize, Clone)]
+pub struct MattingModelDownloadProgress {
+    pub model_id: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub phase: String,
 }
 
-function elementTextById(html, id) {
-  const escapedId = escapeRegExp(id);
-  return captureExactlyOnce(
-    html,
-    new RegExp(`<[^>]*\\bid=["']${escapedId}["'][^>]*>\\s*([^<]*?)\\s*</[^>]+>`),
-    `#${id}`
-  );
+#[derive(serde::Serialize)]
+pub struct MattingModelDownloadResult {
+    pub model_id: String,
+    pub path: String,
+    pub current: bool,
 }
 
-function tomlSection(text, sectionName) {
-  const heading = new RegExp(`^\\[${escapeRegExp(sectionName)}\\]\\s*$`, 'm').exec(text);
-  assert.ok(heading, `Cargo.toml must contain [${sectionName}]`);
-  const remainder = text.slice(heading.index + heading[0].length);
-  const nextHeading = remainder.search(/^\s*\[/m);
-  return nextHeading === -1 ? remainder : remainder.slice(0, nextHeading);
+#[derive(serde::Serialize)]
+pub struct MattingSegmentResult {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    pub model_id: String,
+    pub execution_provider: String,
+    pub used_cpu_fallback: bool,
+    pub source_width: u32,
+    pub source_height: u32,
 }
 
-function cargoManifestVersion(text) {
-  return captureExactlyOnce(
-    tomlSection(text, 'package'),
-    /^version\s*=\s*"([^"]+)"\s*$/m,
-    'Cargo.toml [package] version'
-  );
+#[derive(serde::Serialize)]
+pub struct MattingExportResult {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
 }
 
-function cargoLockPackageVersion(text, packageName) {
-  const blocks = text.split(/(?=^\[\[package\]\]\s*$)/m);
-  const matches = blocks.filter(block => new RegExp(`^name\\s*=\\s*"${escapeRegExp(packageName)}"\\s*$`, 'm').test(block));
-  assert.equal(matches.length, 1, `Cargo.lock must contain exactly one ${packageName} package, found ${matches.length}`);
-  return captureExactlyOnce(matches[0], /^version\s*=\s*"([^"]+)"\s*$/m, `Cargo.lock ${packageName} version`);
+#[derive(Default)]
+pub struct MattingState;
+
+static MATTING_DOWNLOAD_CANCEL: AtomicBool = AtomicBool::new(false);
+static MATTING_DOWNLOAD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+fn cancelled_segmentations() -> &'static Mutex<HashSet<u64>> {
+    static CANCELLED: OnceLock<Mutex<HashSet<u64>>> = OnceLock::new();
+    CANCELLED.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-async function listUiSourceFiles(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await listUiSourceFiles(entryPath));
-    } else if (entry.isFile() && /\.(?:m?js|html)$/i.test(entry.name)) {
-      files.push(entryPath);
+struct MattingDownloadGuard;
+
+impl MattingDownloadGuard {
+    fn begin() -> Option<Self> {
+        let acquired = MATTING_DOWNLOAD_IN_PROGRESS
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok();
+        if !acquired {
+            return None;
+        }
+        MATTING_DOWNLOAD_CANCEL.store(false, Ordering::SeqCst);
+        Some(MattingDownloadGuard)
     }
-  }
-  return files;
 }
 
-function splitExactlyOnce(text, marker, label) {
-  const index = text.indexOf(marker);
-  assert.notEqual(index, -1, `${label} marker must exist`);
-  assert.equal(text.indexOf(marker, index + marker.length), -1, `${label} marker must occur exactly once`);
-  return [text.slice(0, index), text.slice(index + marker.length)];
+impl Drop for MattingDownloadGuard {
+    fn drop(&mut self) {
+        MATTING_DOWNLOAD_IN_PROGRESS.store(false, Ordering::SeqCst);
+    }
 }
 
-function sourceMentions(text, pattern, source) {
-  const regex = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
-  return [...text.matchAll(regex)].map(match => ({
-    source,
-    line: text.slice(0, match.index).split(/\r?\n/).length,
-    version: match[1]
-  }));
+struct MattingModel {
+    spec: &'static MattingModelSpec,
+    execution_provider: &'static str,
+    session: Session,
 }
 
-const [
-  desktopPackage,
-  desktopLock,
-  cliPackage,
-  cliLock,
-  tauriConfig,
-  cargoManifest,
-  cargoLock,
-  cliEntry,
-  mcpServer,
-  mainSource,
-  indexHtml,
-  legalSource,
-  zhLocale,
-  enLocale,
-  zhHelpSource,
-  enHelpSource,
-  repositoryReadme,
-  releaseNotes
-] = await Promise.all([
-  readJson('package.json'),
-  readJson('package-lock.json'),
-  readJson('cli/package.json'),
-  readJson('cli/npm-shrinkwrap.json'),
-  readJson('src-tauri/tauri.conf.json'),
-  readText('src-tauri/Cargo.toml'),
-  readText('src-tauri/Cargo.lock'),
-  readText('cli/toolknit.mjs'),
-  readText('cli/lib/mcp-server.mjs'),
-  readText('src/main.js'),
-  readStaticHtml(),
-  readText('src/legal-data.js'),
-  readJson('src/locales/zh.json'),
-  readJson('src/locales/en.json'),
-  readText('src/help-data.js'),
-  readText('src/help-data-en.js'),
-  readText('../README.md'),
-  readText('../docs/desktop-update.md')
-]);
-
-const fullVersion = desktopPackage.version;
-assert.match(fullVersion, /^\d+\.\d+\.\d+$/, 'package.json version must use MAJOR.MINOR.PATCH');
-const seriesVersion = fullVersion.split('.').slice(0, 2).join('.');
-
-assert.match(repositoryReadme, new RegExp(`^# ToolKnit Desktop ${escapeRegExp(seriesVersion)}\\s*$`, 'm'), 'Repository README heading must match the current release series');
-const desktopToolCount = Object.keys(LAZY_TOOL_SPECS).length;
-assert.match(repositoryReadme, new RegExp(`^${desktopToolCount} 项桌面工具 ·`, 'm'), 'Repository README must match the current desktop catalog');
-assert.match(zhHelpSource, new RegExp(`${desktopToolCount} 个桌面工具`), 'Chinese help overview must match the desktop catalog');
-assert.match(enHelpSource, new RegExp(`${desktopToolCount} desktop tools`), 'English help overview must match the desktop catalog');
-assert.match(repositoryReadme, /\*\*46 项 CLI \/ MCP 能力\*\*/, 'Repository README must state the 46-capability MCP contract');
-assert.match(releaseNotes, new RegExp(`^# ToolKnit Desktop ${escapeRegExp(fullVersion)}\\s*$`, 'm'), 'Release notes heading must match package.json version');
-// Published notes retain their release catalog while the next version is developed.
-const releasedToolCount = Number(captureExactlyOnce(releaseNotes,
-  /^- \d+ 个分类、(\d+) 项工具/m, 'Published desktop catalog'));
-const publishedSeriesVersion = captureExactlyOnce(releaseNotes,
-  /^## (V\d+\.\d+) 正式版记录/m, 'Published release series');
-assert.ok(releasedToolCount > 0 && releasedToolCount <= desktopToolCount,
-  'Published catalog must be valid and no larger than the current catalog');
-if (releasedToolCount !== desktopToolCount) {
-  assert.match(repositoryReadme, /安装包发布状态以下载页为准/,
-    'Source documentation must direct readers to the download page for installer availability');
-}
-assert.match(releaseNotes, /46 项已发布能力/, 'Release notes must state the 46-capability CLI and MCP contract');
-
-const manifestVersions = new Map([
-  ['package-lock.json version', desktopLock.version],
-  ['package-lock.json root package version', desktopLock.packages?.['']?.version],
-  ['cli/package.json version', cliPackage.version],
-  ['cli/npm-shrinkwrap.json version', cliLock.version],
-  ['cli/npm-shrinkwrap.json root package version', cliLock.packages?.['']?.version],
-  ['src-tauri/tauri.conf.json version', tauriConfig.version],
-  ['src-tauri/Cargo.toml package version', cargoManifestVersion(cargoManifest)],
-  ['src-tauri/Cargo.lock package version', cargoLockPackageVersion(cargoLock, 'toolknit-desktop')]
-]);
-
-for (const [label, actual] of manifestVersions) {
-  assert.equal(actual, fullVersion, `${label} must match package.json version`);
+#[derive(Default)]
+pub struct MattingRuntime {
+    current: Option<MattingModel>,
+    gpu_disabled: bool,
 }
 
-const mainWindowConfig = tauriConfig.app?.windows?.find(windowConfig => windowConfig.label === 'main');
-assert.ok(mainWindowConfig, 'Tauri config must define the main window');
-assert.equal(mainWindowConfig.devtools, false, 'release window configuration must disable DevTools');
-assert.doesNotMatch(
-  tomlSection(cargoManifest, 'dependencies'),
-  /^tauri\s*=.*\bdevtools\b.*$/m,
-  'the Tauri release dependency must not enable the devtools feature'
-);
+unsafe impl Send for MattingRuntime {}
 
-const runtimeVersions = new Map([
-  ['CLI VERSION', captureExactlyOnce(cliEntry, /const VERSION\s*=\s*'([^']+)'/, 'CLI VERSION')],
-  ['MCP SERVER_INFO version', captureExactlyOnce(mcpServer, /const SERVER_INFO\s*=\s*Object\.freeze\(\{[^}]*\bversion:\s*'([^']+)'[^}]*\}\)/, 'MCP SERVER_INFO version')],
-  ['APP_VERSION_FALLBACK', captureExactlyOnce(mainSource, /const APP_VERSION_FALLBACK\s*=\s*'([^']+)'/, 'APP_VERSION_FALLBACK')]
-]);
-runtimeVersions.set('Application runtime fallback', captureExactlyOnce(
-  await readText('src/application-runtime.js'),
-  /const APP_VERSION_FALLBACK\s*=\s*'([^']+)'/,
-  'Application runtime APP_VERSION_FALLBACK'
-));
-
-for (const [label, actual] of runtimeVersions) {
-  assert.equal(actual, fullVersion, `${label} must match package.json version`);
+fn matting_app_data_dir() -> Result<PathBuf, String> {
+    Ok(dirs::data_dir()
+        .ok_or("Cannot find AppData folder")?
+        .join("ToolKnit"))
 }
 
-for (const source of [
-  'cli/lib/transcription-runtime.mjs',
-  'src-tauri/src/ai_provider.rs',
-  'src-tauri/src/onnx_segmenter.rs',
-  'src-tauri/src/native_runtime/dependencies.rs',
-  'src-tauri/src/native_runtime/transcription.rs'
-]) {
-  const versions = captures(await readText(source), /ToolKnit\/(\d+\.\d+\.\d+)\b/);
-  assert.ok(versions.length > 0, `${source} must identify its ToolKnit user agent version`);
-  for (const version of versions) assert.equal(version, fullVersion, `${source} user agent version must match package.json`);
+fn matting_models_dir() -> Result<PathBuf, String> {
+    Ok(matting_app_data_dir()?.join(MATTING_MODEL_DIRECTORY))
 }
 
-const dialogSource = await readText('src/update-dialog.js');
-assert.match(dialogSource, /stableTagVersion\(value\?\.version\)/, 'Latest version must come from validated stable tags');
-assert.match(dialogSource, /normalizeVersion\(value\?\.currentVersion\)/, 'Installed version must be validated separately');
-assert.doesNotMatch(dialogSource, /current: '\d|latest: '\d/, 'Update dialog must not contain fabricated versions');
-for (const source of [zhHelpSource, enHelpSource, dialogSource, await readText('src/app/templates/update-dialog.html')]) {
-  for (const version of captures(source, /\bToolKnit (\d+\.\d+)\b/)) assert.equal(version, seriesVersion);
+fn matting_model_config_path() -> Result<PathBuf, String> {
+    Ok(matting_app_data_dir()?.join(MATTING_MODEL_CONFIG))
 }
-assert.match(await readText('../README_EN.md'), new RegExp(`^# ToolKnit Desktop ${escapeRegExp(seriesVersion)}\\s*$`, 'm'));
-assert.match(await readText('../README_EN.md'), new RegExp(`^${desktopToolCount} desktop tools ·`, 'm'), 'English README must match the desktop catalog');
 
-assert.equal(elementTextById(indexHtml, 'settings-version'), `v${fullVersion}`, 'Settings version must match package.json');
-assert.equal(elementTextById(indexHtml, 'sidebarVersion'), `v${fullVersion}`, 'Sidebar version must match package.json');
-assert.equal(
-  captureExactlyOnce(indexHtml, /<footer class="footer-note">[\s\S]*?TOOLKNIT DESKTOP (\d+\.\d+\.\d+)\b[\s\S]*?<\/footer>/, 'Home footer version'),
-  fullVersion,
-  'Home footer version must match package.json'
-);
-
-assert.equal(
-  captureExactlyOnce(indexHtml, /ToolKnit (\d+\.\d+) Settings/, 'Settings branding version'),
-  seriesVersion,
-  'Settings branding must match the current release series'
-);
-assert.equal(
-  captureExactlyOnce(indexHtml, /ToolKnit (\d+\.\d+) Feedback/, 'Feedback branding version'),
-  seriesVersion,
-  'Feedback branding must match the current release series'
-);
-
-const brandVersions = captures(indexHtml, /<span class="home-v2-brand-version">\s*(\d+\.\d+)\s*<\/span>/);
-assert.ok(brandVersions.length > 0, 'Current UI must expose at least one home brand version');
-assert.equal(
-  brandVersions.every(version => version === seriesVersion),
-  true,
-  `Home brand versions must all be ${seriesVersion}, found: ${brandVersions.join(', ')}`
-);
-
-assert.equal(zhLocale.home?.posterKicker, `TOOLKNIT / DESKTOP ${seriesVersion}`, 'Chinese poster branding must match the current release series');
-assert.equal(enLocale.home?.posterKicker, `TOOLKNIT / DESKTOP ${seriesVersion}`, 'English poster branding must match the current release series');
-assert.equal(
-  captureExactlyOnce(zhHelpSource, /<h2>(\d+\.\d+) 开发者工具<\/h2>/, 'Chinese developer-tools help version'),
-  seriesVersion,
-  'Chinese developer-tools help must match the current release series'
-);
-assert.equal(
-  captureExactlyOnce(enHelpSource, /<h2>Developer Tools in (\d+\.\d+)<\/h2>/, 'English developer-tools help version'),
-  seriesVersion,
-  'English developer-tools help must match the current release series'
-);
-
-const toolPageMentions = sourceMentions(indexHtml, /\bTOOL PAGE (\d+\.\d+)\b/, 'index.html');
-for (const filePath of await listUiSourceFiles(path.join(projectRoot, 'src'))) {
-  const source = path.relative(projectRoot, filePath).replaceAll('\\', '/');
-  toolPageMentions.push(...sourceMentions(await readFile(filePath, 'utf8'), /\bTOOL PAGE (\d+\.\d+)\b/, source));
+fn read_matting_model_config() -> Option<String> {
+    std::fs::read_to_string(matting_model_config_path().ok()?)
+        .ok()
+        .and_then(|content| serde_json::from_str::<MattingModelConfig>(&content).ok())
+        .and_then(|config| config.current_model)
 }
-assert.ok(toolPageMentions.length > 0, 'Current UI must expose at least one TOOL PAGE release-series label');
-const staleToolPageMentions = toolPageMentions.filter(mention => mention.version !== seriesVersion);
-assert.equal(
-  staleToolPageMentions.length,
-  0,
-  `TOOL PAGE labels must all be ${seriesVersion}: ${staleToolPageMentions.map(({ source, line, version }) => `${source}:${line}=${version}`).join(', ')}`
-);
 
-const [, afterZhLegalMarker] = splitExactlyOnce(legalSource, 'const LEGAL_CONTENT_ZH = {', 'Chinese legal object');
-const [zhLegalSource, afterEnLegalMarker] = splitExactlyOnce(afterZhLegalMarker, 'const LEGAL_CONTENT_EN = {', 'English legal object');
-const [enLegalSource] = splitExactlyOnce(afterEnLegalMarker, 'export function getLegalContent()', 'Legal exports');
-const [, afterZhDeclarationMarker] = splitExactlyOnce(zhLegalSource, "'declaration': {", 'Chinese declaration');
-const [zhDeclarationSource, zhUsageSource] = splitExactlyOnce(afterZhDeclarationMarker, "'usage-policy': {", 'Chinese usage policy');
-const [, afterEnDeclarationMarker] = splitExactlyOnce(enLegalSource, "'declaration': {", 'English declaration');
-const [enDeclarationSource, enUsageSource] = splitExactlyOnce(afterEnDeclarationMarker, "'usage-policy': {", 'English usage policy');
-
-const legalVersions = new Map([
-  ['Chinese declaration footer', captureExactlyOnce(zhDeclarationSource, /适用版本：ToolKnit Desktop (\d+\.\d+\.\d+)/, 'Chinese declaration footer')],
-  ['Chinese usage-policy footer', captureExactlyOnce(zhUsageSource, /适用版本：ToolKnit Desktop (\d+\.\d+\.\d+)/, 'Chinese usage-policy footer')],
-  ['English declaration footer', captureExactlyOnce(enDeclarationSource, /Applies to: ToolKnit Desktop (\d+\.\d+\.\d+)/, 'English declaration footer')],
-  ['English usage-policy footer', captureExactlyOnce(enUsageSource, /Applies to: ToolKnit Desktop (\d+\.\d+\.\d+)/, 'English usage-policy footer')],
-  ['Chinese declaration introduction', captureExactlyOnce(zhDeclarationSource, /本声明适用于 ToolKnit Desktop (\d+\.\d+\.\d+)/, 'Chinese declaration introduction')],
-  ['English declaration introduction', captureExactlyOnce(enDeclarationSource, /This declaration applies to ToolKnit Desktop (\d+\.\d+\.\d+)/, 'English declaration introduction')]
-]);
-for (const [label, actual] of legalVersions) {
-  assert.equal(actual, fullVersion, `${label} must match package.json version`);
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct MattingModelConfig {
+    current_model: Option<String>,
 }
-assert.match(zhUsageSource, /随当前功能边界更新/, 'Chinese usage policy must use a version-independent feature boundary');
-assert.match(enUsageSource, /with the current feature boundary/, 'English usage policy must use a version-independent feature boundary');
 
-for (const [name, locale] of [['Chinese', zhLocale], ['English', enLocale]]) {
-  for (const key of ['recommendedProviders', 'malian', 'doufu', 'customTools', 'customToolsTitle', 'customToolsDescription', 'openWebWorkbench']) {
-    assert.ok(locale.home?.[key]?.trim(), `${name} home ${key} must be translated`);
-  }
-  assert.equal(locale.home?.supportCostNote, undefined, `${name} obsolete homepage cost copy must be removed`);
-  assert.equal(locale.home?.supportGroupNote, undefined, `${name} obsolete homepage group copy must be removed`);
+fn write_matting_model_config(config: &MattingModelConfig) -> Result<(), String> {
+    let path = matting_model_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Cannot create model directory: {error}"))?;
+    }
+    let encoded =
+        serde_json::to_vec(config).map_err(|error| format!("Cannot save model config: {error}"))?;
+    std::fs::write(&path, encoded).map_err(|error| format!("Cannot save model config: {error}"))
 }
-assert.match(zhLocale.home?.supportPage?.supporterBenefit ?? '', /灰度体验群/, 'Chinese support copy must explain preview-group access');
-assert.match(enLocale.home?.supportPage?.supporterBenefit ?? '', /preview group/i, 'English support copy must explain preview-group access');
-assert.match(zhLegalSource, /灰度体验群/, 'Chinese legal copy must define the preview-group boundary');
-assert.match(enLegalSource, /preview group/i, 'English legal copy must define the preview-group boundary');
 
-console.log(`Release version contract passed for ${fullVersion}: ${manifestVersions.size} manifests, ${runtimeVersions.size} runtime constants, ${toolPageMentions.length} tool-page labels, and 4 legal notices.`);
+fn matting_model_spec(model_id: &str) -> Result<&'static MattingModelSpec, String> {
+    MATTING_MODELS
+        .iter()
+        .find(|model| model.id == model_id.trim().to_ascii_lowercase())
+        .ok_or("matting:model-unknown".to_string())
+}
+
+fn first_installed_matting_model() -> Option<&'static MattingModelSpec> {
+    MATTING_MODELS
+        .iter()
+        .find(|spec| installed_matting_model_file(spec).ok().flatten().is_some())
+}
+
+fn installed_matting_model_file(spec: &MattingModelSpec) -> Result<Option<PathBuf>, String> {
+    let path = matting_models_dir()?.join(spec.file_name);
+    let metadata = match std::fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("matting:model-stat-failed:{error}")),
+    };
+    if metadata.is_file() && metadata.len() == spec.bytes {
+        Ok(Some(path))
+    } else {
+        Ok(None)
+    }
+}
+
+fn get_onnxruntime_dll_path() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let exe_dir = exe.parent().ok_or("Cannot find executable directory")?;
+    let bundled = exe_dir
+        .join("resources")
+        .join("onnxruntime")
+        .join("onnxruntime.dll");
+    if bundled.is_file() {
+        return Ok(bundled);
+    }
+    let development = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("onnxruntime")
+        .join("onnxruntime.dll");
+    if development.is_file() {
+        return Ok(development);
+    }
+    Err("matting:onnxruntime-dll-missing".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn preload_onnx_libraries(dll: &Path) -> Result<(), String> {
+    use libloading::os::windows::{
+        Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+    };
+
+    let flags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+    let runtime = unsafe { Library::load_with_flags(dll, flags) }
+        .map_err(|error| format!("matting:onnxruntime-load-failed:{error}"))?;
+    let direct_ml = dll.parent().map(|directory| directory.join("DirectML.dll"));
+
+    // Keep the handles alive for the process. ORT and DirectML resolve their
+    // imports by module name after initialization, so an immediately dropped
+    // preload does not make the dependency available reliably.
+    static LIBRARIES: OnceLock<Mutex<Vec<libloading::Library>>> = OnceLock::new();
+    let libraries = LIBRARIES.get_or_init(|| Mutex::new(Vec::new()));
+    let mut loaded = libraries
+        .lock()
+        .map_err(|_| "matting:onnxruntime-loader-busy".to_string())?;
+    loaded.push(runtime.into());
+    if let Some(direct_ml) = direct_ml.filter(|path| path.is_file()) {
+        if let Ok(library) = unsafe { Library::load_with_flags(&direct_ml, flags) } {
+            loaded.push(library.into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn preload_onnx_libraries(_dll: &Path) -> Result<(), String> {
+    Ok(())
+}
+
+fn matting_runtime() -> &'static Mutex<MattingRuntime> {
+    static RUNTIME: OnceLock<Mutex<MattingRuntime>> = OnceLock::new();
+    RUNTIME.get_or_init(|| Mutex::new(MattingRuntime::default()))
+}
+
+fn lock_matting_runtime(runtime: &Mutex<MattingRuntime>) -> MutexGuard<'_, MattingRuntime> {
+    runtime.lock().unwrap_or_else(|poisoned| {
+        let mut recovered = poisoned.into_inner();
+        recovered.current = None;
+        recovered.gpu_disabled = true;
+        runtime.clear_poison();
+        recovered
+    })
+}
+
+fn ort_dylib_ready() -> Result<(), String> {
+    static PREPARED: OnceLock<Mutex<bool>> = OnceLock::new();
+    let mut prepared = PREPARED
+        .get_or_init(|| Mutex::new(false))
+        .lock()
+        .map_err(|_| "matting:onnxruntime-loader-busy".to_string())?;
+    if !*prepared {
+        let dll = get_onnxruntime_dll_path()?;
+        preload_onnx_libraries(&dll)?;
+        std::env::set_var("ORT_DYLIB_PATH", &dll);
+        *prepared = true;
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MattingBackend {
+    DirectMl,
+    Cpu,
+}
+
+impl MattingBackend {
+    fn name(self) -> &'static str {
+        match self {
+            Self::DirectMl => "dml",
+            Self::Cpu => "cpu",
+        }
+    }
+}
+
+fn build_session(model_path: &Path, backend: MattingBackend) -> Result<Session, String> {
+    Session::builder()
+        .and_then(|builder| {
+            let builder = builder.with_optimization_level(GraphOptimizationLevel::Level3)?;
+            let builder = match backend {
+                // DirectML requires sequential execution and disabled memory patterns.
+                MattingBackend::DirectMl => builder
+                    .with_memory_pattern(false)?
+                    .with_parallel_execution(false)?
+                    .with_execution_providers([DirectMLExecutionProvider::default()
+                        .build()
+                        .error_on_failure()])?,
+                MattingBackend::Cpu => {
+                    builder.with_execution_providers([CPUExecutionProvider::default()
+                        .build()
+                        .error_on_failure()])?
+                }
+            };
+            builder.commit_from_file(model_path)
+        })
+        .map_err(|error| format!("matting:{}-init-failed:{error}", backend.name()))
+}
+
+fn acquire_session<'a>(
+    runtime: &'a mut MattingRuntime,
+    spec: &'static MattingModelSpec,
+    model_path: &Path,
+    backend: MattingBackend,
+) -> Result<&'a mut Session, String> {
+    let reusable = runtime.current.as_ref().is_some_and(|model| {
+        model.spec.id == spec.id && model.execution_provider == backend.name()
+    });
+    if !reusable {
+        runtime.current = None;
+        let session = build_session(model_path, backend)?;
+        runtime.current = Some(MattingModel {
+            spec,
+            execution_provider: backend.name(),
+            session,
+        });
+    }
+    let model = runtime
+        .current
+        .as_mut()
+        .ok_or("matting:session-unavailable".to_string())?;
+    Ok(&mut model.session)
+}
+
+fn run_with_cpu_fallback<T>(
+    runtime: &mut MattingRuntime,
+    force_cpu: bool,
+    mut attempt: impl FnMut(&mut MattingRuntime, MattingBackend) -> Result<T, String>,
+) -> Result<(T, MattingBackend, bool), String> {
+    let backend = if force_cpu || runtime.gpu_disabled {
+        MattingBackend::Cpu
+    } else {
+        MattingBackend::DirectMl
+    };
+    // Catch Rust panics inside the lock so a failed session cannot poison later requests.
+    let mut guarded_attempt = |runtime: &mut MattingRuntime, backend: MattingBackend| {
+        catch_unwind(AssertUnwindSafe(|| attempt(runtime, backend)))
+            .unwrap_or_else(|_| Err(format!("matting:{}-panicked", backend.name())))
+    };
+    match guarded_attempt(runtime, backend) {
+        Ok(value) => Ok((value, backend, !force_cpu && runtime.gpu_disabled)),
+        Err(error) if error == "matting:cancelled" => Err(error),
+        Err(error) => {
+            runtime.current = None;
+            if backend == MattingBackend::Cpu {
+                return Err(format!("matting:cpu-failed:{error}"));
+            }
+            runtime.gpu_disabled = true;
+            match guarded_attempt(runtime, MattingBackend::Cpu) {
+                Ok(value) => Ok((value, MattingBackend::Cpu, true)),
+                Err(cpu_error) => {
+                    runtime.current = None;
+                    if cpu_error == "matting:cancelled" {
+                        return Err(cpu_error);
+                    }
+                    Err(format!(
+                        "matting:backends-failed:gpu=[{error}];cpu=[{cpu_error}]"
+                    ))
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Letterbox {
+    input_size: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+fn letterbox_for(width: u32, height: u32, input_size: u32) -> Letterbox {
+    let scale = input_size as f64 / width.max(height).max(1) as f64;
+    let resized_width = ((width as f64 * scale).round() as u32).clamp(1, input_size);
+    let resized_height = ((height as f64 * scale).round() as u32).clamp(1, input_size);
+    Letterbox {
+        input_size,
+        x: (input_size - resized_width) / 2,
+        y: (input_size - resized_height) / 2,
+        width: resized_width,
+        height: resized_height,
+    }
+}
+
+fn preprocess(image: &image::DynamicImage, spec: &MattingModelSpec) -> (Array4<f32>, Letterbox) {
+    let letterbox = letterbox_for(image.width(), image.height(), spec.input_size);
+    let resized = image
+        .resize_exact(
+            letterbox.width,
+            letterbox.height,
+            image::imageops::FilterType::Triangle,
+        )
+        .to_rgb8();
+    let mut rgb = image::RgbImage::new(spec.input_size, spec.input_size);
+    image::imageops::replace(&mut rgb, &resized, letterbox.x.into(), letterbox.y.into());
+    let mut input =
+        Array4::<f32>::zeros((1, 3, spec.input_size as usize, spec.input_size as usize));
+    for (x, y, pixel) in rgb.enumerate_pixels() {
+        for channel in 0..3 {
+            input[[0, channel, y as usize, x as usize]] =
+                (pixel.0[channel] as f32 / 255.0 - 0.5) / 0.5;
+        }
+    }
+    (input, letterbox)
+}
+
+fn activate_mask_value(value: f32) -> f32 {
+    if !value.is_finite() {
+        return 0.0;
+    }
+    value.clamp(0.0, 1.0)
+}
+
+fn decode_mask(data: &[f32], dims: &[i64]) -> Result<image::GrayImage, String> {
+    let (mask_width, mask_height) = match dims.len() {
+        4 => (dims[3].max(1) as u32, dims[2].max(1) as u32),
+        3 => (dims[2].max(1) as u32, dims[1].max(1) as u32),
+        2 => (dims[1].max(1) as u32, dims[0].max(1) as u32),
+        _ => return Err("matting:mask-shape-unsupported".to_string()),
+    };
+    let expected = mask_width as usize * mask_height as usize;
+    if data.len() < expected {
+        return Err("matting:mask-data-incomplete".to_string());
+    }
+    let mut mask = image::GrayImage::new(mask_width, mask_height);
+    for (index, pixel) in mask.pixels_mut().enumerate() {
+        pixel.0[0] = (activate_mask_value(data[index]) * 255.0).round() as u8;
+    }
+    Ok(mask)
+}
+
+fn restore_letterboxed_mask(
+    mask: &image::GrayImage,
+    letterbox: Letterbox,
+    output_size: (u32, u32),
+) -> image::GrayImage {
+    let scale_x = mask.width() as f64 / letterbox.input_size.max(1) as f64;
+    let scale_y = mask.height() as f64 / letterbox.input_size.max(1) as f64;
+    let x = ((letterbox.x as f64 * scale_x).round() as u32).min(mask.width().saturating_sub(1));
+    let y = ((letterbox.y as f64 * scale_y).round() as u32).min(mask.height().saturating_sub(1));
+    let width = ((letterbox.width as f64 * scale_x).round() as u32)
+        .max(1)
+        .min(mask.width() - x);
+    let height = ((letterbox.height as f64 * scale_y).round() as u32)
+        .max(1)
+        .min(mask.height() - y);
+    let cropped = image::imageops::crop_imm(mask, x, y, width, height).to_image();
+    image::DynamicImage::ImageLuma8(cropped)
+        .resize_exact(
+            output_size.0,
+            output_size.1,
+            image::imageops::FilterType::Triangle,
+        )
+        .to_luma8()
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MaskSignal {
+    mean_alpha: f32,
+    visible_fraction: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FlatBackgroundProfile {
+    rgb: [f32; 3],
+    noise: f32,
+}
+
+fn mask_signal(mask: &image::GrayImage) -> MaskSignal {
+    let pixel_count = u64::from(mask.width()).saturating_mul(u64::from(mask.height()));
+    if pixel_count == 0 {
+        return MaskSignal {
+            mean_alpha: 0.0,
+            visible_fraction: 0.0,
+        };
+    }
+    let mut alpha_sum = 0_u64;
+    let mut visible = 0_u64;
+    for pixel in mask.pixels() {
+        let alpha = u64::from(pixel.0[0]);
+        alpha_sum += alpha;
+        if alpha >= 32 {
+            visible += 1;
+        }
+    }
+    MaskSignal {
+        mean_alpha: alpha_sum as f32 / (pixel_count as f32 * 255.0),
+        visible_fraction: visible as f32 / pixel_count as f32,
+    }
+}
+
+fn flat_background_profile(source: &image::RgbaImage) -> Option<FlatBackgroundProfile> {
+    let (width, height) = source.dimensions();
+    if width < 3 || height < 3 {
+        return None;
+    }
+    let band = (width.min(height) / 64).clamp(1, 16);
+    let inner_width = width.saturating_sub(band.saturating_mul(2));
+    let inner_height = height.saturating_sub(band.saturating_mul(2));
+    let border_pixels = u64::from(width)
+        .saturating_mul(u64::from(height))
+        .saturating_sub(u64::from(inner_width).saturating_mul(u64::from(inner_height)));
+    let mut samples = 0_u64;
+    let mut sums = [0_f64; 3];
+    let mut square_sums = [0_f64; 3];
+    for (x, y, pixel) in source.enumerate_pixels() {
+        if x >= band && x < width - band && y >= band && y < height - band {
+            continue;
+        }
+        if pixel.0[3] < 245 {
+            continue;
+        }
+        samples += 1;
+        for channel in 0..3 {
+            let value = f64::from(pixel.0[channel]);
+            sums[channel] += value;
+            square_sums[channel] += value * value;
+        }
+    }
+    if samples < border_pixels.max(8) / 2 {
+        return None;
+    }
+    let divisor = samples as f64;
+    let mut rgb = [0_f32; 3];
+    let mut variance_sum = 0_f64;
+    for channel in 0..3 {
+        let mean = sums[channel] / divisor;
+        rgb[channel] = mean as f32;
+        variance_sum += (square_sums[channel] / divisor - mean * mean).max(0.0);
+    }
+    let noise = (variance_sum / 3.0).sqrt() as f32;
+    (noise <= 14.0).then_some(FlatBackgroundProfile { rgb, noise })
+}
+
+fn flat_background_mask(
+    source: &image::RgbaImage,
+    profile: FlatBackgroundProfile,
+) -> image::GrayImage {
+    let low = (10.0 + profile.noise * 1.5).clamp(10.0, 30.0);
+    let high = (low + 28.0 + profile.noise).clamp(36.0, 72.0);
+    let mut mask = image::GrayImage::new(source.width(), source.height());
+    for (source_pixel, target) in source.pixels().zip(mask.pixels_mut()) {
+        if source_pixel.0[3] == 0 {
+            target.0[0] = 0;
+            continue;
+        }
+        let distance = ((f32::from(source_pixel.0[0]) - profile.rgb[0]).powi(2)
+            + (f32::from(source_pixel.0[1]) - profile.rgb[1]).powi(2)
+            + (f32::from(source_pixel.0[2]) - profile.rgb[2]).powi(2))
+        .sqrt();
+        let amount = ((distance - low) / (high - low)).clamp(0.0, 1.0);
+        let smoothed = amount * amount * (3.0 - 2.0 * amount);
+        target.0[0] = (smoothed * 255.0).round() as u8;
+    }
+    mask
+}
+
+fn recover_catastrophic_mask(
+    source: &image::RgbaImage,
+    predicted: image::GrayImage,
+) -> (image::GrayImage, bool) {
+    let predicted_signal = mask_signal(&predicted);
+    if predicted_signal.mean_alpha >= 0.035 || predicted_signal.visible_fraction >= 0.08 {
+        return (predicted, false);
+    }
+    let Some(profile) = flat_background_profile(source) else {
+        return (predicted, false);
+    };
+    let recovered = flat_background_mask(source, profile);
+    let recovered_signal = mask_signal(&recovered);
+    let plausible_coverage = recovered_signal.visible_fraction >= 0.005
+        && recovered_signal.visible_fraction <= 0.92
+        && recovered_signal.mean_alpha <= 0.90;
+    let materially_better = recovered_signal.mean_alpha
+        >= (predicted_signal.mean_alpha * 2.5).max(predicted_signal.mean_alpha + 0.015);
+    if plausible_coverage && materially_better {
+        (recovered, true)
+    } else {
+        (predicted, false)
+    }
+}
+
+fn run_segmentation(
+    session: &mut Session,
+    source_image: &image::DynamicImage,
+    spec: &MattingModelSpec,
+    output_size: (u32, u32),
+) -> Result<image::RgbaImage, String> {
+    let (input, letterbox) = preprocess(source_image, spec);
+    let input_name = session.inputs.first().map(|v| v.name.clone());
+    let output_name = session.outputs.first().map(|v| v.name.clone());
+    let (input_name, output_name) = match (input_name, output_name) {
+        (Some(input), Some(output)) => (input, output),
+        _ => return Err("matting:model-io-unknown".to_string()),
+    };
+    let input_value = ort::value::Tensor::from_array(input)
+        .map_err(|error| format!("matting:tensor-build-failed:{error}"))?;
+    let outputs = session
+        .run(ort::inputs![
+            input_name.as_str() => input_value
+        ])
+        .map_err(|error| format!("matting:inference-failed:{error}"))?;
+    let (shape, data) = outputs[output_name.as_str()]
+        .try_extract_tensor::<f32>()
+        .map_err(|error| format!("matting:mask-read-failed:{error}"))?;
+    let dims: Vec<i64> = shape.to_vec();
+    #[cfg(test)]
+    {
+        let minimum = data.iter().copied().fold(f32::INFINITY, f32::min);
+        let maximum = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        eprintln!(
+            "[matting-test] output={} shape={dims:?} range={minimum:.6}..{maximum:.6}",
+            output_name
+        );
+    }
+    let mask = decode_mask(data, &dims)?;
+    let predicted_alpha = restore_letterboxed_mask(&mask, letterbox, output_size);
+    let mut matte = source_image
+        .resize_exact(
+            output_size.0,
+            output_size.1,
+            image::imageops::FilterType::Triangle,
+        )
+        .to_rgba8();
+    let (alpha, _) = recover_catastrophic_mask(&matte, predicted_alpha);
+    for (alpha_pixel, pixel) in alpha.pixels().zip(matte.pixels_mut()) {
+        pixel.0[3] = ((u16::from(pixel.0[3]) * u16::from(alpha_pixel.0[0]) + 127) / 255) as u8;
+    }
+    Ok(matte)
+}
+
+fn compose_with_mask(
+    source: &image::DynamicImage,
+    encoded_mask: &image::DynamicImage,
+) -> image::RgbaImage {
+    let (width, height) = source.dimensions();
+    let encoded_mask = encoded_mask.to_rgba8();
+    let mut mask = image::GrayImage::new(encoded_mask.width(), encoded_mask.height());
+    for (source_pixel, target) in encoded_mask.pixels().zip(mask.pixels_mut()) {
+        target.0[0] = source_pixel.0[3];
+    }
+    let mask = image::DynamicImage::ImageLuma8(mask)
+        .resize_exact(width, height, image::imageops::FilterType::Triangle)
+        .to_luma8();
+    let mut output = source.to_rgba8();
+    for (alpha, pixel) in mask.pixels().zip(output.pixels_mut()) {
+        pixel.0[3] = ((u16::from(pixel.0[3]) * u16::from(alpha.0[0]) + 127) / 255) as u8;
+    }
+    output
+}
+
+fn unique_matting_path(directory: &Path, stem: &str) -> Result<PathBuf, String> {
+    for index in 0..10_000_u32 {
+        let suffix = if index == 0 {
+            String::new()
+        } else {
+            format!("_{}", index)
+        };
+        let path = directory.join(format!("{stem}{suffix}.png"));
+        if !path.exists() {
+            return Ok(path);
+        }
+    }
+    Err("matting:output-collision".to_string())
+}
+
+fn is_path_allowed(directory: &Path) -> Result<(), String> {
+    if directory.to_string_lossy().contains('\0') {
+        return Err("Invalid path".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_matting_models() -> Result<Vec<MattingModelStatus>, String> {
+    let current = read_matting_model_config();
+    MATTING_MODELS
+        .iter()
+        .map(|spec| {
+            let installed = installed_matting_model_file(spec)?.is_some();
+            Ok(MattingModelStatus {
+                id: spec.id.to_string(),
+                display_name: spec.display_name.to_string(),
+                note: spec.note.to_string(),
+                bytes: spec.bytes,
+                installed,
+                current: current.as_deref() == Some(spec.id),
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn set_current_matting_model(model_id: String) -> Result<(), String> {
+    let spec = matting_model_spec(&model_id)?;
+    let installed = installed_matting_model_file(spec)?;
+    if installed.is_none() {
+        return Err("matting:model-not-installed".to_string());
+    }
+    write_matting_model_config(&MattingModelConfig {
+        current_model: Some(spec.id.to_string()),
+    })
+}
+
+#[tauri::command]
+pub async fn download_matting_model(
+    app_handle: tauri::AppHandle,
+    model_id: String,
+    source: Option<String>,
+) -> Result<MattingModelDownloadResult, String> {
+    use std::io::Write;
+
+    let spec = matting_model_spec(&model_id)?;
+    let Some(_download_guard) = MattingDownloadGuard::begin() else {
+        while MATTING_DOWNLOAD_IN_PROGRESS.load(Ordering::SeqCst) {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        }
+        if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".to_string());
+        }
+        let existing = installed_matting_model_file(spec)?
+            .ok_or("matting:download-failed:shared-task".to_string())?;
+        write_matting_model_config(&MattingModelConfig {
+            current_model: Some(spec.id.to_string()),
+        })?;
+        return Ok(MattingModelDownloadResult {
+            model_id: spec.id.to_string(),
+            path: existing.to_string_lossy().into_owned(),
+            current: true,
+        });
+    };
+    let target = matting_models_dir()?.join(spec.file_name);
+    std::fs::create_dir_all(matting_models_dir()?)
+        .map_err(|error| format!("Cannot create model directory: {error}"))?;
+
+    let existing = installed_matting_model_file(spec)?;
+    let valid_existing = if let Some(path) = existing.as_ref() {
+        let path = path.clone();
+        tokio::task::spawn_blocking(move || sha256_file(&path))
+            .await
+            .map_err(|_| "matting:verify-failed")??
+            == spec.sha256
+    } else {
+        false
+    };
+    if valid_existing {
+        let existing = existing.unwrap();
+        write_matting_model_config(&MattingModelConfig {
+            current_model: Some(spec.id.to_string()),
+        })?;
+        return Ok(MattingModelDownloadResult {
+            model_id: spec.id.to_string(),
+            path: existing.to_string_lossy().into_owned(),
+            current: true,
+        });
+    }
+
+    let partial = target.with_extension("onnx.part");
+    let client = reqwest::Client::builder()
+        .user_agent("ToolKnit/3.1.0 matting-model-manager")
+        .connect_timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|error| format!("matting:download-init-failed:{error}"))?;
+    let requested = source
+        .unwrap_or_else(|| "auto".to_string())
+        .trim()
+        .to_ascii_lowercase();
+    let candidates: Vec<&str> = match requested.as_str() {
+        "china" => vec!["china"],
+        "official" => vec!["official"],
+        "auto" | "auto-china" => vec!["china", "official"],
+        "auto-official" => vec!["official", "china"],
+        _ => return Err("matting:unknown-source".into()),
+    };
+    let mut last_error = String::from("matting:download-failed");
+    for candidate in candidates {
+        if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".to_string());
+        }
+        if dependency_download::verified_partial(&partial, spec.bytes, spec.sha256).await? {
+            break;
+        }
+        let mut resume_from = std::fs::metadata(&partial)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
+        if resume_from > spec.bytes {
+            let _ = std::fs::remove_file(&partial);
+            resume_from = 0;
+        }
+        let url = matting_model_source(Some(candidate))?;
+        let mut request = client.get(url);
+        if resume_from > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+        }
+        let mut response =
+            match dependency_download::network(request.send(), &MATTING_DOWNLOAD_CANCEL).await {
+                Ok(response) if response.status().is_success() => response,
+                Ok(response) => {
+                    last_error = format!("dependency-download:http:{}", response.status().as_u16());
+                    continue;
+                }
+                Err(error) => {
+                    if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+                        return Err("dependency-download:cancelled".into());
+                    }
+                    last_error = format!("matting:download-connect:{error}");
+                    continue;
+                }
+            };
+        let offset = match dependency_download::response_offset(&response, resume_from, spec.bytes)
+        {
+            Ok(offset) => offset,
+            Err(error) => {
+                last_error = error;
+                continue;
+            }
+        };
+        let append = offset > 0;
+        let mut file = if append {
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&partial)
+                .map_err(|_| "dependency-download:storage")?
+        } else {
+            std::fs::File::create(&partial).map_err(|_| "dependency-download:storage")?
+        };
+        let mut downloaded = if append { resume_from } else { 0 };
+        let mut last_report = Instant::now();
+        let mut stream_failed = false;
+        loop {
+            if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+                return Err("dependency-download:cancelled".to_string());
+            }
+            match dependency_download::network(response.chunk(), &MATTING_DOWNLOAD_CANCEL).await {
+                Ok(Some(chunk)) => {
+                    let next_downloaded = downloaded.saturating_add(chunk.len() as u64);
+                    if next_downloaded > spec.bytes {
+                        last_error = "matting:download-too-large".to_string();
+                        stream_failed = true;
+                        break;
+                    }
+                    file.write_all(&chunk)
+                        .map_err(|_| "dependency-download:storage")?;
+                    downloaded = next_downloaded;
+                    if last_report.elapsed().as_millis() > 120 {
+                        last_report = Instant::now();
+                        let _ = app_handle.emit(
+                            "matting-model-progress",
+                            MattingModelDownloadProgress {
+                                model_id: spec.id.to_string(),
+                                downloaded_bytes: downloaded,
+                                total_bytes: spec.bytes,
+                                phase: if append {
+                                    "resuming".to_string()
+                                } else {
+                                    "downloading".to_string()
+                                },
+                            },
+                        );
+                    }
+                }
+                Ok(None) => break,
+                Err(error) => {
+                    last_error = format!("matting:download-stream:{error}");
+                    stream_failed = true;
+                    break;
+                }
+            }
+        }
+        file.flush().map_err(|_| "dependency-download:storage")?;
+        drop(file);
+        if stream_failed {
+            if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+                return Err("dependency-download:cancelled".into());
+            }
+            continue;
+        }
+        if downloaded == spec.bytes {
+            if dependency_download::verified_partial(&partial, spec.bytes, spec.sha256).await? {
+                break;
+            }
+            last_error = "dependency-download:verify".into();
+        } else {
+            last_error = "dependency-download:size".into();
+        }
+    }
+
+    let partial_meta = std::fs::metadata(&partial)
+        .map_err(|_error| format!("matting:download-failed:{last_error}"))?;
+    if partial_meta.len() != spec.bytes {
+        return Err(format!("matting:download-incomplete:{last_error}"));
+    }
+    let partial_for_hash = partial.clone();
+    let verified = tokio::task::spawn_blocking(move || sha256_file(&partial_for_hash))
+        .await
+        .map_err(|error| format!("matting:hash-spawn-failed:{error}"))??;
+    if verified != spec.sha256 {
+        let _ = std::fs::remove_file(&partial);
+        return Err("matting:hash-mismatch".to_string());
+    }
+    if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+        return Err("dependency-download:cancelled".into());
+    }
+    std::fs::rename(&partial, &target)
+        .map_err(|error| format!("matting:publish-failed:{error}"))?;
+    write_matting_model_config(&MattingModelConfig {
+        current_model: Some(spec.id.to_string()),
+    })?;
+    Ok(MattingModelDownloadResult {
+        model_id: spec.id.to_string(),
+        path: target.to_string_lossy().into_owned(),
+        current: true,
+    })
+}
+
+fn matting_model_source(source: Option<&str>) -> Result<String, String> {
+    let source = source.unwrap_or("auto").trim().to_ascii_lowercase();
+    let url = match source.as_str() {
+        "official" | "auto" => "https://huggingface.co/Xenova/modnet/resolve/main/onnx/model.onnx",
+        "china" => "https://hf-mirror.com/Xenova/modnet/resolve/main/onnx/model.onnx",
+        _ => return Err("matting:unknown-source".to_string()),
+    };
+    Ok(url.to_string())
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    use sha2::Digest;
+    use std::io::Read as _;
+    let mut file =
+        std::fs::File::open(path).map_err(|error| format!("Cannot open file: {error}"))?;
+    let mut digest = sha2::Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Cannot read file: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+#[tauri::command]
+pub fn cancel_matting_model_download() {
+    MATTING_DOWNLOAD_CANCEL.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+pub fn delete_matting_model(model_id: String) -> Result<(), String> {
+    let _guard = MattingDownloadGuard::begin().ok_or("matting:model-in-use")?;
+    let spec = matting_model_spec(&model_id)?;
+    let path = matting_models_dir()?.join(spec.file_name);
+    if installed_matting_model_file(spec)?.is_none() {
+        return Err("matting:model-not-installed".to_string());
+    }
+    std::fs::remove_file(&path).map_err(|error| format!("matting:delete-failed:{error}"))?;
+    if read_matting_model_config().as_deref() == Some(spec.id) {
+        let _ = write_matting_model_config(&MattingModelConfig {
+            current_model: None,
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_matting_segmentation(request_id: u64) {
+    if let Ok(mut cancelled) = cancelled_segmentations().lock() {
+        cancelled.insert(request_id);
+    }
+}
+
+struct SegmentationRequestGuard(u64);
+
+impl SegmentationRequestGuard {
+    fn begin(request_id: u64) -> Result<Self, String> {
+        if request_id == 0 {
+            return Err("matting:request-invalid".to_string());
+        }
+        cancelled_segmentations()
+            .lock()
+            .map_err(|_| "matting:cancel-state-unavailable".to_string())?
+            .remove(&request_id);
+        Ok(Self(request_id))
+    }
+}
+
+impl Drop for SegmentationRequestGuard {
+    fn drop(&mut self) {
+        if let Ok(mut cancelled) = cancelled_segmentations().lock() {
+            cancelled.remove(&self.0);
+        }
+    }
+}
+
+fn ensure_segmentation_active(request_id: u64) -> Result<(), String> {
+    let cancelled = cancelled_segmentations()
+        .lock()
+        .map_err(|_| "matting:cancel-state-unavailable".to_string())?;
+    if cancelled.contains(&request_id) {
+        Err("matting:cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn matting_preview_dir() -> PathBuf {
+    std::env::temp_dir()
+        .join("ToolKnit")
+        .join("background-removal")
+}
+
+#[tauri::command]
+pub fn discard_matting_preview(path: String) -> Result<(), String> {
+    let candidate = PathBuf::from(path);
+    let directory = matting_preview_dir();
+    let allowed_name = candidate
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("preview-") && name.ends_with(".png"));
+    if candidate.parent() != Some(directory.as_path()) || !allowed_name {
+        return Err("matting:preview-path-invalid".to_string());
+    }
+    match std::fs::remove_file(candidate) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("matting:preview-delete-failed:{error}")),
+    }
+}
+
+#[tauri::command]
+pub async fn segment_image(
+    input_path: String,
+    model_id: Option<String>,
+    preview_max_size: Option<u32>,
+    request_id: u64,
+    force_cpu: Option<bool>,
+) -> Result<MattingSegmentResult, String> {
+    let _request_guard = SegmentationRequestGuard::begin(request_id)?;
+    let spec = match model_id.as_deref() {
+        Some(explicit) => matting_model_spec(explicit)?,
+        None => {
+            let current = read_matting_model_config()
+                .or_else(|| first_installed_matting_model().map(|spec| spec.id.to_string()))
+                .ok_or("matting:model-not-installed")?;
+            matting_model_spec(&current)?
+        }
+    };
+    let model_path = installed_matting_model_file(spec)?.ok_or("matting:model-not-installed")?;
+    let started = Instant::now();
+    let input_path = Path::new(&input_path).to_path_buf();
+    let preview_max_size = preview_max_size
+        .unwrap_or(MAX_PREVIEW_EDGE)
+        .clamp(512, MAX_PREVIEW_EDGE);
+
+    ort_dylib_ready()?;
+    ensure_segmentation_active(request_id)?;
+
+    let loaded = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        let image = super::decode_oriented_image(&input_path)
+            .map_err(|error| format!("matting:image-open-failed:{error}"))?;
+        let (width, height) = image.dimensions();
+        let pixels = u64::from(width).saturating_mul(u64::from(height));
+        if width == 0 || height == 0 || pixels > MAX_SOURCE_PIXELS {
+            return Err("matting:image-too-large".to_string());
+        }
+        ensure_segmentation_active(request_id)?;
+        let scale_down = (width.max(height) > preview_max_size)
+            .then(|| preview_max_size as f32 / width.max(height) as f32);
+        let output_size = if let Some(scale) = scale_down {
+            (
+                ((width as f32 * scale).round() as u32).max(1),
+                ((height as f32 * scale).round() as u32).max(1),
+            )
+        } else {
+            (width, height)
+        };
+        let mut runtime = lock_matting_runtime(matting_runtime());
+        let (matte, backend, used_cpu_fallback) = run_with_cpu_fallback(
+            &mut runtime,
+            force_cpu.unwrap_or(false),
+            |runtime, backend| {
+                ensure_segmentation_active(request_id)?;
+                let session = acquire_session(runtime, spec, &model_path, backend)?;
+                ensure_segmentation_active(request_id)?;
+                let result = run_segmentation(session, &image, spec, output_size);
+                ensure_segmentation_active(request_id)?;
+                result
+            },
+        )?;
+        Ok((
+            matte,
+            output_size,
+            (width, height),
+            backend.name().to_string(),
+            used_cpu_fallback,
+        ))
+    })
+    .await
+    .map_err(|error| format!("matting:segment-spawn-failed:{error}"))??;
+
+    ensure_segmentation_active(request_id)?;
+    let (matte, output_size, source_size, execution_provider, used_cpu_fallback) = loaded;
+    let mut bytes = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(std::io::Cursor::new(&mut bytes));
+    image::DynamicImage::ImageRgba8(matte.clone())
+        .write_with_encoder(encoder)
+        .map_err(|error| format!("matting:png-encode-failed:{error}"))?;
+    ensure_segmentation_active(request_id)?;
+    let preview_dir = matting_preview_dir();
+    std::fs::create_dir_all(&preview_dir)
+        .map_err(|error| format!("matting:preview-dir-failed:{error}"))?;
+    let target = preview_dir.join(format!("preview-{}-{request_id}.png", std::process::id()));
+    std::fs::write(&target, bytes)
+        .map_err(|error| format!("matting:preview-write-failed:{error}"))?;
+    if let Err(error) = ensure_segmentation_active(request_id) {
+        let _ = std::fs::remove_file(&target);
+        return Err(error);
+    }
+    println!(
+        "[matting] preview {}x{} with {} ({}) in {:.2?}",
+        output_size.0,
+        output_size.1,
+        spec.id,
+        execution_provider,
+        started.elapsed()
+    );
+    Ok(MattingSegmentResult {
+        path: target.to_string_lossy().into_owned(),
+        width: output_size.0,
+        height: output_size.1,
+        model_id: spec.id.to_string(),
+        execution_provider: execution_provider.to_string(),
+        used_cpu_fallback,
+        source_width: source_size.0,
+        source_height: source_size.1,
+    })
+}
+
+#[tauri::command]
+pub async fn export_segmented_image(
+    input_path: String,
+    output_dir: String,
+    file_name: String,
+    mask_bytes: Vec<u8>,
+) -> Result<MattingExportResult, String> {
+    if mask_bytes.is_empty() || mask_bytes.len() > MAX_MASK_BYTES {
+        return Err("matting:mask-size-invalid".to_string());
+    }
+    if file_name.contains('\0') || file_name.contains('/') || file_name.contains('\\') {
+        return Err("matting:file-name-invalid".to_string());
+    }
+    is_path_allowed(Path::new(&output_dir))?;
+    let input_path = PathBuf::from(input_path);
+    let output_dir = PathBuf::from(output_dir);
+    tokio::task::spawn_blocking(move || {
+        let image = super::decode_oriented_image(&input_path)
+            .map_err(|error| format!("matting:image-open-failed:{error}"))?;
+        let (width, height) = image.dimensions();
+        let pixels = u64::from(width).saturating_mul(u64::from(height));
+        if width == 0 || height == 0 || pixels > MAX_EXPORT_PIXELS {
+            return Err("matting:image-too-large".to_string());
+        }
+
+        let encoded_mask = image::load_from_memory(&mask_bytes)
+            .map_err(|error| format!("matting:mask-decode-failed:{error}"))?;
+        let output = compose_with_mask(&image, &encoded_mask);
+
+        std::fs::create_dir_all(&output_dir)
+            .map_err(|error| format!("matting:output-dir-failed:{error}"))?;
+        let stem = Path::new(&file_name)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .filter(|stem| !stem.trim().is_empty())
+            .unwrap_or_else(|| "cutout".to_string());
+        let target = unique_matting_path(&output_dir, &stem)?;
+        let temporary = target.with_extension(format!("png.{}.part", std::process::id()));
+        let mut bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(std::io::Cursor::new(&mut bytes));
+        image::DynamicImage::ImageRgba8(output)
+            .write_with_encoder(encoder)
+            .map_err(|error| format!("matting:png-encode-failed:{error}"))?;
+        std::fs::write(&temporary, bytes)
+            .map_err(|error| format!("matting:output-write-failed:{error}"))?;
+        if let Err(error) = std::fs::rename(&temporary, &target) {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(format!("matting:output-publish-failed:{error}"));
+        }
+        Ok(MattingExportResult {
+            path: target.to_string_lossy().into_owned(),
+            width,
+            height,
+        })
+    })
+    .await
+    .map_err(|error| format!("matting:export-spawn-failed:{error}"))?
+}
+
+#[cfg(test)]
+mod matting_tests {
+    use super::*;
+
+    #[test]
+    fn gpu_success_does_not_run_cpu() {
+        let mut runtime = MattingRuntime::default();
+        let mut calls = Vec::new();
+        let result = run_with_cpu_fallback(&mut runtime, false, |_, backend| {
+            calls.push(backend);
+            Ok(42)
+        })
+        .unwrap();
+        assert_eq!(result, (42, MattingBackend::DirectMl, false));
+        assert_eq!(calls, [MattingBackend::DirectMl]);
+        assert!(!runtime.gpu_disabled);
+    }
+
+    #[test]
+    fn gpu_init_and_inference_failures_retry_cpu_and_remember_fallback() {
+        for failure in [
+            "matting:dml-init-failed:test",
+            "matting:inference-failed:test",
+        ] {
+            let mut runtime = MattingRuntime::default();
+            let mut calls = Vec::new();
+            let result = run_with_cpu_fallback(&mut runtime, false, |_, backend| {
+                calls.push(backend);
+                if backend == MattingBackend::DirectMl {
+                    Err(failure.to_string())
+                } else {
+                    Ok(42)
+                }
+            })
+            .unwrap();
+            assert_eq!(result, (42, MattingBackend::Cpu, true));
+            assert_eq!(calls, [MattingBackend::DirectMl, MattingBackend::Cpu]);
+            let again = run_with_cpu_fallback(&mut runtime, false, |_, backend| {
+                assert_eq!(backend, MattingBackend::Cpu);
+                Ok(43)
+            })
+            .unwrap();
+            assert_eq!(again, (43, MattingBackend::Cpu, true));
+        }
+    }
+
+    #[test]
+    fn explicit_cpu_skips_gpu_without_disabling_auto_mode() {
+        let mut runtime = MattingRuntime::default();
+        let result = run_with_cpu_fallback(&mut runtime, true, |_, backend| {
+            assert_eq!(backend, MattingBackend::Cpu);
+            Ok(42)
+        })
+        .unwrap();
+        assert_eq!(result, (42, MattingBackend::Cpu, false));
+        assert!(!runtime.gpu_disabled);
+        assert_eq!(
+            run_with_cpu_fallback(&mut runtime, false, |_, backend| Ok(backend))
+                .unwrap()
+                .1,
+            MattingBackend::DirectMl
+        );
+    }
+
+    #[test]
+    fn both_backend_errors_are_retained_and_retry_is_bounded() {
+        let mut runtime = MattingRuntime::default();
+        let mut calls = 0;
+        let error = run_with_cpu_fallback::<()>(&mut runtime, false, |_, backend| {
+            calls += 1;
+            Err(format!("{}-diagnostic", backend.name()))
+        })
+        .unwrap_err();
+        assert_eq!(calls, 2);
+        assert!(error.contains("gpu=[dml-diagnostic];cpu=[cpu-diagnostic]"));
+        assert!(runtime.current.is_none());
+        let error = run_with_cpu_fallback::<()>(&mut runtime, true, |_, _| {
+            calls += 1;
+            Err("cpu-only-diagnostic".into())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 3);
+        assert!(error.starts_with("matting:cpu-failed:"));
+    }
+
+    #[test]
+    fn cancellation_does_not_trigger_or_mask_fallback() {
+        let mut runtime = MattingRuntime::default();
+        let mut calls = 0;
+        let error = run_with_cpu_fallback::<()>(&mut runtime, false, |_, _| {
+            calls += 1;
+            Err("matting:cancelled".into())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert_eq!(error, "matting:cancelled");
+        assert!(!runtime.gpu_disabled);
+        let error = run_with_cpu_fallback::<()>(&mut runtime, false, |_, backend| {
+            calls += 1;
+            Err(if backend == MattingBackend::Cpu {
+                "matting:cancelled"
+            } else {
+                "matting:inference-failed:test"
+            }
+            .into())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 3);
+        assert_eq!(error, "matting:cancelled");
+    }
+
+    #[test]
+    fn panics_recover_without_poisoning_the_runtime_lock() {
+        let runtime = Mutex::new(MattingRuntime::default());
+        {
+            let mut guard = lock_matting_runtime(&runtime);
+            let result = run_with_cpu_fallback(&mut guard, false, |_, backend| {
+                if backend == MattingBackend::DirectMl {
+                    panic!("injected GPU panic");
+                }
+                Ok(42)
+            })
+            .unwrap();
+            assert_eq!(result, (42, MattingBackend::Cpu, true));
+            let error = run_with_cpu_fallback::<()>(&mut guard, false, |_, _| {
+                panic!("injected CPU panic");
+            })
+            .unwrap_err();
+            assert!(error.contains("matting:cpu-panicked"));
+        }
+        assert!(!runtime.is_poisoned());
+        assert!(
+            run_with_cpu_fallback(&mut lock_matting_runtime(&runtime), false, |_, _| Ok(42))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn poisoned_runtime_can_be_reopened_on_cpu() {
+        let runtime = Mutex::new(MattingRuntime::default());
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = runtime.lock().unwrap();
+            panic!("injected legacy poison");
+        }));
+        assert!(runtime.is_poisoned());
+        {
+            let mut guard = lock_matting_runtime(&runtime);
+            assert!(guard.gpu_disabled);
+            let result =
+                run_with_cpu_fallback(&mut guard, false, |_, backend| Ok(backend)).unwrap();
+            assert_eq!(result, (MattingBackend::Cpu, MattingBackend::Cpu, true));
+        }
+        assert!(!runtime.is_poisoned());
+    }
+
+    #[test]
+    fn model_preprocessing_is_explicit_and_letterboxed() {
+        let wide = letterbox_for(1600, 900, 512);
+        assert_eq!(wide.width, 512);
+        assert_eq!(wide.height, 288);
+        assert_eq!(wide.x, 0);
+        assert_eq!(wide.y, 112);
+
+        let tall = letterbox_for(600, 1200, 320);
+        assert_eq!(tall.width, 160);
+        assert_eq!(tall.height, 320);
+        assert_eq!(tall.x, 80);
+        assert_eq!(tall.y, 0);
+
+        let modnet = matting_model_spec("modnet").expect("modnet spec");
+        assert_eq!(MATTING_MODELS.len(), 1);
+        assert_eq!(modnet.id, "modnet");
+        assert!(matting_model_spec("isnet").is_err());
+        assert!(matting_model_spec("u2net").is_err());
+    }
+
+    #[test]
+    fn mask_decoding_clamps_values_without_image_min_max() {
+        let clamped = decode_mask(&[-1.0, 0.25, 0.75, 2.0], &[1, 1, 2, 2]).expect("clamped mask");
+        let values: Vec<u8> = clamped.pixels().map(|pixel| pixel.0[0]).collect();
+        assert_eq!(values, vec![0, 64, 191, 255]);
+    }
+
+    #[test]
+    fn restored_letterbox_mask_matches_requested_dimensions() {
+        let letterbox = letterbox_for(1600, 900, 512);
+        let mask = image::GrayImage::from_pixel(512, 512, image::Luma([255]));
+        let restored = restore_letterboxed_mask(&mask, letterbox, (800, 450));
+        assert_eq!(restored.dimensions(), (800, 450));
+        assert!(restored.pixels().all(|pixel| pixel.0[0] == 255));
+    }
+
+    #[test]
+    fn flat_background_fallback_recovers_dark_graphic() {
+        let mut source = image::RgbaImage::from_pixel(64, 64, image::Rgba([250, 250, 250, 255]));
+        for y in 18..46 {
+            for x in 14..50 {
+                source.put_pixel(x, y, image::Rgba([8, 8, 8, 255]));
+            }
+        }
+        let predicted = image::GrayImage::from_pixel(64, 64, image::Luma([0]));
+        let (recovered, used_fallback) = recover_catastrophic_mask(&source, predicted);
+        assert!(used_fallback);
+        assert!(recovered.get_pixel(2, 2).0[0] < 4);
+        assert!(recovered.get_pixel(32, 32).0[0] > 250);
+    }
+
+    #[test]
+    fn valid_model_mask_is_never_replaced() {
+        let source = image::RgbaImage::from_pixel(64, 64, image::Rgba([250, 250, 250, 255]));
+        let mut predicted = image::GrayImage::from_pixel(64, 64, image::Luma([0]));
+        for y in 12..52 {
+            for x in 18..46 {
+                predicted.put_pixel(x, y, image::Luma([255]));
+            }
+        }
+        let expected = predicted.clone();
+        let (result, used_fallback) = recover_catastrophic_mask(&source, predicted);
+        assert!(!used_fallback);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn varied_border_does_not_trigger_flat_background_fallback() {
+        let mut source = image::RgbaImage::new(64, 64);
+        for (x, y, pixel) in source.enumerate_pixels_mut() {
+            let value = ((x * 37 + y * 53) % 256) as u8;
+            *pixel = image::Rgba([value, 255_u8.saturating_sub(value), value / 2, 255]);
+        }
+        let predicted = image::GrayImage::from_pixel(64, 64, image::Luma([0]));
+        let expected = predicted.clone();
+        let (result, used_fallback) = recover_catastrophic_mask(&source, predicted);
+        assert!(!used_fallback);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn edited_preview_mask_is_restored_to_original_export_size() {
+        let source = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            8,
+            4,
+            image::Rgb([20, 40, 60]),
+        ));
+        let mut mask = image::RgbaImage::new(2, 1);
+        mask.put_pixel(0, 0, image::Rgba([255, 255, 255, 0]));
+        mask.put_pixel(1, 0, image::Rgba([255, 255, 255, 255]));
+        let mask = image::DynamicImage::ImageRgba8(mask);
+        let output = compose_with_mask(&source, &mask);
+        assert_eq!(output.dimensions(), (8, 4));
+        assert!(output.get_pixel(0, 0).0[3] < output.get_pixel(7, 0).0[3]);
+        assert_eq!(&output.get_pixel(7, 3).0[..3], &[20, 40, 60]);
+
+        let mut transparent_source =
+            image::RgbaImage::from_pixel(2, 1, image::Rgba([20, 40, 60, 255]));
+        transparent_source.get_pixel_mut(0, 0).0[3] = 0;
+        let opaque_mask = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            1,
+            1,
+            image::Rgba([255, 255, 255, 255]),
+        ));
+        let preserved = compose_with_mask(
+            &image::DynamicImage::ImageRgba8(transparent_source),
+            &opaque_mask,
+        );
+        assert_eq!(preserved.get_pixel(0, 0).0[3], 0);
+        assert_eq!(preserved.get_pixel(1, 0).0[3], 255);
+    }
+
+    #[test]
+    fn cpu_inference_runs_with_optional_local_model() {
+        let Ok(model) = std::env::var("TOOLKNIT_TEST_MATTING_MODEL") else {
+            return;
+        };
+        assert!(
+            Path::new(&model).is_file(),
+            "configured test model must exist"
+        );
+        ort_dylib_ready().expect("load bundled runtime");
+        let spec = matting_model_spec("modnet").expect("modnet spec");
+        let source = image::DynamicImage::ImageRgba8(image::RgbaImage::from_fn(96, 128, |x, y| {
+            if (25..71).contains(&x) && (20..110).contains(&y) {
+                image::Rgba([20, 30, 40, 255])
+            } else {
+                image::Rgba([230, 240, 250, 255])
+            }
+        }));
+        let mut runtime = MattingRuntime::default();
+        for output_size in [(96, 128), (48, 64)] {
+            let started = Instant::now();
+            let (matte, backend, fallback) =
+                run_with_cpu_fallback(&mut runtime, true, |runtime, backend| {
+                    let session = acquire_session(runtime, spec, Path::new(&model), backend)?;
+                    run_segmentation(session, &source, spec, output_size)
+                })
+                .expect(
+                    "real CPU inference must succeed, including a second cached-session request",
+                );
+            assert_eq!(backend, MattingBackend::Cpu);
+            assert!(!fallback);
+            assert_eq!(matte.dimensions(), output_size);
+            assert!(
+                matte.pixels().any(|pixel| pixel.0[3] < 255),
+                "model must produce a transparency mask"
+            );
+            println!(
+                "[matting-cpu-smoke] {output_size:?} in {:?}",
+                started.elapsed()
+            );
+        }
+    }
+
+    #[test]
+    fn segment_runs_end_to_end_with_optional_model() {
+        let Ok(model) = std::env::var("TOOLKNIT_TEST_MATTING_MODEL") else {
+            return;
+        };
+        let Ok(image_path) = std::env::var("TOOLKNIT_TEST_MATTING_IMAGE") else {
+            return;
+        };
+        if !Path::new(&model).is_file() || !Path::new(&image_path).is_file() {
+            return;
+        }
+        ort_dylib_ready().expect("load runtime");
+        let spec = matting_model_spec("modnet").expect("modnet spec");
+        let image = image::open(&image_path).expect("open portrait");
+        let (width, height) = image.dimensions();
+        let started = std::time::Instant::now();
+        let mut session =
+            build_session(Path::new(&model), MattingBackend::Cpu).expect("build CPU session");
+        let matte = run_segmentation(&mut session, &image, spec, (width, height))
+            .expect("segment portrait");
+        println!(
+            "[matting-e2e] {}x{} in {:?}",
+            width,
+            height,
+            started.elapsed()
+        );
+        assert_eq!(matte.width(), width);
+        assert_eq!(matte.height(), height);
+        let opaque = matte.pixels().filter(|p| p.0[3] > 200).count();
+        let ratio = opaque as f64 / (width * height) as f64;
+        println!("[matting-e2e] opaque ratio = {:.3}", ratio);
+        assert!(
+            ratio > 0.05 && ratio < 0.95,
+            "subject should occupy a plausible share of the frame"
+        );
+    }
+}
