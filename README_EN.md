@@ -8,7 +8,11 @@
 
 71 desktop tools · 12 categories · Local file workflows · CLI / MCP
 
-[Download for Windows](https://toolknit.com/exe.html) · [Open the web app](https://toolknit.com) · [简体中文](README.md)
+<p align="center">
+<a href="https://toolknit.com/exe.html"><img src="assets/readme/v3.1/link-download-en.svg" alt="Download for Windows" width="192" height="40" /></a>
+<a href="https://toolknit.com"><img src="assets/readme/v3.1/link-web-en.svg" alt="Open the web app" width="176" height="40" /></a>
+<a href="README.md"><img src="assets/readme/v3.1/link-chinese.svg" alt="简体中文" width="104" height="40" /></a>
+</p>
 
 </div>
 
@@ -36,9 +40,9 @@ See [Get started](#08--get-started) for installation requirements and instructio
 
 <table width="100%">
 <tr>
-<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong's avatar" /><br /><strong>Zihang Dong</strong></a><br />Product design · Development · Maintenance</td>
-<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion's avatar" /><br /><strong>Joshua-Zion</strong></a><br />Color spaces · Interaction improvements</td>
-<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025's avatar" /><br /><strong>hqyx2025</strong></a><br />Project verification · Bug testing</td>
+<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong's avatar; visit GitHub" /></a><br /><strong>Zihang Dong</strong><br />Product design · Development · Maintenance</td>
+<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion's avatar; visit GitHub" /></a><br /><strong>Joshua-Zion</strong><br />Color spaces · Interaction improvements</td>
+<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025's avatar; visit GitHub" /></a><br /><strong>hqyx2025</strong><br />Project verification · Bug testing</td>
 </tr>
 </table>
 
@@ -50,7 +54,7 @@ Thanks to everyone who uses, tests and improves ToolKnit. Joshua-Zion's contribu
 
 [05 Files](#05--keep-file-work-in-one-place) · [06 Pictures and sound](#06--a-workbench-for-pictures-and-sound) · [07 CLI / Agents](#07--work-by-hand-or-hand-it-to-an-agent) · [Actual screenshots](#the-actual-workspaces)
 
-[08 Get started](#08--get-started) · [Tool catalog](#complete-tool-catalog) · [Support and feedback](#support-and-feedback) · [License](#source-license) · [Star History](#star-history)
+[08 Get started](#08--get-started) · [Tool catalog](#complete-tool-catalog) · [Support and feedback](#support-and-feedback) · [Run and build from source](#run-and-build-from-source) · [Technology stack](#technology-stack) · [License](#source-license) · [Star History](#star-history)
 
 <table width="100%">
 <tr>
@@ -237,21 +241,6 @@ Ordinary file tasks run locally by default. When you actively use an AI feature,
 Dependency downloads and update checks need a connection; installed offline capabilities do not require an AI key.
 File-size, page, pixel and batch limits vary by tool; support is not unlimited for every format.
 
-### Run from source
-
-```powershell
-git clone https://github.com/ZihangDong/toolknit-desktop.git
-Set-Location toolknit-desktop
-git switch codex/readme-v3.1-comic-preview
-Set-Location toolknit-desktop
-npm ci
-npm run tauri dev
-```
-
-Requires Node.js **22.12+** (24 recommended), Rust stable, Visual Studio C++ Build Tools, Windows SDK and WebView2.
-The repository root holds documentation; the nested `toolknit-desktop/` directory is the npm / Tauri project.
-See the [build guide](BUILD.md). This branch previews the README and does not announce an installer release.
-
 ## Complete tool catalog
 
 <details>
@@ -283,6 +272,71 @@ Thanks to [AtomGit](https://atomgit.com/) for code hosting and developer collabo
 If ToolKnit saves you time, a Star or [one-time donation](assets/readme/donation-support.webp) helps support development, AI testing and maintenance.
 [Thank you to our supporters](assets/readme/supporters-thanks.webp). Donations do not purchase a feature or promise implementation.
 Custom tools and commercial licensing: WeChat **wunanvip6**; email [2645149786@qq.com](mailto:2645149786@qq.com).
+
+## Run and build from source
+
+[↑ Back to contents](#contents)
+
+### Prerequisites
+
+Use a supported Windows 10 / 11 system with Node.js **22.12+** (24 recommended), Rust stable **1.88+**, Visual Studio C++ Build Tools (Desktop development with C++ and Windows SDK), and Microsoft Edge WebView2 Runtime.
+Initial npm and Rust dependency installation requires a connection. Install using the existing lockfiles.
+
+### Start the desktop app
+
+```powershell
+git clone https://github.com/ZihangDong/toolknit-desktop.git
+Set-Location toolknit-desktop\toolknit-desktop
+npm ci
+npm run tauri dev
+```
+
+This checks out the default branch; check the download page for installer availability. For a frontend preview, run `npm run dev` in the same directory and open `http://localhost:1420/`. Native file access, the system tray and global screenshot features require the Tauri desktop environment.
+
+### Build an installer
+
+From the nested `toolknit-desktop/` directory:
+
+```powershell
+npm run build:release-package
+```
+
+This builds the frontend and desktop application; it does not configure code signing automatically. The default NSIS output is `src-tauri/target/release/bundle/nsis/`; if you customize the Cargo target directory, follow the build output.
+FFmpeg, LibreOffice and optional models are installed on demand. Source code does not include user keys or complete model packages.
+
+### Source layout
+
+```text
+Repository root/
+├── README.md / README_EN.md   Project introduction
+├── BUILD.md                  Full build guide
+├── assets/                   Documentation and artwork
+└── toolknit-desktop/          npm / Tauri working directory
+    ├── src/features/         Tool pages, logic and styles
+    ├── src/app/              App orchestration and lifecycle
+    ├── src/shared/           Shared UI and runtimes
+    ├── src/platform/         Browser and native adapters
+    ├── src-tauri/            Rust native capabilities and configuration
+    ├── cli/                  CLI / MCP interfaces
+    └── scripts/              Checks, tests and build scripts
+```
+
+Read more: [Build guide](BUILD.md) · [Contributing](CONTRIBUTING.md) · [Architecture and maintenance (Chinese)](toolknit-desktop/docs/V3_MAINTENANCE_GUIDE.zh-CN.md) · [CLI / MCP](toolknit-desktop/docs/cli-agent.md).
+
+### Technology stack
+
+| Layer | Technologies | Role in ToolKnit |
+| --- | --- | --- |
+| Desktop and native | Tauri 2, Rust, Windows API, WebView2 | Windows, system tray, shortcuts, screenshots, local OCR and file operations |
+| Frontend and build | Vanilla JavaScript (ES Modules), HTML / CSS, Vite 8, Lucide | Modular tool pages, lazy loading, themes and icons |
+| PDF and office files | PDF.js, pdf-lib, ExcelJS, JSZip | PDF preview and editing, spreadsheets and document archives |
+| Markdown and editing | CodeMirror 6, markdown-it, KaTeX, Mermaid, DOMPurify | Editing, typesetting, math, diagrams and HTML sanitization |
+| Images and media | Canvas, Rust image / oxipng, FFmpeg | Image processing and compression, media conversion; FFmpeg is installed on demand |
+| Local models and external runtimes | ONNX Runtime, offline recognition and Chinese / English translation components, LibreOffice | Background removal, transcription, local translation and office rendering, installed per feature |
+| Data and networking | SQLite, AES-GCM / Argon2, Tokio, reqwest | Local history and encryption, asynchronous tasks and native requests |
+| Automation and AI | Node.js CLI, MCP, OpenAI-compatible APIs | Batches, Agent access and AI workflows actively configured by the user |
+
+Third-party components retain their own licenses. See `package-lock.json` and `src-tauri/Cargo.lock` in the desktop project for exact versions. Optional runtimes and models are not all bundled in the main installer.
 
 ## Source license
 

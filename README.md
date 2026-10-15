@@ -8,7 +8,11 @@
 
 71 项桌面工具 · 12 个分类 · 本地文件工作台 · CLI / MCP
 
-[下载 Windows 版](https://toolknit.com/exe.html) · [打开网页端](https://toolknit.com) · [English](README_EN.md)
+<p align="center">
+<a href="https://toolknit.com/exe.html"><img src="assets/readme/v3.1/link-download-zh.svg" alt="下载 Windows 版" width="168" height="40" /></a>
+<a href="https://toolknit.com"><img src="assets/readme/v3.1/link-web-zh.svg" alt="打开网页端" width="144" height="40" /></a>
+<a href="README_EN.md"><img src="assets/readme/v3.1/link-english.svg" alt="English" width="104" height="40" /></a>
+</p>
 
 </div>
 
@@ -36,9 +40,9 @@ ToolKnit 像一只不停织网的蜘蛛：一个需求牵出一根线，越来�
 
 <table width="100%">
 <tr>
-<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong 的头像" /><br /><strong>Zihang Dong</strong></a><br />产品设计 · 开发 · 维护</td>
-<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion 的头像" /><br /><strong>Joshua-Zion</strong></a><br />颜色空间转换 · 交互增强</td>
-<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025 的头像" /><br /><strong>hqyx2025</strong></a><br />项目查验 · Bug 测试</td>
+<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong 的头像，点击访问 GitHub" /></a><br /><strong>Zihang Dong</strong><br />产品设计 · 开发 · 维护</td>
+<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion 的头像，点击访问 GitHub" /></a><br /><strong>Joshua-Zion</strong><br />颜色空间转换 · 交互增强</td>
+<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025 的头像，点击访问 GitHub" /></a><br /><strong>hqyx2025</strong><br />项目查验 · Bug 测试</td>
 </tr>
 </table>
 
@@ -50,7 +54,7 @@ ToolKnit 像一只不停织网的蜘蛛：一个需求牵出一根线，越来�
 
 [05 文件处理](#05--把文件处理集中在一个地方) · [06 图片与声音](#06--图片与声音也有自己的工具台) · [07 CLI / Agent](#07--你来操作也能交给-agent) · [真实截图](#看看真实的工作台)
 
-[08 开始使用](#08--开始使用) · [完整工具目录](#完整工具目录) · [支持与反馈](#支持与反馈) · [源码许可](#源码许可) · [Star History](#star-history)
+[08 开始使用](#08--开始使用) · [完整工具目录](#完整工具目录) · [支持与反馈](#支持与反馈) · [源码运行与构建](#源码运行与构建) · [技术栈](#技术栈) · [源码许可](#源码许可) · [Star History](#star-history)
 
 <table width="100%">
 <tr>
@@ -234,21 +238,6 @@ Windows 10 **1803 / build 17134 及以上**或 Windows 11；需要 Microsoft Edg
 依赖下载与更新检查需要联网；已安装的离线能力不要求 AI Key。
 文件大小、页数、像素和批量限制按各工具能力区分，不承诺所有格式都无限制。
 
-### 从源码运行
-
-```powershell
-git clone https://github.com/ZihangDong/toolknit-desktop.git
-Set-Location toolknit-desktop
-git switch codex/readme-v3.1-comic-preview
-Set-Location toolknit-desktop
-npm ci
-npm run tauri dev
-```
-
-需要 Node.js **22.12+**（推荐 24）、Rust stable、Visual Studio C++ Build Tools、Windows SDK 与 WebView2。
-仓库根目录放文档，内层 `toolknit-desktop/` 才是 npm / Tauri 工作目录。
-完整流程见[构建指南](BUILD.md)。本分支用于 README 预览，不代表已经发布安装包。
-
 ## 完整工具目录
 
 <details>
@@ -280,6 +269,71 @@ npm run tauri dev
 如果 ToolKnit 帮你省下了时间，欢迎 Star 或[一次性捐赠支持](assets/readme/donation-support.webp)。
 [感谢支持者](assets/readme/supporters-thanks.webp)。捐赠用于开发、AI 测试与维护，不代表购买功能或承诺实现需求。
 定制工具与商业授权：微信 **wunanvip6**；联系邮箱：[2645149786@qq.com](mailto:2645149786@qq.com)。
+
+## 源码运行与构建
+
+[↑ 返回目录](#目录)
+
+### 准备环境
+
+使用受支持的 Windows 10 / 11，安装 Node.js **22.12+**（推荐 24）、Rust stable **1.88+**、Visual Studio C++ Build Tools（含“使用 C++ 的桌面开发”和 Windows SDK），以及 Microsoft Edge WebView2 Runtime。
+首次安装 npm 与 Rust 依赖需要联网；使用已有锁文件安装依赖。
+
+### 启动桌面端
+
+```powershell
+git clone https://github.com/ZihangDong/toolknit-desktop.git
+Set-Location toolknit-desktop\toolknit-desktop
+npm ci
+npm run tauri dev
+```
+
+以上检出默认分支；安装包发布状态以下载页为准。只查看前端界面可在同一目录执行 `npm run dev`，访问 `http://localhost:1420/`；原生文件、系统托盘、全局截图等能力需要 Tauri 桌面环境。
+
+### 构建安装包
+
+在内层 `toolknit-desktop/` 目录执行：
+
+```powershell
+npm run build:release-package
+```
+
+此命令会先构建前端，再构建桌面应用；不会自动配置代码签名。默认 NSIS 安装包位于 `src-tauri/target/release/bundle/nsis/`，使用自定义 Cargo target 目录时以构建输出为准。
+FFmpeg、LibreOffice 与可选模型仍按需安装，源码不包含用户密钥或完整模型包。
+
+### 源码结构
+
+```text
+仓库根目录/
+├── README.md / README_EN.md   项目介绍
+├── BUILD.md                  完整构建指南
+├── assets/                   文档与视觉素材
+└── toolknit-desktop/          npm / Tauri 工作目录
+    ├── src/features/         各工具的页面、逻辑与样式
+    ├── src/app/              应用编排与生命周期
+    ├── src/shared/           共享 UI 与运行时
+    ├── src/platform/         浏览器与原生适配
+    ├── src-tauri/            Rust 原生能力与桌面配置
+    ├── cli/                  CLI / MCP 接口
+    └── scripts/              检查、测试与构建脚本
+```
+
+进一步阅读：[构建指南](BUILD.md) · [贡献指南](CONTRIBUTING.md) · [架构与维护](toolknit-desktop/docs/V3_MAINTENANCE_GUIDE.zh-CN.md) · [CLI / MCP](toolknit-desktop/docs/cli-agent.md)。
+
+### 技术栈
+
+| 层次 | 使用的技术 | 在项目中的用途 |
+| --- | --- | --- |
+| 桌面与原生 | Tauri 2、Rust、Windows API、WebView2 | 桌面窗口、系统托盘、快捷键、截图、本地 OCR 与文件操作 |
+| 前端与构建 | 原生 JavaScript（ES Modules）、HTML / CSS、Vite 8、Lucide | 模块化工具页、按需加载、双主题与图标 |
+| PDF 与办公文件 | PDF.js、pdf-lib、ExcelJS、JSZip | PDF 预览与编辑、表格生成、文档归档处理 |
+| Markdown 与编辑 | CodeMirror 6、markdown-it、KaTeX、Mermaid、DOMPurify | 编辑、排版、公式与图表渲染、HTML 清理 |
+| 图像与音视频 | Canvas、Rust image / oxipng、FFmpeg | 图像处理与压缩、音视频转换；FFmpeg 按需安装 |
+| 本地模型与外部运行时 | ONNX Runtime、离线识别与中英翻译组件、LibreOffice | 抠图、转写、本地翻译与办公文件渲染，按功能安装 |
+| 数据与网络 | SQLite、AES-GCM / Argon2、Tokio、reqwest | 本地历史存储与加密、异步任务和原生网络请求 |
+| 自动化与 AI | Node.js CLI、MCP、OpenAI-compatible 接口 | 批处理、Agent 调用与用户主动配置的 AI 工作流 |
+
+第三方组件遵循各自许可，具体版本以 `package-lock.json` 与 `src-tauri/Cargo.lock` 为准。可选运行时与模型不全部包含在主安装包中。
 
 ## 源码许可
 

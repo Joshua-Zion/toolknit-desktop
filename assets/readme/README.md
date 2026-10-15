@@ -18,13 +18,20 @@ English descriptions and surrounding text explain the Chinese comic scenes.
 | `v3.1/08-start.webp` | Getting started and independent development | 2048 x 1152 | 532642 |
 | `v3.1/desktop-home.webp` | Actual repository 3.1 homepage, browser-rendered, window radius disabled | 1280 x 720 | 92690 |
 | `v3.1/web-home.webp` | Actual Chinese ToolKnit.com homepage | 1280 x 720 | 122104 |
-| `v3.1/avatar-zihang.png` | ZihangDong public GitHub avatar | 128 x 128 | 18182 |
-| `v3.1/avatar-joshua.png` | Joshua-Zion public GitHub avatar | 128 x 128 | 21555 |
-| `v3.1/avatar-hqyx.png` | hqyx2025 public GitHub avatar | 128 x 128 | 18412 |
+| `v3.1/avatar-zihang.png` | ZihangDong public GitHub avatar, original colors | 128 x 128 | 24572 |
+| `v3.1/avatar-joshua.png` | Joshua-Zion public GitHub avatar, original colors | 128 x 128 | 34255 |
+| `v3.1/avatar-hqyx.png` | hqyx2025 public GitHub avatar, original colors | 128 x 128 | 26830 |
 | `v3.1/spider-wave.svg` | Original blinking, waving spider expression | 88 x 88 | 1171 |
+| `v3.1/link-download-zh.svg` | Chinese Windows download action | 168 x 40 | 462 |
+| `v3.1/link-web-zh.svg` | Chinese web app action | 144 x 40 | 453 |
+| `v3.1/link-english.svg` | English README action | 104 x 40 | 429 |
+| `v3.1/link-download-en.svg` | English Windows download action | 192 x 40 | 468 |
+| `v3.1/link-web-en.svg` | English web app action | 176 x 40 | 456 |
+| `v3.1/link-chinese.svg` | Chinese README action | 104 x 40 | 444 |
 
-Total: 4613896 bytes (approximately 4.40 MiB). Raster files are lossless grayscale
-WebP or PNG, with equal RGB channels verified after decoding. Comic exports are 2K;
+Total: 4644116 bytes (approximately 4.43 MiB). Comics and screenshots are lossless
+grayscale WebP, with equal RGB channels verified after decoding. Contributor
+avatars retain their original colors in PNG. Comic exports are 2K;
 screenshots retain their actual capture resolution rather than being upscaled.
 
 ## Creation and references
@@ -48,11 +55,15 @@ screenshots retain their actual capture resolution rather than being upscaled.
   styles were not changed. Only grayscale conversion and WebP encoding were
   applied to the captured pixels.
 - Contributor avatars were retrieved from public GitHub profile image URLs on
-  2026-10-15, resized to 128 x 128, converted to grayscale and masked into circles
+  2026-10-15, resized to 128 x 128, kept in their original colors and masked into circles
   with transparent corners. They identify the credited contributors only.
 - The expression SVG is original project artwork. Declarative SVG animation
   makes the spider blink and wave; its static appearance still works if a viewer
   disables animation. It contains no scripts or external references.
+- The six action SVGs use black capsules with bold, underlined white labels.
+  Contributor names use plain bold text; only the colored avatars link to profiles.
+  This avoids custom README CSS, which GitHub strips. Body and contents links retain
+  the viewer's native link colors. The action SVGs contain no scripts or external references.
 - The bottom Star History image reuses the previous public service chart URL,
   checked successfully (HTTP 200). It updates through the service rather than
   using the illustrative local `star-growth.svg`; third-party availability varies.
