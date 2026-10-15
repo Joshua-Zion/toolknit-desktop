@@ -25,11 +25,12 @@ function readPreferences() {
     const value = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
     return {
       modelId: typeof value.modelId === 'string' ? value.modelId : '',
+      executionMode: value.executionMode === 'cpu' ? 'cpu' : 'auto',
       feather: Number.isFinite(Number(value.feather)) ? Number(value.feather) : 1.2,
       brushSize: Number.isFinite(Number(value.brushSize)) ? Number(value.brushSize) : 36
     };
   } catch {
-    return { modelId: '', feather: 1.2, brushSize: 36 };
+    return { modelId: '', executionMode: 'auto', feather: 1.2, brushSize: 36 };
   }
 }
 
@@ -96,6 +97,8 @@ export function initBgRemovalTool({
   const statusText = statusEl?.querySelector('span');
   const modelSelect = query('[data-bgr-model]');
   const modelSelectControl = enhanceToolSelects([modelSelect])[0] || null;
+  const executionModeSelect = query('[data-bgr-execution-mode]');
+  const executionModeControl = enhanceToolSelects([executionModeSelect])[0] || null;
   const featherInput = query('[data-bgr-feather]');
   const featherValue = query('[data-bgr-feather-value]');
   const brushSizeInput = query('[data-bgr-brush-size]');
@@ -137,6 +140,7 @@ export function initBgRemovalTool({
   const workMaskCtx = workMask.getContext('2d');
 
   const preferences = readPreferences();
+  executionModeSelect.value = preferences.executionMode;
   featherInput.value = String(Math.min(8, Math.max(0, preferences.feather)));
   brushSizeInput.value = String(Math.min(160, Math.max(4, preferences.brushSize)));
 
@@ -332,6 +336,8 @@ export function initBgRemovalTool({
     modelSelect.disabled = busy || !installedModels.length;
     modelSelectControl?.refresh();
     featherInput.disabled = busy || !hasImage;
+    executionModeSelect.disabled = busy;
+    executionModeControl?.refresh();
     saveButton.hidden = !processed;
     saveButton.disabled = busy || !outputDir || (!dirty && state === 'saved');
     processLabel.textContent = copy(processed ? 'rerun' : 'startCutout');
@@ -733,6 +739,7 @@ export function initBgRemovalTool({
         inputPath: currentImagePath,
         modelId: modelSelect.value,
         previewMaxSize: MAX_PREVIEW_EDGE,
+        forceCpu: executionModeSelect.value === 'cpu',
         requestId
       });
       previewPath = result.path;
@@ -740,13 +747,15 @@ export function initBgRemovalTool({
       const cutoutBytes = await tauriCore.invoke('read_file_bytes', { path: previewPath });
       if (epoch !== operationEpoch || requestId !== activeSegmentRequest) return;
       await extractAiMask(cutoutBytes);
+      if (epoch !== operationEpoch || requestId !== activeSegmentRequest) return;
       resetEditHistory(history);
       processed = true;
       dirty = true;
       savedPath = '';
       applyFeather();
       setTool('pan');
-      setState('editing', 'editHint', undefined, { status: 'done' });
+      setState('editing', result.used_cpu_fallback ? 'cpuFallback' : 'editHint', undefined, { status: 'done' });
+      if (result.used_cpu_fallback) notify(copy('cpuFallback'));
     } catch (error) {
       const message = String(error?.message || error || '');
       if (/cancelled/i.test(message) || epoch !== operationEpoch) return;
@@ -755,7 +764,9 @@ export function initBgRemovalTool({
         ? 'modelMissing'
         : /onnxruntime-(?:load-failed|dll-missing|loader-busy)/i.test(message)
           ? 'runtimeMissing'
-          : 'segmentFailed';
+          : /matting:(?:backends-failed|cpu-failed)/i.test(message)
+            ? 'backendFailed'
+            : 'segmentFailed';
       setState('error', key, undefined, { status: 'error' });
       notify(copy(key));
     } finally {
@@ -912,6 +923,11 @@ export function initBgRemovalTool({
 
   modelSelect.addEventListener('change', () => {
     preferences.modelId = modelSelect.value;
+    persistPreferences();
+  }, listenerOptions);
+
+  executionModeSelect.addEventListener('change', () => {
+    preferences.executionMode = executionModeSelect.value === 'cpu' ? 'cpu' : 'auto';
     persistPreferences();
   }, listenerOptions);
 
@@ -1084,6 +1100,7 @@ export function initBgRemovalTool({
     setParamsOpen(false);
     setSuccessState(false, { restoreFocus: false });
     modelSelectControl?.close();
+    executionModeControl?.close();
     removeBrushCursor();
     if (state === 'processing') {
       state = stableState;
@@ -1105,6 +1122,7 @@ export function initBgRemovalTool({
     listeners.abort();
     resizeObserver?.disconnect();
     modelSelectControl?.dispose();
+    executionModeControl?.dispose();
     window.cancelAnimationFrame(featherRenderFrame);
     try { languageUnsubscribe(); } catch {}
     overlay.replaceChildren();

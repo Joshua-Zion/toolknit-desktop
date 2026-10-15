@@ -136,12 +136,12 @@ const fullVersion = desktopPackage.version;
 assert.match(fullVersion, /^\d+\.\d+\.\d+$/, 'package.json version must use MAJOR.MINOR.PATCH');
 const seriesVersion = fullVersion.split('.').slice(0, 2).join('.');
 
-assert.match(repositoryReadme, new RegExp(`<h1>ToolKnit Desktop ${escapeRegExp(seriesVersion)}<\\/h1>`), 'Repository README heading must match the current release series');
+assert.match(repositoryReadme, new RegExp(`^# ToolKnit Desktop ${escapeRegExp(seriesVersion)}\\s*$`, 'm'), 'Repository README heading must match the current release series');
 const desktopToolCount = Object.keys(LAZY_TOOL_SPECS).length;
-assert.match(repositoryReadme, new RegExp(`<h3>${desktopToolCount}<\\/h3><strong>桌面工具<\\/strong>`), 'Repository README must match the current desktop catalog');
+assert.match(repositoryReadme, new RegExp(`^${desktopToolCount} 项桌面工具 ·`, 'm'), 'Repository README must match the current desktop catalog');
 assert.match(zhHelpSource, new RegExp(`${desktopToolCount} 个桌面工具`), 'Chinese help overview must match the desktop catalog');
 assert.match(enHelpSource, new RegExp(`${desktopToolCount} desktop tools`), 'English help overview must match the desktop catalog');
-assert.match(repositoryReadme, /<h3>46<\/h3><strong>MCP 能力<\/strong>/, 'Repository README must state the 46-capability MCP contract');
+assert.match(repositoryReadme, /\*\*46 项 CLI \/ MCP 能力\*\*/, 'Repository README must state the 46-capability MCP contract');
 assert.match(releaseNotes, new RegExp(`^# ToolKnit Desktop ${escapeRegExp(fullVersion)}\\s*$`, 'm'), 'Release notes heading must match package.json version');
 // Published notes retain their release catalog while the next version is developed.
 const releasedToolCount = Number(captureExactlyOnce(releaseNotes,
@@ -151,9 +151,8 @@ const publishedSeriesVersion = captureExactlyOnce(releaseNotes,
 assert.ok(releasedToolCount > 0 && releasedToolCount <= desktopToolCount,
   'Published catalog must be valid and no larger than the current catalog');
 if (releasedToolCount !== desktopToolCount) {
-  assert.match(repositoryReadme, new RegExp(`已发布 ${escapeRegExp(publishedSeriesVersion)} 为 ${releasedToolCount} 项`),
-    'README must distinguish the published catalog from development additions');
-  assert.match(repositoryReadme, /V\d+\.\d+ 开发中/, 'Additional tools must be documented as development work');
+  assert.match(repositoryReadme, /安装包发布状态以下载页为准/,
+    'Source documentation must direct readers to the download page for installer availability');
 }
 assert.match(releaseNotes, /46 项已发布能力/, 'Release notes must state the 46-capability CLI and MCP contract');
 
@@ -215,8 +214,8 @@ assert.doesNotMatch(dialogSource, /current: '\d|latest: '\d/, 'Update dialog mus
 for (const source of [zhHelpSource, enHelpSource, dialogSource, await readText('src/app/templates/update-dialog.html')]) {
   for (const version of captures(source, /\bToolKnit (\d+\.\d+)\b/)) assert.equal(version, seriesVersion);
 }
-assert.match(await readText('../README_EN.md'), new RegExp(`<h1>ToolKnit Desktop ${escapeRegExp(seriesVersion)}<\\/h1>`));
-assert.match(await readText('../README_EN.md'), new RegExp(`<h3>${desktopToolCount}<\\/h3><strong>Desktop tools<\\/strong>`), 'English README must match the desktop catalog');
+assert.match(await readText('../README_EN.md'), new RegExp(`^# ToolKnit Desktop ${escapeRegExp(seriesVersion)}\\s*$`, 'm'));
+assert.match(await readText('../README_EN.md'), new RegExp(`^${desktopToolCount} desktop tools ·`, 'm'), 'English README must match the desktop catalog');
 
 assert.equal(elementTextById(indexHtml, 'settings-version'), `v${fullVersion}`, 'Settings version must match package.json');
 assert.equal(elementTextById(indexHtml, 'sidebarVersion'), `v${fullVersion}`, 'Sidebar version must match package.json');

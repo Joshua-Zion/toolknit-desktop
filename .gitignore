@@ -85,6 +85,8 @@ toolknit-installer/
 ToolKnit-Desktop-Setup.exe
 
 # ToolKnit Desktop 本地构建/运行输出
+/output/
+/tmp/
 toolknit-desktop/dist/
 toolknit-desktop/output/
 toolknit-desktop/tmp/

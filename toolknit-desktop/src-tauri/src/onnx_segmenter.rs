@@ -5,10 +5,11 @@
 
 use std::{
     collections::HashSet,
+    panic::{catch_unwind, AssertUnwindSafe},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex, OnceLock,
+        Mutex, MutexGuard, OnceLock,
     },
 };
 
@@ -81,6 +82,7 @@ pub struct MattingSegmentResult {
     pub height: u32,
     pub model_id: String,
     pub execution_provider: String,
+    pub used_cpu_fallback: bool,
     pub source_width: u32,
     pub source_height: u32,
 }
@@ -130,8 +132,10 @@ struct MattingModel {
     session: Session,
 }
 
+#[derive(Default)]
 pub struct MattingRuntime {
     current: Option<MattingModel>,
+    gpu_disabled: bool,
 }
 
 unsafe impl Send for MattingRuntime {}
@@ -255,63 +259,87 @@ fn preload_onnx_libraries(_dll: &Path) -> Result<(), String> {
 
 fn matting_runtime() -> &'static Mutex<MattingRuntime> {
     static RUNTIME: OnceLock<Mutex<MattingRuntime>> = OnceLock::new();
-    RUNTIME.get_or_init(|| Mutex::new(MattingRuntime { current: None }))
+    RUNTIME.get_or_init(|| Mutex::new(MattingRuntime::default()))
+}
+
+fn lock_matting_runtime(runtime: &Mutex<MattingRuntime>) -> MutexGuard<'_, MattingRuntime> {
+    runtime.lock().unwrap_or_else(|poisoned| {
+        let mut recovered = poisoned.into_inner();
+        recovered.current = None;
+        recovered.gpu_disabled = true;
+        runtime.clear_poison();
+        recovered
+    })
 }
 
 fn ort_dylib_ready() -> Result<(), String> {
-    static PREPARED: OnceLock<Result<(), String>> = OnceLock::new();
-    PREPARED
-        .get_or_init(|| {
-            let dll = get_onnxruntime_dll_path()?;
-            preload_onnx_libraries(&dll)?;
-            std::env::set_var("ORT_DYLIB_PATH", &dll);
-            Ok(())
-        })
-        .clone()
+    static PREPARED: OnceLock<Mutex<bool>> = OnceLock::new();
+    let mut prepared = PREPARED
+        .get_or_init(|| Mutex::new(false))
+        .lock()
+        .map_err(|_| "matting:onnxruntime-loader-busy".to_string())?;
+    if !*prepared {
+        let dll = get_onnxruntime_dll_path()?;
+        preload_onnx_libraries(&dll)?;
+        std::env::set_var("ORT_DYLIB_PATH", &dll);
+        *prepared = true;
+    }
+    Ok(())
 }
 
-fn build_session(model_path: &Path) -> Result<(Session, &'static str), String> {
-    let direct_ml = Session::builder()
-        .and_then(|builder| {
-            builder
-                .with_optimization_level(GraphOptimizationLevel::Level3)?
-                .with_execution_providers([DirectMLExecutionProvider::default().build()])?
-                .commit_from_file(model_path)
-        })
-        .map_err(|error| format!("matting:directml-init-failed:{error}"));
-    match direct_ml {
-        Ok(session) => Ok((session, "dml")),
-        Err(direct_ml_error) => {
-            let cpu = Session::builder()
-                .and_then(|builder| {
-                    builder
-                        .with_optimization_level(GraphOptimizationLevel::Level3)?
-                        .with_execution_providers([CPUExecutionProvider::default().build()])?
-                        .commit_from_file(model_path)
-                })
-                .map_err(|error| format!("matting:cpu-init-failed:{error}"));
-            match cpu {
-                Ok(session) => Ok((session, "cpu")),
-                Err(_) => Err(direct_ml_error),
-            }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MattingBackend {
+    DirectMl,
+    Cpu,
+}
+
+impl MattingBackend {
+    fn name(self) -> &'static str {
+        match self {
+            Self::DirectMl => "dml",
+            Self::Cpu => "cpu",
         }
     }
+}
+
+fn build_session(model_path: &Path, backend: MattingBackend) -> Result<Session, String> {
+    Session::builder()
+        .and_then(|builder| {
+            let builder = builder.with_optimization_level(GraphOptimizationLevel::Level3)?;
+            let builder = match backend {
+                // DirectML requires sequential execution and disabled memory patterns.
+                MattingBackend::DirectMl => builder
+                    .with_memory_pattern(false)?
+                    .with_parallel_execution(false)?
+                    .with_execution_providers([DirectMLExecutionProvider::default()
+                        .build()
+                        .error_on_failure()])?,
+                MattingBackend::Cpu => {
+                    builder.with_execution_providers([CPUExecutionProvider::default()
+                        .build()
+                        .error_on_failure()])?
+                }
+            };
+            builder.commit_from_file(model_path)
+        })
+        .map_err(|error| format!("matting:{}-init-failed:{error}", backend.name()))
 }
 
 fn acquire_session<'a>(
     runtime: &'a mut MattingRuntime,
     spec: &'static MattingModelSpec,
     model_path: &Path,
-) -> Result<(&'a mut Session, &'static str), String> {
-    let reusable = runtime
-        .current
-        .as_ref()
-        .is_some_and(|model| model.spec.id == spec.id);
+    backend: MattingBackend,
+) -> Result<&'a mut Session, String> {
+    let reusable = runtime.current.as_ref().is_some_and(|model| {
+        model.spec.id == spec.id && model.execution_provider == backend.name()
+    });
     if !reusable {
-        let (session, execution_provider) = build_session(model_path)?;
+        runtime.current = None;
+        let session = build_session(model_path, backend)?;
         runtime.current = Some(MattingModel {
             spec,
-            execution_provider,
+            execution_provider: backend.name(),
             session,
         });
     }
@@ -319,7 +347,47 @@ fn acquire_session<'a>(
         .current
         .as_mut()
         .ok_or("matting:session-unavailable".to_string())?;
-    Ok((&mut model.session, model.execution_provider))
+    Ok(&mut model.session)
+}
+
+fn run_with_cpu_fallback<T>(
+    runtime: &mut MattingRuntime,
+    force_cpu: bool,
+    mut attempt: impl FnMut(&mut MattingRuntime, MattingBackend) -> Result<T, String>,
+) -> Result<(T, MattingBackend, bool), String> {
+    let backend = if force_cpu || runtime.gpu_disabled {
+        MattingBackend::Cpu
+    } else {
+        MattingBackend::DirectMl
+    };
+    // Catch Rust panics inside the lock so a failed session cannot poison later requests.
+    let mut guarded_attempt = |runtime: &mut MattingRuntime, backend: MattingBackend| {
+        catch_unwind(AssertUnwindSafe(|| attempt(runtime, backend)))
+            .unwrap_or_else(|_| Err(format!("matting:{}-panicked", backend.name())))
+    };
+    match guarded_attempt(runtime, backend) {
+        Ok(value) => Ok((value, backend, !force_cpu && runtime.gpu_disabled)),
+        Err(error) if error == "matting:cancelled" => Err(error),
+        Err(error) => {
+            runtime.current = None;
+            if backend == MattingBackend::Cpu {
+                return Err(format!("matting:cpu-failed:{error}"));
+            }
+            runtime.gpu_disabled = true;
+            match guarded_attempt(runtime, MattingBackend::Cpu) {
+                Ok(value) => Ok((value, MattingBackend::Cpu, true)),
+                Err(cpu_error) => {
+                    runtime.current = None;
+                    if cpu_error == "matting:cancelled" {
+                        return Err(cpu_error);
+                    }
+                    Err(format!(
+                        "matting:backends-failed:gpu=[{error}];cpu=[{cpu_error}]"
+                    ))
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -997,6 +1065,7 @@ pub async fn segment_image(
     model_id: Option<String>,
     preview_max_size: Option<u32>,
     request_id: u64,
+    force_cpu: Option<bool>,
 ) -> Result<MattingSegmentResult, String> {
     let _request_guard = SegmentationRequestGuard::begin(request_id)?;
     let spec = match model_id.as_deref() {
@@ -1037,25 +1106,32 @@ pub async fn segment_image(
         } else {
             (width, height)
         };
-        let mut runtime = matting_runtime()
-            .lock()
-            .map_err(|_| "matting:session-busy".to_string())?;
-        let (session, execution_provider) = acquire_session(&mut runtime, spec, &model_path)?;
-        ensure_segmentation_active(request_id)?;
-        let matte = run_segmentation(session, &image, spec, output_size)?;
-        ensure_segmentation_active(request_id)?;
+        let mut runtime = lock_matting_runtime(matting_runtime());
+        let (matte, backend, used_cpu_fallback) = run_with_cpu_fallback(
+            &mut runtime,
+            force_cpu.unwrap_or(false),
+            |runtime, backend| {
+                ensure_segmentation_active(request_id)?;
+                let session = acquire_session(runtime, spec, &model_path, backend)?;
+                ensure_segmentation_active(request_id)?;
+                let result = run_segmentation(session, &image, spec, output_size);
+                ensure_segmentation_active(request_id)?;
+                result
+            },
+        )?;
         Ok((
             matte,
             output_size,
             (width, height),
-            execution_provider.to_string(),
+            backend.name().to_string(),
+            used_cpu_fallback,
         ))
     })
     .await
     .map_err(|error| format!("matting:segment-spawn-failed:{error}"))??;
 
     ensure_segmentation_active(request_id)?;
-    let (matte, output_size, source_size, execution_provider) = loaded;
+    let (matte, output_size, source_size, execution_provider, used_cpu_fallback) = loaded;
     let mut bytes = Vec::new();
     let encoder = image::codecs::png::PngEncoder::new(std::io::Cursor::new(&mut bytes));
     image::DynamicImage::ImageRgba8(matte.clone())
@@ -1086,6 +1162,7 @@ pub async fn segment_image(
         height: output_size.1,
         model_id: spec.id.to_string(),
         execution_provider: execution_provider.to_string(),
+        used_cpu_fallback,
         source_width: source_size.0,
         source_height: source_size.1,
     })
@@ -1153,6 +1230,157 @@ pub async fn export_segmented_image(
 #[cfg(test)]
 mod matting_tests {
     use super::*;
+
+    #[test]
+    fn gpu_success_does_not_run_cpu() {
+        let mut runtime = MattingRuntime::default();
+        let mut calls = Vec::new();
+        let result = run_with_cpu_fallback(&mut runtime, false, |_, backend| {
+            calls.push(backend);
+            Ok(42)
+        })
+        .unwrap();
+        assert_eq!(result, (42, MattingBackend::DirectMl, false));
+        assert_eq!(calls, [MattingBackend::DirectMl]);
+        assert!(!runtime.gpu_disabled);
+    }
+
+    #[test]
+    fn gpu_init_and_inference_failures_retry_cpu_and_remember_fallback() {
+        for failure in [
+            "matting:dml-init-failed:test",
+            "matting:inference-failed:test",
+        ] {
+            let mut runtime = MattingRuntime::default();
+            let mut calls = Vec::new();
+            let result = run_with_cpu_fallback(&mut runtime, false, |_, backend| {
+                calls.push(backend);
+                if backend == MattingBackend::DirectMl {
+                    Err(failure.to_string())
+                } else {
+                    Ok(42)
+                }
+            })
+            .unwrap();
+            assert_eq!(result, (42, MattingBackend::Cpu, true));
+            assert_eq!(calls, [MattingBackend::DirectMl, MattingBackend::Cpu]);
+            let again = run_with_cpu_fallback(&mut runtime, false, |_, backend| {
+                assert_eq!(backend, MattingBackend::Cpu);
+                Ok(43)
+            })
+            .unwrap();
+            assert_eq!(again, (43, MattingBackend::Cpu, true));
+        }
+    }
+
+    #[test]
+    fn explicit_cpu_skips_gpu_without_disabling_auto_mode() {
+        let mut runtime = MattingRuntime::default();
+        let result = run_with_cpu_fallback(&mut runtime, true, |_, backend| {
+            assert_eq!(backend, MattingBackend::Cpu);
+            Ok(42)
+        })
+        .unwrap();
+        assert_eq!(result, (42, MattingBackend::Cpu, false));
+        assert!(!runtime.gpu_disabled);
+        assert_eq!(
+            run_with_cpu_fallback(&mut runtime, false, |_, backend| Ok(backend))
+                .unwrap()
+                .1,
+            MattingBackend::DirectMl
+        );
+    }
+
+    #[test]
+    fn both_backend_errors_are_retained_and_retry_is_bounded() {
+        let mut runtime = MattingRuntime::default();
+        let mut calls = 0;
+        let error = run_with_cpu_fallback::<()>(&mut runtime, false, |_, backend| {
+            calls += 1;
+            Err(format!("{}-diagnostic", backend.name()))
+        })
+        .unwrap_err();
+        assert_eq!(calls, 2);
+        assert!(error.contains("gpu=[dml-diagnostic];cpu=[cpu-diagnostic]"));
+        assert!(runtime.current.is_none());
+        let error = run_with_cpu_fallback::<()>(&mut runtime, true, |_, _| {
+            calls += 1;
+            Err("cpu-only-diagnostic".into())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 3);
+        assert!(error.starts_with("matting:cpu-failed:"));
+    }
+
+    #[test]
+    fn cancellation_does_not_trigger_or_mask_fallback() {
+        let mut runtime = MattingRuntime::default();
+        let mut calls = 0;
+        let error = run_with_cpu_fallback::<()>(&mut runtime, false, |_, _| {
+            calls += 1;
+            Err("matting:cancelled".into())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 1);
+        assert_eq!(error, "matting:cancelled");
+        assert!(!runtime.gpu_disabled);
+        let error = run_with_cpu_fallback::<()>(&mut runtime, false, |_, backend| {
+            calls += 1;
+            Err(if backend == MattingBackend::Cpu {
+                "matting:cancelled"
+            } else {
+                "matting:inference-failed:test"
+            }
+            .into())
+        })
+        .unwrap_err();
+        assert_eq!(calls, 3);
+        assert_eq!(error, "matting:cancelled");
+    }
+
+    #[test]
+    fn panics_recover_without_poisoning_the_runtime_lock() {
+        let runtime = Mutex::new(MattingRuntime::default());
+        {
+            let mut guard = lock_matting_runtime(&runtime);
+            let result = run_with_cpu_fallback(&mut guard, false, |_, backend| {
+                if backend == MattingBackend::DirectMl {
+                    panic!("injected GPU panic");
+                }
+                Ok(42)
+            })
+            .unwrap();
+            assert_eq!(result, (42, MattingBackend::Cpu, true));
+            let error = run_with_cpu_fallback::<()>(&mut guard, false, |_, _| {
+                panic!("injected CPU panic");
+            })
+            .unwrap_err();
+            assert!(error.contains("matting:cpu-panicked"));
+        }
+        assert!(!runtime.is_poisoned());
+        assert!(
+            run_with_cpu_fallback(&mut lock_matting_runtime(&runtime), false, |_, _| Ok(42))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn poisoned_runtime_can_be_reopened_on_cpu() {
+        let runtime = Mutex::new(MattingRuntime::default());
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = runtime.lock().unwrap();
+            panic!("injected legacy poison");
+        }));
+        assert!(runtime.is_poisoned());
+        {
+            let mut guard = lock_matting_runtime(&runtime);
+            assert!(guard.gpu_disabled);
+            let result =
+                run_with_cpu_fallback(&mut guard, false, |_, backend| Ok(backend)).unwrap();
+            assert_eq!(result, (MattingBackend::Cpu, MattingBackend::Cpu, true));
+        }
+        assert!(!runtime.is_poisoned());
+    }
 
     #[test]
     fn model_preprocessing_is_explicit_and_letterboxed() {
@@ -1268,6 +1496,49 @@ mod matting_tests {
     }
 
     #[test]
+    fn cpu_inference_runs_with_optional_local_model() {
+        let Ok(model) = std::env::var("TOOLKNIT_TEST_MATTING_MODEL") else {
+            return;
+        };
+        assert!(
+            Path::new(&model).is_file(),
+            "configured test model must exist"
+        );
+        ort_dylib_ready().expect("load bundled runtime");
+        let spec = matting_model_spec("modnet").expect("modnet spec");
+        let source = image::DynamicImage::ImageRgba8(image::RgbaImage::from_fn(96, 128, |x, y| {
+            if (25..71).contains(&x) && (20..110).contains(&y) {
+                image::Rgba([20, 30, 40, 255])
+            } else {
+                image::Rgba([230, 240, 250, 255])
+            }
+        }));
+        let mut runtime = MattingRuntime::default();
+        for output_size in [(96, 128), (48, 64)] {
+            let started = Instant::now();
+            let (matte, backend, fallback) =
+                run_with_cpu_fallback(&mut runtime, true, |runtime, backend| {
+                    let session = acquire_session(runtime, spec, Path::new(&model), backend)?;
+                    run_segmentation(session, &source, spec, output_size)
+                })
+                .expect(
+                    "real CPU inference must succeed, including a second cached-session request",
+                );
+            assert_eq!(backend, MattingBackend::Cpu);
+            assert!(!fallback);
+            assert_eq!(matte.dimensions(), output_size);
+            assert!(
+                matte.pixels().any(|pixel| pixel.0[3] < 255),
+                "model must produce a transparency mask"
+            );
+            println!(
+                "[matting-cpu-smoke] {output_size:?} in {:?}",
+                started.elapsed()
+            );
+        }
+    }
+
+    #[test]
     fn segment_runs_end_to_end_with_optional_model() {
         let Ok(model) = std::env::var("TOOLKNIT_TEST_MATTING_MODEL") else {
             return;
@@ -1278,19 +1549,13 @@ mod matting_tests {
         if !Path::new(&model).is_file() || !Path::new(&image_path).is_file() {
             return;
         }
-        std::env::set_var(
-            "ORT_DYLIB_PATH",
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("resources")
-                .join("onnxruntime")
-                .join("onnxruntime.dll"),
-        );
+        ort_dylib_ready().expect("load runtime");
         let spec = matting_model_spec("modnet").expect("modnet spec");
         let image = image::open(&image_path).expect("open portrait");
         let (width, height) = image.dimensions();
         let started = std::time::Instant::now();
-        let (mut session, _execution_provider) =
-            build_session(Path::new(&model)).expect("build session");
+        let mut session =
+            build_session(Path::new(&model), MattingBackend::Cpu).expect("build CPU session");
         let matte = run_segmentation(&mut session, &image, spec, (width, height))
             .expect("segment portrait");
         println!(

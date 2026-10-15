@@ -1,5 +1,15 @@
 # ToolKnit Desktop V3.0 维护规范
 
+## 抠图运行库与显卡兼容（2026-10-15）
+
+- `src-tauri/src/onnx_segmenter.rs` 区分 DLL 加载、后端初始化和模型推理三个阶段。`LoadLibraryExW failed` 不能直接归因为显卡；CPU 同样依赖 ONNX Runtime 与传递 DLL。现有受控目录预加载、VC 依赖分发和进程期句柄保留继续生效，预加载失败不永久缓存失败状态。
+- DirectML 显式关闭 memory patterns 与并行执行，后端注册失败必须报错，避免实际运行 CPU 却标记为 DML。自动模式覆盖初始化和推理失败：销毁故障会话，重试 CPU 一次，并在本进程后续请求中沿用 CPU；显式 CPU 模式直接绕过 GPU，不改变自动模式的降级标记。会话缓存同时按模型与后端区分。
+- 初始化和推理的 Rust panic 在持锁期间捕获，清除故障会话；历史中毒锁可恢复。用户取消不触发重试，也不被 CPU 错误覆盖；两种后端均失败时保留两段诊断。原生访问冲突、进程 abort 与驱动挂死不属于 `catch_unwind` 的恢复范围。
+- `segment_image` 新增可选 `force_cpu`（JS `forceCpu`），省略保持自动模式；结果新增 `used_cpu_fallback`，`execution_provider` 返回实际建立的后端。未改 CLI/MCP。`features/bg-removal` 复用共享下拉，新增 `bgRemovalExecutionMode` / `data-bgr-execution-mode`；既有 `toolknit.bgremoval.preferences.v2` 增加校验后的 `executionMode` 字段，旧偏好默认自动。处理时禁用、关闭时收起、销毁时释放菜单；中英文同步。
+- 回归入口：`node scripts/test-bg-removal-core.mjs`；`cargo test --manifest-path src-tauri/Cargo.toml matting_tests --lib`；`node scripts/test-bg-removal-browser.mjs`（需要 Playwright，可用 `TOOLKNIT_TEST_BROWSER` 指定浏览器）。原生测试覆盖初始化/推理失败、有限重试、取消、显式 CPU、重复请求与 panic/锁恢复；浏览器测试用正式 Tauri mock 验证双主题、中英文、偏好持久化、真实控件与 native 参数、忙碌状态、失败反馈和菜单释放，不代表真实显卡验收。
+- 本机真实模型冒烟：设置 `TOOLKNIT_TEST_MATTING_MODEL` 为本机 MODNet 文件后运行 `cargo test --manifest-path src-tauri/Cargo.toml cpu_inference_runs_with_optional_local_model --lib -- --nocapture`。使用生成图形，首次 CPU 约 1.98 秒、复用会话约 0.64 秒，尺寸与透明度断言通过；这不是人像质量或 Windows 10 / GT730 实机证明。日志与浏览器截图保存在忽略目录 `tmp/matting-*`。
+- 本轮验证：完整发布门禁 103 个脚本通过（含架构/构建、1373 项安全检查、CLI/MCP 与资源审计），Rust 全量 223 passed / 9 ignored，浏览器 5 组检查通过；`git diff --check` 通过。修正版本契约对旧版 README HTML 标题/统计卡片的断言，使其校验已获用户批准的漫画版 Markdown 标题与实际数量；未修改产品版本、发布配置或 README 内容。
+
 ## 窗口与预览稳定性复盘（2026-10-13）
 
 - 窗口控制由 `app/window-runtime.js` 统一串行并合并同类待处理动作，原生回复等待必须有上限与可见失败反馈；恢复窗口复用已有焦点/可见性事件同步状态，不另设每个工具的恢复入口。`test:window-radius` 包含顺序、重复、超时、失败重试与销毁测试。
