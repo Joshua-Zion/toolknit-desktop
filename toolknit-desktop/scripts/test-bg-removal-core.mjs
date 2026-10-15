@@ -122,6 +122,17 @@ for (const resource of [
   await access(new URL(`../src-tauri/${resource}`, import.meta.url));
 }
 assert.match(ui, /runtimeMissing/, 'runtime load failures must have a user-facing error state');
+assert.match(template, /data-bgr-execution-mode/, 'compatibility mode must be exposed in tool parameters');
+assert.match(ui, /forceCpu:\s*executionModeSelect.value === 'cpu'/, 'the explicit CPU choice must reach the native command');
+assert.match(ui, /executionModeControl\?\.dispose\(\)/, 'the execution-mode dropdown must release its detached menu');
+assert.match(native, /force_cpu:\s*Option<bool>/, 'old callers must remain compatible without the new CPU argument');
+assert.match(native, /pub used_cpu_fallback:\s*bool/, 'callers must be able to distinguish automatic fallback from explicit CPU mode');
+for (const language of ['zh', 'en']) {
+  const locale = JSON.parse(await readFile(new URL(`../src/locales/${language}.json`, import.meta.url), 'utf8'));
+  for (const key of ['executionModeLabel', 'executionAuto', 'executionCpu', 'cpuFallback', 'backendFailed']) {
+    assert.ok(locale.home.bgRemoval[key]?.trim(), `${language} must explain ${key}`);
+  }
+}
 assert.match(main, /let mattingDownloadPromise = null;/, 'matting downloads must share one frontend promise');
 assert.match(main, /await installMattingModel\(mattingDownloadSource\)/, 'the dependency gate must reuse the shared matting download and source setting');
 assert.match(main, /function openMattingModelManager\(\)\s*\{\s*openSettingsOverlay\(\);/, 'model management must reveal its parent settings page before opening the dialog');

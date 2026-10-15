@@ -1,20 +1,36 @@
 # ToolKnit Desktop 3.1.0
 
-> V3.1.0 发布准备中，尚未正式发布。当前正式版仍为 V3.0；以下 V3.0 内容保留为已发布版本记录，不能作为 V3.1 更新说明。
+发布日期：2026-10-15。Windows x64 无签名正式版，关闭 F12 / DevTools。
 
-## V3.1 更新预告
+## V3.1 正式版记录
 
-- 新增快速截图、本地中英文翻译、一键记录模式及清理重复文件，改善 PDF 编辑、PDF 转扫描件与 Markdown 工作区。
-- 统一导航与依赖管理界面，优化剪贴板记录、文件定位、窗口操作和预览加载。
-- 完整用户更新说明见 [V3.1 更新日志](../changelog.md)。测试包不代表 GitHub Release 或 npm 已更新，正式包关闭 F12 / DevTools。
+- 12 个分类、71 项工具；CLI / MCP 保持 46 项已发布能力，本次不发布 npm 包。
+- 新增一键记录模式：一次开启自启动、剪贴板实时监控和悬浮截图历史，关闭时恢复此前设置。
+- 新增快速截图，默认快捷键 `Alt+Q`；支持窗口捕捉、区域选择、形状、画笔、马赛克、文字、撤销/重做及按住查看原图。历史图片可打开独立置顶查看器。
+- 提供 Windows OCR、AI 图像文字提取与本地中英文翻译。翻译模型在设置中按需安装，不内置于主安装包；配置 AI 后可先校正识别再本地翻译。
+- 新增重复文件清理与 PDF 转扫描件；完善 PDF 编辑、裁剪、表格转 Markdown 及 Markdown 导出。
+- 改善预装 FFmpeg / LibreOffice 检测、模型下载换源、续传与完整性校验，减少重复安装。
+- 修复部分电脑 ONNX Runtime 加载失败，补齐 x64 运行库；抠图自动模式支持显卡初始化或推理失败后转 CPU，也可手动使用 CPU 兼容模式。
+- 统一导航、双主题与设置弹框，优化托盘恢复、窗口操作、剪贴板记录和历史缩略图性能。
+- 更新检查同时读取 GitHub 与 AtomGit 标签，下载统一进入 [ToolKnit 官网](https://toolknit.com/exe.html)；检查失败不阻止使用。
+- 新授权的作者代码及修改采用 PolyForm Noncommercial 1.0.0，非商业使用须遵守许可；既有 Apache-2.0 授权与第三方权利继续保留。
+
+## V3.1 下载与安装
+
+- 官网：[toolknit.com/exe.html](https://toolknit.com/exe.html)。本页 Assets 提供 `toolknit-desktop_3.1.0_x64-setup.exe` 及 SHA-256 校验文件。
+- 系统要求：Windows 10 1803（内部版本 17134）及以上的 x64 系统，包括 Windows 11。缺少 WebView2 时需要联网安装，安装器携带引导程序。
+- 安装包未进行 Authenticode 签名。请从官网或本仓库 Release 下载，并核对 `.sha256`；本地模型、FFmpeg 和 Office 渲染运行时按需安装。
+- 干净源码见 `toolknit-desktop_3.1.0_source.zip`；不含私有 Skill、个人配置、依赖缓存、临时输出或安装包。运行和构建步骤见 [README](https://github.com/ZihangDong/toolknit-desktop/blob/v3.1.0/README.md#源码运行与构建)。
+- 普通工具优先本地处理；主动使用 AI 时会将所选内容发送至用户配置的服务。OCR 和翻译结果请核对原文。
+- 完整更新内容见 [V3.1 更新日志](../changelog.md)。CLI / MCP 源码包含在仓库中，npm 发布独立进行。
 
 ---
 
-## V3.0 正式版记录
+## V3.0 历史发布说明
 
 ## 新增与改进
 
-- 12 个分类、68 项工具；CLI / MCP 保持 46 项已发布能力。
+- V3.0 桌面目录为 12 个分类、68 项工具；CLI / MCP 保持 46 项已发布能力。
 - 新增本地 PDF 文本转 Markdown、AI 视觉 PDF 转 Markdown、Windows 剪贴板历史，复用编辑器和工具页主题。
 - 全面适配白天与深色主题，首次进入 3.0 默认白天模式；主题切换和启动加载使用遮罩过渡，减少字体与布局闪动。
 - 改进 PPT 大纲、PPTX 草稿和图片素材工作流；完善 PDF/PPT 的预览、导出、取消和失败恢复。

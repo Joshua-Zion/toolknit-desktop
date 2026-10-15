@@ -69,6 +69,13 @@ export function bgRemovalTemplate() {
             </div>
             <select id="bgRemovalModel" class="bg-removal-select" data-bgr-model></select>
           </div>
+          <div class="bg-removal-field">
+            <label class="bg-removal-field-label" for="bgRemovalExecutionMode" data-bgr-text="executionModeLabel">运行方式</label>
+            <select id="bgRemovalExecutionMode" class="bg-removal-select" data-bgr-execution-mode>
+              <option value="auto" data-bgr-text="executionAuto">自动（显卡优先，失败转 CPU）</option>
+              <option value="cpu" data-bgr-text="executionCpu">仅 CPU（兼容模式）</option>
+            </select>
+          </div>
           <div>
             <label class="bg-removal-field-label" for="bgRemovalFeather" data-bgr-text="featherLabel">边缘羽化</label>
             <div class="bg-removal-slider-row">
