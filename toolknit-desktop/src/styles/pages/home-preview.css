@@ -207,6 +207,59 @@
   font-weight: 400;
 }
 
+.home-provider-links { display: flex; flex-wrap: wrap; gap: 18px; }
+.home-provider-links a { text-underline-offset: 4px; }
+.home-provider-malian { color: #ef9a42; }
+.home-provider-doufu { color: #71baff; }
+html[data-theme="light"] .home-provider-malian { color: #a84c00; }
+html[data-theme="light"] .home-provider-doufu { color: #005ec4; }
+
+#customToolsOverlay {
+  --custom-surface: #18181b;
+  --custom-ink: #f5f5f5;
+  --custom-muted: #b9b9c0;
+  --custom-inset: #29292e;
+  --custom-hover: #34343b;
+}
+html[data-theme="light"] #customToolsOverlay {
+  --custom-surface: #ffffff;
+  --custom-ink: #111111;
+  --custom-muted: #5e5e65;
+  --custom-inset: #f0f0f3;
+  --custom-hover: #e5e5e8;
+}
+#customToolsOverlay .audio-convert-success-dialog {
+  max-width: 460px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  border-radius: 8px;
+  background: var(--custom-surface);
+  color: var(--custom-ink);
+}
+#customToolsOverlay :is(.audio-convert-success-title, .audio-convert-success-value) { color: var(--custom-ink); }
+#customToolsOverlay .audio-convert-success-key { color: var(--custom-muted); }
+#customToolsOverlay .custom-tools-description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: left;
+  overflow-wrap: anywhere;
+  color: var(--custom-muted);
+}
+#customToolsOverlay .audio-convert-success-detail { background: var(--custom-inset); border-radius: 8px; }
+#customToolsOverlay .audio-convert-success-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+}
+#customToolsOverlay .audio-convert-success-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+#customToolsOverlay .audio-convert-success-btn-secondary { background: var(--custom-inset); color: var(--custom-ink); }
+#customToolsOverlay .audio-convert-success-btn-secondary:hover { background: var(--custom-hover); }
+#customToolsOverlay .audio-convert-success-btn-primary { background: var(--custom-ink); color: var(--custom-surface); }
+#customToolsOverlay .audio-convert-success-btn:focus-visible { outline: 2px solid var(--custom-ink); outline-offset: -3px; }
+
 .home-brand-links {
   display: flex;
   flex-wrap: wrap;

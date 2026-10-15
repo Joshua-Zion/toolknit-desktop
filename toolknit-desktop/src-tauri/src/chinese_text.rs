@@ -103,10 +103,15 @@ mod tests {
             assert_eq!(simplify(input), expected);
             assert_eq!(simplify(expected), expected);
         }
-        let dictionary: Dictionary = serde_json::from_str(include_str!("../../src/core/opencc/t2s.json")).unwrap();
+        let dictionary: Dictionary =
+            serde_json::from_str(include_str!("../../src/core/opencc/t2s.json")).unwrap();
         for (source, _) in dictionary.entries.into_iter().chain(dictionary.variants) {
             let once = simplify(&source);
-            assert_eq!(simplify(&once), once, "repeated conversion changed {source}");
+            assert_eq!(
+                simplify(&once),
+                once,
+                "repeated conversion changed {source}"
+            );
         }
     }
 

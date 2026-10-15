@@ -12,6 +12,8 @@ const [html, main, styles, rust, zh, en] = await Promise.all([
     'native_runtime.rs',
     'native_runtime/core.rs',
     'native_runtime/dependencies.rs',
+    'platform/dependency_download.rs',
+    'platform/runtime_discovery.rs',
     'native_runtime/dependencies/libreoffice_install.rs',
     'native_runtime/dependencies/libreoffice_extract.rs',
     'native_runtime/office/probe.rs',
@@ -42,6 +44,7 @@ assert.match(styles, /\.dependency-gate-overlay\s*\{[\s\S]*?z-index:\s*1400/, 'd
 assert.match(main, /showDependencyGate\(\{ openFn, needsFfmpeg: true, needsModel: false \}\)/, 'FFmpeg tools must open the dependency gate');
 assert.match(main, /download_transcription_model'[\s\S]*?modelId:\s*'small'/, 'transcription dependency install must default to Whisper Small');
 assert.match(main, /invoke\('cancel_dependency_downloads'\)/, 'dependency downloads must be cancellable');
+assert.match(main, /function resolvedModelDownloadSource\(\)[\s\S]*?'auto-official' : 'auto-china'/, 'automatic model downloads must retain fallback');
 
 assert.match(rust, /cdn\.npmmirror\.com\/binaries\/ffmpeg-static\/b6\.1\.1\/ffmpeg-win32-x64\.gz/, 'China source must use the npm mirror CDN');
 assert.match(rust, /const FFMPEG_ARCHIVE_BYTES: u64 = 29_581_307;/, 'FFmpeg download must use the compact compressed binary');
@@ -64,6 +67,10 @@ for (const locale of [zh, en]) {
   const translate = (key, values = {}) => key.split('.').reduce((value, part) => value?.[part], locale)
     ?.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
   const helpers = createDependencyHelpers({ translate });
+  for (const [code, key] of Object.entries({ timeout: 'downloadTimeout', network: 'downloadNetwork', range: 'downloadIntegrity', storage: 'downloadStorage', cancelled: 'downloadCancelled' })) {
+    assert.equal(helpers.dependencyErrorMessage(`mirror: dependency-download:${code}`), locale.home.dependencies[key]);
+    assert.equal(typeof locale.home.dependencies[key], 'string');
+  }
   const state = { needsLibreOffice: true, downloading: true, libreOfficeProgress: null, libreOfficeComplete: false };
   assert.equal(updateDependencyProgress(state, 'libreoffice', { phase: 'downloading', downloaded_bytes: 50, total_bytes: 100 }), true);
   assert.equal(overallDependencyProgress(state), 50);

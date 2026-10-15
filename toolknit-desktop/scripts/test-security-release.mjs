@@ -88,7 +88,7 @@ check(installerTemplate.includes('${IfNot} ${AtLeastWin10}'), 'NSIS installer mu
 check(installerTemplate.includes('${VersionCompare} "17134" "$0" $1'), 'NSIS installer must reject Windows 10 builds older than 1803');
 check(installerTemplate.includes("ExecWait '\"$6\" ${WEBVIEW2INSTALLERARGS} /install' $1"), 'WebView2 bootstrapper path must be quoted for profiles containing spaces');
 check(installerTemplate.includes('${OrIf} $1 = 3010'), 'WebView2 reboot-required success must not be reported as an installation failure');
-check(installerTemplate.includes('$(webview2AbortError)$\\n$\\n$(webview2InstallError)'), 'WebView2 failures must expose the bootstrapper exit code to users');
+check(installerTemplate.includes('code $WebView2ExitCode') && installerTemplate.includes('$(webview2Recovery)'), 'WebView2 failures must expose the bootstrapper exit code and recovery options to users');
 
 const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repositoryRoot })
   .toString('utf8')
@@ -198,7 +198,9 @@ check(aiProviderSource.includes('await reader.cancel()'), 'Oversized AI HTTPS st
 
 const updateServiceSource = read('toolknit-desktop/src/update-service.js');
 check(updateServiceSource.includes('readResponseTextLimited(response, MAX_UPDATE_API_BYTES)'), 'Update API responses must have a streaming size limit');
-check(updateServiceSource.includes('readResponseTextLimited(response, MAX_UPDATE_NOTES_BYTES)'), 'Update note responses must have a streaming size limit');
+check(!updateServiceSource.includes('raw.githubusercontent.com'), 'Updates must not depend on raw release notes');
+check(updateServiceSource.includes('https://api.atomgit.com/api/v5/repos/ZihangDong/toolknit-desktop/tags'), 'Updates must include AtomGit tags');
+check(updateServiceSource.includes("UPDATE_DOWNLOAD_PAGE = 'https://toolknit.com/exe.html'"), 'Update destination must be fixed');
 check(externalLinksSource.includes('readResponseTextLimited(response, GITHUB_RESPONSE_MAX_BYTES)'), 'Homepage GitHub responses must have a streaming size limit');
 const boundedResponseSource = read('toolknit-desktop/src/core/bounded-response.js');
 check(boundedResponseSource.includes('await reader.cancel()'), 'Oversized remote JSON streams must be cancelled immediately');

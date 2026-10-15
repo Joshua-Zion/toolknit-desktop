@@ -1,4 +1,10 @@
 export const LAZY_TOOL_SPECS = Object.freeze({
+  'quick-screenshot': Object.freeze({
+    overlayId: 'quickScreenshotOverlay',
+    markup: () => import('./quick-screenshot/template.js'),
+    load: () => import('./quick-screenshot/tool.js'),
+    init: 'initQuickScreenshotTool'
+  }),
   'clipboard-history': Object.freeze({
     overlayId: 'clipboardHistoryOverlay',
     markup: () => import('./clipboard-history/template.js'),
@@ -33,6 +39,12 @@ export const LAZY_TOOL_SPECS = Object.freeze({
     markup: () => import('./pdf-to-image/template.html?raw'),
     load: () => import('./pdf-to-image/tool.js'),
     init: 'initPdfToImageTool'
+  }),
+  'pdf-to-scan': Object.freeze({
+    overlayId: 'pdfScanOverlay',
+    markup: () => import('./pdf-to-scan/template.js'),
+    load: () => import('./pdf-to-scan/tool.js'),
+    init: 'initPdfScanTool'
   }),
   'pdf-text-markdown': Object.freeze({
     overlayId: 'pdfTextExtractOverlay',
@@ -161,6 +173,12 @@ export const LAZY_TOOL_SPECS = Object.freeze({
     markup: () => import('./cleanup-tools/template.html?raw'),
     load: () => import('./cleanup-tools/tool.js'),
     init: 'initLargeFileCleanupTool'
+  }),
+  'duplicate-file-cleanup': Object.freeze({
+    overlayId: 'duplicateFileCleanupOverlay',
+    markup: () => import('./duplicate-file-cleanup/template.js'),
+    load: () => import('./duplicate-file-cleanup/tool.js'),
+    init: 'initDuplicateFileCleanupTool'
   }),
   'c-drive-cleanup': Object.freeze({
     overlayId: 'cDriveCleanupOverlay',

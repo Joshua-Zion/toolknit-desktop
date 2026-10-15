@@ -170,25 +170,6 @@
         flex-shrink: 0;
       }
 
-      .help-back-btn {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 16px;
-        border-radius: var(--tk-nav-button-radius, 8px);
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      }
-
-      .help-back-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-        color: #ffffff;
-      }
-
       .help-content-title {
         font-size: 18px;
         font-weight: 700;
@@ -427,81 +408,6 @@
           radial-gradient(circle at 36% 0%, rgba(255, 255, 255, 0.045), transparent 28%),
           radial-gradient(circle at 92% 28%, rgba(255, 255, 255, 0.032), transparent 24%),
           #050506;
-      }
-
-      .help-overlay.v2-help .help-v2-topbar {
-        position: relative;
-        z-index: 2;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 18px;
-        padding: 0 28px;
-        background: rgba(8, 8, 9, 0.92);
-        -webkit-app-region: drag;
-      }
-
-      .help-overlay.v2-help .help-v2-topbar-left {
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-        min-width: 0;
-      }
-
-      .help-overlay.v2-help .help-back-btn {
-        min-height: 38px;
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        padding: 0 14px;
-        border: 1px solid var(--line-strong);
-        border-radius: var(--tk-nav-button-radius, 10px);
-        color: var(--ink);
-        background: rgba(255, 255, 255, 0.03);
-        font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
-        font-size: 14px;
-        font-weight: 400;
-        cursor: pointer;
-        transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
-        -webkit-app-region: no-drag;
-      }
-
-      .help-overlay.v2-help .help-back-btn:hover {
-        transform: translateY(-1px);
-        background: rgba(255, 255, 255, 0.06);
-        border-color: rgba(255, 255, 255, 0.28);
-      }
-
-      .help-overlay.v2-help .help-back-btn svg,
-      .help-overlay.v2-help .help-back-btn i {
-        width: 16px;
-        height: 16px;
-      }
-
-      .help-overlay.v2-help .help-v2-top-tag {
-        min-height: 24px;
-        display: inline-flex;
-        align-items: center;
-        padding: 0 10px;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        color: var(--muted);
-        font-family: var(--tk-font-display-en), var(--tk-font-display-cn), "Segoe UI Symbol", sans-serif;
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        white-space: nowrap;
-      }
-
-      .help-overlay.v2-help .help-v2-top-actions {
-        flex: 0 0 auto;
-        white-space: nowrap;
-        -webkit-app-region: no-drag;
-      }
-
-      .help-overlay.v2-help .help-v2-topbar .home-v2-nav-link,
-      .help-overlay.v2-help .help-v2-topbar .home-v2-support-top {
-        font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
       }
 
       .help-overlay.v2-help .help-v2-layout {
@@ -968,14 +874,6 @@
           padding-inline: 20px;
         }
 
-        .help-overlay.v2-help .help-v2-topbar {
-          padding-inline: 20px;
-        }
-
-        .help-overlay.v2-help .help-v2-topbar .home-v2-nav-link span {
-          display: none;
-        }
-
         .help-overlay.v2-help .help-doc .help-tool-grid {
           grid-template-columns: 1fr;
         }
@@ -984,12 +882,6 @@
       @media (max-width: 820px) {
         .help-overlay.v2-help .help-v2-shell {
           grid-template-rows: auto minmax(0, 1fr);
-        }
-
-        .help-overlay.v2-help .help-v2-topbar {
-          align-items: flex-start;
-          flex-direction: column;
-          padding-block: 14px;
         }
 
         .help-overlay.v2-help .help-v2-layout {

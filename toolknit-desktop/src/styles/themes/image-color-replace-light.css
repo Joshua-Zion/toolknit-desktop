@@ -36,62 +36,6 @@ html[data-theme="light"] .color-replace-shell::after {
   opacity: 1;
 }
 
-html[data-theme="light"] .color-replace-shell > .tool-page-v2-topbar {
-  border-bottom: 1px solid #ececef;
-  background: var(--tk-nav-bg);
-  color: var(--color-replace-ink);
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-back {
-  --tool-back-static-outline: #bbbbbb;
-  --tool-back-hover-outline: #000000;
-  background: #ffffff;
-  color: var(--color-replace-ink);
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-back:hover {
-  border-color: #171717;
-  background: #eeeeee;
-  color: var(--color-replace-ink);
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-back::before {
-  border-color: var(--tool-back-static-outline);
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-back:hover::after {
-  --tool-back-outline-progress: 360deg;
-  opacity: 1;
-  transition: --tool-back-outline-progress 560ms linear, opacity 70ms linear;
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-tag {
-  border-color: transparent;
-  background: #f0f1f3;
-  color: #686b72;
-}
-
-html[data-theme="light"] .color-replace-shell :is(.tool-page-v2-nav-link, .tool-page-v2-icon, .home-v2-window-button) {
-  color: var(--color-replace-muted);
-}
-
-html[data-theme="light"] .color-replace-shell :is(.tool-page-v2-nav-link, .tool-page-v2-icon, .home-v2-window-button):hover {
-  background: #f0f1f3;
-  color: var(--color-replace-ink);
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-support {
-  border-color: #171717;
-  background: #171717;
-  color: #ffffff;
-}
-
-html[data-theme="light"] .color-replace-shell .tool-page-v2-support:hover {
-  border-color: #303030;
-  background: #303030;
-  color: #ffffff;
-}
-
 html[data-theme="light"] .color-replace-shell .color-replace-main {
   background: transparent;
 }

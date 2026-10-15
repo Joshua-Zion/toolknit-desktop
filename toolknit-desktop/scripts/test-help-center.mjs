@@ -23,7 +23,7 @@ const helpLight = await readFile(new URL('src/styles/themes/help-light.css', roo
 assert.match(themeIndex, /@import url\('\.\/help-light\.css'\)/, 'Shared document theme is loaded by the theme entry.');
 assert.match(helpLight, /html\[data-theme="light"\] \.help-overlay/, 'Help and legal colors stay scoped to light document pages.');
 assert.doesNotMatch(helpLight, /!important|z-index\s*:/, 'Document theme must not compete with modal ownership.');
-assert.match(helpLight, /border-color: #000000/, 'Light back hover keeps the requested black outline.');
+assert.doesNotMatch(helpLight, /\.help-back-btn:hover/, 'Help navigation uses the shared hover owner.');
 const indexHtml = await readAppMarkup(import.meta.url);
 const zh = JSON.parse(await readFile(new URL('src/locales/zh.json', root), 'utf8'));
 const en = JSON.parse(await readFile(new URL('src/locales/en.json', root), 'utf8'));
@@ -88,8 +88,10 @@ const toolToHelp = new Map([
   ['pdf-page-number', 'pdf-page-number'],
   ['pdf-crop', 'pdf-crop'],
   ['pdf-to-image', 'pdf-to-image'],
+  ['pdf-to-scan', 'pdf-to-scan'],
   ['pdf-text-markdown', 'pdf-text-markdown'],
   ['pdf-ai-markdown', 'pdf-ai-markdown'],
+  ['quick-screenshot', 'quick-screenshot'],
   ['pdf-rotate', 'pdf-rotate'],
   ['pdf-encrypt', 'pdf-encrypt'],
   ['pdf-decrypt', 'pdf-decrypt'],
@@ -130,6 +132,7 @@ const toolToHelp = new Map([
   ['color-space-compare', 'color-space-compare'],
   ['typing-test', 'typing-test'],
   ['large-file-cleanup', 'large-file-cleanup'],
+  ['duplicate-file-cleanup', 'duplicate-file-cleanup'],
   ['c-drive-cleanup', 'c-drive-cleanup'],
   ['hardware-overview', 'hardware-tools'],
   ['clipboard-history', 'clipboard-history'],
@@ -154,7 +157,7 @@ const toolToHelp = new Map([
 ]);
 
 const desktopTools = unique(valuesForAttribute(indexHtml, 'data-tool'));
-assert.equal(desktopTools.length, 68, 'V3 desktop catalog must contain exactly 68 unique tools.');
+assert.equal(desktopTools.length, 71, 'Current desktop catalog must contain exactly 71 unique tools.');
 for (const tool of desktopTools) {
   const section = toolToHelp.get(tool);
   assert.ok(section, `Desktop tool has no help mapping: ${tool}`);

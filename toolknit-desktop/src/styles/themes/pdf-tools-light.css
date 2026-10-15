@@ -32,62 +32,6 @@ html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2
   opacity: 1;
 }
 
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-topbar {
-  background: rgba(255, 255, 255, 0.96);
-  color: #171717;
-  border-bottom: 1px solid #ececef;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-back {
-  --tool-back-static-outline: #bbbbbb;
-  --tool-back-hover-outline: #000000;
-  border-color: transparent;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #171717;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-back:hover {
-  transform: none;
-  border-color: #111111;
-  background: #eeeeee;
-  color: #171717;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-back::before {
-  border-color: #bbbbbb;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-back::after {
-  --tool-back-outline-progress: 0deg;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-back:hover::after {
-  --tool-back-outline-progress: 360deg;
-  opacity: 1;
-  transition: --tool-back-outline-progress 560ms linear, opacity 70ms linear;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-top-tag {
-  border-color: transparent;
-  background: #f0f1f3;
-  color: #686b72;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-support-top, .home-v2-icon-button, .home-v2-window-button) {
-  color: #171717;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-topbar :is(.home-v2-nav-link, .home-v2-support-top, .home-v2-icon-button, .home-v2-window-button):hover {
-  background: #f0f1f3;
-  color: #171717;
-}
-
-html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-topbar .home-v2-support-top:hover {
-  background: #303030;
-  color: #ffffff;
-}
-
 html[data-theme="light"] :is(.pdf-merge-v2, .excel-to-pdf-overlay, .tool-page-v2-light) .pdf-merge-v2-body {
   background: #ffffff;
 }

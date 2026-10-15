@@ -235,18 +235,12 @@ fn collect_low_rules() -> Vec<PathRule> {
     if let Some(local) = env_dir("LOCALAPPDATA") {
         rules.push(PathRule {
             id: "wer_reports",
-            roots: vec![local
-                .join("Microsoft")
-                .join("Windows")
-                .join("WER")],
+            roots: vec![local.join("Microsoft").join("Windows").join("WER")],
             age_secs: Some(7 * 86_400),
         });
         rules.push(PathRule {
             id: "inet_cache",
-            roots: vec![local
-                .join("Microsoft")
-                .join("Windows")
-                .join("INetCache")],
+            roots: vec![local.join("Microsoft").join("Windows").join("INetCache")],
             age_secs: Some(7 * 86_400),
         });
     }
@@ -268,7 +262,10 @@ fn collect_medium_rules() -> Vec<PathRule> {
         },
         PathRule {
             id: "windows_logs",
-            roots: vec![root.join("Logs").join("CBS"), root.join("Logs").join("DISM")],
+            roots: vec![
+                root.join("Logs").join("CBS"),
+                root.join("Logs").join("DISM"),
+            ],
             age_secs: Some(7 * 86_400),
         },
     ];
@@ -626,7 +623,10 @@ fn run_high_tier() -> SystemCleanupRunResult {
     let mut failed_count = 0u64;
 
     for (rule_id, action) in [
-        ("hibernation", run_hibernation as fn() -> Result<u64, String>),
+        (
+            "hibernation",
+            run_hibernation as fn() -> Result<u64, String>,
+        ),
         ("restore_points", run_restore_points),
         ("recycle_bin", run_recycle_bin),
     ] {
@@ -781,7 +781,10 @@ mod tests {
     use super::*;
 
     fn temp_rule_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("toolknit-system-cleanup-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "toolknit-system-cleanup-test-{}",
+            std::process::id()
+        ));
         let _ = std::fs::create_dir_all(&dir);
         dir
     }

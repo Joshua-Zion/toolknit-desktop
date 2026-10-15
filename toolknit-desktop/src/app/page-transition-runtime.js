@@ -56,10 +56,12 @@ export function createPageTransitionRuntime({
     });
   }
 
-  function waitForAnimations(animations) {
+  function waitForAnimations(animations, budget = Math.max(safeCoverMs, safeRevealMs) + 1000) {
     if (disposed || !animations.length) return Promise.resolve();
     return new Promise(resolve => {
-      const release = scope.use(resolve);
+      let timer;
+      const release = scope.use(() => { clearTimeout(timer); resolve(); });
+      timer = setTimeout(release, budget);
       Promise.allSettled(animations.map(animation => animation.finished)).then(release);
     });
   }
@@ -177,6 +179,11 @@ export function createPageTransitionRuntime({
           }
         })();
       } finally {
+        if (!disposed && current() && veil) {
+          veil.classList.toggle('is-active', false);
+          veil.classList.toggle('is-revealing', false);
+          normalizeHiddenState(veil);
+        }
         if (themeChange) setThemeSwitching(false);
       }
     };

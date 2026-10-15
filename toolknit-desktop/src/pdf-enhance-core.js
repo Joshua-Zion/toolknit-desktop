@@ -1,11 +1,6 @@
-export const PDF_ENHANCE_LIMITS = Object.freeze({
-  maxInputBytes: 50 * 1024 * 1024,
-  maxPages: 100,
-  maxRenderPixelsPerPage: 8_000_000,
-  maxTotalRenderPixels: 240_000_000,
-  maxRenderDimension: 8_192,
-  maxOutputBytes: 100 * 1024 * 1024
-});
+import { PDF_ENHANCE_LIMITS } from './core/limits/pdf.js';
+
+export { PDF_ENHANCE_LIMITS };
 
 export const PDF_ENHANCE_STRENGTHS = new Set(['light', 'medium', 'strong']);
 

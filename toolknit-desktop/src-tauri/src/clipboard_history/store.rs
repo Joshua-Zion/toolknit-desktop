@@ -196,6 +196,21 @@ impl Store {
         self.db.execute("INSERT INTO config VALUES(1, ?1) ON CONFLICT(id) DO UPDATE SET value=excluded.value", [self.seal(settings, b"settings")?]).map_err(db_error)?;
         Ok(())
     }
+    pub fn save_monitoring_state(&self, settings: &Settings, enabled: bool) -> Result<Settings> {
+        let mut settings = settings.clone();
+        settings.resume_on_launch = enabled;
+        self.save_settings(&settings)?;
+        std::fs::write(
+            self.directory.join("resume.json"),
+            if enabled {
+                b"true".as_slice()
+            } else {
+                b"false".as_slice()
+            },
+        )
+        .map_err(|_| "clipboard:storage-failed")?;
+        Ok(settings)
+    }
     pub fn stats(&self, day_start: i64) -> Result<(u64, u64, u64)> {
         let (total, today) = self
             .db
@@ -527,6 +542,50 @@ mod tests {
         );
         assert_eq!(store.settings().unwrap().retention_days, 14);
         store.clear(true).unwrap();
+        drop(store);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn monitoring_switch_persists_resume_across_reopens() {
+        let directory = std::env::temp_dir().join(format!(
+            "toolknit-clipboard-resume-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let store = Store::open(&directory).unwrap();
+        let mut settings = store.settings().unwrap();
+        assert!(!settings.resume_on_launch);
+        settings.retention_days = 14;
+        settings.excluded_apps = vec!["fixture.exe".into()];
+        let saved = store.save_monitoring_state(&settings, true).unwrap();
+        assert!(saved.resume_on_launch);
+        drop(store);
+
+        let store = Store::open(&directory).unwrap();
+        let settings = store.settings().unwrap();
+        assert!(settings.resume_on_launch);
+        assert_eq!(settings.retention_days, 14);
+        assert_eq!(settings.excluded_apps, vec!["fixture.exe"]);
+        assert_eq!(
+            std::fs::read(directory.join("resume.json")).unwrap(),
+            b"true"
+        );
+        store.save_monitoring_state(&settings, false).unwrap();
+        drop(store);
+
+        let store = Store::open(&directory).unwrap();
+        assert!(!store.settings().unwrap().resume_on_launch);
+        assert_eq!(
+            std::fs::read(directory.join("resume.json")).unwrap(),
+            b"false"
+        );
+        std::fs::remove_file(directory.join("resume.json")).unwrap();
+        std::fs::create_dir(directory.join("resume.json")).unwrap();
+        assert_eq!(
+            store.save_monitoring_state(&settings, true).unwrap_err(),
+            "clipboard:storage-failed"
+        );
         drop(store);
         std::fs::remove_dir_all(directory).unwrap();
     }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::platform::dependency_download;
 
 // ===== Offline transcription model management =====
 
@@ -82,7 +83,9 @@ pub(super) fn begin_model_download() -> Result<ModelDownloadGuard, String> {
     Ok(ModelDownloadGuard)
 }
 
-pub(super) fn transcription_model_spec(model_id: &str) -> Result<&'static TranscriptionModelSpec, String> {
+pub(super) fn transcription_model_spec(
+    model_id: &str,
+) -> Result<&'static TranscriptionModelSpec, String> {
     TRANSCRIPTION_MODELS
         .iter()
         .find(|model| model.id == model_id.trim().to_ascii_lowercase())
@@ -93,7 +96,9 @@ pub(super) fn transcription_models_dir() -> Result<std::path::PathBuf, String> {
     Ok(toolknit_app_data_dir()?.join(TRANSCRIPTION_MODEL_DIRECTORY))
 }
 
-pub(super) fn transcription_model_path(model: &TranscriptionModelSpec) -> Result<std::path::PathBuf, String> {
+pub(super) fn transcription_model_path(
+    model: &TranscriptionModelSpec,
+) -> Result<std::path::PathBuf, String> {
     Ok(transcription_models_dir()?.join(model.file_name))
 }
 
@@ -109,7 +114,9 @@ pub(super) fn read_transcription_model_config() -> TranscriptionModelConfig {
         .unwrap_or_default()
 }
 
-pub(super) fn write_transcription_model_config(config: &TranscriptionModelConfig) -> Result<(), String> {
+pub(super) fn write_transcription_model_config(
+    config: &TranscriptionModelConfig,
+) -> Result<(), String> {
     let path = transcription_model_config_path()?;
     let parent = path
         .parent()
@@ -146,7 +153,7 @@ pub(super) fn transcription_model_source(
     let root = match source.as_str() {
         "official" => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main",
         "china" => "https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main",
-        // The desktop can retry with `china` after an official failure. `auto` begins with the upstream source.
+        // Automatic source ordering and fallback are handled by the download loop.
         "auto" => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main",
         _ => return Err("Unknown model download source".to_string()),
     };
@@ -290,8 +297,8 @@ pub(super) async fn start_teleprompter_recognition(
     let model = transcription_model_spec(&model_id)?;
     let model_path =
         installed_model_file(model)?.ok_or("transcription:model-not-installed".to_string())?;
-    let whisper_library = get_whisper_library_path()
-        .map_err(|_| "teleprompter:engine-unavailable".to_string())?;
+    let whisper_library =
+        get_whisper_library_path().map_err(|_| "teleprompter:engine-unavailable".to_string())?;
     let generation = state
         .generation
         .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
@@ -387,7 +394,9 @@ pub(super) async fn transcribe_teleprompter_audio(
         .lock()
         .map_err(|_| "teleprompter:state-unavailable".to_string())?
         .as_ref()
-        .is_some_and(|session| session.id == session_id && !session.cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        .is_some_and(|session| {
+            session.id == session_id && !session.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+        });
     if !is_current {
         return Err("teleprompter:stopped".to_string());
     }
@@ -452,6 +461,7 @@ pub(super) fn set_current_transcription_model(model_id: String) -> Result<(), St
 
 #[tauri::command]
 pub(super) fn delete_transcription_model(model_id: String) -> Result<(), String> {
+    let _guard = begin_model_download()?;
     let model = transcription_model_spec(&model_id)?;
     let path = transcription_model_path(model)?;
     let partial = path.with_extension("bin.part");
@@ -502,7 +512,8 @@ pub(super) async fn download_transcription_model(
 
     let partial = target.with_extension("bin.part");
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/3.0.0 offline-model-manager")
+        .user_agent("ToolKnit/3.1.0 offline-model-manager")
+        .connect_timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(|error| format!("Cannot initialize model download: {}", error))?;
     let requested_source = source
@@ -511,7 +522,8 @@ pub(super) async fn download_transcription_model(
         .trim()
         .to_ascii_lowercase();
     let candidates: Vec<&str> = match requested_source.as_str() {
-        "auto" => vec!["official", "china"],
+        "auto" | "auto-china" => vec!["china", "official"],
+        "auto-official" => vec!["official", "china"],
         "official" | "china" => vec![requested_source.as_str()],
         _ => return Err("Unknown model download source".to_string()),
     };
@@ -529,92 +541,110 @@ pub(super) async fn download_transcription_model(
             let _ = std::fs::remove_file(&partial);
             resume_from = 0;
         }
-        let url = transcription_model_source(model, Some(candidate))?;
-        let mut request = client.get(url);
-        if resume_from > 0 {
-            request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
-        }
-        let mut response = match request.send().await {
-            Ok(candidate_response) if candidate_response.status().is_success() => {
-                candidate_response
+        let mut downloaded = resume_from;
+        if !dependency_download::verified_partial(&partial, model.bytes, model.sha256).await? {
+            resume_from = std::fs::metadata(&partial).map(|m| m.len()).unwrap_or(0);
+            let mut request = client.get(transcription_model_source(model, Some(candidate))?);
+            if resume_from > 0 {
+                request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
             }
-            Ok(candidate_response) => {
-                last_error = Some(format!("HTTP {}", candidate_response.status()));
-                continue;
-            }
-            Err(error) => {
-                last_error = Some(error.to_string());
-                continue;
-            }
-        };
-        let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-        if !append && resume_from > 0 {
-            resume_from = 0;
-        }
-        let mut downloaded = if append { resume_from } else { 0 };
-        let mut output = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(append)
-            .truncate(!append)
-            .open(&partial)
-            .map_err(|error| format!("Cannot create model download: {}", error))?;
-        let _ = app_handle.emit(
-            "transcription-model-download-progress",
-            ModelDownloadProgress {
-                model_id: model.id.to_string(),
-                downloaded_bytes: downloaded,
-                total_bytes: model.bytes,
-                phase: "downloading".to_string(),
-            },
-        );
-        let stream_error = loop {
-            if CANCEL_MODEL_DOWNLOAD.load(Ordering::SeqCst) {
-                output
-                    .sync_all()
-                    .map_err(|error| format!("Cannot preserve model download: {}", error))?;
-                return Err("dependency-download:cancelled".to_string());
-            }
-            match response.chunk().await {
-                Ok(Some(chunk)) => {
-                    let next_downloaded = downloaded.saturating_add(chunk.len() as u64);
-                    if next_downloaded > model.bytes {
-                        break Some(
-                            "Downloaded model is larger than the expected package".to_string(),
-                        );
+            let mut response =
+                match dependency_download::network(request.send(), &CANCEL_MODEL_DOWNLOAD).await {
+                    Ok(candidate_response) if candidate_response.status().is_success() => {
+                        candidate_response
                     }
+                    Ok(candidate_response) => {
+                        last_error = Some(format!(
+                            "dependency-download:http:{}",
+                            candidate_response.status().as_u16()
+                        ));
+                        continue;
+                    }
+                    Err(error) => {
+                        if CANCEL_MODEL_DOWNLOAD.load(Ordering::SeqCst) {
+                            return Err("dependency-download:cancelled".into());
+                        }
+                        last_error = Some(error.to_string());
+                        continue;
+                    }
+                };
+            downloaded =
+                match dependency_download::response_offset(&response, resume_from, model.bytes) {
+                    Ok(offset) => offset,
+                    Err(error) => {
+                        last_error = Some(error);
+                        continue;
+                    }
+                };
+            let append = downloaded > 0;
+            let mut output = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(append)
+                .truncate(!append)
+                .open(&partial)
+                .map_err(|_| "dependency-download:storage")?;
+            let _ = app_handle.emit(
+                "transcription-model-download-progress",
+                ModelDownloadProgress {
+                    model_id: model.id.to_string(),
+                    downloaded_bytes: downloaded,
+                    total_bytes: model.bytes,
+                    phase: "downloading".to_string(),
+                },
+            );
+            let mut last_report = std::time::Instant::now();
+            let stream_error = loop {
+                if CANCEL_MODEL_DOWNLOAD.load(Ordering::SeqCst) {
                     output
-                        .write_all(&chunk)
-                        .map_err(|error| format!("Cannot write model download: {}", error))?;
-                    downloaded = next_downloaded;
-                    let _ = app_handle.emit(
-                        "transcription-model-download-progress",
-                        ModelDownloadProgress {
-                            model_id: model.id.to_string(),
-                            downloaded_bytes: downloaded,
-                            total_bytes: model.bytes,
-                            phase: "downloading".to_string(),
-                        },
-                    );
+                        .sync_all()
+                        .map_err(|_| "dependency-download:storage")?;
+                    return Err("dependency-download:cancelled".to_string());
                 }
-                Ok(None) => break None,
-                Err(error) => break Some(error.to_string()),
+                match dependency_download::network(response.chunk(), &CANCEL_MODEL_DOWNLOAD).await {
+                    Ok(Some(chunk)) => {
+                        let next_downloaded = downloaded.saturating_add(chunk.len() as u64);
+                        if next_downloaded > model.bytes {
+                            break Some("dependency-download:size".to_string());
+                        }
+                        output
+                            .write_all(&chunk)
+                            .map_err(|_| "dependency-download:storage")?;
+                        downloaded = next_downloaded;
+                        if last_report.elapsed().as_millis() >= 100 || downloaded == model.bytes {
+                            last_report = std::time::Instant::now();
+                            let _ = app_handle.emit(
+                                "transcription-model-download-progress",
+                                ModelDownloadProgress {
+                                    model_id: model.id.to_string(),
+                                    downloaded_bytes: downloaded,
+                                    total_bytes: model.bytes,
+                                    phase: "downloading".to_string(),
+                                },
+                            );
+                        }
+                    }
+                    Ok(None) => break None,
+                    Err(error) => break Some(error.to_string()),
+                }
+            };
+            output
+                .sync_all()
+                .map_err(|_| "dependency-download:storage")?;
+            drop(output);
+            if let Some(error) = stream_error {
+                if CANCEL_MODEL_DOWNLOAD.load(Ordering::SeqCst) {
+                    return Err("dependency-download:cancelled".into());
+                }
+                last_error = Some(format!("Model download interrupted: {}", error));
+                continue;
             }
-        };
-        output
-            .sync_all()
-            .map_err(|error| format!("Cannot finalize model download: {}", error))?;
-        drop(output);
-        if let Some(error) = stream_error {
-            last_error = Some(format!("Model download interrupted: {}", error));
-            continue;
         }
         if downloaded != model.bytes {
             if downloaded >= model.bytes {
                 let _ = std::fs::remove_file(&partial);
             }
-            last_error =
-                Some("Downloaded model size does not match the expected package".to_string());
+            last_error = Some("dependency-download:size".to_string());
             continue;
         }
         let _ = app_handle.emit(
@@ -632,15 +662,16 @@ pub(super) async fn download_transcription_model(
             .map_err(|error| format!("Cannot verify model: {}", error))??;
         if actual_hash != model.sha256 {
             let _ = std::fs::remove_file(&partial);
-            last_error =
-                Some("Model integrity check failed. The incomplete file was removed.".to_string());
+            last_error = Some("dependency-download:verify".to_string());
             continue;
+        }
+        if CANCEL_MODEL_DOWNLOAD.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".into());
         }
         if target.exists() {
             let _ = std::fs::remove_file(&target);
         }
-        std::fs::rename(&partial, &target)
-            .map_err(|error| format!("Cannot install model: {}", error))?;
+        std::fs::rename(&partial, &target).map_err(|_| "dependency-download:storage")?;
 
         let mut config = read_transcription_model_config();
         if config.current_model.is_none() || model.id == "small" {
@@ -1189,4 +1220,3 @@ pub(super) async fn transcribe_media(
         raw_txt_path: raw_txt_path.to_string_lossy().into_owned(),
     })
 }
-

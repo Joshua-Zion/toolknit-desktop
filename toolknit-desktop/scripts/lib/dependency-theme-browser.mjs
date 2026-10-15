@@ -116,6 +116,10 @@ export async function checkDependencyTheme(browser, url, output) {
           assert.equal(await style(`#${sources} .active`, 'color'), 'rgb(255, 255, 255)');
         }
         assert.equal(await style(`#${id}Overlay .settings-btn:disabled`, 'backgroundColor'), 'rgb(213, 214, 217)');
+        const action=`#${id}Overlay .transcription-model-actions .settings-btn:not(:disabled)`;
+        assert.equal(await style(action, 'backgroundColor'), 'rgb(17, 17, 17)', 'light manager actions are black without hover');
+        assert.equal(await style(action, 'color'), 'rgb(255, 255, 255)');
+        assert.equal(await style(action, 'borderRadius'), '999px');
         assert.equal(await style(`#${id}Overlay .transcription-model-progress > span`, 'backgroundColor'), 'rgb(17, 17, 17)');
         if (id === 'mattingModel') assert.equal(await style(`#${id}Overlay`, 'transitionDuration'), '0s', 'matting opens without the legacy dark transition');
         for (const [width, height] of [[1400, 887], [720, 480], [390, 740], [720, 320]]) {

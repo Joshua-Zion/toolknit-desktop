@@ -43,74 +43,8 @@ html[data-theme="light"] :is(
   .pdf-merge-v2.ppt-render-v2,
   .pdf-merge-v2.ppt-images-v2,
   .pdf-merge-v2.ppt-draft-v2
-) .pdf-merge-v2-topbar {
-  border-bottom-color: var(--ppt-light-border);
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--ppt-light-ink);
-  box-shadow: 0 1px 0 rgba(17, 24, 39, 0.04);
-}
-
-html[data-theme="light"] :is(
-  .pdf-merge-v2.ppt-text-v2,
-  .pdf-merge-v2.ppt-compress-v2,
-  .pdf-merge-v2.ppt-outline-v2,
-  .pdf-merge-v2.ppt-render-v2,
-  .pdf-merge-v2.ppt-images-v2,
-  .pdf-merge-v2.ppt-draft-v2
-) :is(.pdf-merge-v2-top-tag, .pdf-merge-v2-poster-kicker, .pdf-merge-v2-upload-eyebrow, .pdf-merge-v2-step-kicker) {
+) :is(.pdf-merge-v2-poster-kicker, .pdf-merge-v2-upload-eyebrow, .pdf-merge-v2-step-kicker) {
   color: var(--ppt-light-muted);
-}
-
-html[data-theme="light"] :is(
-  .pdf-merge-v2.ppt-text-v2,
-  .pdf-merge-v2.ppt-compress-v2,
-  .pdf-merge-v2.ppt-outline-v2,
-  .pdf-merge-v2.ppt-render-v2,
-  .pdf-merge-v2.ppt-images-v2,
-  .pdf-merge-v2.ppt-draft-v2
-) :is(.pdf-merge-v2-back, .home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
-  border-color: var(--ppt-light-border-strong);
-  background: transparent;
-  color: var(--ppt-light-ink);
-}
-
-html[data-theme="light"] :is(
-  .pdf-merge-v2.ppt-text-v2,
-  .pdf-merge-v2.ppt-compress-v2,
-  .pdf-merge-v2.ppt-outline-v2,
-  .pdf-merge-v2.ppt-render-v2,
-  .pdf-merge-v2.ppt-images-v2,
-  .pdf-merge-v2.ppt-draft-v2
-) :is(.pdf-merge-v2-back, .home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover {
-  border-color: var(--ppt-light-ink);
-  background: #f0f1f3;
-  color: var(--ppt-light-ink);
-}
-
-html[data-theme="light"] :is(
-  .pdf-merge-v2.ppt-text-v2,
-  .pdf-merge-v2.ppt-compress-v2,
-  .pdf-merge-v2.ppt-outline-v2,
-  .pdf-merge-v2.ppt-render-v2,
-  .pdf-merge-v2.ppt-images-v2,
-  .pdf-merge-v2.ppt-draft-v2
-) .home-v2-support-top {
-  border-color: var(--ppt-light-accent);
-  background: var(--ppt-light-accent);
-  color: #ffffff;
-}
-
-html[data-theme="light"] :is(
-  .pdf-merge-v2.ppt-text-v2,
-  .pdf-merge-v2.ppt-compress-v2,
-  .pdf-merge-v2.ppt-outline-v2,
-  .pdf-merge-v2.ppt-render-v2,
-  .pdf-merge-v2.ppt-images-v2,
-  .pdf-merge-v2.ppt-draft-v2
-) .home-v2-support-top:hover {
-  border-color: var(--ppt-light-accent-hover);
-  background: var(--ppt-light-accent-hover);
-  color: #ffffff;
 }
 
 html[data-theme="light"] :is(
@@ -654,16 +588,6 @@ html[data-theme="light"] :is(
 
 /* Match the shared light tool chrome rather than compositing the topbar over
    the page background. */
-html[data-theme="light"] :is(
-  .pdf-merge-v2.ppt-text-v2,
-  .pdf-merge-v2.ppt-compress-v2,
-  .pdf-merge-v2.ppt-outline-v2,
-  .pdf-merge-v2.ppt-render-v2,
-  .pdf-merge-v2.ppt-images-v2,
-  .pdf-merge-v2.ppt-draft-v2
-) .pdf-merge-v2-topbar {
-  background: #ffffff;
-}
 
 html[data-theme="light"] .ppt-file-workspace,
 html[data-theme="light"] .pdf-merge-v2:is(.ppt-outline-v2, .ppt-draft-v2) .ppt-outline-empty {

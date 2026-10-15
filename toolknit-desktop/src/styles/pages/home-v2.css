@@ -173,7 +173,7 @@ body.v2-home-active .global-window-controls {
   gap: 8px;
   padding: 0 13px;
   border: 1px solid var(--white);
-  border-radius: var(--tk-nav-button-radius, 6px);
+  border-radius: 999px;
   color: var(--black);
   background: var(--white);
   font-size: 14px;
@@ -413,8 +413,8 @@ body.v2-home-active .global-window-controls {
 }
 
 @media (max-width: 1120px) {
-  .app.is-v2-home .home-v2-topbar { grid-template-columns: 220px 1fr; }
-  .app.is-v2-home .home-v2-nav-link span { display: none; }
+  .app.is-v2-home .home-v2-topbar:not(.tk-tool-nav) { grid-template-columns: 220px 1fr; }
+  .app.is-v2-home .home-v2-nav-link:not(.tk-nav-button) span { display: none; }
 }
 
 @media (max-width: 960px) {

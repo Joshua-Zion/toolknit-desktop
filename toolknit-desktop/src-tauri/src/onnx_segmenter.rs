@@ -12,6 +12,7 @@ use std::{
     },
 };
 
+use crate::platform::dependency_download;
 use image::GenericImageView;
 use ndarray::Array4;
 use ort::{
@@ -219,25 +220,37 @@ fn get_onnxruntime_dll_path() -> Result<PathBuf, String> {
     Err("matting:onnxruntime-dll-missing".to_string())
 }
 
-/// onnxruntime resolves its DirectML dependency by module name, so preload it
-/// from the model directory with search flags that include the DLL's own
-/// folder (same approach as the whisper ggml backends).
-fn preload_directml(dll_dir: &Path) {
-    #[cfg(target_os = "windows")]
-    {
-        let direct_ml = dll_dir.join("DirectML.dll");
-        if direct_ml.is_file() {
-            unsafe {
-                use libloading::os::windows::{
-                    Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
-                };
-                let _ = Library::load_with_flags(
-                    &direct_ml,
-                    LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
-                );
-            }
+#[cfg(target_os = "windows")]
+fn preload_onnx_libraries(dll: &Path) -> Result<(), String> {
+    use libloading::os::windows::{
+        Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+    };
+
+    let flags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+    let runtime = unsafe { Library::load_with_flags(dll, flags) }
+        .map_err(|error| format!("matting:onnxruntime-load-failed:{error}"))?;
+    let direct_ml = dll.parent().map(|directory| directory.join("DirectML.dll"));
+
+    // Keep the handles alive for the process. ORT and DirectML resolve their
+    // imports by module name after initialization, so an immediately dropped
+    // preload does not make the dependency available reliably.
+    static LIBRARIES: OnceLock<Mutex<Vec<libloading::Library>>> = OnceLock::new();
+    let libraries = LIBRARIES.get_or_init(|| Mutex::new(Vec::new()));
+    let mut loaded = libraries
+        .lock()
+        .map_err(|_| "matting:onnxruntime-loader-busy".to_string())?;
+    loaded.push(runtime.into());
+    if let Some(direct_ml) = direct_ml.filter(|path| path.is_file()) {
+        if let Ok(library) = unsafe { Library::load_with_flags(&direct_ml, flags) } {
+            loaded.push(library.into());
         }
     }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn preload_onnx_libraries(_dll: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 fn matting_runtime() -> &'static Mutex<MattingRuntime> {
@@ -250,9 +263,7 @@ fn ort_dylib_ready() -> Result<(), String> {
     PREPARED
         .get_or_init(|| {
             let dll = get_onnxruntime_dll_path()?;
-            if let Some(parent) = dll.parent() {
-                preload_directml(parent);
-            }
+            preload_onnx_libraries(&dll)?;
             std::env::set_var("ORT_DYLIB_PATH", &dll);
             Ok(())
         })
@@ -684,7 +695,18 @@ pub async fn download_matting_model(
     std::fs::create_dir_all(matting_models_dir()?)
         .map_err(|error| format!("Cannot create model directory: {error}"))?;
 
-    if let Some(existing) = installed_matting_model_file(spec)? {
+    let existing = installed_matting_model_file(spec)?;
+    let valid_existing = if let Some(path) = existing.as_ref() {
+        let path = path.clone();
+        tokio::task::spawn_blocking(move || sha256_file(&path))
+            .await
+            .map_err(|_| "matting:verify-failed")??
+            == spec.sha256
+    } else {
+        false
+    };
+    if valid_existing {
+        let existing = existing.unwrap();
         write_matting_model_config(&MattingModelConfig {
             current_model: Some(spec.id.to_string()),
         })?;
@@ -697,18 +719,28 @@ pub async fn download_matting_model(
 
     let partial = target.with_extension("onnx.part");
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/3.0.0 matting-model-manager")
+        .user_agent("ToolKnit/3.1.0 matting-model-manager")
+        .connect_timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(|error| format!("matting:download-init-failed:{error}"))?;
-    let requested = source.unwrap_or_else(|| "auto".to_string());
+    let requested = source
+        .unwrap_or_else(|| "auto".to_string())
+        .trim()
+        .to_ascii_lowercase();
     let candidates: Vec<&str> = match requested.as_str() {
         "china" => vec!["china"],
-        _ => vec!["official", "china"],
+        "official" => vec!["official"],
+        "auto" | "auto-china" => vec!["china", "official"],
+        "auto-official" => vec!["official", "china"],
+        _ => return Err("matting:unknown-source".into()),
     };
     let mut last_error = String::from("matting:download-failed");
     for candidate in candidates {
         if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
             return Err("dependency-download:cancelled".to_string());
+        }
+        if dependency_download::verified_partial(&partial, spec.bytes, spec.sha256).await? {
+            break;
         }
         let mut resume_from = std::fs::metadata(&partial)
             .map(|meta| meta.len())
@@ -722,26 +754,37 @@ pub async fn download_matting_model(
         if resume_from > 0 {
             request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
         }
-        let mut response = match request.send().await {
-            Ok(response) if response.status().is_success() => response,
-            Ok(response) => {
-                last_error = format!("matting:download-http:{}", response.status());
-                continue;
-            }
+        let mut response =
+            match dependency_download::network(request.send(), &MATTING_DOWNLOAD_CANCEL).await {
+                Ok(response) if response.status().is_success() => response,
+                Ok(response) => {
+                    last_error = format!("dependency-download:http:{}", response.status().as_u16());
+                    continue;
+                }
+                Err(error) => {
+                    if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+                        return Err("dependency-download:cancelled".into());
+                    }
+                    last_error = format!("matting:download-connect:{error}");
+                    continue;
+                }
+            };
+        let offset = match dependency_download::response_offset(&response, resume_from, spec.bytes)
+        {
+            Ok(offset) => offset,
             Err(error) => {
-                last_error = format!("matting:download-connect:{error}");
+                last_error = error;
                 continue;
             }
         };
-        let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        let append = offset > 0;
         let mut file = if append {
             std::fs::OpenOptions::new()
                 .append(true)
                 .open(&partial)
-                .map_err(|error| format!("matting:partial-open-failed:{error}"))?
+                .map_err(|_| "dependency-download:storage")?
         } else {
-            std::fs::File::create(&partial)
-                .map_err(|error| format!("matting:partial-create-failed:{error}"))?
+            std::fs::File::create(&partial).map_err(|_| "dependency-download:storage")?
         };
         let mut downloaded = if append { resume_from } else { 0 };
         let mut last_report = Instant::now();
@@ -750,7 +793,7 @@ pub async fn download_matting_model(
             if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
                 return Err("dependency-download:cancelled".to_string());
             }
-            match response.chunk().await {
+            match dependency_download::network(response.chunk(), &MATTING_DOWNLOAD_CANCEL).await {
                 Ok(Some(chunk)) => {
                     let next_downloaded = downloaded.saturating_add(chunk.len() as u64);
                     if next_downloaded > spec.bytes {
@@ -759,7 +802,7 @@ pub async fn download_matting_model(
                         break;
                     }
                     file.write_all(&chunk)
-                        .map_err(|error| format!("matting:partial-write-failed:{error}"))?;
+                        .map_err(|_| "dependency-download:storage")?;
                     downloaded = next_downloaded;
                     if last_report.elapsed().as_millis() > 120 {
                         last_report = Instant::now();
@@ -786,23 +829,28 @@ pub async fn download_matting_model(
                 }
             }
         }
-        let _ = file.flush();
+        file.flush().map_err(|_| "dependency-download:storage")?;
+        drop(file);
         if stream_failed {
+            if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+                return Err("dependency-download:cancelled".into());
+            }
             continue;
         }
         if downloaded == spec.bytes {
-            break;
+            if dependency_download::verified_partial(&partial, spec.bytes, spec.sha256).await? {
+                break;
+            }
+            last_error = "dependency-download:verify".into();
+        } else {
+            last_error = "dependency-download:size".into();
         }
     }
 
     let partial_meta = std::fs::metadata(&partial)
         .map_err(|_error| format!("matting:download-failed:{last_error}"))?;
     if partial_meta.len() != spec.bytes {
-        return Err(format!(
-            "matting:download-incomplete:{}:{}",
-            partial_meta.len(),
-            spec.bytes
-        ));
+        return Err(format!("matting:download-incomplete:{last_error}"));
     }
     let partial_for_hash = partial.clone();
     let verified = tokio::task::spawn_blocking(move || sha256_file(&partial_for_hash))
@@ -811,6 +859,9 @@ pub async fn download_matting_model(
     if verified != spec.sha256 {
         let _ = std::fs::remove_file(&partial);
         return Err("matting:hash-mismatch".to_string());
+    }
+    if MATTING_DOWNLOAD_CANCEL.load(Ordering::SeqCst) {
+        return Err("dependency-download:cancelled".into());
     }
     std::fs::rename(&partial, &target)
         .map_err(|error| format!("matting:publish-failed:{error}"))?;
@@ -860,6 +911,7 @@ pub fn cancel_matting_model_download() {
 
 #[tauri::command]
 pub fn delete_matting_model(model_id: String) -> Result<(), String> {
+    let _guard = MattingDownloadGuard::begin().ok_or("matting:model-in-use")?;
     let spec = matting_model_spec(&model_id)?;
     let path = matting_models_dir()?.join(spec.file_name);
     if installed_matting_model_file(spec)?.is_none() {

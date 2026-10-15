@@ -35,19 +35,7 @@
 
 .donation-overlay.visible .donation-dialog { transform: none; }
 
-.donation-page-topbar {
-  position: relative;
-  display: grid;
-  grid-template-columns: 270px 1fr;
-  align-items: center;
-  gap: 24px;
-  flex: 0 0 68px;
-  z-index: 5;
-  min-height: 68px;
-  padding: 0 28px;
-  background: rgba(8,8,9,.94);
-  -webkit-app-region: drag;
-}
+.donation-overlay .home-v2-brand img { filter: none; }
 
 .donation-scroll {
   flex: 1 1 auto;
@@ -228,11 +216,6 @@
 }
 
 @media (max-width: 820px) {
-  .donation-page-topbar { grid-template-columns: 1fr auto; flex-basis: 60px; min-height: 60px; padding: 0 16px; }
-  .donation-page-topbar .home-v2-nav-link span,
-  .donation-page-topbar .home-v2-support-top span { display: none; }
-  .donation-page-topbar .home-v2-nav-link,
-  .donation-page-topbar .home-v2-support-top { width: 34px; justify-content: center; padding: 0; }
   .donation-close { top: 70px; right: 16px; }
   .donation-hero { padding-top: 54px; }
   .donation-journal-heading { display: block; }

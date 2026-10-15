@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import {
   applyAlphaDabValue,
   canTransitionBgRemovalState,
@@ -72,6 +72,7 @@ const ui = await readFile(new URL('../src/features/bg-removal/tool.js', import.m
 const template = await readFile(new URL('../src/features/bg-removal/template.js', import.meta.url), 'utf8');
 const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
 const native = await readFile(new URL('../src-tauri/src/onnx_segmenter.rs', import.meta.url), 'utf8');
+const tauriConfig = JSON.parse(await readFile(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
 assert.equal((ui.match(/function handleAction\(/g) || []).length, 1, 'actions must be bound through one dispatcher');
 assert.equal((ui.match(/function startNativeDragListener\(/g) || []).length, 1, 'native drag listener must have one implementation');
 assert.doesNotMatch(ui, /scheduleSave|saveWorking|debounceSegment/);
@@ -107,6 +108,20 @@ const modelCatalog = native.match(/pub const MATTING_MODELS:[\s\S]*?=\s*\[([\s\S
 assert.match(modelCatalog, /id:\s*"modnet"/, 'the supported matting catalog must expose MODNet');
 assert.doesNotMatch(modelCatalog, /id:\s*"(?:isnet|u2net)"/, 'models without complete official sources must not be exposed');
 assert.doesNotMatch(native, /matting:no-official-source|matting:download-busy/, 'download coordination must not leak internal busy/source errors');
+assert.match(native, /preload_onnx_libraries\(&dll\)/, 'ONNX Runtime must be preloaded before the worker starts');
+assert.match(native, /static LIBRARIES: OnceLock<Mutex<Vec<libloading::Library>>>/, 'native DLL handles must remain alive for the process');
+for (const resource of [
+  'resources/onnxruntime/onnxruntime.dll',
+  'resources/onnxruntime/DirectML.dll',
+  'resources/onnxruntime/msvcp140.dll',
+  'resources/onnxruntime/msvcp140_1.dll',
+  'resources/onnxruntime/vcruntime140.dll',
+  'resources/onnxruntime/vcruntime140_1.dll'
+]) {
+  assert.ok(tauriConfig.bundle.resources.includes(resource), `Tauri must bundle ${resource}`);
+  await access(new URL(`../src-tauri/${resource}`, import.meta.url));
+}
+assert.match(ui, /runtimeMissing/, 'runtime load failures must have a user-facing error state');
 assert.match(main, /let mattingDownloadPromise = null;/, 'matting downloads must share one frontend promise');
 assert.match(main, /await installMattingModel\(mattingDownloadSource\)/, 'the dependency gate must reuse the shared matting download and source setting');
 assert.match(main, /function openMattingModelManager\(\)\s*\{\s*openSettingsOverlay\(\);/, 'model management must reveal its parent settings page before opening the dialog');

@@ -137,4 +137,4 @@ toolknit agent guide --lang en
 
 ## 许可证
 
-Apache-2.0
+PolyForm Noncommercial 1.0.0：新授权的作者代码仅限非商业用途；商业使用需联系作者另行授权。旧 Apache-2.0 授权及第三方许可不变，详见 LICENSE、NOTICE 和 LICENSES。

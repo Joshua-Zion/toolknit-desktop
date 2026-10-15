@@ -39,6 +39,11 @@ const coreFiles = [
   'pdf-compress-core.js',
   'core/pdf-compression.js',
   'core/pdf-raster-candidate.js',
+  'core/limits/bytes.js',
+  'core/limits/pdf.js',
+  'core/limits/ai.js',
+  'core/limits/image.js',
+  'core/limits/markdown.js',
   'pdf-enhance-core.js',
   'pdf-enhance-engine.js',
   'pdf-to-image-core.js',
@@ -187,6 +192,9 @@ for (const fileName of fontFiles) {
   const filePath = path.join(fontSource, fileName);
   if (!fs.existsSync(filePath)) throw new Error(`CLI font resource is missing: ${filePath}`);
   copyFileAtomic(filePath, path.join(fontDestination, fileName));
+}
+for (const fileName of ['LICENSE', 'NOTICE', 'LICENSES/Apache-2.0.txt']) {
+  copyFileAtomic(path.join(root, fileName), path.join(root, 'cli', fileName));
 }
 releaseStageLockOnce();
 console.log('Staged CLI runtime resources: qpdf, whisper binaries and legal notices, core modules, shared task contracts, guides, and fonts. FFmpeg is downloaded on demand by ToolKnit Desktop or resolved from PATH.');

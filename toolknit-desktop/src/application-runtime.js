@@ -3,19 +3,24 @@
       import { initLightRays } from './lightrays.js';
       import { initPlasma } from './plasma.js';
       import { getLang, setLang, applyTranslations, onLangChange, t } from './i18n.js';
-      import { initUpdatePreview } from './update-preview.js';
-      import { compareVersions, createUpdateService, UPDATE_RELEASES_PAGE } from './update-service.js';
+      import { initUpdateDialog } from './update-dialog.js';
+      import { compareVersions, createUpdateService, UPDATE_DOWNLOAD_PAGE } from './update-service.js';
       import { readResponseTextLimited } from './core/bounded-response.js';
       import { createLazyToolRegistry } from './app/lazy-tool-registry.js';
       import { initUiSoundController } from './app/ui-sound-controller.js';
       import { createAiKeyStore } from './app/ai-key-store.js';
       import { createAiSettingsRuntime } from './app/ai-settings-runtime.js';
       import { createExternalLinksRuntime } from './app/external-links-runtime.js';
+      import { createAutostartRuntime } from './app/autostart-runtime.js';
+      import { createRecordingModeRuntime } from './app/recording-mode-runtime.js';
+      import { createLocalTranslationSettings } from './app/local-translation-runtime.js';
+      import { createHomeCustomToolsRuntime } from './app/home-custom-tools-runtime.js';
+      import { createScreenshotContextRuntime } from './app/screenshot-context-runtime.js';
       import { createHomeExplorerRuntime } from './app/home-explorer-runtime.js';
       import { createFontSettingsRuntime } from './app/font-settings-runtime.js';
       import { createStartupRuntime } from './app/startup-runtime.js';
       import { createWindowRuntime } from './app/window-runtime.js';
-      import { createUpdateRuntime } from './app/update-runtime.js';
+      import { createUpdateRuntime, scheduleAutomaticUpdateCheck } from './app/update-runtime.js';
       import { createModalRuntime } from './app/modal-runtime.js';
       import { createPageTransitionRuntime } from './app/page-transition-runtime.js';
       import { createThemeRuntime } from './app/theme-runtime.js';
@@ -174,6 +179,7 @@
         getTheme: themeRuntime.get,
         onThemeChange: themeRuntime.subscribe,
         translate: t,
+        notify: message => window.showToast?.(message),
         refreshIcons: () => createIcons({ icons })
       });
       const {
@@ -329,7 +335,7 @@
           region.setAttribute('data-tauri-drag-region', '');
         });
 
-        const headerSelector = '.settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header, .update-preview-stage-topbar';
+        const headerSelector = '.settings-header, .settings-v2-topbar, .home-v2-topbar, .api-key-header, .feedback-header, .audio-convert-header, .audio-clip-header, .help-v2-topbar, .pdf-merge-v2-topbar, .help-sidebar-header, .help-content-header, .transcription-model-header, .pdf-merge-page-picker-header, .pdf-page-workspace-header, .pdf-preview-drawer-header';
         document.querySelectorAll(headerSelector).forEach(header => {
           if (header.dataset.tkWindowDragBound === '1') return;
           header.dataset.tkWindowDragBound = '1';
@@ -398,6 +404,7 @@
       const settingsBtns = document.querySelectorAll('#settingsBtn, button[id$="V2Settings"]');
       const settingsBack = document.getElementById('settingsBack');
       const settingsContent = settingsOverlay?.querySelector('.settings-content');
+      let helpCenterRuntime = null;
 
       // Language selection in settings
       const langOptionBtns = document.querySelectorAll('.settings-row.lang-options .lang-option');
@@ -677,8 +684,8 @@
       const versionUpdateStatus = document.getElementById('versionUpdateStatus');
       const checkVersionUpdateBtn = document.getElementById('checkVersionUpdateBtn');
       const openReleasePageBtn = document.getElementById('openReleasePageBtn');
-      const APP_VERSION_FALLBACK = '3.0.0';
-      let updatePreviewController = null;
+      const APP_VERSION_FALLBACK = '3.1.0';
+      let updateDialogController = null;
       const updateRuntime = createUpdateRuntime({
         isTauri,
         fallbackVersion: APP_VERSION_FALLBACK,
@@ -688,8 +695,8 @@
         statusElement: versionUpdateStatus,
         checkButton: checkVersionUpdateBtn,
         releaseButton: openReleasePageBtn,
-        getPreviewController: () => updatePreviewController,
-        openExternalUrl: url => openExternalUrl(url || UPDATE_RELEASES_PAGE),
+        getDialogController: () => updateDialogController,
+        openExternalUrl: url => openExternalUrl(url || UPDATE_DOWNLOAD_PAGE),
         loadAppVersion: async () => (await loadTauriApp()).getVersion()
       });
       const updateService = updateRuntime.service;
@@ -697,12 +704,9 @@
       const renderVersionUpdateStatus = updateRuntime.render;
       const setVersionUpdateState = updateRuntime.setState;
       const runVersionUpdateCheck = updateRuntime.runCheck;
-      const getLastVersionUpdateResult = updateRuntime.getLastResult;
 
       checkVersionUpdateBtn?.addEventListener('click', () => void runVersionUpdateCheck());
-      openReleasePageBtn?.addEventListener('click', () => {
-        void openExternalUrl(getLastVersionUpdateResult()?.release?.htmlUrl || UPDATE_RELEASES_PAGE);
-      });
+      openReleasePageBtn?.addEventListener('click', () => void updateRuntime.openReleasePage());
 
       void getLocalAppVersion().then(version => {
         setVersionUpdateState('neutral', version);
@@ -821,7 +825,7 @@
               } catch (error) {
                 transcriptionModelProgress.delete(model.id);
                 renderTranscriptionModels();
-                window.showToast?.(String(error));
+                window.showToast?.(dependencyErrorMessage(error));
               }
             });
             actions.append(install);
@@ -945,7 +949,7 @@
               ffmpegRuntimeProgress = { phase: 'downloading', downloaded_bytes: 0, total_bytes: 0 }; renderFfmpegRuntime();
               const { invoke } = await tauriCorePromise; await invoke('download_ffmpeg_runtime', { source: resolvedFfmpegDownloadSource() });
               ffmpegRuntimeProgress = null; await refreshFfmpegRuntime();
-            } catch (error) { ffmpegRuntimeProgress = null; renderFfmpegRuntime(); window.showToast?.(String(error?.message || error)); }
+            } catch (error) { ffmpegRuntimeProgress = null; renderFfmpegRuntime(); window.showToast?.(dependencyErrorMessage(error)); }
           });
           actions.append(install);
         }
@@ -1174,7 +1178,7 @@
 
       function resolvedModelDownloadSource() {
         if (transcriptionDownloadSource !== 'auto') return transcriptionDownloadSource;
-        return getLang() === 'en' ? 'official' : 'china';
+        return getLang() === 'en' ? 'auto-official' : 'auto-china';
       }
 
       // Shared dependency helpers own the field mapping and progress labels.
@@ -1437,6 +1441,7 @@
           if (region !== settingsOverlay) moveFocusOutOfHiddenRegion(region);
         });
         document.getElementById('helpOverlay')?.classList.remove('visible');
+        document.getElementById('legalOverlay')?.classList.remove('visible');
         if (settingsContent) settingsContent.scrollTop = 0;
         settingsOverlay.style.zIndex = '50000';
         settingsOverlay.classList.add('visible');
@@ -1474,7 +1479,7 @@
         settingsBack.addEventListener('click', () => { void closeSettingsOverlay(); });
       }
 
-      const helpCenterRuntime = createHelpCenterRuntime({
+      helpCenterRuntime = createHelpCenterRuntime({
         root: document,
         windowRef: window,
         translate: t,
@@ -1489,7 +1494,8 @@
         settingsOverlay,
         settingsContent,
         pageTransition,
-        syncCustomBackgroundPreviewPlayback
+        syncCustomBackgroundPreviewPlayback,
+        onShowSettings: showSettingsOverlay
       });
       const {
         openFeedbackOverlay,
@@ -1506,7 +1512,13 @@
         aiKeyStore,
         aiApiKeyReady,
         translate: t,
-        onOpenSettings: openSettingsOverlay
+        onOpenSettings: showSettingsOverlay,
+        onCloseSettings: () => {
+          moveFocusOutOfHiddenRegion(settingsOverlay);
+          settingsOverlay?.classList.remove('visible');
+        },
+        settingsOverlay,
+        pageTransition
       });
       const {
         getAiPlatformConfig,
@@ -1527,41 +1539,49 @@
       });
       const openExternalUrl = externalLinksRuntime.openExternalUrl;
       const donationController = createDonationController({ openExternalUrl });
+      const currentNavigationPage = () => Array.from(document.querySelectorAll('[id$="Overlay"].visible, [id$="Workspace"].visible, [id$="Dialog"].visible'))
+        .filter(page => !page.inert).sort((a, b) => (Number.parseInt(getComputedStyle(b).zIndex, 10) || 0) - (Number.parseInt(getComputedStyle(a).zIndex, 10) || 0))[0];
+      const openNavigationPage = (page, overlay) => {
+        overlay ||= currentNavigationPage();
+        const background = overlay?.id === 'donationOverlay' ? donationController.getBackground() : overlay;
+        if (overlay?.id === 'donationOverlay') donationController.close();
+        return page === 'help' ? openHelpOverlay('overview', background) : openFeedbackOverlay(background);
+      };
+      const openNavigationSettings = (overlay = currentNavigationPage()) => {
+        if (overlay?.id === 'donationOverlay') {
+          const background = donationController.getBackground();
+          donationController.close();
+          if (helpCenterRuntime.navigateToSettings(background)) return;
+          return openSettingsOverlay();
+        }
+        if (overlay?.id === 'apiKeyOverlay') return aiSettingsRuntime.closeApiKeySettings();
+        if (helpCenterRuntime.navigateToSettings(overlay)) return;
+        return openSettingsOverlay();
+      };
       // Tool overlays are mounted lazily and still contain both current and
       // legacy chrome attributes. Keep one capture-phase owner so every page
       // has working top actions without duplicating feature listeners.
       bindGlobalToolPageChrome({
         root: document,
         onWebsite: () => { void openExternalUrl('https://toolknit.com'); },
-        onSupport: () => { void donationController.open(); },
-        onSettings: () => openSettingsOverlay(),
+        onSupport: ({ overlay } = {}) => { void donationController.open({ background: overlay }); },
+        onHelp: ({ overlay }) => { void openNavigationPage('help', overlay); },
+        onFeedback: ({ overlay }) => { void openNavigationPage('feedback', overlay); },
+        onSettings: ({ overlay } = {}) => openNavigationSettings(overlay),
         onToolBack: ({ overlay }) => lazyFeatureRegistry?.closeFromChrome(overlay) ?? false,
         onWindowAction: action => { void handleWindowControlAction(action); }
       });
       void externalLinksRuntime.loadGithubActivity();
+      createAutostartRuntime({ isTauri, tauriCorePromise, tauriEventPromise, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
+      createRecordingModeRuntime({ isTauri, translate: t, onLanguageChange: onLangChange, onOpenHelp: openHelpOverlay, notify: message => window.showToast?.(message) });
+      createLocalTranslationSettings({ isTauri, translate: t, onLanguageChange: onLangChange, notify: message => window.showToast?.(message) });
+      createHomeCustomToolsRuntime({ isTauri, tauriCorePromise, translate: t, notify: message => window.showToast?.(message) });
+      createScreenshotContextRuntime({ isTauri, getAiPlatformConfig, getLang, onLangChange, translate: t, onNavigate: target => {
+        if (target === 'help' || target === 'feedback') return openNavigationPage(target);
+        if (target === 'support') return donationController.open({ background: currentNavigationPage() });
+        if (target === 'settings') return openNavigationSettings();
+      }, notify: message => window.showToast?.(message) });
 
-      // ===== PDF Tool Template Overlay Background =====
-      const pdfToolTemplateOverlay = document.getElementById('pdfToolTemplateOverlay');
-      const pdfToolTemplatePlasmaBg = document.getElementById('pdfToolTemplatePlasmaBg');
-      const pdfToolTemplateBack = document.getElementById('pdfToolTemplateBack');
-      let pdfToolTemplatePlasmaInstance = null;
-
-      function openPdfToolTemplateOverlay() {
-        if (!pdfToolTemplateOverlay) return;
-        pdfToolTemplateOverlay.classList.add('visible');
-        if (pdfToolTemplatePlasmaBg && !pdfToolTemplatePlasmaInstance) {
-          pdfToolTemplatePlasmaInstance = initStandardToolPlasma(pdfToolTemplatePlasmaBg);
-        }
-      }
-
-      function closePdfToolTemplateOverlay() {
-        if (!pdfToolTemplateOverlay) return;
-        pdfToolTemplateOverlay.classList.remove('visible');
-        pdfToolTemplatePlasmaInstance = disposeStandardToolPlasma(pdfToolTemplatePlasmaInstance);
-      }
-
-      window.openPdfToolTemplateOverlay = openPdfToolTemplateOverlay;
-      pdfToolTemplateBack?.addEventListener('click', closePdfToolTemplateOverlay);
 
       const callDeepSeek = createAiRequestRuntime({
         getApiKey: getAiApiKey,
@@ -1624,7 +1644,7 @@
         if (mattingDownloadPromise) return mattingDownloadPromise;
         const operation = (async () => {
           const { invoke } = await tauriCorePromise;
-          await invoke('download_matting_model', { modelId: 'modnet', source });
+          await invoke('download_matting_model', { modelId: 'modnet', source: source === 'auto' ? (getLang() === 'en' ? 'auto-official' : 'auto-china') : source });
           await invoke('set_current_matting_model', { modelId: 'modnet' });
         })();
         mattingDownloadPromise = operation;
@@ -1741,7 +1761,7 @@
                   await handler();
                 } catch (error) {
                   console.error('[BgRemoval] matting model action failed:', error);
-                  window.showToast?.(t('settings.mattingActionFailed'));
+                  window.showToast?.(String(error).includes('dependency-download:') ? dependencyErrorMessage(error) : t('settings.mattingActionFailed'));
                 } finally {
                   button.disabled = false;
                   queueMattingManagerRender();
@@ -1980,43 +2000,17 @@
       if (isAiDocEditorDemoEntry) void lazyFeatureRegistry.open('ai-doc');
       if (isAiTableDemoEntry) void lazyFeatureRegistry.open('ai-table');
 
-      updatePreviewController = initUpdatePreview({
+      updateDialogController = initUpdateDialog({
         openExternalUrl,
-        notify: message => window.showToast?.(message),
         refreshBackgroundRendering: syncHomeV2Background,
-        refreshIcons: () => createIcons({ icons }),
-        onUpdate: async release => {
-          // The updater public key is not configured yet. Keep the current
-          // release action honest: it opens the verified GitHub Release where
-          // the installer and its SHA-256 checksum are published together.
-          await openExternalUrl(release.htmlUrl || UPDATE_RELEASES_PAGE);
-        },
-        onDefer: release => updateService.defer(release.version)
+        refreshIcons: () => createIcons({ icons })
       });
 
-      function scheduleAutomaticUpdateCheck() {
-        if (!isTauri) return;
-        const checkWhenIdle = () => {
-          if (document.hidden || !appRoot?.classList.contains('is-v2-home')) return;
-          void runVersionUpdateCheck({ force: false, showUpdate: false }).then(result => {
-            if (!result) return;
-            void getLocalAppVersion().then(localVersion => {
-              if (updateService.shouldPrompt(result, localVersion)) {
-                updatePreviewController?.open({ ...result.release, currentVersion: localVersion });
-              }
-            });
-          });
-        };
-        window.setTimeout(() => {
-          if ('requestIdleCallback' in window) {
-            window.requestIdleCallback(checkWhenIdle, { timeout: 3_000 });
-          } else {
-            checkWhenIdle();
-          }
-        }, 5_000);
-      }
-
-scheduleAutomaticUpdateCheck();
+      scheduleAutomaticUpdateCheck({
+        enabled: isTauri && !isScreenPickerWindow,
+        runtime: updateRuntime,
+        getDialogController: () => updateDialogController
+      });
 
       createStartupRuntime({
         fontsReady: fontSettingsRuntime.ready,

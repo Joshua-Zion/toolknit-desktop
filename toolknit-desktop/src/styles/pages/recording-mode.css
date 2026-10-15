@@ -1,0 +1,66 @@
+.recording-mode-prompt {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 45;
+  width: min(344px, calc(100vw - 40px));
+  box-sizing: border-box;
+  padding: 22px;
+  border: 1px solid #303034;
+  border-radius: 8px;
+  color: #f5f5f5;
+  background: #151517;
+  box-shadow: 0 12px 40px #0005;
+  animation: recording-prompt-in 240ms ease-out both;
+}
+.recording-mode-prompt[hidden], .recording-mode-dismiss-menu[hidden] { display: none; }
+.recording-mode-prompt h2 { margin: 0 28px 12px 0; font-size: 19px; line-height: 1.4; }
+.recording-mode-prompt p { margin: 0 0 18px; color: #bcbcc3; font-size: 14px; line-height: 1.7; }
+.recording-mode-prompt-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.recording-mode-prompt .settings-v2-switch {
+  position: relative;
+  flex: 0 0 58px;
+  width: 58px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.recording-mode-prompt .settings-v2-switch::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 180ms ease, background 180ms ease;
+}
+.recording-mode-prompt .settings-v2-switch:is(.active, [aria-pressed="true"]) { background: rgba(255, 255, 255, 0.18); }
+.recording-mode-prompt .settings-v2-switch:is(.active, [aria-pressed="true"])::before { transform: translateX(26px); }
+.recording-mode-prompt .settings-v2-switch:disabled { cursor: wait; opacity: 0.58; }
+.recording-mode-help { padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; font: inherit; font-size: 14px; }
+.recording-mode-dismissal { position: absolute; top: 14px; right: 14px; }
+.recording-mode-dismiss { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
+.recording-mode-dismiss svg { width: 16px; height: 16px; }
+.recording-mode-dismiss:hover { background: #ffffff15; }
+.recording-mode-dismiss-menu { position: absolute; top: 30px; right: 0; min-width: 130px; padding: 5px; background: #252528; border: 1px solid #414146; border-radius: 6px; box-shadow: 0 6px 20px #0003; }
+.recording-mode-dismiss-menu button { display: block; width: 100%; padding: 10px 12px; text-align: left; background: none; color: inherit; border: 0; border-radius: 4px; cursor: pointer; font: inherit; font-size: 14px; white-space: nowrap; }
+.recording-mode-dismiss-menu button:hover { background: #ffffff15; }
+.recording-mode-prompt :focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+html[data-recording-mode-busy] :is(#autostartToggle, #screenshotHistoryToggle) { pointer-events: none; }
+html[data-theme="light"] .recording-mode-prompt { background: #fff; color: #111; border-color: #ddd; box-shadow: 0 12px 40px #0002; }
+html[data-theme="light"] .recording-mode-prompt p { color: #666; }
+html[data-theme="light"] .recording-mode-prompt .settings-v2-switch { border: 0; background: #9ca0a6; }
+html[data-theme="light"] .recording-mode-prompt .settings-v2-switch:is(.active, [aria-pressed="true"]) { background: #111; }
+html[data-theme="light"] .recording-mode-dismiss-menu { background: #fff; border-color: #ddd; }
+html[data-theme="light"] :is(.recording-mode-dismiss, .recording-mode-dismiss-menu button):hover { background: #eee; }
+@keyframes recording-prompt-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 780px) { .recording-mode-prompt { right: 20px; bottom: 20px; } }
+@media (prefers-reduced-motion: reduce) {
+  .recording-mode-prompt { animation: none; }
+  .recording-mode-prompt .settings-v2-switch::before { transition: none; }
+}

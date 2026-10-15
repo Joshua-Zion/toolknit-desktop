@@ -4,7 +4,7 @@ const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
 const command = (id, name, key, extra = '') => `<button id="clipboard${id}" type="button" class="clipboard-button" ${extra} data-i18n-title="home.clipboardHistory.${key}" data-i18n-aria-label="home.clipboardHistory.${key}">${icon(name)}<span ${text(key)}></span></button>`;
 
 export default `<div id="clipboardHistoryOverlay" class="pdf-merge-overlay pdf-merge-v2 hardware-v2 tool-page-v2-light clipboard-history" role="dialog" aria-modal="true" aria-hidden="true" inert data-tool-page-chrome data-i18n-aria-label="home.clipboardHistory.title">
-${toolTopbarMarkup({ tag: 'CLIPBOARD · TOOL PAGE 3.0', title: 'CLIPBOARD', closeAttr: 'data-clipboard-close' })}
+${toolTopbarMarkup({ tag: 'CLIPBOARD · TOOL PAGE 3.1', title: 'CLIPBOARD', closeAttr: 'data-clipboard-close' })}
 <div class="hardware-v2-body clipboard-body">
   <aside class="clipboard-sidebar">
     <span class="pdf-merge-v2-section-kicker">LOCAL HISTORY</span>
@@ -35,7 +35,7 @@ ${toolTopbarMarkup({ tag: 'CLIPBOARD · TOOL PAGE 3.0', title: 'CLIPBOARD', clos
         <div id="clipboardDetailContent" hidden><div class="clipboard-detail-head"><div><span id="clipboardDetailType" class="pdf-merge-v2-section-kicker"></span><h2 ${text('details')}></h2></div>${command('DetailBack','arrow-left','backList')}</div>
           <dl id="clipboardMetadata" class="clipboard-metadata"></dl>
           <div id="clipboardPreview" class="clipboard-preview" tabindex="0"></div><p id="clipboardDetailNote" class="clipboard-muted"></p>
-          <div class="clipboard-detail-actions">${command('Copy','copy','copy')}${command('CopyPaths','files','copyPaths','hidden')}${command('SaveImage','download','saveImage','hidden')}${command('Zoom','maximize','zoom','hidden')}${command('Favorite','star','favorite','aria-pressed="false"')}${command('Delete','trash-2','delete')}</div>
+          <div class="clipboard-detail-actions">${command('Copy','copy','copy')}${command('CopyPaths','files','copyPaths','hidden')}${command('SaveImage','download','saveImage','hidden')}${command('OpenPinned','pin','openPinned','hidden')}${command('Zoom','maximize','zoom','hidden')}${command('Favorite','star','favorite','aria-pressed="false"')}${command('Delete','trash-2','delete')}</div>
         </div>
       </section>
     </div>

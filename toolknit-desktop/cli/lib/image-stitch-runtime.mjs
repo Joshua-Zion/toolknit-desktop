@@ -3,13 +3,12 @@ import { link, lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } 
 import { freemem } from 'node:os';
 import path from 'node:path';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
-import { calculateImageStitchLayout } from './core/image-stitch-core.js';
+import { calculateImageStitchLayout, IMAGE_STITCH_LIMITS } from './core/image-stitch-core.js';
 import { ToolKnitError } from './errors.mjs';
 
 const SUPPORTED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif']);
-const MAX_INPUT_BYTES = 100 * 1024 * 1024;
-const MAX_INPUT_PIXELS = 160_000_000;
-const MAX_FILES = 100;
+const MAX_INPUT_BYTES = IMAGE_STITCH_LIMITS.maxBytesPerFile;
+const MAX_FILES = IMAGE_STITCH_LIMITS.maxFiles;
 
 function assertObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -70,7 +69,7 @@ export function isAnimatedGifBuffer(buffer) {
 }
 
 async function inspectInputs(values, options) {
-  if (!Array.isArray(values) || values.length < 2 || values.length > MAX_FILES) {
+  if (!Array.isArray(values) || values.length < IMAGE_STITCH_LIMITS.minFiles || values.length > MAX_FILES) {
     throw new ToolKnitError('INVALID_ARGUMENT', 'input_paths must contain 2 to 100 images.');
   }
   const seen = new Set();
@@ -100,8 +99,8 @@ async function inspectInputs(values, options) {
     try { image = await loadImage(canonical); } catch { throw new ToolKnitError('INPUT_INVALID', `Image cannot be decoded: ${canonical}`); }
     const width = Number(image.width);
     const height = Number(image.height);
-    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || width * height > MAX_INPUT_PIXELS) {
-      throw new ToolKnitError('INPUT_INVALID', `Image dimensions exceed the ${MAX_INPUT_PIXELS / 1_000_000} megapixel input limit: ${canonical}`);
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1 || width * height > IMAGE_STITCH_LIMITS.maxPixels) {
+      throw new ToolKnitError('INPUT_INVALID', `Image dimensions exceed the ${IMAGE_STITCH_LIMITS.maxPixels / 1_000_000} megapixel input limit: ${canonical}`);
     }
     inputs.push({ path: canonical, name: path.basename(canonical), width, height });
     report(options, 5 + ((index + 1) / values.length) * 15, `Inspected image ${index + 1}/${values.length}: ${path.basename(canonical)}`);

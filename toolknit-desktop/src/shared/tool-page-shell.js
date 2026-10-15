@@ -1,3 +1,5 @@
+import { prepareToolPageChrome } from './tool-page-chrome.js';
+
 /** Shared chrome for tool pages. The host application owns navigation actions. */
 export function toolTopbarMarkup({ tag, title, closeAttr }) {
   const close = closeAttr || 'data-tool-close';
@@ -7,18 +9,18 @@ export function toolTopbarMarkup({ tag, title, closeAttr }) {
       <span class="tool-page-v2-tag pdf-merge-v2-top-tag">${tag}</span>
     </div>
     <div class="tool-page-v2-top-actions home-v2-top-actions pdf-merge-v2-top-actions">
-      <button class="tool-page-v2-nav-link home-v2-nav-link" type="button" data-tool-website><i data-lucide="globe-2"></i><span>网页版本</span></button>
-      <button class="tool-page-v2-support home-v2-support-top" type="button" data-tool-support><i data-lucide="heart"></i><span>支持作者</span></button>
+      <button class="tool-page-v2-nav-link home-v2-nav-link" type="button" data-tool-website><i data-lucide="globe-2"></i><span data-i18n="home.webVersion">网页版本</span></button>
+      <button class="tool-page-v2-support home-v2-support-top" type="button" data-tool-support><i data-lucide="heart"></i><span data-i18n="home.supportAuthor">支持作者</span></button>
       <div class="home-v2-window-cluster" aria-label="窗口与设置">
-        <button class="tool-page-v2-icon home-v2-icon-button" type="button" data-tool-settings title="设置" aria-label="设置"><i data-lucide="settings"></i></button>
+        <button class="tool-page-v2-icon home-v2-icon-button" type="button" data-tool-settings data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings" title="设置" aria-label="设置"><i data-lucide="settings"></i></button>
         <div class="tool-page-v2-window-controls home-v2-window-controls" aria-label="窗口控制">
-          <button class="tool-page-v2-icon home-v2-window-button" type="button" data-tool-window="minimize" title="最小化" aria-label="最小化"><i data-lucide="minus"></i></button>
-          <button class="tool-page-v2-icon home-v2-window-button" type="button" data-tool-window="maximize" title="最大化" aria-label="最大化"><i data-lucide="square"></i></button>
-          <button class="tool-page-v2-icon home-v2-window-button" type="button" data-tool-window="close" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+          <button class="tool-page-v2-icon home-v2-window-button" type="button" data-tool-window="minimize" data-i18n-title="common.minimize" data-i18n-aria-label="common.minimize" title="最小化" aria-label="最小化"><i data-lucide="minus"></i></button>
+          <button class="tool-page-v2-icon home-v2-window-button" type="button" data-tool-window="maximize" data-i18n-title="common.maximize" data-i18n-aria-label="common.maximize" title="最大化" aria-label="最大化"><i data-lucide="square"></i></button>
+          <button class="tool-page-v2-icon home-v2-window-button" type="button" data-tool-window="close" data-i18n-title="common.close" data-i18n-aria-label="common.close" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
         </div>
       </div>
     </div>
-    <span class="tool-page-v2-title" aria-hidden="true">${title}</span>
+    ${title ? `<span class="tool-page-v2-title" aria-hidden="true">${title}</span>` : ''}
   </header>`;
 }
 function clickHost(selector, excludeRoot = null) {
@@ -55,11 +57,14 @@ export function bindGlobalToolPageChrome({
   root = globalThis.document,
   onWebsite = () => {},
   onSupport = () => {},
+  onHelp = () => {},
+  onFeedback = () => {},
   onSettings = () => {},
   onToolBack = () => {},
   onWindowAction = () => {}
 } = {}) {
   if (!root?.addEventListener) return () => {};
+  prepareToolPageChrome(root);
 
   const visibleToolOverlay = target => {
     // Subpages may keep legacy Dialog/Workspace IDs while opting into the
@@ -70,6 +75,7 @@ export function bindGlobalToolPageChrome({
     return visible ? overlay : null;
   };
   const actionButton = target => target?.closest?.([
+    '[data-tool-help]', '[data-tool-feedback]',
     '[data-tool-website]', '[data-home-link="website"]', '[data-ppt-host-action="website"]',
     '[data-excel-action="website"]', '[data-tele-action="website"]',
     '[data-audio-convert-action="website"]', '[data-audio-extract-action="website"]',
@@ -145,7 +151,9 @@ export function bindGlobalToolPageChrome({
       '[data-audio-convert-action="website"]', '[data-audio-extract-action="website"]',
       '[data-bgr-action="website"]'
     ].join(', '));
-    if (!isWindow && !settings && !support && !website) return;
+    const help = button.hasAttribute?.('data-tool-help');
+    const feedback = button.hasAttribute?.('data-tool-feedback');
+    if (!isWindow && !settings && !support && !website && !help && !feedback) return;
     event.preventDefault?.();
     event.stopPropagation?.();
     if (isWindow) {
@@ -154,6 +162,10 @@ export function bindGlobalToolPageChrome({
         || button.dataset.windowAction
         || button.dataset.action;
       if (action) onWindowAction(action, { event, button, overlay });
+    } else if (help) {
+      onHelp({ event, button, overlay });
+    } else if (feedback) {
+      onFeedback({ event, button, overlay });
     } else if (settings) {
       moveFocusOutOfHiddenRegion(overlay);
       onSettings({ event, button, overlay });
@@ -168,6 +180,7 @@ export function bindGlobalToolPageChrome({
 }
 
 export function bindToolPageChrome(root, onClose) {
+  prepareToolPageChrome(root);
   const handleClick = event => {
     if (event.target.closest('[data-tool-close]')) {
       event.preventDefault();
@@ -187,6 +200,11 @@ export function bindToolPageChrome(root, onClose) {
     if (event.target.closest('[data-tool-settings]')) {
       event.preventDefault();
       clickHost('#settingsBtn');
+      return;
+    }
+    if (event.target.closest('[data-tool-help], [data-tool-feedback]')) {
+      event.preventDefault();
+      clickHost(event.target.closest('[data-tool-help]') ? '.home-v2-topbar [data-tool-help]' : '.home-v2-topbar [data-tool-feedback]', root);
       return;
     }
     const windowButton = event.target.closest('[data-tool-window]');

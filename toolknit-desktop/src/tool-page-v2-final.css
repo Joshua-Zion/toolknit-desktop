@@ -7,7 +7,6 @@
   background: linear-gradient(180deg, rgba(5,6,7,.16), rgba(5,6,7,.08) 42%, rgba(0,0,0,.42));
 }
 .tool-page-v2-bg > .toolknit-custom-background-media { opacity: .82; filter: brightness(.62) saturate(.92) contrast(1.04); }
-.tool-page-v2-topbar { background: rgba(8,8,9,.88); }
 .tool-page-v2-body { height: auto !important; min-height: 0 !important; }
 .tool-page-v2-rail,
 .tool-page-v2-workspace,

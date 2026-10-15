@@ -1,437 +1,180 @@
 <div align="center">
 
-<img src="assets/readme/hero-v2.webp" alt="ToolKnit Desktop — ToolKnit spider web hero" width="100%" />
+<img src="assets/readme/v3.1/01-hero.webp" alt="ToolKnit Desktop：小男孩和头顶的蜘蛛，把桌面上的事变简单" width="100%" />
 
-<h1>ToolKnit Desktop 3.0</h1>
+# ToolKnit Desktop 3.1
 
-<p><strong>本地文件工作台 · 桌面端、网页端与 AI Agent 工作流</strong></p>
+**把零散的桌面小事，收进一个工具箱。**
 
-<p>
-  把 PDF、PPT、图像、音视频、Markdown、开发者工具和 AI 内容工作，收拢到一套清晰、可靠、可复用的工具体系里。
-</p>
+71 项桌面工具 · 12 个分类 · 本地文件工作台 · CLI / MCP
 
-<p>
-  <a href="https://toolknit.com"><img src="https://img.shields.io/badge/首选入口-ToolKnit.com-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="打开 ToolKnit.com" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/releases"><img src="https://img.shields.io/badge/桌面端-Windows%20下载-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="下载 Windows 桌面端" /></a>
-  <a href="#cli--mcp--agent"><img src="https://img.shields.io/badge/CLI%20%2B%20MCP-Agent%20工作流-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="CLI 与 MCP Agent" /></a>
-</p>
-
-<p>
-  <a href="README_EN.md"><img src="https://img.shields.io/badge/Language-English-475569?style=for-the-badge&labelColor=334155" alt="English README" /></a>
-  <img src="https://img.shields.io/badge/Version-3.0.0-0f766e?style=for-the-badge&labelColor=115e59" alt="ToolKnit Desktop 3.0.0" />
-  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" />
-  <img src="https://img.shields.io/badge/Local--first-文件留在本机-0f766e?style=for-the-badge" alt="Local first" />
-  <img src="https://img.shields.io/badge/Tauri-2.x-475569?style=for-the-badge" alt="Tauri 2.x" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-334155?style=for-the-badge" alt="Apache 2.0 license" /></a>
-</p>
-
-<p>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers"><img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Stars&color=f59e0b" alt="GitHub stars" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/network/members"><img src="https://img.shields.io/github/forks/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Forks&color=64748b" alt="GitHub forks" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/issues"><img src="https://img.shields.io/github/issues/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Issues&color=ef4444" alt="GitHub issues" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop/graphs/contributors"><img src="https://img.shields.io/github/contributors/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Contributors&color=8b5cf6" alt="GitHub contributors" /></a>
+<p align="center">
+<a href="https://toolknit.com/exe.html"><img src="assets/readme/v3.1/link-download-zh.svg" alt="下载 Windows 版" width="168" height="40" /></a>
+<a href="https://toolknit.com"><img src="assets/readme/v3.1/link-web-zh.svg" alt="打开网页端" width="144" height="40" /></a>
+<a href="README_EN.md"><img src="assets/readme/v3.1/link-english.svg" alt="English" width="104" height="40" /></a>
 </p>
 
 </div>
 
-<p align="center">
-  <a href="#v30-核心更新">3.0 更新</a> ·
-  <a href="#完整功能目录">68 项工具</a> ·
-  <a href="#本地优先与隐私边界">隐私边界</a> ·
-  <a href="#从源码运行">源码运行</a> ·
-  <a href="#cli--mcp--agent">CLI / MCP</a>
-</p>
+## 关于项目和我
 
-<table cellpadding="18" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/WEB-ToolKnit.com-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web ToolKnit.com" /> <strong>先用网页版</strong></p>
-      <p>无需安装，打开浏览器即可使用同名官方网页端。</p>
-      <p><a href="https://toolknit.com"><strong>打开 ToolKnit.com</strong></a></p>
-      <sub>适合快速体验、跨平台使用和不方便安装桌面应用的场景。</sub>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/DESKTOP-Windows-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows desktop" /> <strong>再用桌面端</strong></p>
-      <p>Windows 本地优先版本，适合长期文件工作、离线处理和可视化编辑。</p>
-      <p><a href="https://github.com/ZihangDong/toolknit-desktop/releases"><strong>查看桌面端下载</strong></a></p>
-      <sub>通过 GitHub Releases 获取 Windows 安装包、SHA-256 校验文件和完整版本说明。</sub>
-    </td>
-  </tr>
+<p><img src="assets/readme/v3.1/spider-wave.svg" alt="眨眨眼、挥挥手的 ToolKnit 小蜘蛛" width="88" height="88" /></p>
+
+你好，我是董子航，一个喜欢把日常麻烦做成小工具的独立开发者。
+ToolKnit 像一只不停织网的蜘蛛：一个需求牵出一根线，越来越多的工具被织出来，慢慢被大家发现、使用，再一起变得更好。
+小男孩是我，头顶的蜘蛛是这个工具箱的小伙伴。
+
+### 先用网页端
+
+打开 **[ToolKnit.com](https://toolknit.com)**，无需安装，在 Windows、macOS、Linux 或手机的现代浏览器中都能访问。
+目前有 **95 项网页工具**，覆盖 PDF、图片、视频、音频、文本、计算、时间、创意、AI 与自测。
+多数工具无需注册；支持的文件任务在浏览器本地处理，AI 和在线服务的联网要求以具体工具说明为准。
+
+### 再用桌面端
+
+需要长期处理文件、找回复制内容或快速截图？[安装 Windows 桌面端](https://toolknit.com/exe.html)，把 **71 项工具**放到电脑里。
+首次使用先设置输出目录；常用工具可收藏，重型模型按需安装。打开**一键记录模式**，让开机自启、剪贴板实时监控和截图历史悬浮窗一起就位，再用 `Alt + Q` 开始截图。
+安装环境与详细步骤见[开始使用](#08--开始使用)。
+
+### 一起把它织好
+
+<table width="100%">
+<tr>
+<td align="center" width="33%"><a href="https://github.com/ZihangDong"><img src="assets/readme/v3.1/avatar-zihang.png" width="64" height="64" alt="Zihang Dong 的头像，点击访问 GitHub" /></a><br /><strong>Zihang Dong</strong><br />产品设计 · 开发 · 维护</td>
+<td align="center" width="33%"><a href="https://github.com/Joshua-Zion"><img src="assets/readme/v3.1/avatar-joshua.png" width="64" height="64" alt="Joshua-Zion 的头像，点击访问 GitHub" /></a><br /><strong>Joshua-Zion</strong><br />颜色空间转换 · 交互增强</td>
+<td align="center" width="33%"><a href="https://github.com/hqyx2025"><img src="assets/readme/v3.1/avatar-hqyx.png" width="64" height="64" alt="hqyx2025 的头像，点击访问 GitHub" /></a><br /><strong>hqyx2025</strong><br />项目查验 · Bug 测试</td>
+</tr>
 </table>
 
-<p><strong>赞助商</strong> &nbsp; <sub>作者精选 AI 中转站，助力高效开发与 AI 创作。感谢他们支持 ToolKnit 持续更新！</sub></p>
+感谢每一位使用、反馈与贡献的朋友。Joshua-Zion 的贡献见 [PR #23](https://github.com/ZihangDong/toolknit-desktop/pull/23)、[PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67)。
 
-<p>
-  <a href="https://www.mlai.online/register?aff=5Q2VVMD7YJVB"><img src="assets/readme/sponsors/maliang-banner.svg" alt="马良 AI：作者精选中转站，统一接入热门模型和 AI 编程工具，可在 ToolKnit AI 设置中配置兼容 API，用于润色、翻译、文档生成与 AI 表格。点击注册马良 AI。" width="100%" /></a>
-</p>
+### 目录
 
-<p>
-  <a href="https://doufuapi.com/register?aff=TWKCBH9RGLN3"><img src="assets/readme/sponsors/doufu-banner.svg" alt="豆腐API：作者精选中转站，便捷接入 Codex、Claude Code，可在 ToolKnit AI 设置中配置兼容 API，用于润色、翻译、文档生成与 AI 表格。点击注册豆腐API，领取体验额度。" width="100%" /></a>
-</p>
+[01 项目理念](#01--少开几个软件多做一点事情) · [02 一键记录](#02--一键记录让灵感留下来) · [03 快速截图](#03--截图之后还能继续处理) · [04 剪贴板](#04--复制过的内容随时找回来)
 
-## ToolKnit 3.0
+[05 文件处理](#05--把文件处理集中在一个地方) · [06 图片与声音](#06--图片与声音也有自己的工具台) · [07 CLI / Agent](#07--你来操作也能交给-agent) · [真实截图](#看看真实的工作台)
 
-ToolKnit Desktop 3.0 是一套面向 Windows 的本地文件工作台。它把常用文件处理、图像与 Markdown 创作、开发者工具、AI 内容生产、专业文档工作流和 IDE Agent 自动化放在同一个产品体系里。
+[08 开始使用](#08--开始使用) · [完整工具目录](#完整工具目录) · [支持与反馈](#支持与反馈) · [源码运行与构建](#源码运行与构建) · [技术栈](#技术栈) · [源码许可](#源码许可) · [Star History](#star-history)
 
-桌面端提供可视化工作台，其中适合自动化的能力还可以通过 CLI 批处理、MCP Agent 调用。网页端提供免安装入口，各端功能范围以对应目录为准。
-
-<table width="100%" cellpadding="14" cellspacing="0">
-  <tr>
-    <td align="center"><h3>68</h3><strong>桌面工具</strong></td>
-    <td align="center"><h3>12</h3><strong>功能分类</strong></td>
-    <td align="center"><h3>46</h3><strong>MCP 能力</strong></td>
-    <td align="center"><h3>3</h3><strong>工作方式</strong></td>
-    <td align="center"><h3>Windows</h3><strong>首发平台</strong></td>
-    <td align="center"><h3>Local-first</h3><strong>隐私策略</strong></td>
-  </tr>
+<table width="100%">
+<tr>
+<td width="50%"><strong>马良 AI</strong><br />作者推荐中转站 · 低价不降智<br /><a href="https://www.mlai.online/register?aff=5Q2VVMD7YJVB">了解马良 AI →</a></td>
+<td width="50%"><strong>豆腐 AI</strong><br />作者推荐中转站 · 多模型接口<br /><a href="https://doufuapi.com/register?aff=TWKCBH9RGLN3">了解豆腐 AI →</a></td>
+</tr>
 </table>
 
-## V3.0 核心更新
-
-相比 v2.3.1，V3.0 的桌面工具从 65 项扩展到 68 项，保留 12 个分类与 46 项 CLI / MCP 能力。此次升级同时完善双主题、PDF / PPT 工作流、清理安全和应用启动体验。
-
-### 新增能力
-
-- `PDF 文本提取 / Markdown`：无需 AI Key，在本机提取电子 PDF 的文本层，重建基础排版并保留页码来源；转换后直接进入现有 Markdown 编辑器。扫描件会提示使用 AI 视觉版。
-- `AI PDF 转 Markdown`：适合扫描件与复杂排版，先逐页渲染并交给用户配置的视觉模型分析，再汇总为结构化 Markdown，支持页码来源、文档摘要、重试、取消和继续编辑。
-- `Windows 剪贴板历史`：开启监控后记录后续复制的文字、PNG 图片和文件路径，按时间线保存，支持搜索、筛选、收藏、图片预览和本地加密；不会导入既有 Win+V 历史，退出程序后停止监控。
-
-### 全面升级
-
-- `白天 / 深色模式`：工具页、设置与帮助中心统一适配两套主题，覆盖上传、处理、结果、错误、焦点和禁用状态；启动加载遮罩与主题切换过渡减少字体和背景加载时的闪变。
-- `PDF / PPT 工作台`：统一上传、预览、进度、导出和结果弹层；PDF 编辑支持页面操作、文字与图像插入、撤销重做和安全导出；PPT 工具共享转换、预览和素材工作流。
-- `AI 工作流`：完善 PPT 大纲解读、本地图片素材与可编辑 PPTX 草稿；润色、翻译、文档、表格和 PPT 工具复用密钥校验、错误恢复及输出校验。
-- `媒体与离线能力`：修复视频预览首次播放与连续播放问题，视频转 GIF 上传后自动展开预览；FFmpeg、LibreOffice、Whisper 和本地视觉模型按需检测和下载。
-- `清理安全边界`：AI 大文件清理支持目录与 C 盘整盘扫描，排除受保护系统目录、链接和系统属性文件，并在删除前重新校验；C 盘清理按风险档位展示系统缓存。扫描结果仍需用户检查，保护规则不能代替个人判断。
-- `颜色空间对比`：增加 HSV / HSL 双色轮与 HEX 输入，保留多空间联动、色域检测和双主题体验。
-- `应用稳定性`：工具懒加载，重复打开、返回、Escape、窗口关闭和失败路径统一释放 Worker、Canvas、监听器、任务和临时资源，过期异步结果不会写入新会话。
-
-V3.0 的桌面端、Tauri、Rust 原生运行时和 `@toolknit/cli` 版本统一为 `3.0.0`。桌面安装包见 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases)，命令行工具见 [npm](https://www.npmjs.com/package/@toolknit/cli)。
-
-### 持续保留的基础能力
-
-ToolKnit 继续遵循本地优先原则：重型编辑器和算法模块按需加载，离开页面后主动释放后台资源；网页端、Windows 桌面端、CLI 和 MCP Agent 共用清晰的输入输出边界。
-
-<table cellpadding="16" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/MARKDOWN-Document%20Studio-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Markdown Document Studio" /></p>
-      <h3>Markdown 文档编辑器</h3>
-      <p>分屏编辑与实时预览 GFM、Mermaid 和数学公式，支持标题大纲、本地草稿以及 Markdown / 自包含 HTML 导出。</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/IMAGE-Crop%20%26%20Color-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image crop and color tools" /></p>
-      <h3>图像裁剪与智能颜色替换</h3>
-      <p>提供多种比例、构图辅助线、居中吸附和原图导出；通过吸管、阈值、柔化与智能区域保护精确替换颜色。</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/COLOR-8%20Spaces-db2777?style=for-the-badge" alt="Eight color spaces" /></p>
-      <h3>颜色空间对比</h3>
-      <p>联动查看 8 种颜色空间，检测 sRGB、Display P3、Adobe RGB 与 Rec.2020 色域，并通过可视化轨道观察分量变化。</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/DEVELOPER-Local%20Toolbox-475569?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Local developer toolbox" /></p>
-      <h3>开发者工具分类</h3>
-      <p>新增 JSON 格式化、Base64、URL 编解码、UUID v4 批量生成和 JWT 查看，输入与结果只保留在当前会话。</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/CRYPTO-17%20Modules-7c3aed?style=for-the-badge" alt="Hash and Crypto workbench" /></p>
-      <h3>Hash &amp; Crypto</h3>
-      <p>覆盖摘要、文件 Hash、HMAC、对称和非对称算法等 17 个模块；旧算法明确标注兼容用途，敏感数据不写入历史。</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/WORKSPACE-Custom%20Background-0f766e?style=for-the-badge" alt="Custom background workspace" /></p>
-      <h3>自定义背景与玻璃工作台</h3>
-      <p>支持图片或视频壁纸，首页、分类与工具页面统一玻璃拟态语言；卡片使用克制的水膜波纹反馈，并强化复杂背景下的可读性。</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/PDF-Safer%20Editing-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="Safer PDF editing" /></p>
-      <h3>PDF 编辑与安全输出</h3>
-      <p>加入页面复制、空白页、批量选择和可重复文字编辑，并在关闭、替换和重置前保护未导出修改。</p>
-    </td>
-    <td width="50%" valign="top">
-      <p><img src="https://img.shields.io/badge/RUNTIME-Reuse%20Local%20Dependencies-2563eb?style=for-the-badge" alt="Reuse local dependencies" /></p>
-      <h3>依赖复用与性能治理</h3>
-      <p>优先检测电脑上已有的 FFmpeg 与 LibreOffice；预览任务降采样并可淘汰过期结果，页面关闭时主动释放后台资源。</p>
-    </td>
-  </tr>
-</table>
-
-<p align="center"><sub>感谢 <a href="https://github.com/Joshua-Zion">Joshua-Zion</a>：颜色空间换算核心基于 <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> 移植与扩展，3.0 参考 <a href="https://github.com/ZihangDong/toolknit-desktop/pull/67">PR #67</a> 融合双色轮与输入交互增强。</sub></p>
-
-## 三种工作方式
-
-<table cellpadding="16" cellspacing="0">
-  <tr>
-    <td width="33%" valign="top">
-      <p><img src="https://img.shields.io/badge/WEB-TOOLKNIT.COM-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web ToolKnit.com" /></p>
-      <h3>网页端</h3>
-      <p>开箱即用，无需安装。适合快速处理和跨平台访问。</p>
-      <a href="https://toolknit.com">进入 ToolKnit.com</a>
-    </td>
-    <td width="33%" valign="top">
-      <p><img src="https://img.shields.io/badge/DESKTOP-WINDOWS-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Desktop Windows" /></p>
-      <h3>桌面端</h3>
-      <p>文件留在本机，提供预览、拖拽、批量处理、可视化编辑和依赖管理。</p>
-      <a href="https://github.com/ZihangDong/toolknit-desktop/releases">查看 Releases</a>
-    </td>
-    <td width="33%" valign="top">
-      <p><img src="https://img.shields.io/badge/CLI%20%2B%20MCP-AGENT-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="CLI MCP Agent" /></p>
-      <h3>CLI 与 Agent</h3>
-      <p>适合脚本、批处理、CI 和 IDE Agent，用自然语言调用可验证的本地能力。</p>
-      <a href="#cli--mcp--agent">查看接入方式</a>
-    </td>
-  </tr>
-</table>
+推荐链接含推广标识；服务价格、模型能力与可用性以服务商为准。
 
-## 完整功能目录
+## 01 / 少开几个软件，多做一点事情
 
-下面按桌面端的 12 个分类列出全部 68 项工具。名称对应应用内入口，支持的 CLI / MCP 能力会在相应工具成熟后提供同一套输入输出契约。
+[↑ 返回目录](#目录)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PDF-Document%20Studio-ed1c24?style=for-the-badge&logo=adobeacrobatreader&logoColor=white" alt="PDF Document Studio" /></td><td align="right" style="border:0;"><h3 align="right">PDF 文档工具 · 13 项</h3></td></tr>
-</table>
+从一个小工具开始，把越来越多的桌面麻烦织进同一张网。
 
-`PDF 文件合并` · `PDF 文件拆分` · `PDF 加页码` · `PDF 裁剪` · `PDF 转图像` · `PDF 文本提取 / Markdown` · `PDF 编辑器` · `PDF 页面旋转` · `PDF 文件加密` · `PDF 文件解密` · `PDF 文件压缩` · `PDF 文字增强` · `Excel 转 PDF`
+ToolKnit 把 PDF、PPT、图片、音视频、文字、系统与开发者工具放在一起：
+用桌面端处理本地文件，用网页端快速体验，也能把适合自动化的任务交给 CLI 和 Agent。
 
-支持拖拽排序、逐页预览、选页导出、页码写入、无损裁剪、页面旋转、文字替换、文本与图像插入、追加合并、密码保护、扫描件增强、多等级压缩和工作簿本地渲染。PDF、工作簿、密码和导出结果默认只在本机处理。
+裁一页 PDF，找回刚才复制的文字，给截图标两笔，把图片里的背景去掉。
+事情不大，却经常要在几个软件之间来回切换。
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/PPT-Presentation%20Studio-d24726?style=for-the-badge&logo=microsoftpowerpoint&logoColor=white" alt="PPT Presentation Studio" /></td><td align="right" style="border:0;"><h3 align="right">PPT 演示文稿工具 · 7 项</h3></td></tr>
-</table>
+## 02 / 一键记录，让灵感留下来
 
-`PPT 转 PDF` · `PPT 转图片` · `PPT 图片提取` · `PPT AI 文本提取` · `PPT 压缩` · `AI 生成 PPT 大纲` · `AI 生成 PPT 草稿 / PPTX`
+[↑ 返回目录](#目录)
 
-支持逐页渲染、页码选择、PNG/JPG/WebP 输出、素材去重、标题正文备注提取、Markdown/TXT/JSON 导出、媒体清理，以及从主题和资料生成结构化大纲与可编辑 PPTX 草稿。PPT 渲染运行时按需下载。
+![一键开启，复制与截图，历史随时找回：小男孩继续工作，蜘蛛收好内容](assets/readme/v3.1/02-record.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/IMAGE-Image%20Lab-1473e6?style=for-the-badge&logo=imagemagick&logoColor=white" alt="Image Lab" /></td><td align="right" style="border:0;"><h3 align="right">图像工具 · 7 项</h3></td></tr>
-</table>
+**在设置里打开一次，让需要的记录功能一起就位。**
 
-`图片裁剪` · `智能颜色替换` · `背景移除` · `图片格式转换` · `图片压缩` · `长图拼接` · `图标生成器`
+| 一次开启 | 帮你做什么 |
+| --- | --- |
+| 程序开机自启动 | 重启电脑后，工具继续在系统托盘待命 |
+| 剪贴板实时监控 | 记录开启之后复制的文字、图片与文件路径 |
+| 截图历史悬浮窗 | 用一个可拖动的小 Logo，找回最近确认的截图 |
 
-支持常用比例与构图辅助线裁剪、区域保护颜色替换、本地模型背景移除、JPG / PNG / WebP / BMP / GIF / SVG 互转、批量压缩、横向 / 纵向 / 无缝拼接图片或 PDF 页面，以及生成多尺寸 PNG、ICO、SVG 图标并打包 ZIP。
+这是你主动开启的组合模式。关闭时会恢复启用前的相关设置；也可以分别管理这些开关。
+它不会记录键盘输入、浏览行为或系统里的所有活动，完全退出程序后停止监控。
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AUDIO-Sound%20Studio-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Sound Studio" /></td><td align="right" style="border:0;"><h3 align="right">音频工具 · 4 项</h3></td></tr>
-</table>
+## 03 / 截图之后，还能继续处理
 
-`音频文件格式转换` · `BPM 节拍测速器` · `音频剪辑` · `音频提取`
+[↑ 返回目录](#目录)
 
-支持 MP3、AAC、WAV、FLAC、ALAC、OGG、WMA 等格式互转，离线 BPM 分析，波形可视化剪辑和从视频中提取音轨。FFmpeg 按需安装，源文件不会被覆盖。
+![截图、标注、识别翻译与桌面置顶的黑白漫画](assets/readme/v3.1/03-screenshot.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/VIDEO-Frame%20Studio-dc2626?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Frame Studio" /></td><td align="right" style="border:0;"><h3 align="right">视频工具 · 3 项</h3></td></tr>
-</table>
+**默认按 `Alt + Q`，从窗口或选区开始。** 快捷键可以修改或关闭。
 
-`视频格式转换` · `视频高清单帧图` · `视频截取 GIF`
+矩形、圆形、箭头、画笔、涂抹式马赛克与文字标注，配合撤销、恢复和按住查看原图。
+确认后可复制、保存 PNG / JPG，或在独立查看器中缩放、拖动、置顶。
+历史悬浮窗点击展开，旧截图也能重新打开。
 
-支持 MP4、AVI、MKV、MOV、WebM、FLV、WMV、TS、M4V 等格式转换，按精确时间点导出 PNG/JPG 单帧，以及从 30 秒以内片段生成调色板优化 GIF。
+| 你想做的事 | 实际处理方式 |
+| --- | --- |
+| 提取文字 | Windows 本地 OCR；小字、复杂背景和排版可能识别不准 |
+| AI 提取内容 | 把所选区域发送到你配置的支持图像输入的模型，提取可复制的文字 |
+| 截图中英互译 | 先在设置安装本地中英文模型，再识别文字、在本机翻译并覆盖到截图 |
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/TEXT-Text%20Terminal-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Text Terminal" /></td><td align="right" style="border:0;"><h3 align="right">文本与转写 · 5 项</h3></td></tr>
-</table>
+截图翻译只支持**中文与英文**。配置好 AI 地址、模型和密钥后，会用本地 OCR 定位、AI 对照图像校正，再交给本地引擎翻译；没有 AI 配置时使用本地 OCR。
+AI 校正失败会说明原因，需你确认才回退到 OCR。文本放不下时提供完整译文供复制，不要求盲目缩小截图。
 
-`Markdown 文档编辑器` · `音视频提取文字` · `提词器` · `文本统计器` · `文本格式化`
+本地翻译组件按需下载，约 **192 MiB 下载 / 225 MiB 安装占用**，不塞进主安装包。
+本地翻译速度与整个截图流程耗时不同，外部 AI 延迟仍取决于服务商；识别和译文都建议核对。
 
-Markdown 编辑器提供 GFM、Mermaid、数学公式、标题大纲、草稿恢复与离线导出；Whisper 模型下载到本机后，可离线识别中英文音频和视频并输出 TXT、SRT、JSON，也可驱动提词器语音跟随；文本统计和格式化工具用于检查与整理纯文本内容。
+## 04 / 复制过的内容，随时找回来
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/UTILITY-Calculator-2563eb?style=for-the-badge" alt="Calculator utility" /></td><td align="right" style="border:0;"><h3 align="right">计算器工具 · 5 项</h3></td></tr>
-</table>
+[↑ 返回目录](#目录)
 
-`体脂率计算器` · `时间戳计算器` · `房贷计算器` · `利息计算器` · `密码生成器`
+![蜘蛛从历史记录中找回文字和图片，小男孩把图片打开置顶](assets/readme/v3.1/04-clipboard.webp)
 
-覆盖健康估算、Unix 时间戳转换、房贷月供、单利 / 复利计算和安全随机密码生成，适合在桌面端随手完成小型计算。
+**不必再问：刚才那段话，我到底复制到哪去了？**
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/CREATIVE-Color%20%26%20Typing-db2777?style=for-the-badge&logo=figma&logoColor=white" alt="Color and typing tools" /></td><td align="right" style="border:0;"><h3 align="right">创意工具 · 3 项</h3></td></tr>
-</table>
+剪贴板历史按时间保存文字、图片与文件路径，支持搜索、筛选、收藏和本地加密。
+图片记录可以直接打开置顶查看器；ToolKnit 截图确认复制后，也能进入开启中的实时监控。
+记录开关会保存，重启后无需重复打开。
 
-`配色提取器` · `颜色空间对比` · `打字测试器`
+只记录开启之后的新内容，不会导入系统既有的 Win + V 历史。请留意剪贴板可能包含的隐私内容，按需暂停和清理。
 
-支持提取图片主色与色卡比例、联动比较 8 种颜色空间并检测常见色域，以及中英文打字练习、计时、速度、正确率和结果统计。
+## 05 / 把文件处理，集中在一个地方
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/SYSTEM-Cleanup-ea580c?style=for-the-badge&logo=windows11&logoColor=white" alt="System cleanup" /></td><td align="right" style="border:0;"><h3 align="right">清理工具 · 2 项</h3></td></tr>
-</table>
+[↑ 返回目录](#目录)
 
-`AI 大文件清理` · `C 盘清理`
+![小男孩处理 PDF 和 PPT，蜘蛛在重复文件中保留一份](assets/readme/v3.1/05-files.webp)
 
-大文件清理先在本机扫描，可选择目录或扫描 C 盘中的大文件候选，再由本地规则和可选 AI 只分析文件名、大小、修改时间和目录线索；C 盘清理按低、中、高风险检查固定系统缓存空间。受保护目录、链接和系统属性会跳过，删除前逐项确认；大文件清理移入回收站，系统级 C 盘清理明确提示永久删除范围。
+**从预览到输出，让文件工作少一点折返。**
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/AI-AI%20Workbench-10a37f?style=for-the-badge&logo=openai&logoColor=white" alt="AI Workbench" /></td><td align="right" style="border:0;"><h3 align="right">AI 工作台 · 5 项</h3></td></tr>
-</table>
+| 工作流 | 常用能力 |
+| --- | --- |
+| PDF | 合并、拆分、裁剪、页码、旋转、转图片、压缩、加解密、编辑、提取文本 / Markdown |
+| PPT | 转 PDF / 图片、提取图片与文字、压缩，使用 AI 生成大纲或可编辑 PPTX 草稿 |
+| 清理 | 大文件分析、C 盘清理、按类型扫描重复文件 |
 
-`AI PDF 转 Markdown` · `AI 文字润色` · `AI 智能翻译` · `AI 文档生成` · `AI 表格生成`
+电子 PDF 的文本提取不需要 AI Key；扫描件和复杂排版可使用 AI 视觉工作流。
+重复文件按内容核对，默认不勾选删除，每组至少留一份，清理前再次检查并移入回收站。
 
-AI PDF 逐页分析页面图像并汇总为 Markdown；AI 文档支持多页 PDF、可编辑工程文件、预览、编辑与撤销；AI 表格支持 CSV、XLSX、PDF、PNG、可编辑项目、公式和图表修改。主动调用 AI 时，相关文字或页面图像会发送到你配置的模型服务。
+文件处理默认保留原文件，结果写入输出目录。**PDF 编辑器的视觉遮盖不是安全脱敏**；转扫描件也不意味着防复制。
+清理保护规则不能替代你对文件的判断。
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/HARDWARE-System%20Inspector-0078d4?style=for-the-badge&logo=windows11&logoColor=white" alt="System Inspector" /></td><td align="right" style="border:0;"><h3 align="right">硬件与系统工具 · 8 项</h3></td></tr>
-</table>
+## 06 / 图片与声音，也有自己的工具台
 
-`整机概览` · `CPU 与内存` · `显卡与显示器` · `主板与固件` · `磁盘与健康` · `网络与设备` · `电源与传感器` · `剪贴板历史`
+[↑ 返回目录](#目录)
 
-只读查看 Windows、设备型号、CPU、内存、显卡、显示器、主板、BIOS、安全启动、TPM、虚拟化、磁盘、网络和电源传感器信息；CPU 与内存页面提供实时状态刷新，剪贴板历史按用户主动开启的监控记录后续复制内容。
+![小男孩与蜘蛛在一个简洁工作台上处理图片、胶片和声波](assets/readme/v3.1/06-media.webp)
 
-<table width="100%" border="0" cellpadding="0" cellspacing="0">
-  <tr><td align="left" style="border:0;"><img src="https://img.shields.io/badge/DEVELOPER-Local%20Toolbox-475569?style=for-the-badge&logo=visualstudiocode&logoColor=white" alt="Local Developer Toolbox" /></td><td align="right" style="border:0;"><h3 align="right">开发者工具 · 6 项</h3></td></tr>
-</table>
+图片裁剪、压缩、格式转换、长图拼接、图标生成与本地模型抠图；
+音视频转码、音频剪辑与提取、视频单帧、GIF，还有离线转写和 Markdown 编辑。
 
-`JSON 格式化` · `Base64 编解码` · `URL 编解码` · `UUID 生成器` · `JWT 查看器` · `Hash & Crypto`
+FFmpeg、LibreOffice、离线识别与抠图模型按需检测、安装。
+已经存在且可用的运行时尽量复用，不为每个工具重复安装。
+WPS / Microsoft Office 不等同于 LibreOffice，不能替代需要 `soffice` 的转换链路。
 
-在本机完成 JSON 校验与压缩、UTF-8 Base64、URL 参数处理、UUID v4 批量生成、JWT Header / Payload 查看，以及摘要、文件 Hash、HMAC、对称与非对称算法工作流。敏感输入不进入持久历史，关闭页面后清理当前会话。
+## 07 / 你来操作，也能交给 Agent
 
-## 本地优先与隐私边界
+[↑ 返回目录](#目录)
 
-<img src="https://img.shields.io/badge/LOCAL-默认本地-0f766e?style=for-the-badge" alt="Local first" /> **默认本地**：桌面端的 PDF、PPT、图像、音频、视频、文本、计算器、硬件和清理工具在设备本地运行，源文件不会上传到 ToolKnit 服务器。
+![电脑旁的终端把文件任务送到工作台，小男孩与蜘蛛一起处理](assets/readme/v3.1/07-agent.webp)
 
-<img src="https://img.shields.io/badge/AI-明确授权-d97706?style=for-the-badge&logo=openai&logoColor=white" alt="AI requires explicit authorization" /> **明确授权**：只有主动使用 AI 润色、翻译、AI 文档、AI 表格、AI PDF 转 Markdown、PPT 文本 AI 整理、AI PPT 大纲、AI PPTX 草稿、AI 大文件复核或转写后的 `refine` 时，符合该功能说明的数据才会发送到你配置的模型服务；大文件清理只发送文件元数据，不发送文件内容。
+**桌面端负责看得见的交互，CLI 负责批处理，Agent 负责串起任务。**
 
-<img src="https://img.shields.io/badge/RUNTIME-按需依赖-2563eb?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="Runtime dependencies on demand" /> **按需依赖**：优先复用本机已有的 FFmpeg 与 LibreOffice；Whisper 模型和缺失运行时按需下载，支持依赖检测、校验和镜像源选择。
-
-桌面端 AI Key 使用 Windows DPAPI 加密保存，剪贴板历史保存在本机。更新检查、公开版本信息和依赖下载仍需要网络；“本地优先”不表示程序完全不联网。
-
-CLI 和 MCP 默认要求明确输入与输出路径，不覆盖已有文件；密码等敏感输入不会写入日志、输出 JSON、文件名或 Agent 回复。
-
-## 技术栈
-
-ToolKnit 3.0 采用轻量桌面容器与本地文件引擎组合，网页端、桌面端、CLI 和 MCP 共用清晰的输入输出边界。
-
-<table cellpadding="10" cellspacing="0">
-  <tr>
-    <td width="22%"><strong>桌面容器</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/Tauri-2.x-ffc131?style=for-the-badge&logo=tauri&logoColor=111827" alt="Tauri 2" />
-      <img src="https://img.shields.io/badge/Rust-Desktop%20Runtime-dea584?style=for-the-badge&logo=rust&logoColor=111827" alt="Rust" />
-      <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>界面与构建</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/Vite-Frontend-646cff?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-      <img src="https://img.shields.io/badge/JavaScript-UI%20Logic-f7df1e?style=for-the-badge&logo=javascript&logoColor=111827" alt="JavaScript" />
-      <img src="https://img.shields.io/badge/HTML5%20%2B%20CSS3-Interface-e34f26?style=for-the-badge&logo=html5&logoColor=white" alt="HTML5 and CSS3" />
-      <img src="https://img.shields.io/badge/Canvas%20%2B%20WebGL-Visual%20Effects-111827?style=for-the-badge" alt="Canvas and WebGL" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>文档与数据</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/PDF.js-PDF%20Rendering-f04b23?style=for-the-badge" alt="PDF.js" />
-      <img src="https://img.shields.io/badge/pdf--lib-PDF%20Editing-334155?style=for-the-badge" alt="pdf-lib" />
-      <img src="https://img.shields.io/badge/ExcelJS-XLSX%20Projects-217346?style=for-the-badge" alt="ExcelJS" />
-      <img src="https://img.shields.io/badge/Chart.js-Data%20Charts-ff6384?style=for-the-badge" alt="Chart.js" />
-      <img src="https://img.shields.io/badge/JSZip-Archive%20Output-475569?style=for-the-badge" alt="JSZip" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>编辑与算法</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/CodeMirror-6-111827?style=for-the-badge" alt="CodeMirror 6" />
-      <img src="https://img.shields.io/badge/Markdown--it-GFM-111827?style=for-the-badge&logo=markdown&logoColor=white" alt="Markdown it" />
-      <img src="https://img.shields.io/badge/Mermaid-Diagrams-ff3670?style=for-the-badge" alt="Mermaid" />
-      <img src="https://img.shields.io/badge/KaTeX-Math-0f766e?style=for-the-badge" alt="KaTeX" />
-      <img src="https://img.shields.io/badge/Noble-Crypto-7c3aed?style=for-the-badge" alt="Noble cryptography" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>媒体与运行时</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/FFmpeg-Audio%20%2F%20Video-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
-      <img src="https://img.shields.io/badge/Whisper-Offline%20Transcription-111827?style=for-the-badge" alt="Whisper" />
-      <img src="https://img.shields.io/badge/LibreOffice-Office%20Rendering-18a303?style=for-the-badge&logo=libreoffice&logoColor=white" alt="LibreOffice" />
-      <img src="https://img.shields.io/badge/Three.js-3D%20Effects-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js" />
-    </td>
-  </tr>
-  <tr>
-    <td><strong>自动化接口</strong></td>
-    <td>
-      <img src="https://img.shields.io/badge/Node.js-CLI%20Runtime-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
-      <img src="https://img.shields.io/badge/CLI-批处理-7c3aed?style=for-the-badge" alt="CLI" />
-      <img src="https://img.shields.io/badge/MCP-Agent%20Tools-7c3aed?style=for-the-badge&logo=githubactions&logoColor=white" alt="MCP Agent tools" />
-      <img src="https://img.shields.io/badge/JSON-Inspectable%20Contracts-475569?style=for-the-badge" alt="JSON contracts" />
-    </td>
-  </tr>
-</table>
-
-## 产品预览
-
-<p align="center">
-  <img src="assets/readme/desktop-v21.png" alt="ToolKnit Desktop custom wallpaper and glass workbench" width="100%" />
-</p>
-
-<p align="center"><sub>ToolKnit 工作台首页 · 自定义壁纸 · 玻璃拟态卡片 · 统一搜索与分类导航</sub></p>
-
-<p align="center"><strong>ToolKnit.com 网页端 · 开箱即用</strong></p>
-<a href="https://toolknit.com"><img src="assets/readme/web-version.png" alt="ToolKnit.com web version" width="100%" /></a>
-
-<details>
-  <summary><strong>查看工具分类截图</strong></summary>
-
-<p align="center"><sub>分类截图统一使用 1400 x 900 画布，避免同一组预览出现不同高度。</sub></p>
-
-<table cellpadding="8" cellspacing="0">
-  <tr>
-    <td width="50%" valign="top"><strong>PDF</strong><br /><img src="assets/readme/categories/category-pdf.png" alt="PDF tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>PPT</strong><br /><img src="assets/readme/categories/category-ppt.png" alt="PPT tools" width="100%" /></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>AI 与内容工作流</strong><br /><img src="assets/readme/categories/category-ai.png" alt="AI and content tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>图像</strong><br /><img src="assets/readme/categories/category-image.png" alt="Image tools" width="100%" /></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>音视频</strong><br /><img src="assets/readme/categories/category-audio-video.png" alt="Audio and video tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>文本</strong><br /><img src="assets/readme/categories/category-text.png" alt="Text tools" width="100%" /></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><strong>硬件</strong><br /><img src="assets/readme/categories/category-hardware.png" alt="Hardware tools" width="100%" /></td>
-    <td width="50%" valign="top"><strong>计算器与其他</strong><br /><img src="assets/readme/categories/category-calculator.png" alt="Calculator tools" width="100%" /></td>
-  </tr>
-</table>
-</details>
-
-## 下载与运行
-
-### 直接使用网页端
-
-打开 [ToolKnit.com](https://toolknit.com)，无需安装即可开始使用网页端工具。
-
-### 安装 Windows 桌面端
-
-从 [GitHub Releases](https://github.com/ZihangDong/toolknit-desktop/releases) 获取 Windows 安装包、版本说明和对应的 `.sha256` 文件。请只从本仓库 Release 页面下载，并在运行前核对 SHA-256 校验值。
-
-**代码签名：** 安装包的实际签名状态与覆盖范围以对应 Release 说明为准，详见[代码签名政策](CODE_SIGNING_POLICY.md)。
-
-**系统要求：** 桌面端需要 Windows 10 1803（内部版本 17134）或更高版本，或 Windows 11，并依赖 Microsoft Edge WebView2 Runtime。安装包内置 WebView2 引导程序，首次安装仍需要联网下载运行时；WPS、Office 或浏览器本身不能替代 WebView2。Windows 7、8 和 8.1，以及 1803 之前的 Windows 10 不受支持，安装器会在复制文件前直接提示原因。
-
-### 从源码运行
-
-```powershell
-git clone --branch "ToolKnit-Desktop-V3.0-正式版" --single-branch https://github.com/ZihangDong/toolknit-desktop.git
-Set-Location toolknit-desktop\toolknit-desktop
-npm ci
-npm run tauri dev
-```
-
-建议使用 Node.js 24，与 GitHub Actions 一致；Vite 8 要求 Node.js `20.19+` 或 `22.12+`。构建 Windows 桌面端还需要 Rust stable、Visual Studio C++ Build Tools、Windows SDK 和 WebView2。详细步骤见 [Windows 构建指南](BUILD.md)。
-
-仓库保留构建所需的源码、资源、测试与第三方许可。本地密钥、签名凭据、浏览器会话、测试输出和安装包不应提交；签名工作流通过 GitHub Actions Secrets 读取凭据。
-
-## CLI / MCP / Agent
-
-ToolKnit 将适合自动化的本地文件能力提供给命令行、脚本和支持 MCP 的 IDE Agent。桌面端负责可视化预览和交互，CLI 负责批处理，Agent 负责自然语言编排。
-
-### 安装 CLI
+适合自动化的能力通过 `@toolknit/cli` 和 **46 项 CLI / MCP 能力**提供。
+它们与桌面工具的范围不同：并非全部 71 项工具都能从命令行调用。
 
 ```powershell
 npm install --global @toolknit/cli
@@ -439,9 +182,8 @@ toolknit doctor --json
 toolknit --help
 ```
 
-### MCP 配置
-
-在 Trae、Cursor、VS Code 或其他支持 MCP 的客户端中添加：
+<details>
+<summary><strong>在支持 MCP 的客户端中接入</strong></summary>
 
 ```json
 {
@@ -454,88 +196,157 @@ toolknit --help
 }
 ```
 
-基础文件工具和非 AI PPT 工具不需要 AI Key。AI 文档、AI 表格、PPT 文本整理、AI PPT 大纲、AI PPTX 草稿和转写后的 `refine` 二次润色，需要在 CLI/MCP 进程环境中配置 `DEEPSEEK_API_KEY` 或 `TOOLKNIT_AI_API_KEY`。
+基础文件能力不需要 AI Key。需要 AI 的 CLI / MCP 工作流，在进程环境中配置 `DEEPSEEK_API_KEY` 或 `TOOLKNIT_AI_API_KEY`，具体要求以命令契约为准。
 
-完整说明：
+[CLI / MCP 契约](toolknit-desktop/docs/cli-agent.md) · [中文 Agent 手册](toolknit-desktop/docs/agent-guide.zh-CN.md) · [English Agent guide](toolknit-desktop/docs/agent-guide.en.md)
 
-- [CLI 与 MCP 契约](toolknit-desktop/docs/cli-agent.md)
-- [中文 Agent 手册](toolknit-desktop/docs/agent-guide.zh-CN.md)
-- [English Agent guide](toolknit-desktop/docs/agent-guide.en.md)
-- [AI 文档工程规范](toolknit-desktop/docs/ai-document-project-spec.md)
+</details>
 
-## 鸣谢
+## 看看真实的工作台
 
-ToolKnit 的持续完善离不开每一位参与开发、设计、测试和反馈的人。这里特别鸣谢三位核心贡献者：
+### Windows 桌面端
 
-<table cellpadding="12" cellspacing="0">
-  <tr>
-    <td width="96" align="center" valign="middle"><a href="https://github.com/ZihangDong"><img src="https://wsrv.nl/?url=avatars.githubusercontent.com%2Fu%2F274734333%3Fv%3D4%26s%3D160&amp;w=160&amp;h=160&amp;fit=cover&amp;mask=circle&amp;output=png" width="72" height="72" alt="ZihangDong 圆形头像" /></a></td>
-    <td valign="middle"><a href="https://github.com/ZihangDong"><strong>Zihang Dong</strong></a><br />项目作者 · 产品设计、开发与维护</td>
-  </tr>
-  <tr>
-    <td width="96" align="center" valign="middle"><a href="https://github.com/Joshua-Zion"><img src="https://wsrv.nl/?url=avatars.githubusercontent.com%2Fu%2F73597322%3Fv%3D4%26s%3D160&amp;w=160&amp;h=160&amp;fit=cover&amp;mask=circle&amp;output=png" width="72" height="72" alt="Joshua-Zion 圆形头像" /></a></td>
-    <td valign="middle"><a href="https://github.com/Joshua-Zion"><strong>Joshua-Zion</strong></a><br />颜色空间转换核心与交互增强 · <a href="https://github.com/ZihangDong/toolknit-desktop/pull/23">PR #23</a> / <a href="https://github.com/ZihangDong/toolknit-desktop/pull/67">PR #67</a></td>
-  </tr>
-  <tr>
-    <td width="96" align="center" valign="middle"><a href="https://github.com/hqyx2025"><img src="https://wsrv.nl/?url=avatars.githubusercontent.com%2Fu%2F246831866%3Fv%3D4%26s%3D160&amp;w=160&amp;h=160&amp;fit=cover&amp;mask=circle&amp;output=png" width="72" height="72" alt="hqyx2025 圆形头像" /></a></td>
-    <td valign="middle"><a href="https://github.com/hqyx2025"><strong>hqyx2025</strong></a><br />项目查验测试与 Bug 测试</td>
-  </tr>
-</table>
+![ToolKnit Desktop 3.1 首页，黑白展示](assets/readme/v3.1/desktop-home.webp)
 
-<h3><a href="https://atomgit.com/"><img src="https://cdn-static.gitcode.com/static/images/logo-favicon.png" width="36" height="36" alt="AtomGit Logo" align="absmiddle" /></a> 特别感谢 <a href="https://atomgit.com/">AtomGit</a></h3>
+本仓库 3.1 首页的真实界面截图（浏览器渲染），统一转为灰度展示；原生文件、快捷键和系统能力需在 Windows 安装版使用。
 
-<p><strong>ToolKnit 推荐：让开源创意，更快被看见。</strong></p>
+### 免安装网页端
 
-<p><a href="https://atomgit.com/">AtomGit</a> 集代码托管、项目管理与开发协作于一体，连接开发者与开源项目。发现实用的开源工具，分享自己的作品，与更多开发者一起把好想法变成好项目。<a href="https://atomgit.com/"><strong>前往 AtomGit，探索更多开源可能。</strong></a></p>
+![ToolKnit 官网工具首页，黑白展示](assets/readme/v3.1/web-home.webp)
 
-## 捐赠支持
+[ToolKnit.com](https://toolknit.com) 的真实首页截图，统一转为灰度展示。网页端与桌面端的工具范围、依赖与离线能力分别以各端说明为准。
 
-为了持续给大家免费更新 ToolKnit，作者仅 AI 开发与测试每月就要自掏腰包 500 多元，长期独自承担已越来越吃力。如果 ToolKnit 对你的工作有帮助，欢迎用一次性捐赠支持 AI 测试、兼容性设备、依赖镜像、文档维护和后续功能开发。
+## 08 / 开始使用
 
-赞助后可经确认加入 ToolKnit 灰度体验群，提前体验版本并提交希望加入的功能。灰度群用于交流、测试和需求收集；赞助不代表购买功能，也不承诺实现或优先排期。
+[↑ 返回目录](#目录)
 
-<p align="center">
-  <img src="assets/readme/donation-support.webp" alt="支持 ToolKnit 的支付宝和微信二维码" width="100%" />
-</p>
+![小男孩与头顶的蜘蛛挥手：一个人开发，一起把它变好](assets/readme/v3.1/08-start.webp)
 
-## 感谢支持者
+| 入口 | 适合谁 |
+| --- | --- |
+| [下载 Windows 桌面端](https://toolknit.com/exe.html) | 长期处理本地文件、使用记录模式与截图工具 |
+| [打开 ToolKnit.com](https://toolknit.com) | 快速体验、跨平台、不方便安装应用 |
+| [安装 CLI](https://www.npmjs.com/package/@toolknit/cli) | 脚本、批处理与 MCP Agent 工作流 |
 
-<p align="center">
-  <img src="assets/readme/supporters-thanks.webp" alt="感谢支持 ToolKnit 的朋友" width="100%" />
-</p>
+Windows 10 **1803 / build 17134 及以上**或 Windows 11；需要 Microsoft Edge WebView2 Runtime。
+安装包内置 WebView2 引导程序，缺失时仍需联网下载运行时。Windows 7 / 8 / 8.1 不受支持。
+安装包以下载页实际提供的版本为准，签名状态见[代码签名政策](CODE_SIGNING_POLICY.md)。
+
+### 本地优先，边界说清楚
+
+普通文件处理默认在本机完成。AI 功能仅在你主动使用时，将必要的文件内容或截图区域发送给你配置的服务。
+依赖下载与更新检查需要联网；已安装的离线能力不要求 AI Key。
+文件大小、页数、像素和批量限制按各工具能力区分，不承诺所有格式都无限制。
+
+## 完整工具目录
+
+<details>
+<summary><strong>展开 71 项桌面工具 / 12 个分类</strong></summary>
+
+| 分类 | 数量 | 工具 |
+| --- | ---: | --- |
+| PDF | 14 | 文件合并、文件拆分、加页码、裁剪、转图像、转扫描件、文本提取 / Markdown、编辑器、页面旋转、加密、解密、压缩、文字增强、Excel 转 PDF |
+| PPT | 7 | 转 PDF、转图片、图片提取、AI 文本提取、压缩、AI 大纲、AI 草稿 / PPTX |
+| 图片 | 7 | 裁剪、智能颜色替换、背景移除、格式转换、压缩、长图拼接、图标生成器 |
+| 音频 | 4 | 格式转换、BPM 节拍测速、剪辑、音频提取 |
+| 视频 | 3 | 格式转换、高清单帧图、截取 GIF |
+| 文本 | 5 | Markdown 编辑器、音视频提取文字、提词器、文本统计、文本格式化 |
+| 计算 | 5 | 体脂率、时间戳、房贷、利息、密码生成器 |
+| 创意 | 3 | 配色提取、颜色空间对比、打字测试 |
+| 清理 | 3 | AI 大文件清理、C 盘清理、重复文件清理 |
+| AI | 6 | PDF 转 Markdown、文字润色、智能翻译、文档生成、表格生成、快速截图 |
+| 硬件 | 8 | 整机概览、CPU 与内存、显卡与显示器、主板与固件、磁盘与健康、网络与设备、电源与传感器、剪贴板历史 |
+| 开发者 | 6 | JSON 格式化、Base64、URL 编解码、UUID、JWT 查看、Hash & Crypto |
+
+</details>
+
+## 支持与反馈
+
+感谢 [AtomGit](https://atomgit.com/) 提供代码托管与开发协作平台。仓库镜像：[AtomGit / ToolKnit Desktop](https://atomgit.com/ZihangDong/toolknit-desktop)。
+
+**ToolKnit 推荐：让开源创意，更快被看见。** AtomGit 集代码托管、项目管理与开发协作于一体，连接开发者与开源项目。发现实用的开源工具，分享自己的作品，与更多开发者一起把好想法变成好项目。[前往 AtomGit，探索更多开源可能。](https://atomgit.com/)
+
+[反馈 Bug](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=bug_report.yml) · [提出建议](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=feature_request.yml) · [贡献指南](CONTRIBUTING.md)
+
+如果 ToolKnit 帮你省下了时间，欢迎 Star 或[一次性捐赠支持](assets/readme/donation-support.webp)。
+[感谢支持者](assets/readme/supporters-thanks.webp)。捐赠用于开发、AI 测试与维护，不代表购买功能或承诺实现需求。
+定制工具与商业授权：微信 **wunanvip6**；联系邮箱：[2645149786@qq.com](mailto:2645149786@qq.com)。
+
+## 源码运行与构建
+
+[↑ 返回目录](#目录)
+
+### 准备环境
+
+使用受支持的 Windows 10 / 11，安装 Node.js **22.12+**（推荐 24）、Rust stable **1.88+**、Visual Studio C++ Build Tools（含“使用 C++ 的桌面开发”和 Windows SDK），以及 Microsoft Edge WebView2 Runtime。
+首次安装 npm 与 Rust 依赖需要联网；使用已有锁文件安装依赖。
+
+### 启动桌面端
+
+```powershell
+git clone https://github.com/ZihangDong/toolknit-desktop.git
+Set-Location toolknit-desktop\toolknit-desktop
+npm ci
+npm run tauri dev
+```
+
+以上检出默认分支；安装包发布状态以下载页为准。只查看前端界面可在同一目录执行 `npm run dev`，访问 `http://localhost:1420/`；原生文件、系统托盘、全局截图等能力需要 Tauri 桌面环境。
+
+### 构建安装包
+
+在内层 `toolknit-desktop/` 目录执行：
+
+```powershell
+npm run build:release-package
+```
+
+此命令会先构建前端，再构建桌面应用；不会自动配置代码签名。默认 NSIS 安装包位于 `src-tauri/target/release/bundle/nsis/`，使用自定义 Cargo target 目录时以构建输出为准。
+FFmpeg、LibreOffice 与可选模型仍按需安装，源码不包含用户密钥或完整模型包。
+
+### 源码结构
+
+```text
+仓库根目录/
+├── README.md / README_EN.md   项目介绍
+├── BUILD.md                  完整构建指南
+├── assets/                   文档与视觉素材
+└── toolknit-desktop/          npm / Tauri 工作目录
+    ├── src/features/         各工具的页面、逻辑与样式
+    ├── src/app/              应用编排与生命周期
+    ├── src/shared/           共享 UI 与运行时
+    ├── src/platform/         浏览器与原生适配
+    ├── src-tauri/            Rust 原生能力与桌面配置
+    ├── cli/                  CLI / MCP 接口
+    └── scripts/              检查、测试与构建脚本
+```
+
+进一步阅读：[构建指南](BUILD.md) · [贡献指南](CONTRIBUTING.md) · [架构与维护](toolknit-desktop/docs/V3_MAINTENANCE_GUIDE.zh-CN.md) · [CLI / MCP](toolknit-desktop/docs/cli-agent.md)。
+
+### 技术栈
+
+| 层次 | 使用的技术 | 在项目中的用途 |
+| --- | --- | --- |
+| 桌面与原生 | Tauri 2、Rust、Windows API、WebView2 | 桌面窗口、系统托盘、快捷键、截图、本地 OCR 与文件操作 |
+| 前端与构建 | 原生 JavaScript（ES Modules）、HTML / CSS、Vite 8、Lucide | 模块化工具页、按需加载、双主题与图标 |
+| PDF 与办公文件 | PDF.js、pdf-lib、ExcelJS、JSZip | PDF 预览与编辑、表格生成、文档归档处理 |
+| Markdown 与编辑 | CodeMirror 6、markdown-it、KaTeX、Mermaid、DOMPurify | 编辑、排版、公式与图表渲染、HTML 清理 |
+| 图像与音视频 | Canvas、Rust image / oxipng、FFmpeg | 图像处理与压缩、音视频转换；FFmpeg 按需安装 |
+| 本地模型与外部运行时 | ONNX Runtime、离线识别与中英翻译组件、LibreOffice | 抠图、转写、本地翻译与办公文件渲染，按功能安装 |
+| 数据与网络 | SQLite、AES-GCM / Argon2、Tokio、reqwest | 本地历史存储与加密、异步任务和原生网络请求 |
+| 自动化与 AI | Node.js CLI、MCP、OpenAI-compatible 接口 | 批处理、Agent 调用与用户主动配置的 AI 工作流 |
+
+第三方组件遵循各自许可，具体版本以 `package-lock.json` 与 `src-tauri/Cargo.lock` 为准。可选运行时与模型不全部包含在主安装包中。
+
+## 源码许可
+
+自 **2026-10-14** 起，新授权的作者代码及修改采用 [PolyForm Noncommercial 1.0.0](LICENSE)。
+非商业使用、修改与分发须遵守许可、保留必要声明；商业用途联系作者另行授权。版权仍归各自作者所有。
+这是源码可见的非商业许可，**不是 OSI 定义的开源许可**。
+
+此前已授予的 Apache-2.0 权利不撤销；此前按 Apache-2.0 发布的未改动代码及第三方贡献保留原授权。
+详见 [Apache-2.0](LICENSES/Apache-2.0.txt)、[NOTICE](NOTICE) 和版本历史。
+第三方依赖、字体、模型与运行时遵循各自许可；ToolKnit 品牌、域名与托管网页服务不随源码许可授权。
 
 ## Star History
 
-<p>星标变化图由 <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">Star History</a> 提供，点击图表可打开官方历史页面。</p>
-
-<p align="center">
-  <a href="https://star-history.com/#ZihangDong/toolknit-desktop&Date">
-    <img src="https://api.star-history.com/chart?repos=ZihangDong/toolknit-desktop&amp;type=date&amp;legend=top-left&amp;sealed_token=EEoF4uyEt78cKNHZvUBEUdT5yBOuWINv90m_TWMMcy6U8sziyyBtrHlNdiHMyYXLcobnnBnywdq7HDcegwIk0Yz4IZQieMCISiRGhbR2JeweVhmBWpGlwQPb1EQB_6ZlH62IB9O1vzTDofo6dhca9fEGaXwNwNbOe5u4ZR4-McXwDHUCSiZ234AMgx3j" alt="ToolKnit GitHub star history from Star History" width="100%" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/ZihangDong/toolknit-desktop/stargazers"><img src="https://img.shields.io/github/stars/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=GitHub%20Stars&color=f59e0b" alt="GitHub stars" /></a>
-  <a href="https://github.com/ZihangDong/toolknit-desktop"><img src="https://img.shields.io/github/last-commit/ZihangDong/toolknit-desktop?style=for-the-badge&logo=github&logoColor=white&label=Last%20Commit&color=475569" alt="Last commit" /></a>
-</p>
-
-## 参与项目
-
-- 提交可复现的 [Bug 反馈](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=bug_report.yml)。
-- 提交 [功能建议](https://github.com/ZihangDong/toolknit-desktop/issues/new?template=feature_request.yml)。
-- 阅读 [贡献指南](CONTRIBUTING.md) 了解开发、测试和 Pull Request 流程。
-- 查看 [构建指南](BUILD.md) 在本地运行桌面端。
-
-## 网页端与品牌边界
-
-[ToolKnit.com](https://toolknit.com) 是同名网页端产品，提供无需安装的在线体验和持续更新的网页能力。桌面端开源仓库专注于 Windows 本地文件处理、CLI 和 MCP；网页端的服务、域名、账号、托管服务和运营能力不属于本仓库的开源授权范围。
-
-## 开源协议
-
-ToolKnit Desktop 和 CLI/MCP 源代码采用 [Apache License 2.0](LICENSE) 开源。
-
-该协议不授予 ToolKnit 名称、Logo、视觉标识、域名、官网、托管网页服务、服务账号或其他独立运营产品的使用权。详见 [NOTICE](NOTICE)。
-
-<p align="center">
-  <sub>ToolKnit Desktop 3.0 · Local-first tools for real work</sub>
-</p>
+[![ToolKnit 的 GitHub 星标历史，由 Star History 动态更新](https://api.star-history.com/chart?repos=ZihangDong/toolknit-desktop&type=date&legend=top-left&sealed_token=EEoF4uyEt78cKNHZvUBEUdT5yBOuWINv90m_TWMMcy6U8sziyyBtrHlNdiHMyYXLcobnnBnywdq7HDcegwIk0Yz4IZQieMCISiRGhbR2JeweVhmBWpGlwQPb1EQB_6ZlH62IB9O1vzTDofo6dhca9fEGaXwNwNbOe5u4ZR4-McXwDHUCSiZ234AMgx3j)](https://star-history.com/#ZihangDong/toolknit-desktop&Date)

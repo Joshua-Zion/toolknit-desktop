@@ -1,0 +1,17 @@
+<dialog id="updateDialog" class="update-dialog" tabindex="-1" aria-labelledby="updateDialogTitle" aria-describedby="updateDialogCopy" aria-hidden="true">
+  <div class="update-dialog-content">
+    <div class="update-dialog-brand"><img src="/logo.png" alt="" /><span>ToolKnit Desktop</span></div>
+    <div class="update-dialog-symbol" aria-hidden="true"><i data-lucide="rocket"></i></div>
+    <p class="update-dialog-kicker" data-i18n="updateDialog.kicker">新版本已就位</p>
+    <h2 id="updateDialogTitle" data-i18n="updateDialog.title">给工具箱升个级吧</h2>
+    <p id="updateDialogCopy"></p>
+    <div class="update-dialog-versions">
+      <div><span data-i18n="updateDialog.current">当前版本</span><strong data-update-current></strong></div>
+      <i data-lucide="arrow-right" aria-hidden="true"></i>
+      <div><span data-i18n="updateDialog.latest">最新版本</span><strong data-update-latest></strong></div>
+    </div>
+    <button class="update-dialog-download" data-update-download type="button"><i data-lucide="download" aria-hidden="true"></i><span></span></button>
+    <p class="update-dialog-status" role="status" aria-live="polite"></p>
+    <p class="update-dialog-note" data-i18n="updateDialog.note">请下载并安装新版，再重新打开 ToolKnit。你的本地文件不会被更新改动。</p>
+  </div>
+</dialog>

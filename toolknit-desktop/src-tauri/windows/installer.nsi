@@ -17,6 +17,7 @@ ManifestDPIAwareness PerMonitorV2
 !include x64.nsh
 !include WinVer.nsh
 !include WordFunc.nsh
+!include "Win\RestartManager.nsh"
 !include "utils.nsh"
 !include "FileAssociation.nsh"
 !include "Win\COM.nsh"
@@ -30,6 +31,7 @@ ${StrLoc}
 {{/if}}
 
 !define WEBVIEW2APPGUID "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+!define TOOLKNIT_AUTOSTART_VALUE_NAME "ToolKnitDesktop"
 
 !define MANUFACTURER "{{manufacturer}}"
 !define PRODUCTNAME "{{product_name}}"
@@ -69,6 +71,8 @@ Var UpdateMode
 Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
+Var RequestedInstallDir
+Var WebView2ExitCode
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -346,10 +350,15 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateOrUpdateDesktopShortcut
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
+; Never restart Windows automatically or launch an app whose runtime is pending reboot.
+!define MUI_FINISHPAGE_NOREBOOTSUPPORT
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
+  ${If} ${RebootFlag}
+    Return
+  ${EndIf}
   nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
 FunctionEnd
 
@@ -404,8 +413,18 @@ LangString unsupportedWindows ${LANG_ENGLISH} "ToolKnit Desktop requires Windows
 LangString unsupportedWindows ${LANG_SIMPCHINESE} "ToolKnit Desktop 需要 Windows 10 或更高版本，Windows 7、8 和 8.1 不受支持。"
 LangString unsupportedWindowsVersion ${LANG_ENGLISH} "ToolKnit Desktop requires Windows 10 version 1803 (build 17134) or later. Please update Windows before installing."
 LangString unsupportedWindowsVersion ${LANG_SIMPCHINESE} "ToolKnit Desktop 需要 Windows 10 1803（内部版本 17134）或更高版本，请先更新 Windows。"
+LangString webview2Recovery ${LANG_ENGLISH} "WebView2 could not be installed or verified (code $WebView2ExitCode). Check your network, proxy and Windows installation policies, then Retry. Cancel stops installation."
+LangString webview2Recovery ${LANG_SIMPCHINESE} "WebView2 安装或验证失败（代码 $WebView2ExitCode）。请检查网络、代理及 Windows 安装策略后重试；取消将停止安装。"
+LangString webview2Manual ${LANG_ENGLISH} "Open Microsoft's official WebView2 download page? Install the Evergreen Standalone Installer, then run ToolKnit setup again."
+LangString webview2Manual ${LANG_SIMPCHINESE} "是否打开微软官方 WebView2 下载页？请安装 Evergreen 独立安装程序，再重新运行 ToolKnit 安装器。"
+LangString webview2Reboot ${LANG_ENGLISH} "WebView2 setup requires a Windows restart. ToolKnit has been installed but will not start automatically. Save your work and restart Windows before opening ToolKnit."
+LangString webview2Reboot ${LANG_SIMPCHINESE} "WebView2 安装需要重启 Windows。ToolKnit 已安装，但不会立即启动。请保存工作并自行重启电脑后再打开 ToolKnit。"
 
 Function .onInit
+  ; NSIS has already parsed /D= here; MultiUser initialization otherwise overwrites it.
+  ${If} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
+    StrCpy $RequestedInstallDir $INSTDIR
+  ${EndIf}
   ${IfNot} ${AtLeastWin10}
     MessageBox MB_ICONSTOP "$(unsupportedWindows)"
     Abort
@@ -490,97 +509,174 @@ Section EarlyChecks
   !endif
 SectionEnd
 
-Section WebView2
-  ${If} ${RunningX64}
-    ReadRegStr $4 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
-  ${Else}
-    ReadRegStr $4 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
+; Input $4, output $R0. Reject empty, malformed and zero versions before comparing.
+Function ValidateWebView2Version
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  StrCpy $R0 0
+  StrLen $0 $4
+  ${If} $0 < 7
+  ${OrIf} $0 > 31
+    Goto version_done
   ${EndIf}
-  ${If} $4 == ""
-    ReadRegStr $4 HKCU "SOFTWARE\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
-  ${EndIf}
+  StrCpy $1 0
+  StrCpy $2 0
+  StrCpy $3 0
+  version_loop:
+    StrCpy $0 $4 1 $1
+    ${If} $0 == ""
+      ${If} $2 != 3
+      ${OrIf} $3 == 0
+        Goto version_done
+      ${EndIf}
+      ${VersionCompare} "$4" "0.0.0.0" $0
+      ${If} $0 != 1
+        Goto version_done
+      ${EndIf}
+      !if "${MINIMUMWEBVIEW2VERSION}" != ""
+        ${VersionCompare} "$4" "${MINIMUMWEBVIEW2VERSION}" $0
+        ${If} $0 = 2
+          Goto version_done
+        ${EndIf}
+      !endif
+      StrCpy $R0 1
+      Goto version_done
+    ${ElseIf} $0 == "."
+      ${If} $3 == 0
+        Goto version_done
+      ${EndIf}
+      IntOp $2 $2 + 1
+      StrCpy $3 0
+    ${Else}
+      ; Comparing characters as strings avoids accepting non-numeric characters as zero.
+      StrCmp $0 "0" version_digit
+      StrCmp $0 "1" version_digit
+      StrCmp $0 "2" version_digit
+      StrCmp $0 "3" version_digit
+      StrCmp $0 "4" version_digit
+      StrCmp $0 "5" version_digit
+      StrCmp $0 "6" version_digit
+      StrCmp $0 "7" version_digit
+      StrCmp $0 "8" version_digit
+      StrCmp $0 "9" version_digit version_done
+      version_digit:
+        IntOp $3 $3 + 1
+        ${If} $3 > 5
+          Goto version_done
+        ${EndIf}
+    ${EndIf}
+    IntOp $1 $1 + 1
+    Goto version_loop
+  version_done:
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
 
-  ${If} $4 == ""
-    ${If} $UpdateMode <> 1
+Function DetectWebView2
+  ; Edge Update uses the 32-bit machine view; per-user registrations can use either view.
+  SetRegView 32
+  ReadRegStr $4 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
+  Call ValidateWebView2Version
+  ${If} $R0 != 1
+    ReadRegStr $4 HKCU "SOFTWARE\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
+    Call ValidateWebView2Version
+  ${EndIf}
+  ${If} ${RunningX64}
+  ${AndIf} $R0 != 1
+    SetRegView 64
+    ReadRegStr $4 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
+    Call ValidateWebView2Version
+    ${If} $R0 != 1
+      ReadRegStr $4 HKCU "SOFTWARE\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
+      Call ValidateWebView2Version
+    ${EndIf}
+  ${EndIf}
+  !insertmacro SetContext
+FunctionEnd
+
+Section WebView2
+  ; Updates must repair a missing runtime too; do not trust an installer exit code alone.
+  Call DetectWebView2
+  ${If} $R0 != 1
+      InitPluginsDir
+      webview2_prepare:
+      StrCpy $WebView2ExitCode "download"
       !if "${INSTALLWEBVIEW2MODE}" == "downloadBootstrapper"
-        Delete "$TEMP\MicrosoftEdgeWebview2Setup.exe"
         DetailPrint "$(webview2Downloading)"
-        NSISdl::download "https://go.microsoft.com/fwlink/p/?LinkId=2124703" "$TEMP\MicrosoftEdgeWebview2Setup.exe"
+        NSISdl::download "https://go.microsoft.com/fwlink/p/?LinkId=2124703" "$PLUGINSDIR\MicrosoftEdgeWebview2Setup.exe"
         Pop $0
         ${If} $0 == "success"
           DetailPrint "$(webview2DownloadSuccess)"
         ${Else}
           DetailPrint "$(webview2DownloadError)"
-          Abort "$(webview2AbortError)"
+          Goto webview2_failed
         ${EndIf}
-        StrCpy $6 "$TEMP\MicrosoftEdgeWebview2Setup.exe"
+        StrCpy $6 "$PLUGINSDIR\MicrosoftEdgeWebview2Setup.exe"
         Goto install_webview2
       !endif
 
       !if "${INSTALLWEBVIEW2MODE}" == "embedBootstrapper"
-        Delete "$TEMP\MicrosoftEdgeWebview2Setup.exe"
-        File "/oname=$TEMP\MicrosoftEdgeWebview2Setup.exe" "${WEBVIEW2BOOTSTRAPPERPATH}"
+        File "/oname=$PLUGINSDIR\MicrosoftEdgeWebview2Setup.exe" "${WEBVIEW2BOOTSTRAPPERPATH}"
         DetailPrint "$(installingWebview2)"
-        StrCpy $6 "$TEMP\MicrosoftEdgeWebview2Setup.exe"
+        StrCpy $6 "$PLUGINSDIR\MicrosoftEdgeWebview2Setup.exe"
         Goto install_webview2
       !endif
 
       !if "${INSTALLWEBVIEW2MODE}" == "offlineInstaller"
-        Delete "$TEMP\MicrosoftEdgeWebView2RuntimeInstaller.exe"
-        File "/oname=$TEMP\MicrosoftEdgeWebView2RuntimeInstaller.exe" "${WEBVIEW2INSTALLERPATH}"
+        File "/oname=$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstaller.exe" "${WEBVIEW2INSTALLERPATH}"
         DetailPrint "$(installingWebview2)"
-        StrCpy $6 "$TEMP\MicrosoftEdgeWebView2RuntimeInstaller.exe"
+        StrCpy $6 "$PLUGINSDIR\MicrosoftEdgeWebView2RuntimeInstaller.exe"
         Goto install_webview2
       !endif
 
-      Goto webview2_done
+      StrCpy $WebView2ExitCode "no-runtime-installer"
+      Goto webview2_failed
 
       install_webview2:
         DetailPrint "$(installingWebview2)"
         ; Quote the extracted path: a Windows profile or TEMP directory may
         ; contain spaces, and an unquoted command fails before WebView2 runs.
+        ClearErrors
+        StrCpy $1 -1
         ExecWait '"$6" ${WEBVIEW2INSTALLERARGS} /install' $1
-        Delete "$6"
-        ; 3010 means the runtime was installed and Windows requests a reboot.
-        ; It is still a usable installation and must not be shown as a failure.
+        StrCpy $WebView2ExitCode $1
+        ${If} ${Errors}
+          StrCpy $WebView2ExitCode "launch-failed"
+          Goto webview2_failed
+        ${EndIf}
         ${If} $1 = 0
         ${OrIf} $1 = 3010
-          DetailPrint "$(webview2InstallSuccess)"
+          ${If} $1 = 3010
+            SetRebootFlag true
+          ${EndIf}
+          Call DetectWebView2
+          ${If} $R0 = 1
+            DetailPrint "$(webview2InstallSuccess)"
+          ${ElseIfNot} ${RebootFlag}
+            StrCpy $WebView2ExitCode "runtime-not-detected"
+            Goto webview2_failed
+          ${EndIf}
+          Goto webview2_done
         ${Else}
           DetailPrint "$(webview2InstallError)"
-          ; Keep the bootstrapper exit code visible in the final dialog so a
-          ; user can distinguish network, policy and unsupported-OS failures.
-          MessageBox MB_ICONSTOP "$(webview2AbortError)$\n$\n$(webview2InstallError)"
-          Abort
+          Goto webview2_failed
         ${EndIf}
+      webview2_failed:
+        DetailPrint "$(webview2Recovery)"
+        MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "$(webview2Recovery)" /SD IDCANCEL IDRETRY webview2_prepare
+        ${IfNot} ${Silent}
+          MessageBox MB_ICONQUESTION|MB_YESNO "$(webview2Manual)" /SD IDNO IDNO webview2_abort
+          ExecShell "open" "https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section"
+        ${EndIf}
+      webview2_abort:
+        SetErrorLevel 1603
+        Abort
       webview2_done:
-    ${EndIf}
-  ${Else}
-    !if "${MINIMUMWEBVIEW2VERSION}" != ""
-      ${VersionCompare} "${MINIMUMWEBVIEW2VERSION}" "$4" $R0
-      ${If} $R0 = 1
-        update_webview:
-          DetailPrint "$(installingWebview2)"
-          ${If} ${RunningX64}
-            ReadRegStr $R1 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate" "path"
-          ${Else}
-            ReadRegStr $R1 HKLM "SOFTWARE\Microsoft\EdgeUpdate" "path"
-          ${EndIf}
-          ${If} $R1 == ""
-            ReadRegStr $R1 HKCU "SOFTWARE\Microsoft\EdgeUpdate" "path"
-          ${EndIf}
-          ${If} $R1 != ""
-            ExecWait `"$R1" /install appguid=${WEBVIEW2APPGUID}&needsadmin=true` $1
-            ${If} $1 = 0
-              DetailPrint "$(webview2InstallSuccess)"
-            ${Else}
-              MessageBox MB_ICONEXCLAMATION|MB_ABORTRETRYIGNORE "$(webview2InstallError)" IDIGNORE ignore IDRETRY update_webview
-              Quit
-              ignore:
-            ${EndIf}
-          ${EndIf}
-      ${EndIf}
-    !endif
+        Delete "$6"
   ${EndIf}
 SectionEnd
 
@@ -674,6 +770,11 @@ Section Install
 SectionEnd
 
 Function .onInstSuccess
+  ${If} ${RebootFlag}
+    SetErrorLevel 3010
+    MessageBox MB_ICONINFORMATION "$(webview2Reboot)" /SD IDOK
+    Return
+  ${EndIf}
   ${If} $PassiveMode = 1
   ${OrIf} ${Silent}
     ${GetOptions} $CMDLINE "/R" $R0
@@ -777,7 +878,15 @@ Section Uninstall
   !endif
 
   ${If} $UpdateMode <> 1
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    ; Never remove another installation's startup command.
+    ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${TOOLKNIT_AUTOSTART_VALUE_NAME}"
+    ${If} $0 == '$\"$INSTDIR\${MAINBINARYNAME}.exe$\" --autostart'
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${TOOLKNIT_AUTOSTART_VALUE_NAME}"
+    ${EndIf}
+    ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    ${If} $0 == '$\"$INSTDIR\${MAINBINARYNAME}.exe$\" --autostart'
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    ${EndIf}
   ${EndIf}
 
   ${If} $DeleteAppDataCheckboxState = 1
@@ -805,6 +914,10 @@ Section Uninstall
 SectionEnd
 
 Function RestorePreviousInstallLocation
+  ${If} $RequestedInstallDir != ""
+    StrCpy $INSTDIR $RequestedInstallDir
+    Return
+  ${EndIf}
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
   StrCmp $4 "" +2 0
     StrCpy $INSTDIR $4

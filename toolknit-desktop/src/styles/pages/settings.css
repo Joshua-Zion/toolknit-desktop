@@ -32,7 +32,7 @@
         -webkit-app-region: drag;
       }
 
-      .settings-back {
+      .settings-back:not(.tk-nav-button) {
         position: relative;
         font-family: inherit;
         font-size: 13px;
@@ -54,7 +54,7 @@
         -webkit-app-region: no-drag;
       }
 
-      .settings-back .svg-wrapper-1 {
+      .settings-back:not(.tk-nav-button) .svg-wrapper-1 {
         position: absolute;
         left: 0.7em;
         top: 50%;
@@ -62,37 +62,37 @@
         transition: all 0.3s ease-in-out;
       }
 
-      .settings-back span {
+      .settings-back:not(.tk-nav-button) span {
         display: block;
         transition: all 0.3s ease-in-out;
       }
 
-      .settings-back svg {
+      .settings-back:not(.tk-nav-button) svg {
         display: block;
         transform-origin: center center;
         transition: transform 0.3s ease-in-out;
       }
 
-      .settings-back:hover {
+      .settings-back:not(.tk-nav-button):hover {
         background: #f0f0f0;
       }
 
-      .settings-back:hover .svg-wrapper-1 {
+      .settings-back:not(.tk-nav-button):hover .svg-wrapper-1 {
         left: 50%;
         transform: translate(-50%, -50%) scale(1.25);
         transition: 0.5s linear;
       }
 
-      .settings-back:hover svg {
+      .settings-back:not(.tk-nav-button):hover svg {
         fill: #000000;
       }
 
-      .settings-back:hover span {
+      .settings-back:not(.tk-nav-button):hover span {
         opacity: 0;
         transition: 0.5s linear;
       }
 
-      .settings-back:active {
+      .settings-back:not(.tk-nav-button):active {
         transform: scale(0.95);
       }
 

@@ -3,7 +3,9 @@ import { createLifecycleScope } from './tool-lifecycle.js';
 const HOME_LINKS = Object.freeze({
   website: 'https://toolknit.com',
   github: 'https://github.com/ZihangDong/toolknit-desktop',
-  feedback: 'https://github.com/ZihangDong/toolknit-desktop/issues'
+  feedback: 'https://github.com/ZihangDong/toolknit-desktop/issues',
+  malian: 'https://www.mlai.online/register?aff=5Q2VVMD7YJVB',
+  doufu: 'https://doufuapi.com/register?aff=TWKCBH9RGLN3'
 });
 const GITHUB_REPOSITORY = 'ZihangDong/toolknit-desktop';
 const GITHUB_STATS_CACHE_KEY = 'toolknit_github_home_stats';

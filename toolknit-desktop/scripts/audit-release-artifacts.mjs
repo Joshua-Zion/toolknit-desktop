@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { listSourceFiles } from './lib/source-inventory.mjs';
+import { assertReleaseFilePolicy, isPrivateSkillFile } from './lib/release-file-policy.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = file => readFile(path.join(root, file), 'utf8');
@@ -22,13 +24,28 @@ const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
 assert.equal(config.version, pkg.version);
 assert.equal(config.build.frontendDist, '../dist');
 assert.ok(config.app.windows.every(window => window.devtools === false));
+assert.deepEqual(config.app.security.capabilities, ['default', 'screenshot-windows']);
 assert.ok(config.app.windows.every(window => !/remote-debugging|auto-open-devtools/i.test(window.additionalBrowserArgs || '')));
 const publicFiles = await files('public');
 const distFiles = await files('dist');
+assertReleaseFilePolicy([...publicFiles, ...distFiles, ...config.bundle.resources]);
+const trackedFiles = execFileSync('git', ['ls-files', '-z'], {
+  cwd: path.dirname(root), windowsHide: true
+}).toString('utf8').split('\0').filter(Boolean);
+assert.ok(!trackedFiles.some(isPrivateSkillFile), 'Private Skills must not be tracked in the repository');
+const requiredAssets = ['logo.png', 'assets/spider.png', 'assets/backgrounds/default-dark-mountain.jpg',
+  'assets/donate/alipay-qr.jpg', 'assets/donate/wechat-qr.png', 'assets/donate/donation-support.webp'];
+for (const asset of requiredAssets) {
+  assert.ok(publicFiles.includes(`public/${asset}`), `Required source asset missing: ${asset}`);
+  assert.ok(distFiles.includes(`dist/${asset}`), `Required built asset missing: ${asset}`);
+  const source = await readFile(path.join(root, 'public', asset));
+  const built = await readFile(path.join(root, 'dist', asset));
+  assert.ok(source.length > 0, `Required asset is empty: ${asset}`);
+  assert.ok(source.equals(built), `Built asset differs from its original: ${asset}`);
+}
 const obsolete = /(?:^|\/)(?:controls\.html|home-web-preview\.png|INTER-OFL\.txt|inter-variable\.woff2|Fonarto-[^/]+|font-lab)(?:\/|$)/i;
 assert.ok(!publicFiles.some(file => obsolete.test(file)), 'Obsolete assets must stay outside public');
 assert.ok(!distFiles.some(file => obsolete.test(file)), 'Obsolete assets must not be copied to dist');
-assert.ok(!distFiles.some(file => /(?:\.map|\.pdb|\.log|\.zip|\.tgz)$/i.test(file)), 'Debug and test outputs must not ship');
 for (const file of ['controls.html', 'assets/openjpeg.wasm', 'assets/qcms_bg.wasm']) {
   assert.ok(!distFiles.includes(`dist/${file}`), `Unreferenced legacy asset must not ship: ${file}`);
 }
@@ -73,6 +90,7 @@ const sourceFiles = listSourceFiles(path.dirname(root))
 const sources = (await Promise.all(sourceFiles.map(file => readFile(path.resolve(root, '..', file), 'utf8')))).join('\n');
 const dependencyReferences = Object.keys(pkg.dependencies).map(name => ({ name, referenced: sources.includes(name) }));
 const report = { version: pkg.version, checkedAt: new Date().toISOString(), devtools: false,
+  privateSkillFiles: 0, privateMaintenanceArtifacts: 0,
   publicFileCount: publicFiles.length, publicBytes, distFileCount: distFiles.length,
   duplicatePublicFiles: [...hashes.values()].filter(group => group.length > 1), fonts,
   dependencyReferences, nativeResources, checks: 'passed' };

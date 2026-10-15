@@ -1,5 +1,33 @@
 # ToolKnit Desktop V3.0 架构迁移报告
 
+> 2026-10-13 稳定性增量：窗口操作队列、回复超时与恢复同步归 `app/window-runtime.js`，转场动画等待兜底归 `app/page-transition-runtime.js`，模型状态 revision 归 `app/local-translation-runtime.js`，首页 hover RAF 与即时搜索归 `app/home-controller.js`。截图预览缓存归 native `quick_screenshot::Shot` 的共享 `OnceLock`，DOM/解码复用归 history controller；原图查看契约不变。本轮不新增原生命令、事件、存储或 DOM 契约，新增双语错误提示。当前 71 工具/12 分类/46 CLI/MCP，1454 HTML ID 无重复、145 命令实现/144 唯一名称、214 Rust 测试（207 passed/7 ignored）。完整发布 101 项与双主题浏览器专项通过；源码责任边界、证据和原生复现限制见[维护报告](V3_STABILITY_REVIEW_20261013.zh-CN.md)。
+
+> 2026-10-13 一键记录增量：组合状态与事务归 `app/recording-mode-state.js`，DOM/订阅归 `app/recording-mode-runtime.js`，原生命令归 `platform/recording-mode-runtime.js`，样式归 `styles/pages/recording-mode.css`。使用 `toolknit.recording-mode.snapshot.v1` 和 `toolknit.recording-mode.prompt-dismissed.v1`；失败回滚、恢复原设置、原生状态核验及生命周期取消有专项测试。新增 8 个内部 DOM ID、导航 `data-tool-help/feedback` 和截图偏好通知 `screenshot-preferences-changed`；沿用原生命令与 CLI/MCP。帮助/反馈由共享导航分发，modal session 持有来源页、焦点与输入锁。当前 71 工具/12 分类/46 CLI/MCP，1454 HTML ID 无重复，144 唯一原生命令。完整发布 101 项 npm 门禁通过，Rust 206 passed/7 ignored；Edge 双主题、响应式与组合模式浏览器专项通过，真实登录/重启未代替为模拟验证。
+
+> 2026-10-13 截图交互增量：普通文字的字形度量与选框收紧归 screenshot core，绘制/导出复用同一布局；译文覆盖保留块范围。保存成功打开位置由辅助窗口先结束 capture，再调用既有输出 runtime；viewer 不退出。剪贴板 `pin` action 仅传整数记录 ID，原生 clipboard service 从加密存储读取 PNG，经内部 native runtime 桥复用截图查看器，feature 不互相导入。新增生成式内部 DOM `clipboardOpenPinned`；静态 HTML ID 仍为 1446，无重复，命令/事件/存储及 CLI/MCP 不变。Rust 213 测试（206 passed/7 ignored）、架构/构建/核心契约、Edge 截图 8 场景和剪贴板双主题/中英文回归通过；实际 Explorer 选中文件与原生置顶窗口尚待安装后验收。本轮未重新打包。
+
+> 本轮补充：完整发布回归 100 项 npm 脚本通过（安全 1329 项、CLI/MCP、架构、构建和产物审计），集成检查无缺失工具/翻译键。维护复盘：跨工具入口共享原生服务、只传存储 ID；普通文字选框按实际字形验证，浏览器点击选框内部需避开八点节点命中区。
+
+> 2026-10-13 后续修复：截图新内容与历史回放在 `clipboard_history/windows.rs` 写入边界区分，复用格式转换，不绕开监控过滤。翻译下载源选择归 app settings runtime，固定源与有界失败切换归 native installer；安装 request 兼容新增可选 `source`，进度新增来源，不新增命令/事件/storage key。新增两个内部 DOM ID，当前 HTML ID 1446 无重复；Rust 212 测试（205 passed/7 ignored）。双主题安装管理 12 场景与隔离 Windows 原生监听通过；完整发布回归 100 项 npm 脚本（含安全 1329 项、CLI/MCP、架构、构建与产物审计）及共享主题浏览器全套通过，包含依赖弹框 48 布局。源码范围、源可用性和安装包限制见根日志与截图维护说明。
+
+> 2026-10-13 V3.1 增量：截图移除手动视觉声明；OCR 预处理与坐标映射归 native domain，词框行文整理归 core；段落分批/预算、截断恢复和安全布局归 feature `translation.js`，控制器编排依赖门禁、可选 AI 图像校正、本地翻译、缓存与取消。新增 `native_runtime/local_translation/` 持有固定引擎/模型下载校验、原子安装、有界翻译、进程与会话权限；`platform/local-translation-runtime.js` 提供 adapter，`app/local-translation-runtime.js` 持有设置管理，组合根仅接线。新增 `local_translation` command、进度/状态事件及原生目标语言偏好；CLI/MCP 不变。共享 AI 可选 temperature 默认兼容。当前 71 工具/12 分类/46 CLI/MCP，145 command 实现/144 唯一名称、1444 HTML ID 无重复、209 Rust 测试（202 passed/7 ignored）。完整发布回归 100 项、截图浏览器 8 场景和设置安装 4 场景通过；真实下载/双向本地试译及进程退出验证通过，真实 OCR 四样本矩阵此前通过。模型不进主包，实测与外部 AI 延迟限制见[截图维护说明](QUICK_SCREENSHOT.zh-CN.md)。
+
+> 2026-10-12 V3.1 增量：新增 AI 分类 `quick-screenshot`，独立 feature 持有工作台、截图编辑器、置顶查看器和可选历史悬浮窗，平台 adapter 与原生 `quick_screenshot` domain 持有系统能力；组合根仅装配上下文同步。复用工具导航、弹框、Toast、输出、AI 请求与有容量边界的 snapshot history，PDF 编辑器保留旧 history 导出契约。当前 71 个工具、12 分类（AI 6 项）、46 CLI/MCP，Tauri command 144 个实现/143 个唯一名称，HTML ID 1433 个、无重复，Rust 201 个测试。新增 command、事件、偏好及辅助 WebView 的角色权限边界见[快速截图维护说明](QUICK_SCREENSHOT.zh-CN.md)。历史窗在原 feature/native 边界内隔离 capture 会话事件，图片解码成功再更新并支持失败重试；新圆形 Logo 和展开后的标题区域均可拖动、点击展开约四张截图、×/Escape 收起后锚点跟随面板位移，历史最多 10 张/64 MiB。Windows 每次切换只提交一次位置/尺寸，移除逐帧宽度循环，380ms 展开与 260ms 收起由内部裁切动画完成，无新增命令或事件。截图恢复共用不激活、不改变层级的 Windows 路径，保留主应用最小化状态；历史窗显示不抢焦点。共享导航 title 可省略，查看器去除右侧重复标题，既有调用保持兼容。双主题/DPR 浏览器 8 场景、构建、架构、完整发布回归及 Rust 全量通过；两个真实 Windows 捕获/OCR smoke 此前通过，本轮未重跑。新悬浮窗实际动画、安装后热键、多屏 DPI、真实 AI 与长期窗口交互尚待桌面回归。下文保留历史统计。
+
+> 2026-10-11 设置/首页增量：`home-explorer-runtime.js` 通过现有 settings controller 持有 `toolknit_home_lazy_load`，默认每批显示 12 个工具，关闭仅改变卡片展示，不预加载工具模块。新增 `homeLazyLoadToggle` / `homeLazyLoadStatus`，当前 HTML ID 1433 个、无重复；工具/分类/CLI/MCP 数量及原生命令不变。支持作者控制器复用 modal session，以当前背景页层级覆盖并恢复交互/焦点；共享开关兼容 aria 状态，首页文字样式排除共享图标容器。双主题首页/设置与五类代表工具导航浏览器回归通过。
+
+> 2026-10-11 V3.1 增量：首页定制弹框与 Windows 自启动分别由 `app/home-custom-tools-runtime.js`、`app/autostart-runtime.js` 持有，组合根仅注入既有平台/翻译服务。弹框复用 modal session，网页按钮复用 tool-page-chrome，外链走既有 external-links；密钥页通过静态模板复用完整 tool-page-shell，返回与导航设置统一进入设置页。删除无入口的旧 PDF 模板及处理器，保留实际工具与素材。当前 70 个工具、12 分类、46 项 CLI/MCP；Tauri command 143 个实现、142 个唯一名称，HTML ID 1431 个、无重复，Rust 190 个测试（187 passed / 3 ignored）。
+>
+> 自启动原生 owner 为 `native_runtime/core/autostart.rs`：新增 `get_autostart` / `set_autostart`，返回 `{supported, enabled}`；设置和托盘通过同一状态锁访问 HKCU Run 的 `ToolKnitDesktop`，变化/失败分别发出 `toolknit-autostart-changed`（状态对象）和 `toolknit-autostart-error`（空载荷）。启动命令只使用当前 exe 与精确 `--autostart` 参数，自启动隐藏主窗口；剪贴板 bootstrap 与恢复偏好独立。公开 URL、定制联系信息和 DOM 契约见源码及根日志。真实注册表测试使用独立临时键，未测试注销/重启；UI 验证入口 `node scripts/test-home-settings-browser.mjs`（先 build）及原导航专项。
+
+> 2026-10-10 V3.1 增量：重复文件工具在原 feature/native 边界内优化扫描和结果呈现；新增后缀配置、懒加载曲线动画与明确安装目录保护模块。扫描命令增加可选 `extensions`，进度增加过滤/访问/耗时和截断原因，原命令名称与删除保护契约保持。70 个工具、12 分类、46 CLI/MCP 不变；新增字段、性能证据及验证范围见 [开发说明](DUPLICATE_FILE_CLEANUP.zh-CN.md) 与根目录更新日志。
+
+> 同日清理增量：`cleanup-view.js` 独立负责内容区纯色遮罩、原生清理进度与五类 SVG 结算，复用扫描动画及生命周期；返回淡出并重置页面。`system.rs` 提供线程内 COM 与 `IFileOperation` 批量复用，重复文件域跨组最多 32 份回收并保留逐项重验及参考文件句柄保护。四个命令与参数保持，新增清理进度及取消/未处理/耗时结果字段；DOM 与双语契约由专项测试覆盖，无新增 storage/事件/CLI。临时小文件实测 64 份由逐份 1303ms 降至批量 538ms，不代表全盘固定提速。
+
+> 2026-10-09 V3.1 增量：新增 `duplicate-file-cleanup` 清理工具，当前开发源码为 70 个桌面工具、12 个分类、46 项 CLI/MCP 能力。新增四个原生命令，共 141 个实现、140 个唯一名称；独立 feature 与 native domain 复用导航、弹框、输出位置、生命周期和清理保护。职责、公开契约与验证边界见 [重复文件清理开发说明](DUPLICATE_FILE_CLEANUP.zh-CN.md)。下文历史数量保留各轮当时状态。
+
+> 2026-10-08 V3.1 增量：新增 `pdf-to-scan` 普通 PDF 工具，当时开发源码为 69 个桌面工具、12 个分类；已发布 V3.0 的 68 项历史基线不回写。实现、公开契约和验证边界见文末“PDF 转扫描件”与 [开发说明](PDF_TO_SCAN.zh-CN.md)。
+
 > 2026-09-21 发布前复核：下文历史记录中的 `INTER-OFL.txt` 扫描阻塞和设置导航圆角差异已修复。
 > 安全扫描现在读取实际存在的 tracked/untracked 源码及 native 领域实现；中英文重复字典节点已合并。
 > 移出 3 个无引用静态文件（344,325 字节），生产构建剔除 AI 文档/表格演示数据，保留有消费者的字体、授权和兼容转发。
@@ -377,3 +405,24 @@ feature 不得导入 `main.js`，不得直接构造 Tauri API；所有 native �
 - 验证：主题和页面过渡行为测试、视频 frame/GIF core、视频契约（包含预览行为测试）、architecture、build、CLI/MCP 通过。完整 Rust 为 164 passed、3 ignored；后续保留探测校验的调整再次通过原生 preview 专项。使用已有 FFmpeg 显式运行了真实编码、取消和超时测试。
 - 浏览器：`test-video-frame-theme-browser.mjs` 与 `test-video-preview-browser.mjs` 通过。后者在 Edge 中使用真实 65 秒 MP4 和可控 IPC 夹具验证首次播放、30/60 秒边界、暂停、双主题展开、Escape、1100/720/390 宽度、关闭和重开；主题变更时确认黑色遮罩已覆盖。原生后端与浏览器分别验证，群友的 Windows/WebView2 环境尚需桌面复测。
 - 发布门禁限制：`test:release` 在 `test:security-release` 扫描已删除的历史字体 `public/assets/fonts/INTER-OFL.txt` 时 ENOENT，未通过完整发布门禁。保留已知 crypto externalization、大 chunk 与 Windows linker 提示。本轮不打包、不提交、不推送或发布；浏览器证据位于忽略目录 `tmp/video-preview-regression/`。
+
+### 2026-09-23 增量：PDF 表格还原与 Markdown 工作区
+
+- `features/pdf-text-extract/table-grid.js` 负责从 PDF.js 6 绘图指令读取直线与细填充边框，按网格组织多行文本、空格和合并单元格；`core.js` 优先使用网格，再保守识别局部对齐的无框表格。纵向合并标签在对应行重复，横向合并内容只保留在首列，不伪造值。相邻页边缘、列边界一致的续表沿用前页表头，每页仍保留来源标记。未增加 OCR 或网络请求。
+- PDF controller 在既有逐页任务中读取 operator list，保留 revision、取消和页面清理路径。绘图读取失败仍可提取文字；支持的表格边界不是对任意 PDF 的精确排版承诺。原始反馈只有截图，本轮使用合成五列课程表验证，用户原 PDF 尚未实测。
+- Markdown controller 复用 `createModalSession`、注入的输出目录和打开文件夹接口，MD/HTML 成功后显示格式、文件名及实际位置。浏览器回退本地下载并准确标注浏览器下载位置；关闭或重开后迟到结果不得弹出。新增 `data-md-expand`、`data-md-expand-icon`、`data-md-export-success`、`data-md-success-*` 及 `mdExportSuccessTitle`，保留旧导出、导入、storage、事件和原生命令契约；新增文案同步中英文。
+- 工作区展开采用网格宽度、透明度和位移动画，隐藏侧栏同步 inert/aria，Escape 优先收起。合并 feature 内重复 CSS 和白天覆盖，工具动作常驻第二行，悬停仅轻微放大文字/图标；保持文档预览为白纸表面。窄窗口覆盖历史 shell 的强制 flex，表格独立横向滚动，导出和视图按钮始终可达。
+- Markdown 渲染仅允许无属性的 `<br>`，仍禁用任意原始 HTML；PDF 字面符号转义，来源元数据只在独立行隐藏且保留代码块与目录行号。MD 导出保留源文，HTML 保留既有清洗和 CSP。
+- 新增真实 PDF.js 表格夹具和两组浏览器回归：`test-markdown-workspace-browser.mjs` 验证真实 PDF 导入、双主题、展开/悬停、下载弹框、焦点/Escape、低高度/窄窗口与重开；`test-markdown-export-browser.mjs` 用受控 native IPC 验证实际路径传递、语言切换、失败和迟到结果。Windows 文件选择器、资源管理器和安装包需桌面复测。浏览器截图与日志仅在忽略目录 `tmp/markdown-workspace/`。
+- 验证完成：PDF/Markdown focused、architecture、build、diff 检查通过，完整发布门禁 95 项脚本通过（安全检查 1249 项）；完整 Rust 164 passed、3 ignored。三组浏览器脚本通过，包括原有 PDF 空/错/部分失败和重开回归，无新增未捕获页面错误。单独 CLI 检查最初与发布检查同时 staging 导致临时资源读取失败，结束 staging 后单独重跑 CLI/MCP 通过；后续这些命令应串行运行。保留既有大 chunk、crypto externalization 和 Windows linker 提示。未改版本、打安装包、提交、推送或发布。
+
+### 2026-10-08 增量：PDF 转扫描件
+
+- 新业务归属 `src/features/pdf-to-scan/`：`tool.js` 负责懒加载和依赖注入，`template.js` / `pdf-to-scan.css` 复用 PDF 工作台及双主题，`controller.js` 管理文件、密码、状态、预览、进度和弹框。`core.js` 承担无平台依赖的页码、DPI、尺寸、像素效果和输出名规则；`processor.js` 逐页 PDF.js 渲染、JPEG 编码和发布；`scan-worker.js` / `worker-client.js` / `writer.js` 承担 Worker 像素处理、pdf-lib 组装、超时和响应校验。没有向应用组合根追加业务。
+- 首页入口与 lazy spec 同为 `pdf-to-scan`，overlay 为 `pdfScanOverlay`，initializer 为 `initPdfScanTool`；新增 feature-local DOM ID、`data-scan-*` 动作及中英文 `home.pdfScan` / `help.nav.pdfScan` 文案，并接入中英文帮助中心。核心和工具契约测试维护入口、模板、参数、输出和生命周期；不新增或变更 storage、事件、Tauri command、CLI/MCP 参数。
+- `shared/pdf-workbench.js` 只增加可选 `transformPreview = null` 钩子，用临时画布处理当前页效果并检查 revision；未传钩子的既有工具保持原行为。共享组件不反向导入 feature，PDF 文档、渲染、画布、Worker、临时密码和任务均由会话 owner 管理；关闭/销毁、取消、解析失败和迟到结果沿同一清理边界处理。
+- Native 输出复用 `begin_pdf_enhance_write`、`append_pdf_enhance_chunk`、`finalize_pdf_enhance_write`、`discard_pdf_enhance_write`，沿用路径校验、分块临时写入、qpdf 验证、唯一名称和原子发布。结果路径交给既有输出运行时；不复制文件夹打开逻辑。最终发布不能取消，关闭可留下有效保存结果，但不会向新会话写入旧状态。
+- 文件处理限制为 64 MB / 100 页、单页 1600 万像素 / 单边 8192 像素、100 MB 输出、60 秒解析和 10 分钟转换。输出保留页面可见宽高与方向，但不保留原文字层、链接、表单、数字签名验证能力；图像可被 OCR 识别，原稿模式也存在 JPEG 压缩，不作为脱敏或无损转换承诺。重依赖和工具 CSS 仍按需加载；像素处理和 PDF 组装放在 Worker 内。
+- 数量以本轮脚本为准：69 个桌面工具 / 12 个分类（PDF 14）；1445 个 HTML ID / 0 重复；137 个 Tauri command 实现 / 136 个唯一名称；167 个 Rust 测试；46 项 MCP 能力；111 个前端 invoke 名称 / 41 个事件名称。README 区分当前开发工具数与已发布 V3.0 的 68 项；版本契约继续验证历史发布说明，不把新工具改写成 V3.0 已发布能力。package/Tauri/CLI 仍为 3.0.0。
+- 验证：新核心/工具契约、帮助中心、版本、architecture、build、维护状态统计与严格集成审计通过；完整发布门禁 98 项 npm 脚本通过、安全 1264 项通过；发布套件结束后单独 CLI/MCP 回归通过，完整 Rust 164 passed、3 ignored。浏览器用真实合成 PDF 实际下载输出，检查 qpdf 有效、每页一张可解码 JPEG、文字层为空、DPI/尺寸/旋转/顺序/选择及灰度/暖色像素；覆盖双主题、双语、1401x920 / 1280x520 / 720x820 / 390x740、弹框 Tab/Escape、损坏/空/加密/超限输入、密码重试/取消、转换取消、重置、关闭重开，以及中英文帮助入口。
+- 共享回归：已有 PDF、PPT、Markdown、硬件页面冒烟通过，已有 PDF 工作台双主题与 Markdown 工作区浏览器专项通过；无新增 page/ARIA 错误。测试样本、截图和下载文件只写忽略目录 `tmp/pdf-to-scan/`。原生文件选择器、安装包、实际输出目录权限和资源管理器尚未执行本轮桌面实测；保留已有大 chunk、crypto externalization、Windows linker 提示。未改版本、打包安装器、提交、推送或发布；V3.1 记录同步根目录 `changelog.md`。

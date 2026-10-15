@@ -104,7 +104,7 @@ try {
                   const r = button.getBoundingClientRect();
                   const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
                   return { enabled: !button.disabled, visible: r.width > 0 && r.height > 0,
-                    reachable: hit === button || button.contains(hit), icons: button.querySelectorAll('svg').length };
+                    reachable: hit === button || button.contains(hit), icons: [...button.querySelectorAll('svg')].filter(icon => getComputedStyle(icon).opacity !== '0').length };
                 })
               };
             });
@@ -127,10 +127,9 @@ try {
           await page.setViewportSize({ width: 1400, height: 887 });
           await page.locator(`${dialog} .pdf-encrypt-password-dialog`).evaluate(panel => { panel.scrollTop = 0; });
           await page.locator(`#${prefix}Back`).hover();
-          await page.waitForFunction(selector => getComputedStyle(document.querySelector(selector), '::after')
-            .getPropertyValue('--tool-back-outline-progress').trim() === '360deg', `#${prefix}Back`);
-          const hover = await page.locator(`#${prefix}Back`).evaluate(node => getComputedStyle(node, '::after').backgroundImage);
-          assert.ok(hover.includes(theme === 'light' ? '0, 0, 0' : '255, 255, 255'), 'back outline uses the shared themed animation');
+          await page.waitForFunction(selector => getComputedStyle(document.querySelector(selector)).width === '64px', `#${prefix}Back`);
+          const hover = await page.locator(`#${prefix}Back`).evaluate(node => getComputedStyle(node).backgroundColor);
+          assert.equal(hover, theme === 'light' ? 'rgb(17, 17, 17)' : 'rgb(243, 243, 244)', 'back uses the shared inverse capsule');
           await page.locator(`#${prefix}PasswordInput`).fill('ToolKnit-test-42');
           await page.locator(`#${prefix}PasswordConfirm`).focus();
           await page.keyboard.press('Tab');

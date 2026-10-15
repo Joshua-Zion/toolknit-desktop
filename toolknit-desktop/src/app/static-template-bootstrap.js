@@ -1,5 +1,5 @@
 import donationTemplate from './templates/donation.html?raw';
-import updatePreviewTemplate from './templates/update-preview.html?raw';
+import updateDialogTemplate from './templates/update-dialog.html?raw';
 import settingsTemplate from './templates/settings.html?raw';
 import helpTemplate from './templates/help.html?raw';
 import legalTemplate from './templates/legal.html?raw';
@@ -7,18 +7,21 @@ import feedbackTemplate from './templates/feedback.html?raw';
 import aiKeyTemplate from './templates/ai-key.html?raw';
 import dependencyManagersTemplate from './templates/dependency-managers.html?raw';
 import globalDialogsTemplate from './templates/global-dialogs.html?raw';
+import customToolsTemplate from './templates/custom-tools.html?raw';
 import { mountTrustedTemplate } from './trusted-template-runtime.js';
+import { toolTopbarMarkup } from '../shared/tool-page-shell.js';
 
 const STATIC_TEMPLATE_SPECS = Object.freeze([
+  Object.freeze({ name: 'custom-tools', markup: customToolsTemplate, rootSelector: '#customToolsOverlay' }),
   Object.freeze({
     name: 'donation',
     markup: donationTemplate,
     rootSelector: '#donationOverlay'
   }),
   Object.freeze({
-    name: 'update-preview',
-    markup: updatePreviewTemplate,
-    rootSelector: '#updatePreviewOverlay'
+    name: 'update-dialog',
+    markup: updateDialogTemplate,
+    rootSelector: '#updateDialog'
   }),
   Object.freeze({
     name: 'settings',
@@ -32,7 +35,11 @@ const STATIC_TEMPLATE_SPECS = Object.freeze([
   }),
   Object.freeze({
     name: 'legal',
-    markup: legalTemplate,
+    markup: legalTemplate.replace('<!-- legal-topbar -->', toolTopbarMarkup({
+      tag: '<span id="legalTopTag">ToolKnit Program Declaration</span>',
+      title: '',
+      closeAttr: 'id="legalBackBtn" data-i18n-title="legal.back"'
+    })),
     rootSelector: '#legalOverlay'
   }),
   Object.freeze({
@@ -42,7 +49,11 @@ const STATIC_TEMPLATE_SPECS = Object.freeze([
   }),
   Object.freeze({
     name: 'ai-key',
-    markup: aiKeyTemplate,
+    markup: aiKeyTemplate.replace('<!-- ai-key-topbar -->', toolTopbarMarkup({
+      tag: 'AI KEY SETTINGS · TOOL PAGE 3.1',
+      title: 'AI Platform Keys',
+      closeAttr: 'id="apiKeyBack" data-i18n-title="apiKey.backToSettings"'
+    })),
     rootSelector: '#apiKeyOverlay'
   }),
   Object.freeze({

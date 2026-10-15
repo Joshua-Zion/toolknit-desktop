@@ -1,5 +1,6 @@
 import { AiProviderError, normalizeAiProviderConfig } from '../ai-provider-core.js';
 import { createLifecycleScope } from './tool-lifecycle.js';
+import { moveFocusOutOfHiddenRegion } from '../shared/tool-page-shell.js';
 
 const AI_PLATFORMS = Object.freeze({
   deepseek: Object.freeze({ url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat', label: 'DeepSeek' }),
@@ -23,6 +24,9 @@ export function createAiSettingsRuntime({
   aiApiKeyReady = Promise.resolve(),
   translate = key => key,
   onOpenSettings = () => {},
+  onCloseSettings = () => {},
+  settingsOverlay = null,
+  pageTransition = null,
   onError = error => console.error('AI settings error:', error)
 } = {}) {
   const scope = createLifecycleScope({ onError });
@@ -50,6 +54,7 @@ export function createAiSettingsRuntime({
   const aiKeyRequiredCancel = byId('aiKeyRequiredCancel');
   const aiKeyRequiredGoSettings = byId('aiKeyRequiredGoSettings');
   let apiKeyPlatformValue = 'deepseek';
+  let openRevision = 0;
 
   const read = (key, fallback = '') => {
     try { return storage?.getItem(key) ?? fallback; } catch { return fallback; }
@@ -95,24 +100,59 @@ export function createAiSettingsRuntime({
   const openApiKeySettings = async event => {
     event?.stopPropagation?.();
     if (!apiKeyOverlay) return;
-    onOpenSettings();
+    const revision = ++openRevision;
     const savedPlatform = read(AI_PLATFORM_KEY, 'deepseek');
-    const savedKey = await aiKeyStore?.get?.() || '';
-    setApiKeyPlatform(savedPlatform);
-    if (apiKeyInput) apiKeyInput.value = savedKey;
-    if (apiKeyCustomUrl) apiKeyCustomUrl.value = read(AI_CUSTOM_URL_KEY);
-    if (apiKeyCustomModel) apiKeyCustomModel.value = read(AI_CUSTOM_MODEL_KEY);
-    setPrivateHttpPermission(read(AI_PRIVATE_HTTP_KEY) === 'true');
-    apiKeyStatus?.classList.remove('show', 'success', 'error');
-    apiKeyOverlay.classList.add('visible');
-    apiKeyOverlay.setAttribute('aria-hidden', 'false');
-    apiKeyInput?.focus();
+    const activate = savedKey => {
+      if (revision !== openRevision || scope.disposed) return false;
+      // Keep both page layers behind the shared veil. The previous sequence
+      // reopened Settings, waited for the protected key, then hid Settings;
+      // that exposed the old page between two independent opacity changes.
+      if (!settingsOverlay?.classList.contains('visible')) onOpenSettings();
+      onCloseSettings();
+      setApiKeyPlatform(savedPlatform);
+      if (apiKeyInput) apiKeyInput.value = savedKey;
+      if (apiKeyCustomUrl) apiKeyCustomUrl.value = read(AI_CUSTOM_URL_KEY);
+      if (apiKeyCustomModel) apiKeyCustomModel.value = read(AI_CUSTOM_MODEL_KEY);
+      setPrivateHttpPermission(read(AI_PRIVATE_HTTP_KEY) === 'true');
+      apiKeyStatus?.classList.remove('show', 'success', 'error');
+      apiKeyOverlay.classList.add('visible');
+      apiKeyOverlay.inert = false;
+      apiKeyOverlay.setAttribute('aria-hidden', 'false');
+      apiKeyInput?.focus();
+      return true;
+    };
+    if (pageTransition?.run) {
+      // Start covering the current page immediately. Reading the protected
+      // key before entering the transition leaves Settings visible while the
+      // native store responds, which can take noticeably longer on Windows.
+      await pageTransition.run(async () => {
+        const savedKey = await aiKeyStore?.get?.() || '';
+        if (revision !== openRevision || scope.disposed) return false;
+        return activate(savedKey);
+      });
+    } else {
+      const savedKey = await aiKeyStore?.get?.() || '';
+      if (revision !== openRevision || scope.disposed) return;
+      activate(savedKey);
+    }
   };
 
   const closeApiKeySettings = () => {
+    ++openRevision;
+    moveFocusOutOfHiddenRegion(apiKeyOverlay);
+    if (apiKeyOverlay) apiKeyOverlay.inert = true;
     apiKeyOverlay?.classList.remove('visible');
     apiKeyOverlay?.setAttribute('aria-hidden', 'true');
+    if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.type = 'password'; }
+    apiKeyDropdown?.classList.remove('open');
+    void onOpenSettings();
   };
+  bindEvent(root, 'keydown', event => {
+    if (event.key === 'Escape' && apiKeyOverlay?.classList.contains('visible') && !apiKeyOverlay.inert) {
+      event.preventDefault();
+      closeApiKeySettings();
+    }
+  });
 
   const setStatus = (message, kind) => {
     if (!apiKeyStatus) return;
@@ -142,6 +182,7 @@ export function createAiSettingsRuntime({
     if (apiKeyInput) apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
   });
   bindEvent(apiKeySave, 'click', async () => {
+    const revision = openRevision;
     const key = apiKeyInput?.value.trim() || '';
     if (!key) { setStatus(translate('apiKey.errEmpty'), 'error'); return; }
     const platform = apiKeyPlatformValue;
@@ -179,9 +220,11 @@ export function createAiSettingsRuntime({
         write(AI_CUSTOM_MODEL_KEY, customModel);
         write(AI_PRIVATE_HTTP_KEY, apiKeyPrivateHttpSwitch?.getAttribute('aria-checked') === 'true' ? 'true' : 'false');
       }
-      setStatus(translate('apiKey.saved'), 'success');
       root?.dispatchEvent?.(new Event('toolknit:ai-key-change'));
-      (windowRef?.setTimeout || setTimeout)(closeApiKeySettings, 800);
+      if (revision === openRevision && !scope.disposed) {
+        setStatus(translate('apiKey.saved'), 'success');
+        scope.timeout(() => { if (revision === openRevision) closeApiKeySettings(); }, 800);
+      }
     } catch (error) {
       onError(error);
       setStatus(translate('apiKey.errStorage'), 'error');
@@ -190,6 +233,7 @@ export function createAiSettingsRuntime({
     }
   });
   bindEvent(apiKeyClear, 'click', async () => {
+    const revision = openRevision;
     if (!apiKeyClear) return;
     apiKeyClear.disabled = true;
     try {
@@ -199,7 +243,7 @@ export function createAiSettingsRuntime({
       setPrivateHttpPermission(false);
       setStatus(translate('apiKey.cleared'), 'success');
       root?.dispatchEvent?.(new Event('toolknit:ai-key-change'));
-      (windowRef?.setTimeout || setTimeout)(closeApiKeySettings, 800);
+      scope.timeout(() => { if (revision === openRevision) closeApiKeySettings(); }, 800);
     } catch (error) {
       onError(error);
       setStatus(translate('apiKey.errStorage'), 'error');
@@ -241,6 +285,7 @@ export function createAiSettingsRuntime({
     hasAiApiKey,
     hideAiKeyRequiredOverlay,
     openApiKeySettings,
+    closeApiKeySettings,
     openToolWithAiCheck,
     setApiKeyPlatform,
     showAiKeyRequiredOverlay

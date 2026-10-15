@@ -1,66 +1,17 @@
-/* Tool Page 3.0: one authoritative top navigation for tools and settings.
-   The PDF crop page is the reference implementation; all other tool pages
-   opt into the same measurements while retaining their own body layout. */
+/* Shared tool/secondary navigation. Home chrome retains its own styles. */
+:is(.feature-tool-overlay, .audio-clip-overlay, .ai-doc-edit-overlay):not(.visible) { display: none !important; }
+:is(.audio-clip-overlay, .ai-doc-edit-overlay).visible { display: flex !important; }
+.ai-doc-edit-overlay.ai-doc-edit-v2.visible { display: grid !important; }
 
-@property --tool-back-outline-progress {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-/* Page-owned measurements reuse one shape for navigation support and back actions. */
-:is(.home-v2-support-top, .tool-page-v2-support, .settings-v2-back, .pdf-merge-v2-back, .tool-page-v2-back, .ppt-draft-editor-back, .help-back-btn) {
-  --tk-nav-button-radius: 999px;
-}
-
-/*
- * Lazy tool shells are present in the static HTML so their launchers can keep
- * stable DOM contracts. Their feature stylesheets arrive only after the first
- * open, so the shared stylesheet must own the initial layout gate as well.
- * Without this rule an unstyled shell falls back to a normal block/flex box
- * and its tool header can appear above the home surface during first paint.
- */
-:is(.feature-tool-overlay, .audio-clip-overlay, .ai-doc-edit-overlay):not(.visible) {
-  display: none !important;
-}
-
-:is(.audio-clip-overlay, .ai-doc-edit-overlay).visible {
-  display: flex !important;
-}
-
-.ai-doc-edit-overlay.ai-doc-edit-v2.visible {
-  display: grid !important;
-}
-
-:is(.settings-v2-back, .pdf-merge-v2-back, .tool-page-v2-back, .ppt-draft-editor-back) {
-  --tool-back-static-outline: rgba(255, 255, 255, .34);
-  position: relative;
-  isolation: isolate;
-  border-color: transparent !important;
-  background-clip: padding-box;
-  overflow: visible;
-}
-
-:is(.settings-v2-back, .pdf-merge-v2-back, .tool-page-v2-back, .ppt-draft-editor-back)::before {
-  content: "";
-  position: absolute;
-  inset: .5px;
-  z-index: 0;
-  border: 1px solid var(--tool-back-static-outline);
-  border-radius: inherit;
-  filter: blur(.25px);
-  pointer-events: none;
-  transition: border-color 150ms ease;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) {
+.tk-tool-nav {
+  --tk-nav-bg: #080809;
+  --tk-nav-ink: #f3f3f4;
+  --tk-nav-muted: #aaa;
+  --tk-nav-hover: #1e1e21;
+  --tk-nav-inverse: #111;
   position: relative;
   z-index: 20;
+  box-sizing: border-box;
   min-width: 0;
   min-height: 68px;
   height: 68px;
@@ -70,139 +21,58 @@
   justify-content: space-between;
   gap: 18px;
   padding: 0 28px;
-  border-bottom: 0;
-  background: var(--tk-nav-bg, rgba(8, 8, 9, .94));
+  border: 0;
+  background: var(--tk-nav-bg);
+  color: var(--tk-nav-ink);
   -webkit-app-region: drag;
 }
 
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(
-  .pdf-merge-v2-topbar-left, .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) {
+/* The home and support pages share the same chrome contract as tool pages.
+   Keep the existing home markup, but give both surfaces one measured layout
+   and one animation owner. */
+.app.is-v2-home .home-v2-topbar.tk-tool-nav,
+.donation-page-topbar.tk-tool-nav {
+  display: flex;
+  grid-template-columns: none;
+  background: var(--tk-nav-bg);
+  color: var(--tk-nav-ink);
+}
+html[data-theme="light"] .tk-tool-nav {
+  --tk-nav-bg: #fff;
+  --tk-nav-ink: #111;
+  --tk-nav-muted: #666;
+  --tk-nav-hover: #eee;
+  --tk-nav-inverse: #fff;
+}
+.tk-tool-nav .tk-nav-left {
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 12px;
   flex: 0 1 auto;
-  overflow: hidden;
 }
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(
-  .pdf-merge-v2-topbar-left, .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) > :is(
-  .pdf-merge-v2-back, .settings-v2-back,
-  .tool-page-v2-back,
-  .ppt-draft-editor-back
-) {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 94px;
-  min-height: 38px;
-  height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  margin: 0;
-  padding: 0 14px;
-  border: 1px solid var(--line-strong, rgba(255, 255, 255, .2));
-  border-radius: var(--tk-nav-button-radius, 10px);
-  color: var(--ink, #f5f5f3);
-  fill: none;
-  background: var(--tk-nav-button-bg, rgba(255, 255, 255, .03));
-  font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1;
-  letter-spacing: 0;
-  white-space: nowrap;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(
-  .pdf-merge-v2-topbar-left, .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) > :is(.pdf-merge-v2-back, .settings-v2-back, .tool-page-v2-back, .ppt-draft-editor-back):hover {
-  color: var(--ink, #f5f5f3);
-  background: var(--tk-nav-hover-bg, rgba(255, 255, 255, .06));
-  border-color: rgba(255, 255, 255, .28);
-  transform: none;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(
-  .pdf-merge-v2-topbar-left, .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) > :is(.pdf-merge-v2-back, .settings-v2-back, .tool-page-v2-back, .ppt-draft-editor-back) svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  stroke: currentColor;
-  fill: none;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(
-  .pdf-merge-v2-topbar-left, .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) > :is(.pdf-merge-v2-top-tag, .settings-v2-top-tag, .tool-page-v2-tag, .ppt-draft-editor-top-tag) {
+.tk-tool-nav .tk-nav-tag {
+  box-sizing: border-box;
   min-width: 0;
   max-width: 420px;
   height: 24px;
-  min-height: 24px;
   display: inline-flex;
   align-items: center;
-  overflow: hidden;
-  padding: 0 10px;
-  border: 1px solid var(--line, rgba(255, 255, 255, .12));
+  padding: 0 9px;
+  border: 1px solid var(--tk-nav-hover);
   border-radius: 999px;
-  color: var(--muted, rgba(255, 255, 255, .55));
-  font-family: var(--tk-font-display-en), var(--tk-font-display-cn), "Segoe UI Symbol", sans-serif;
+  color: var(--tk-nav-muted);
+  background: transparent;
+  font-family: var(--tk-font-display-en), sans-serif;
   font-size: 12px;
   font-weight: 400;
   line-height: 1;
-  letter-spacing: .06em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
+  letter-spacing: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) {
+.tk-tool-nav .tk-nav-actions {
   min-width: 0;
   flex: 0 0 auto;
   display: flex;
@@ -213,469 +83,55 @@
   white-space: nowrap;
   -webkit-app-region: no-drag;
 }
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-  .home-v2-nav-link,
-  .tool-page-v2-nav-link,
-  .home-v2-support-top,
-  .tool-page-v2-support
-) {
-  min-height: 34px;
-  height: 34px;
+.tk-tool-nav .tk-nav-button {
+  position: relative;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 12px;
-  border-radius: var(--tk-nav-button-radius, 6px);
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+  color: var(--tk-nav-muted);
+  background: transparent;
   font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
-  overflow: visible;
-  background-clip: padding-box;
+  cursor: pointer;
+  transform: none;
+  transition: background-color 150ms ease, color 150ms ease;
   -webkit-app-region: no-drag;
 }
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-  .home-v2-nav-link,
-  .tool-page-v2-nav-link
-) {
-  border: 0;
-  color: var(--muted, rgba(255, 255, 255, .56));
-  background: transparent;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-  .home-v2-support-top,
-  .tool-page-v2-support
-) {
-  padding-right: 13px;
-  padding-left: 13px;
-  border: 1px solid var(--tk-nav-support-bg, var(--white, #f2f2ef));
-  color: var(--tk-nav-support-ink, var(--black, #0a0a0a));
-  background: var(--tk-nav-support-bg, var(--white, #f2f2ef));
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-  .home-v2-nav-link,
-  .tool-page-v2-nav-link,
-  .home-v2-support-top,
-  .tool-page-v2-support
-) svg {
+.tk-tool-nav .tk-nav-button::before,
+.tk-tool-nav .tk-nav-button::after { content: none; }
+.tk-tool-nav .tk-nav-button:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+.tk-tool-nav .tk-nav-button svg {
   width: 15px;
   height: 15px;
   flex: 0 0 15px;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > .home-v2-window-cluster {
-  width: 155px;
-  height: 34px;
-  flex: 0 0 155px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  -webkit-app-region: no-drag;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > .home-v2-window-cluster > .home-v2-icon-button,
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > .home-v2-window-cluster .home-v2-window-button {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  min-height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  color: var(--muted, rgba(255, 255, 255, .56));
-  background: transparent;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > .home-v2-window-cluster > .home-v2-window-controls {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin-left: 0;
-}
-
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > .home-v2-window-cluster .home-v2-icon-button svg,
-:is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-  .tool-page-v2-shell > .tool-page-v2-topbar,
-  .settings-v2-shell > .settings-v2-topbar,
-  .ppt-draft-editor-overlay > .ppt-draft-editor-header
-) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > .home-v2-window-cluster .home-v2-window-button svg {
-  width: 15px;
-  height: 15px;
-}
-
-/* Dedicated pages had local overrides that predate the shared chrome. */
-.ai-doc-edit-v2 .ai-doc-edit-v2-topbar-left { gap: 12px; }
-.ai-doc-edit-v2 .ai-doc-edit-v2-topbar .pdf-merge-v2-back,
-.ai-doc-edit-v2 .pdf-merge-v2-back { min-width: 94px; height: 38px; border-radius: var(--tk-nav-button-radius, 10px); padding: 0 14px; }
-.ppt-draft-editor-header .ppt-draft-editor-deck-title { min-width: 0; }
-.teleprompter-overlay > .teleprompter-topbar,
-.bg-removal-overlay > .bg-removal-topbar { background: rgba(8, 8, 9, .94); }
-
-@media (max-width: 780px) {
-  /* Some legacy tool shells (notably hardware pages) still declare a fixed
-     68px first grid row after the shared header was made responsive. Let the
-     row grow with the wrapped action group so controls never hang outside
-     the navigation bar. */
-  :is(
-    .pdf-merge-overlay.pdf-merge-v2,
-    .audio-clip-overlay.pdf-merge-v2,
-    .audio-extract-overlay.pdf-merge-v2,
-    .ai-doc-edit-overlay.ai-doc-edit-v2
-  ) {
-    grid-template-rows: auto minmax(0, 1fr) !important;
-  }
-
-  :is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) {
-    align-items: flex-start;
-    flex-direction: column;
-    min-height: 120px;
-    height: auto;
-    flex-basis: auto;
-    gap: 18px;
-    padding: 16px 22px;
-  }
-
-  .tool-page-v2-shell { grid-template-rows: auto minmax(0, 1fr); overflow: auto; }
-
-  :is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) > :is(.pdf-merge-v2-topbar-left, .settings-v2-topbar-left, .tool-page-v2-topbar-left, .ppt-draft-editor-topbar-left) {
-    width: 100%;
-    flex: 0 0 auto;
-  }
-
-  :is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) {
-    width: 100%;
-    flex: 0 0 auto;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    margin-left: 0;
-  }
-
-  /* Keep the same labeled actions as the PDF crop reference. Older dynamic
-     tool rules collapse these labels to icon-only buttons below 760px, which
-     changes both the action row width and the resulting header height. */
-  :is(
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .feature-tool-overlay.pdf-merge-v2 > .pdf-merge-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-    .home-v2-nav-link,
-    .tool-page-v2-nav-link,
-    .home-v2-support-top,
-    .tool-page-v2-support
-  ) span {
-    display: inline;
-  }
-
-  :is(
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .feature-tool-overlay.pdf-merge-v2 > .pdf-merge-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-    .home-v2-nav-link,
-    .tool-page-v2-nav-link,
-    .home-v2-support-top,
-    .tool-page-v2-support
-  ) {
-    width: auto;
-    min-width: 0;
-    padding: 0 12px;
-  }
-
-  :is(
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .feature-tool-overlay.pdf-merge-v2 > .pdf-merge-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) > :is(.home-v2-top-actions, .pdf-merge-v2-top-actions, .tool-page-v2-top-actions) > :is(
-    .home-v2-support-top,
-    .tool-page-v2-support
-  ) {
-    padding-right: 13px;
-    padding-left: 13px;
-  }
-
-  :is(
-  :is(.pdf-merge-overlay.pdf-merge-v2, .feature-tool-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2) > .pdf-merge-v2-topbar,
-    .tool-page-v2-shell > .tool-page-v2-topbar,
-    .settings-v2-shell > .settings-v2-topbar,
-    .ppt-draft-editor-overlay > .ppt-draft-editor-header
-  ) > :is(.pdf-merge-v2-topbar-left, .settings-v2-topbar-left, .tool-page-v2-topbar-left, .ppt-draft-editor-topbar-left) > :is(.pdf-merge-v2-top-tag, .settings-v2-top-tag, .tool-page-v2-tag, .ppt-draft-editor-top-tag) {
-    max-width: calc(100vw - 44px);
-  }
-}
-
-/* Final catch-all for every tool header. A few legacy overlays use a
-   tool-specific root class (audio/video and lazy tool pages), so scoping the
-   shared chrome by the header class keeps their geometry identical too.
-   :where keeps existing tool specificity unchanged when settings opts in. */
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) {
-  position: relative;
-  z-index: 20;
-  min-width: 0;
-  min-height: 68px;
-  height: 68px;
-  flex: 0 0 68px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 0 28px;
-  border-bottom: 0;
-  background: var(--tk-nav-bg, rgba(8, 8, 9, .94));
-  -webkit-app-region: drag;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .pdf-merge-v2-topbar-left,
-  .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  flex: 0 1 auto;
-  overflow: hidden;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .pdf-merge-v2-topbar-left,
-  .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) > :is(
-  .pdf-merge-v2-back,
-  .settings-v2-back,
-  .tool-page-v2-back,
-  .ppt-draft-editor-back
-) {
-  position: relative;
-  isolation: isolate;
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 94px;
-  min-height: 38px;
-  height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  margin: 0;
-  padding: 0 14px;
-  border-radius: var(--tk-nav-button-radius, 10px);
-  line-height: 1;
-  letter-spacing: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  background-clip: padding-box;
-  -webkit-mask-image: linear-gradient(#fff, #fff);
-  mask-image: linear-gradient(#fff, #fff);
-  -webkit-app-region: no-drag;
-}
-
-/* Tool back buttons stay fixed while a theme-aware outline draws clockwise from
-   the top-left corner. This final shared rule supersedes legacy lift hovers. */
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) :is(.pdf-merge-v2-back, .settings-v2-back) {
-  transform: none !important;
-  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) :is(.pdf-merge-v2-back, .settings-v2-back)::after {
-  --tool-back-outline-progress: 0deg;
-  content: "";
-  position: absolute;
-  inset: .5px;
-  z-index: 1;
-  border: 1px solid transparent;
-  border-radius: inherit;
-  background: conic-gradient(
-    from -68deg,
-    var(--tool-back-hover-outline, rgba(255, 255, 255, .98)) 0deg,
-    var(--tool-back-hover-outline, rgba(255, 255, 255, .98)) var(--tool-back-outline-progress),
-    transparent var(--tool-back-outline-progress),
-    transparent 360deg
-  ) border-box;
-  -webkit-mask:
-    linear-gradient(#000 0 0) padding-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) padding-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  filter: blur(.25px);
-  opacity: 0;
+  stroke-width: 2.35px;
+  transform-box: fill-box;
+  transform-origin: center;
   pointer-events: none;
-  transition: none;
 }
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) :is(.pdf-merge-v2-back, .settings-v2-back):hover,
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) :is(.pdf-merge-v2-back, .settings-v2-back):active {
-  --tool-back-static-outline: rgba(255, 255, 255, .14);
-  transform: none !important;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) :is(.pdf-merge-v2-back, .settings-v2-back):hover::after {
-  --tool-back-outline-progress: 360deg;
-  opacity: 1;
-  transition:
-    --tool-back-outline-progress 560ms linear,
-    opacity 70ms linear;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) :is(.pdf-merge-v2-back, .settings-v2-back):hover::after {
-    transition: none;
-  }
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .pdf-merge-v2-topbar-left,
-  .settings-v2-topbar-left,
-  .tool-page-v2-topbar-left,
-  .ppt-draft-editor-topbar-left
-) > :is(.pdf-merge-v2-top-tag, .settings-v2-top-tag, .tool-page-v2-tag, .ppt-draft-editor-top-tag) {
+.tk-tool-nav .tk-nav-button svg > * { transform-box: fill-box; transform-origin: center; }
+.tk-tool-nav :is(.tk-nav-web, .tk-nav-support) {
+  width: auto;
   min-width: 0;
-  max-width: 420px;
-  height: 24px;
-  min-height: 24px;
-  display: inline-flex;
-  align-items: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) {
-  min-width: 0;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-  margin-left: auto;
-  white-space: nowrap;
-  -webkit-app-region: no-drag;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) > :is(
-  .home-v2-nav-link,
-  .tool-page-v2-nav-link,
-  .home-v2-support-top,
-  .tool-page-v2-support
-) {
-  min-height: 34px;
   height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  min-height: 34px;
   padding: 0 12px;
-  border-radius: var(--tk-nav-button-radius, 6px);
-  line-height: 1;
-  letter-spacing: 0;
-  white-space: nowrap;
-  -webkit-app-region: no-drag;
+  border-radius: 999px;
 }
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) > :is(.home-v2-support-top, .tool-page-v2-support) {
-  padding-inline: 13px;
-}
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) > .home-v2-window-cluster {
+.tk-tool-nav :is(.tk-nav-web, .tk-nav-support) > span:not(.tk-nav-morph) { display: inline; }
+.tk-tool-nav .tk-nav-web:hover { color: var(--tk-nav-ink); background: var(--tk-nav-hover); }
+.tk-tool-nav .tk-nav-support { padding-inline: 13px; color: var(--tk-nav-inverse); background: var(--tk-nav-ink); }
+.tk-tool-nav .tk-nav-support:hover { color: var(--tk-nav-bg); background: var(--tk-nav-ink); }
+.tk-tool-nav .home-v2-window-cluster {
   width: 155px;
   height: 34px;
   flex: 0 0 155px;
@@ -685,133 +141,81 @@
   gap: 2px;
   -webkit-app-region: no-drag;
 }
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) > .home-v2-window-cluster > .home-v2-icon-button,
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) > .home-v2-window-cluster .home-v2-window-button {
+.tk-tool-nav :is(.home-v2-window-controls, .tool-page-v2-window-controls) { display: flex; align-items: center; gap: 0; margin-left: 0; }
+.tk-tool-nav .tk-nav-extended-cluster { width: 227px; flex-basis: 227px; }
+.tk-tool-nav :is(.tk-nav-help, .tk-nav-feedback) { width: 34px; min-width: 34px; height: 34px; min-height: 34px; flex: 0 0 34px; padding: 0; border-radius: 6px; }
+.tk-tool-nav :is(.tk-nav-help, .tk-nav-feedback):hover { color: var(--tk-nav-ink); background: var(--tk-nav-hover); }
+:is(.tk-nav-help, .tk-nav-feedback):hover .tk-nav-current { opacity: 0; transform: scale(.58) rotate(-18deg); }
+:is(.tk-nav-help, .tk-nav-feedback):hover .tk-nav-alternate { opacity: 1; transform: scale(1) rotate(0); }
+.tk-tool-nav :is(.tk-nav-settings, .tk-nav-minimize, .tk-nav-maximize, .tk-nav-close) {
   width: 34px;
   min-width: 34px;
   height: 34px;
   min-height: 34px;
   flex: 0 0 34px;
-  display: grid;
-  place-items: center;
   padding: 0;
-  border: 0;
   border-radius: 6px;
-  color: var(--muted, rgba(255, 255, 255, .56));
-  background: transparent;
-  font-family: var(--tk-font-display-cn), "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 13.3333px;
-  font-weight: 400;
-  line-height: 1;
-  cursor: pointer;
-  transition: color 150ms ease, background 150ms ease;
-  -webkit-app-region: no-drag;
 }
-
-:is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-  .home-v2-top-actions,
-  .pdf-merge-v2-top-actions,
-  .tool-page-v2-top-actions
-) > .home-v2-window-cluster > .home-v2-window-controls {
-  display: flex;
-  align-items: center;
+.tk-tool-nav :is(.tk-nav-settings, .tk-nav-minimize, .tk-nav-maximize, .tk-nav-close):hover,
+.tk-tool-nav .tk-nav-settings.is-current { color: var(--tk-nav-ink); background: var(--tk-nav-hover); }
+.tk-tool-nav .tk-nav-back {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  flex: 0 0 auto;
+  padding: 0;
   gap: 0;
-  margin-left: 0;
+  border-radius: 999px;
+  outline: none;
+  color: var(--tk-nav-inverse);
+  background: var(--tk-nav-ink);
+  overflow: hidden;
+  transition: width 360ms cubic-bezier(.22,.8,.28,1);
 }
-
+.tk-tool-nav .tk-nav-back:hover { width: 64px; color: var(--tk-nav-inverse); background: var(--tk-nav-ink); }
+.tk-tool-nav .tk-nav-back > svg { width: 18px; height: 18px; flex-basis: 18px; }
+.tk-tool-nav .tk-nav-back-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.tk-nav-back-head { d: path("M 15 5 L 6 12 L 15 19 L 15 5"); fill: currentColor; transition: d 360ms cubic-bezier(.22,.8,.28,1), fill 260ms ease; }
+.tk-nav-back-shaft { opacity: 0; transform: translateX(3px); transition: opacity 240ms ease, transform 360ms cubic-bezier(.22,.8,.28,1); }
+.tk-nav-back:hover .tk-nav-back-head { d: path("M 12 5 L 5 12 L 12 19 L 12 19"); fill: transparent; }
+.tk-nav-back:hover .tk-nav-back-shaft { opacity: 1; transform: translateX(0); }
+.tk-nav-morph { width: 15px; height: 15px; display: inline-grid; flex: 0 0 15px; place-items: center; }
+.tk-nav-morph > svg { grid-area: 1 / 1; transition: opacity 180ms ease, transform 260ms cubic-bezier(.22,.8,.28,1); }
+.tk-nav-morph .tk-nav-alternate { opacity: 0; transform: scale(.48) rotate(-35deg); }
+.tk-nav-web:hover .tk-nav-current { opacity: 0; transform: scale(.58) rotate(35deg); }
+.tk-nav-support:hover .tk-nav-current { opacity: 0; transform: scale(.58) rotate(-18deg); }
+:is(.tk-nav-web, .tk-nav-support):hover .tk-nav-alternate { opacity: 1; transform: scale(1) rotate(0); }
+.tk-nav-settings:hover > svg { animation: tk-nav-gear 650ms cubic-bezier(.22,.8,.28,1) both; }
+.tk-nav-minimize:hover > svg > * { animation: tk-nav-line 480ms cubic-bezier(.22,.8,.28,1) both; }
+.tk-nav-maximize:hover > svg { animation: tk-nav-frame 560ms cubic-bezier(.22,.8,.28,1) both; }
+.tk-nav-close:hover > svg > * { animation: tk-nav-close 540ms cubic-bezier(.22,.8,.28,1) both; }
+@keyframes tk-nav-gear { 0%, 100% { transform: rotate(0); } 65% { transform: rotate(28deg); } 86% { transform: rotate(21deg); } }
+@keyframes tk-nav-line { 0%, 100% { transform: scaleX(1); } 42% { transform: scaleX(.72); } 74% { transform: scaleX(1.06); } }
+@keyframes tk-nav-frame { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.17); } 78% { transform: scale(.97); } }
+@keyframes tk-nav-close { 0%, 100% { transform: scale(1) rotate(0); } 46% { transform: scale(1.14) rotate(8deg); } 78% { transform: scale(.98) rotate(-2deg); } }
 @media (max-width: 780px) {
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) {
-    align-items: flex-start;
-    flex-direction: column;
-    min-height: 120px;
-    height: auto;
-    flex-basis: auto;
-    gap: 18px;
-    padding: 16px 22px;
-  }
-
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-    .pdf-merge-v2-topbar-left,
-    .settings-v2-topbar-left,
-    .tool-page-v2-topbar-left,
-    .ppt-draft-editor-topbar-left
-  ) {
-    width: 100%;
-    flex: 0 0 auto;
-  }
-
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-    .home-v2-top-actions,
-    .pdf-merge-v2-top-actions,
-    .tool-page-v2-top-actions
-  ) {
-    width: 100%;
-    flex: 0 0 auto;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    margin-left: 0;
-  }
-
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-    .home-v2-top-actions,
-    .pdf-merge-v2-top-actions,
-    .tool-page-v2-top-actions
-  ) > :is(
-    .home-v2-nav-link,
-    .tool-page-v2-nav-link,
-    .home-v2-support-top,
-    .tool-page-v2-support
-  ) {
-    width: auto;
-    min-width: 0;
-    padding-inline: 12px;
-  }
-
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-    .home-v2-top-actions,
-    .pdf-merge-v2-top-actions,
-    .tool-page-v2-top-actions
-  ) > :is(.home-v2-support-top, .tool-page-v2-support) {
-    padding-inline: 13px;
-  }
-
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-    .home-v2-top-actions,
-    .pdf-merge-v2-top-actions,
-    .tool-page-v2-top-actions
-  ) > :is(
-    .home-v2-nav-link,
-    .tool-page-v2-nav-link,
-    .home-v2-support-top,
-    .tool-page-v2-support
-  ) span {
-    display: inline !important;
-  }
-
-  :is(.pdf-merge-v2-topbar, :where(.settings-v2-shell) > .settings-v2-topbar) > :is(
-    .pdf-merge-v2-topbar-left,
-    .settings-v2-topbar-left,
-    .tool-page-v2-topbar-left,
-    .ppt-draft-editor-topbar-left
-  ) > :is(.pdf-merge-v2-top-tag, .settings-v2-top-tag, .tool-page-v2-tag, .ppt-draft-editor-top-tag) {
-    max-width: calc(100vw - 44px);
-  }
-
-  :is(
-    .pdf-merge-overlay.pdf-merge-v2,
-    .audio-clip-overlay.pdf-merge-v2,
-    .audio-extract-overlay.pdf-merge-v2,
-    .ai-doc-edit-overlay.ai-doc-edit-v2
-  ) {
-    grid-template-rows: auto minmax(0, 1fr) !important;
-  }
+  .tk-tool-nav { height: auto; min-height: 120px; flex-basis: auto; align-items: flex-start; flex-direction: column; gap: 18px; padding: 16px 22px; }
+  .tk-tool-nav .tk-nav-left { width: 100%; flex: 0 0 auto; }
+  .tk-tool-nav .tk-nav-actions { width: 100%; flex: 0 0 auto; justify-content: flex-start; flex-wrap: wrap; margin-left: 0; }
+  .tk-tool-nav .tk-nav-tag { max-width: calc(100vw - 120px); }
+  .tool-page-v2-shell { grid-template-rows: auto minmax(0, 1fr); overflow: auto; }
+  :is(.pdf-merge-overlay.pdf-merge-v2, .audio-clip-overlay.pdf-merge-v2, .audio-extract-overlay.pdf-merge-v2, .ai-doc-edit-overlay.ai-doc-edit-v2) { grid-template-rows: auto minmax(0, 1fr) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tk-tool-nav .tk-nav-button,
+  .tk-tool-nav .tk-nav-button *,
+  .tk-tool-nav .tk-nav-button svg,
+  .tk-tool-nav .tk-nav-button svg *,
+  .tk-nav-button,
+  .tk-nav-button * { animation: none; transition: none; }
 }

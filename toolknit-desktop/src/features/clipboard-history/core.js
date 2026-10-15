@@ -25,6 +25,8 @@ export function validateSettings(settings) {
     && settings.excludedApps.every(value => value.length <= 128 && !/[\\/\x00-\x1f\x7f]/.test(value));
 }
 export function errorKey(error) {
+  if(String(error?.message||error)==='screenshot:viewer-limit')return 'viewerLimit';
+  if(String(error?.message||error)==='screenshot:image-too-large')return 'tooLarge';
   const code = String(error?.message || error).replace(/^clipboard:/, '');
   return ({ 'desktop-only': 'desktopOnly', busy: 'busy', capacity: 'capacity', 'too-large': 'tooLarge', 'files-missing': 'filesMissing', 'key-failed': 'keyFailed', 'record-damaged': 'recordDamaged', 'not-found': 'notFound', 'invalid-settings': 'invalidSettings', changed: 'changed', 'image-invalid': 'imageInvalid' })[code] || 'operationFailed';
 }

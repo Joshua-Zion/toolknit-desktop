@@ -133,11 +133,11 @@ const secondaryTheme = await readFile(new URL('../src/styles/themes/secondary-pa
 assert.match(themeIndex, /@import url\('\.\/secondary-pages-light\.css'\)/);
 assert.match(secondaryTheme, /html\[data-theme="light"\] :is\(\.feedback-overlay, \.donation-overlay, \.api-key-overlay\)/);
 assert.doesNotMatch(secondaryTheme, /!important|z-index\s*:/, 'secondary page colors do not override modal ownership');
-assert.doesNotMatch(secondaryTheme, /aiKeyRequiredOverlay|transcription-model-overlay|update-preview-overlay/, 'stage three and update dialogs keep their own palette');
+assert.doesNotMatch(secondaryTheme, /aiKeyRequiredOverlay|transcription-model-overlay|update-dialog/, 'stage three and update dialogs keep their own palette');
 const dependencyTheme = await readFile(new URL('../src/styles/themes/dependency-dialogs-light.css', import.meta.url), 'utf8');
 assert.match(themeIndex, /@import url\('\.\/dependency-dialogs-light\.css'\)/);
 for (const id of ['transcriptionModelOverlay', 'mattingModelOverlay', 'ffmpegRuntimeOverlay', 'libreOfficeRuntimeOverlay', 'dependencyGateOverlay', 'aiKeyRequiredOverlay']) assert.ok(dependencyTheme.includes(`#${id}`));
-assert.doesNotMatch(dependencyTheme, /!important|z-index\s*:|force-update|cleanup-drive|update-preview/, 'light dependency dialogs preserve stack and unrelated surfaces');
+assert.doesNotMatch(dependencyTheme, /!important|z-index\s*:|force-update|cleanup-drive|update-dialog/, 'light dependency dialogs preserve stack and unrelated surfaces');
 assert.match(dependencyTheme, /button:focus-visible/);
 assert.match(dependencyTheme, /button:disabled/);
 assert.match(dependencyTheme, /-webkit-backdrop-filter: blur\(12px\);\s*backdrop-filter: blur\(12px\);/, 'standard backdrop declaration must follow the prefix so CSS minification preserves it');

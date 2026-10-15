@@ -1,21 +1,9 @@
-const MEBIBYTE = 1024 * 1024;
+import { MEBIBYTE } from './core/limits/bytes.js';
+import { PDF_TO_IMAGE_LIMITS } from './core/limits/pdf.js';
+
 const PDF_POINTS_PER_INCH = 72;
 
-export const PDF_TO_IMAGE_LIMITS = Object.freeze({
-  maxFiles: 1,
-  maxInputBytes: 150 * MEBIBYTE,
-  maxPages: 200,
-  maxLongPages: 20,
-  maxPagesPerLongImage: 5,
-  minGridPages: 4,
-  maxGridPages: 9,
-  gridGap: 24,
-  maxRenderSide: 16_384,
-  maxRenderPixels: 40_000_000,
-  maxLongImageSide: 32_767,
-  maxLongImagePixels: 60_000_000,
-  maxEstimatedWorkingBytes: 384 * MEBIBYTE
-});
+export { PDF_TO_IMAGE_LIMITS };
 
 export const PDF_TO_IMAGE_CLARITY_PRESETS = Object.freeze({
   standard: Object.freeze({ dpi: 144, jpegQuality: 0.9, webpQuality: 1 }),

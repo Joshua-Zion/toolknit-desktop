@@ -7,7 +7,9 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::{ai_provider, onnx_segmenter, platform, rsa_legacy_windows, system_cleanup, teleprompter_whisper};
+use crate::{
+    ai_provider, onnx_segmenter, platform, rsa_legacy_windows, system_cleanup, teleprompter_whisper,
+};
 
 // Each native domain is a real Rust module. The parent keeps a compatibility
 // re-export boundary so the command registry and older tests retain their
@@ -18,6 +20,9 @@ use core_runtime::*;
 #[path = "native_runtime/dependencies.rs"]
 pub(super) mod dependencies_runtime;
 use dependencies_runtime::*;
+#[path = "native_runtime/limits.rs"]
+pub(super) mod limits_runtime;
+use limits_runtime::*;
 #[path = "native_runtime/transcription.rs"]
 pub(super) mod transcription_runtime;
 use transcription_runtime::*;
@@ -26,8 +31,8 @@ pub(super) mod pdf_runtime;
 use pdf_runtime::*;
 #[path = "native_runtime/image.rs"]
 pub(super) mod image_commands;
-use image_commands::*;
 pub(crate) use image_commands::basic::decode_oriented_image;
+use image_commands::*;
 #[path = "native_runtime/media.rs"]
 pub(super) mod media_runtime;
 use media_runtime::*;
@@ -35,7 +40,10 @@ use media_runtime::*;
 pub(super) mod system_runtime;
 use system_runtime::*;
 mod office;
-use office::{libreoffice_candidates, LibreOfficeRuntimeInfo};
+use office::LibreOfficeRuntimeInfo;
+mod quick_screenshot;
+pub(crate) use quick_screenshot::open_clipboard_image;
+mod local_translation;
 mod runner;
 pub use runner::run;
 use runner::{minimize_main_window, show_main_window};

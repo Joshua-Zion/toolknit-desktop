@@ -41,37 +41,6 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-layout {
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-layout::-webkit-scrollbar-thumb { background: #aaaaaa; }
 
-html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-topbar {
-  --tk-nav-bg: #ffffff;
-  --tk-nav-button-bg: #ffffff;
-  --tk-nav-hover-bg: #eeeeee;
-  --tk-nav-current-bg: #eeeeee;
-  --tk-nav-support-bg: #111111;
-  --tk-nav-support-ink: #ffffff;
-  --muted: #111111;
-  background: var(--tk-nav-bg);
-  color: #111111;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-back {
-  --tool-back-static-outline: #bbbbbb;
-  --tool-back-hover-outline: #000000;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings :is(.settings-v2-top-tag, .home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
-  color: #111111;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover,
-html[data-theme="light"] .settings-overlay.v2-settings .home-v2-icon-button.is-current {
-  color: #111111;
-  background: #eeeeee;
-}
-
-html[data-theme="light"] .settings-overlay.v2-settings .home-v2-support-top:hover {
-  --tk-nav-support-bg: #303030;
-}
-
 /* Reuse the approved home palette without changing the dark settings rules. */
 html[data-theme="light"] .settings-overlay.v2-settings :is(.settings-v2-poster, .settings-v2-card) {
   --ink: var(--tk-home-card-ink);
@@ -109,15 +78,12 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-poster-kicke
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-poster h1 {
   margin: 14px 0 12px;
-  font-size: 32px;
   line-height: 1.3;
 }
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-poster p {
   max-width: none;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.7;
 }
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-poster-meta {
@@ -162,7 +128,6 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-card {
   padding: 22px;
   border-radius: var(--settings-light-panel-radius);
   background: var(--tk-home-card-bg);
-  font-size: 13px;
 }
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-card.span-4 { grid-column: span 4; }
@@ -172,7 +137,6 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-card.span-12
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-head { margin-bottom: 16px; }
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-head h2 {
   margin: 0;
-  font-size: 20px;
   line-height: 1.4;
 }
 
@@ -216,7 +180,6 @@ html[data-theme="light"] .settings-overlay.v2-settings :is(.settings-v2-btn, .se
   max-width: 100%;
   min-height: 38px;
   padding: 8px 14px;
-  font-size: 13px;
   line-height: 1.5;
   white-space: normal;
 }
@@ -270,7 +233,7 @@ html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch {
   background: #9ca0a6;
 }
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch::before { top: 4px; left: 4px; background: #ffffff; }
-html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch.active { background: var(--tk-page-ink); }
+html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-switch:is(.active, [aria-pressed="true"]) { background: var(--tk-page-ink); }
 
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-font-slot { border-color: var(--line); }
 html[data-theme="light"] .settings-overlay.v2-settings .settings-v2-radius-input:disabled { background: #dcdde0; }

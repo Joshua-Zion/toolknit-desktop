@@ -1,5 +1,6 @@
 import { createLifecycleScope } from './tool-lifecycle.js';
 import { moveFocusOutOfHiddenRegion } from '../shared/tool-page-shell.js';
+import { createModalSession, setModalInteractivity } from './modal-runtime.js';
 
 /** Owns help, feedback and legal overlays without coupling them to app startup. */
 export function createHelpCenterRuntime({
@@ -17,7 +18,8 @@ export function createHelpCenterRuntime({
   settingsOverlay,
   settingsContent,
   pageTransition = null,
-  syncCustomBackgroundPreviewPlayback = () => {}
+  syncCustomBackgroundPreviewPlayback = () => {},
+  onShowSettings = () => {}
 } = {}) {
   const scope = createLifecycleScope();
   const byId = id => root?.getElementById?.(id) || null;
@@ -44,32 +46,87 @@ export function createHelpCenterRuntime({
   const legalBackBtn = byId('legalBackBtn');
   const legalNav = byId('legalNav');
   const legalContentTitle = byId('legalContentTitle');
+  const legalTopTag = byId('legalTopTag');
   const legalContentBody = byId('legalContentBody');
   const marqueeTrack = byId('marqueeTrack');
 
   let helpSearchCache = null;
   let lightraysInstance = null;
+  let subpageReturnTarget = null;
+  let background = null;
+  let session = null;
+  let activePage = null;
+  let previousZIndex = '';
 
-  const runTransition = action => pageTransition?.run
-    ? pageTransition.run(action)
-    : Promise.resolve().then(action);
+  const runTransition = action => {
+    const currentAction = () => { if (!scope.disposed) return action(); };
+    return pageTransition?.run ? pageTransition.run(currentAction) : Promise.resolve().then(currentAction);
+  };
 
-  function closeSettingsForHelp() {
+  function closeSettingsForSubpage() {
     if (!settingsOverlay?.classList.contains('visible')) return;
     moveFocusOutOfHiddenRegion(settingsOverlay);
     settingsOverlay.classList.remove('visible');
+    setModalInteractivity(settingsOverlay, false);
     settingsOverlay.style.zIndex = '';
     syncCustomBackgroundPreviewPlayback();
   }
 
+  function releasePage(restore = true) {
+    session?.close({ restore });
+    session = null;
+    if (activePage) activePage.style.zIndex = previousZIndex;
+    activePage = null;
+    hideHelpOverlay(); hideFeedbackOverlay(); hideLegalOverlay();
+  }
+
+  function beginSubpageNavigation(page, source, onClose) {
+    if (!activePage) {
+      subpageReturnTarget = settingsOverlay?.classList.contains('visible') ? 'settings' : null;
+      background = subpageReturnTarget ? settingsOverlay : source || root.activeElement?.closest?.('[id$="Overlay"], [id$="Workspace"], [id$="Dialog"]') || root.querySelector?.('.app');
+      closeSettingsForSubpage();
+    } else releasePage(false);
+    activePage = page;
+    previousZIndex = page.style.zIndex;
+    const backgroundZ = Number.parseInt(background ? windowRef?.getComputedStyle?.(background)?.zIndex : '0', 10) || 0;
+    const pageZ = Number.parseInt(windowRef?.getComputedStyle?.(page)?.zIndex, 10) || 0;
+    page.style.zIndex = String(Math.max(pageZ, backgroundZ + 1));
+    // Injected test roots share the same session contract as real DOM roots.
+    session = createModalSession({ root: page, background, initialFocus: page.querySelector?.('button'), onClose, documentRef: root });
+    session.open();
+  }
+
+  function hideHelpOverlay() {
+    moveFocusOutOfHiddenRegion(helpOverlay);
+    helpOverlay?.classList.remove('visible');
+    if (helpSearchInput) helpSearchInput.value = '';
+    helpNav?.querySelectorAll('.help-nav-item').forEach(item => { item.style.display = ''; });
+    helpNav?.querySelectorAll('.help-nav-group').forEach(group => { group.style.display = ''; });
+  }
+
+  function hideFeedbackOverlay() {
+    moveFocusOutOfHiddenRegion(feedbackOverlay);
+    feedbackOverlay?.classList.remove('visible');
+    lightraysInstance?.destroy?.();
+    lightraysInstance = null;
+  }
+
+  function hideLegalOverlay() {
+    moveFocusOutOfHiddenRegion(legalOverlay);
+    legalOverlay?.classList.remove('visible');
+  }
+
+  function restoreSettingsIfNeeded() {
+    const restore = subpageReturnTarget === 'settings';
+    subpageReturnTarget = null;
+    background = null;
+    if (restore) onShowSettings();
+  }
+
   function closeHelpOverlay() {
     return runTransition(() => {
-      if (!helpOverlay) return;
-      moveFocusOutOfHiddenRegion(helpOverlay);
-      helpOverlay.classList.remove('visible');
-      if (helpSearchInput) helpSearchInput.value = '';
-      helpNav?.querySelectorAll('.help-nav-item').forEach(item => { item.style.display = ''; });
-      helpNav?.querySelectorAll('.help-nav-group').forEach(group => { group.style.display = ''; });
+      releasePage();
+      restoreSettingsIfNeeded();
     });
   }
 
@@ -100,11 +157,10 @@ export function createHelpCenterRuntime({
     helpNav?.querySelectorAll('.help-nav-group').forEach(group => { group.style.display = ''; });
   }
 
-  function openHelpOverlay(sectionId = 'overview') {
+  function openHelpOverlay(sectionId = 'overview', source = null) {
     return runTransition(() => {
       if (!helpOverlay) return;
-      closeSettingsForHelp();
-      helpOverlay.classList.add('visible');
+      beginSubpageNavigation(helpOverlay, source, closeHelpOverlay);
       showHelpSection(sectionId || 'overview');
     });
   }
@@ -125,20 +181,18 @@ export function createHelpCenterRuntime({
   }
   scope.use(onThemeChange(syncFeedbackBackground));
 
-  function openFeedbackOverlay() {
+  function openFeedbackOverlay(source = null) {
     return runTransition(() => {
       if (!feedbackOverlay) return;
-      feedbackOverlay.classList.add('visible');
+      beginSubpageNavigation(feedbackOverlay, source, closeFeedbackOverlay);
       syncFeedbackBackground();
     });
   }
 
   function closeFeedbackOverlay() {
     return runTransition(() => {
-      moveFocusOutOfHiddenRegion(feedbackOverlay);
-      feedbackOverlay?.classList.remove('visible');
-      lightraysInstance?.destroy?.();
-      lightraysInstance = null;
+      releasePage();
+      restoreSettingsIfNeeded();
     });
   }
 
@@ -176,6 +230,8 @@ export function createHelpCenterRuntime({
     if (!content || !content[sectionId]) return;
     const data = content[sectionId];
     if (legalContentTitle) legalContentTitle.textContent = data.title;
+    if (legalTopTag) legalTopTag.textContent = sectionId === 'usage-policy'
+      ? 'ToolKnit Usage Policy' : 'ToolKnit Program Declaration';
     if (legalContentBody) {
       legalContentBody.innerHTML = data.html;
       legalContentBody.scrollTop = 0;
@@ -187,15 +243,29 @@ export function createHelpCenterRuntime({
 
   function openLegalOverlay(sectionId = 'declaration') {
     return runTransition(() => {
-      legalOverlay?.classList.add('visible');
+      if (!legalOverlay) return;
+      beginSubpageNavigation(legalOverlay, null, closeLegalOverlay);
       showLegalSection(sectionId);
     });
   }
 
   function closeLegalOverlay() {
     return runTransition(() => {
-      moveFocusOutOfHiddenRegion(legalOverlay);
-      legalOverlay?.classList.remove('visible');
+      releasePage();
+      restoreSettingsIfNeeded();
+    });
+  }
+
+  function navigateToSettings(overlay) {
+    const ownedOverlay = overlay?.id === 'helpOverlay'
+      || overlay?.id === 'feedbackOverlay'
+      || overlay?.id === 'legalOverlay';
+    if (!ownedOverlay) return false;
+    return runTransition(() => {
+      releasePage(false);
+      subpageReturnTarget = null;
+      background = null;
+      onShowSettings();
     });
   }
 
@@ -248,14 +318,17 @@ export function createHelpCenterRuntime({
     });
     if (helpContentBody && !anyVisible) helpContentBody.innerHTML = `<div class="help-search-empty">${escapeHtml(t('help.searchEmpty'))}</div>`;
   });
-  on(root, 'keydown', event => {
-    if (event.key === 'Escape' && helpOverlay?.classList.contains('visible')) closeHelpOverlay();
+  on(root, 'click', event => {
+    const button = event.target.closest?.('.home-v2-topbar [data-tool-help], .home-v2-topbar [data-tool-feedback]');
+    if (!button) return;
+    if (button.hasAttribute('data-tool-help')) void openHelpOverlay('overview', root.querySelector('.app'));
+    else void openFeedbackOverlay(root.querySelector('.app'));
   });
 
   on(feedbackLink, 'click', event => { event.preventDefault(); openFeedbackOverlay(); });
-  on(feedbackBtn, 'click', openFeedbackOverlay);
+  on(feedbackBtn, 'click', () => openFeedbackOverlay());
   on(feedbackBack, 'click', closeFeedbackOverlay);
-  on(feedbackSettings, 'click', closeFeedbackOverlay);
+  on(feedbackSettings, 'click', () => { void navigateToSettings(feedbackOverlay); });
 
   on(legalBackBtn, 'click', closeLegalOverlay);
   legalNav?.querySelectorAll('.help-nav-item').forEach(item => on(item, 'click', () => {
@@ -279,6 +352,7 @@ export function createHelpCenterRuntime({
     closeHelpOverlay,
     closeLegalOverlay,
     dispose: () => {
+      releasePage(false);
       lightraysInstance?.destroy?.();
       lightraysInstance = null;
       scope.dispose();
@@ -286,6 +360,8 @@ export function createHelpCenterRuntime({
     openFeedbackOverlay,
     openHelpOverlay,
     openLegalOverlay,
+    navigateToSettings,
+    getBackground: () => background,
     showHelpSection,
     showLegalSection
   });

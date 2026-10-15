@@ -1,9 +1,17 @@
-use super::*;
 use super::office;
+use super::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     system_cleanup::await_previous_instance_for_elevated_relaunch();
+    let mut context = tauri::generate_context!();
+    if is_autostart_launch(std::env::args()) {
+        for window in &mut context.config_mut().app.windows {
+            if window.label == "main" {
+                window.visible = false;
+            }
+        }
+    }
     tauri::Builder::default()
         .on_page_load(|_webview, _payload| {
             #[cfg(feature = "qa-devtools")]
@@ -12,10 +20,15 @@ pub fn run() {
             }
         })
         .manage(WindowCornerRadiusState::default())
+        .manage(AutostartState::default())
+        .manage(quick_screenshot::ScreenshotState::default())
+        .manage(local_translation::TranslationState::default())
         .manage(crate::clipboard_history::ClipboardHistoryState::default())
         .manage(onnx_segmenter::MattingState::default())
         .manage(TeleprompterRecognitionState::default())
         .invoke_handler(tauri::generate_handler![
+            quick_screenshot::quick_screenshot,
+            local_translation::local_translation,
             crate::clipboard_history::clipboard_history,
             crate::clipboard_history::copy_sensitive_text,
             open_url,
@@ -44,15 +57,15 @@ pub fn run() {
             transcribe_teleprompter_audio,
             stop_teleprompter_recognition,
             onnx_segmenter::list_matting_models,
-        onnx_segmenter::set_current_matting_model,
-        onnx_segmenter::download_matting_model,
+            onnx_segmenter::set_current_matting_model,
+            onnx_segmenter::download_matting_model,
             onnx_segmenter::cancel_matting_model_download,
             onnx_segmenter::delete_matting_model,
             onnx_segmenter::segment_image,
             onnx_segmenter::cancel_matting_segmentation,
             onnx_segmenter::discard_matting_preview,
             onnx_segmenter::export_segmented_image,
-        list_transcription_models,
+            list_transcription_models,
             set_current_transcription_model,
             delete_transcription_model,
             download_transcription_model,
@@ -90,6 +103,10 @@ pub fn run() {
             get_network_devices_info,
             get_power_sensors_info,
             scan_large_files,
+            system_runtime::duplicate_files::scan_duplicate_files,
+            system_runtime::duplicate_files::cancel_duplicate_file_scan,
+            system_runtime::duplicate_files::get_duplicate_file_progress,
+            system_runtime::duplicate_files::recycle_duplicate_files,
             cancel_large_file_scan,
             get_cleanup_drive_space,
             move_files_to_recycle_bin,
@@ -142,6 +159,8 @@ pub fn run() {
             office::convert_excel_to_pdf,
             convert_video_batch,
             set_tray_lang,
+            get_autostart,
+            set_autostart,
             screen_picker_bounds,
             screen_color_sample,
             open_screen_color_picker,
@@ -160,8 +179,10 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            show_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if !is_autostart_launch(argv) {
+                show_main_window(app);
+            }
         }))
         .on_window_event(|window, event| {
             if window.label() == "main"
@@ -198,6 +219,9 @@ pub fn run() {
                     _ => {}
                 }
             }
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                quick_screenshot::closed(window.app_handle(), window.label());
+            }
         })
         .setup(|app| {
             cleanup_image_stitch_pdf_sessions();
@@ -224,6 +248,7 @@ pub fn run() {
                         app.exit(0);
                     }
                     "clipboard-toggle" => crate::clipboard_history::tray_toggle(app),
+                    "autostart-toggle" => toggle_autostart_tray(app),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -247,13 +272,22 @@ pub fn run() {
             // 同步置顶状态到托盘菜单（可选）
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(debug_assertions)]
-                if app.config().app.windows.iter().any(|config| config.label == "main" && config.devtools == Some(true)) {
+                if app
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .any(|config| config.label == "main" && config.devtools == Some(true))
+                {
                     window.open_devtools();
                 }
                 if let Err(error) = fit_main_window_to_work_area(&window) {
                     log::warn!("Unable to fit main window to monitor work area: {error}");
                 }
                 let _ = window.set_always_on_top(false);
+                if is_autostart_launch(std::env::args()) {
+                    let _ = window.hide();
+                }
             }
 
             // 注册屏幕取色全局快捷键（如果用户已配置）。
@@ -264,11 +298,15 @@ pub fn run() {
                 }
             }
 
+            quick_screenshot::initialize(app.handle());
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                local_translation::shutdown(app);
+            }
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 crate::clipboard_history::on_exit_requested(app, &api, code);
             }
@@ -288,5 +326,3 @@ pub(super) fn minimize_main_window(app: &tauri::AppHandle) {
         let _ = window.minimize();
     }
 }
-
-

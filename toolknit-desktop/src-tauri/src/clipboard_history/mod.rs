@@ -13,7 +13,7 @@ use types::*;
 #[derive(Default)]
 pub(crate) struct ClipboardHistoryState {
     service: Mutex<Option<Arc<Service>>>,
-    tray: Mutex<Option<(tauri::menu::MenuItem<tauri::Wry>, String)>>,
+    tray: Mutex<Option<(tauri::menu::CheckMenuItem<tauri::Wry>, String)>>,
     exit_phase: AtomicU8,
 }
 struct Service {
@@ -36,6 +36,41 @@ struct Service {
 }
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+pub(crate) fn copy_screenshot_image(png: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        windows::write_captured_content(&Content::Image { png, width, height })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (png, width, height);
+        Err("screenshot:windows-only".into())
+    }
+}
+pub(crate) fn copy_screenshot_text(text: String) -> Result<(), String> {
+    if text.len() > MAX_TEXT {
+        return Err("screenshot:text-too-large".into());
+    }
+    #[cfg(windows)]
+    {
+        windows::write_captured_content(&Content::Text { text, rich: false })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = text;
+        Err("screenshot:windows-only".into())
+    }
+}
+
+pub(crate) fn tray_label(lang: &str, enabled: bool) -> &'static str {
+    match (lang == "zh", enabled) {
+        (true, true) => "剪贴板历史：正在记录",
+        (true, false) => "剪贴板历史：未开启记录",
+        (false, true) => "Clipboard history: recording",
+        (false, false) => "Clipboard history: not recording",
+    }
 }
 
 impl ClipboardHistoryState {
@@ -82,18 +117,14 @@ impl ClipboardHistoryState {
             .as_ref()
             .is_some_and(|s| lock(&s.status).enabled)
     }
-    pub(crate) fn register_tray(&self, item: tauri::menu::MenuItem<tauri::Wry>, lang: &str) {
+    pub(crate) fn register_tray(&self, item: tauri::menu::CheckMenuItem<tauri::Wry>, lang: &str) {
         *lock(&self.tray) = Some((item, lang.into()));
     }
     fn update_tray(&self, enabled: bool) {
         let tray = lock(&self.tray).clone();
         if let Some((item, lang)) = tray {
-            let _ = item.set_text(match (lang == "zh", enabled) {
-                (true, true) => "剪贴板监控：暂停记录",
-                (true, false) => "剪贴板监控：开启记录",
-                (false, true) => "Clipboard: pause recording",
-                (false, false) => "Clipboard: start recording",
-            });
+            let _ = item.set_checked(enabled);
+            let _ = item.set_text(tray_label(&lang, enabled));
         }
     }
 }
@@ -204,7 +235,13 @@ impl Service {
         .map_err(|_| "clipboard:storage-failed".into())
     }
     fn persist_and_notify(&self) -> Result<(), String> {
-        let result = self.persist_resume();
+        let result: Result<(), String> = (|| {
+            let settings = lock(&self.settings).clone();
+            let enabled = lock(&self.status).enabled;
+            let settings = lock(&self.store).save_monitoring_state(&settings, enabled)?;
+            *lock(&self.settings) = settings;
+            Ok(())
+        })();
         if let Err(error) = &result {
             self.stop_inner();
             lock(&self.status).last_error = Some(error.clone());
@@ -218,7 +255,7 @@ impl Service {
             return Err("clipboard:cancelled".into());
         }
         if lock(&self.status).enabled {
-            return Ok(());
+            return self.persist_and_notify();
         }
         #[cfg(not(target_os = "windows"))]
         return Err("clipboard:desktop-only".into());
@@ -250,14 +287,7 @@ impl Service {
                 status.last_error = None;
             }
             self.dropped.store(0, Ordering::Release);
-            if let Err(error) = self.persist_resume() {
-                self.stop_inner();
-                lock(&self.status).last_error = Some(error.clone());
-                self.changed();
-                return Err(error);
-            }
-            self.changed();
-            Ok(())
+            self.persist_and_notify()
         }
     }
     fn stop_inner(&self) {
@@ -313,9 +343,11 @@ impl Service {
             Request::Status => {}
             Request::Start => self.start()?,
             Request::Stop => self.stop()?,
-            Request::Settings { settings } => {
+            Request::Settings { mut settings } => {
                 settings.validate()?;
                 let _transition = lock(&self.transition);
+                // The recording switch owns resume; stale settings cannot turn it off.
+                settings.resume_on_launch = lock(&self.status).enabled;
                 lock(&self.store).save_settings(&settings)?;
                 *lock(&self.settings) = settings.clone();
                 let result = lock(&self.store).prune(&settings);
@@ -336,6 +368,13 @@ impl Service {
             Request::Detail { id } => {
                 return serde_json::to_value(lock(&self.store).detail(id)?)
                     .map_err(|_| "clipboard:response-failed".into())
+            }
+            Request::Pin { id } => {
+                let content = lock(&self.store).content(id)?;
+                let Content::Image { png, .. } = content else {
+                    return Err("clipboard:image-invalid".into());
+                };
+                crate::native_runtime::open_clipboard_image(&self.app, png)?;
             }
             Request::Favorite { id, favorite } => {
                 lock(&self.store).favorite(id, favorite)?;
@@ -451,6 +490,8 @@ pub(crate) fn tray_toggle(app: &tauri::AppHandle) {
                 let _ = service.start();
             }
         }
+        let state = app.state::<ClipboardHistoryState>();
+        state.update_tray(state.enabled());
     });
 }
 fn shutdown(app: &tauri::AppHandle) {

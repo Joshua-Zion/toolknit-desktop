@@ -12,10 +12,15 @@ pub struct TaskRegistry(Mutex<HashSet<String>>);
 #[allow(dead_code)]
 impl TaskRegistry {
     pub fn claim(&self, id: impl Into<String>) -> bool {
-        self.0.lock().map(|mut tasks| tasks.insert(id.into())).unwrap_or(false)
+        self.0
+            .lock()
+            .map(|mut tasks| tasks.insert(id.into()))
+            .unwrap_or(false)
     }
     pub fn release(&self, id: &str) {
-        if let Ok(mut tasks) = self.0.lock() { tasks.remove(id); }
+        if let Ok(mut tasks) = self.0.lock() {
+            tasks.remove(id);
+        }
     }
 }
 

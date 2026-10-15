@@ -4,7 +4,8 @@ import { createExternalLinksRuntime } from '../src/app/external-links-runtime.js
 import { createHomeExplorerRuntime } from '../src/app/home-explorer-runtime.js';
 import { createFontSettingsRuntime } from '../src/app/font-settings-runtime.js';
 import { createToastManager } from '../src/app/toast-manager.js';
-import { createModalRuntime, setModalInteractivity } from '../src/app/modal-runtime.js';
+import { createModalRuntime, createModalSession, setModalInteractivity } from '../src/app/modal-runtime.js';
+import { createAutostartRuntime } from '../src/app/autostart-runtime.js';
 import { bindGlobalToolPageChrome } from '../src/shared/tool-page-shell.js';
 import { createHelpCenterRuntime } from '../src/app/help-center-runtime.js';
 
@@ -121,6 +122,47 @@ const home = createHomeExplorerRuntime({ root: emptyRoot, storage: null });
 assert.doesNotThrow(() => home.renderFavorites());
 assert.doesNotThrow(() => home.renderHomeTools({ resetPagination: true }));
 home.dispose();
+
+// Home batching changes only the card projection and survives a new runtime.
+{
+  const batchRoot = makeByIdRoot(['homeToolSearch', 'homeToolGrid', 'homeToolLoadMore', 'homeToolLoadMoreButton', 'homeLazyLoadToggle', 'homeLazyLoadStatus']);
+  const tools = Array.from({ length: 27 }, (_, index) => {
+    const tool = new FakeElement();
+    tool.dataset.tool = `fixture-${index}`;
+    return tool;
+  });
+  batchRoot.querySelectorAll = selector => selector.includes('.audio-list-item') ? tools : [];
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const count = () => (batchRoot.getElementById('homeToolGrid').innerHTML.match(/data-home-tool=/g) || []).length;
+  const toggle = batchRoot.getElementById('homeLazyLoadToggle');
+  let runtime = createHomeExplorerRuntime({ root: batchRoot, storage });
+  assert.equal(count(), 12, 'batching is enabled by default');
+  batchRoot.getElementById('homeToolLoadMoreButton').dispatchEvent(new Event('click'));
+  assert.equal(count(), 24);
+  toggle.dispatchEvent(new Event('click'));
+  assert.equal(count(), 27);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  assert.equal(batchRoot.getElementById('homeToolLoadMore').hidden, true);
+  assert.equal(values.get('toolknit_home_lazy_load'), 'false');
+  runtime.renderHomeTools({ resetPagination: true });
+  assert.equal(count(), 27, 'filter/language refresh does not restore batching');
+  runtime.dispose();
+  runtime = createHomeExplorerRuntime({ root: batchRoot, storage });
+  assert.equal(count(), 27, 'preference survives runtime recreation');
+  toggle.dispatchEvent(new Event('click'));
+  assert.equal(count(), 12);
+  runtime.dispose();
+  toggle.dispatchEvent(new Event('click'));
+  assert.equal(count(), 12, 'disposed listeners cannot change the preference');
+  values.set('toolknit_home_lazy_load', 'invalid');
+  runtime = createHomeExplorerRuntime({ root: batchRoot, storage });
+  assert.equal(count(), 12, 'malformed preferences use the default');
+  runtime.dispose();
+  runtime = createHomeExplorerRuntime({ root: batchRoot, storage: { getItem() { throw new Error('unavailable'); } } });
+  assert.equal(count(), 12, 'unavailable storage uses the default');
+  runtime.dispose();
+}
 
 const favoritesContent = new FakeElement('favoritesContent');
 const favoritesRoot = new FakeRoot([favoritesContent]);
@@ -366,5 +408,145 @@ assert.equal(backgroundsDestroyed, 2);
 feedbackRuntime.dispose();
 feedbackRuntime.dispose();
 assert.equal(themeListener, null, 'disposal removes the theme subscription');
+
+const legalRoot = new FakeRoot(['legalOverlay', 'legalContentTitle', 'legalTopTag', 'legalContentBody']
+  .map(id => new FakeElement(id)));
+const legalSettings = new FakeElement('settingsOverlay');
+legalSettings.classList.add('visible');
+legalSettings.style.zIndex = '50000';
+const legalRuntime = createHelpCenterRuntime({
+  root: legalRoot,
+  settingsOverlay: legalSettings,
+  getLegalContent: () => ({
+    declaration: { title: '程序声明', html: '<p>Declaration</p>' },
+    'usage-policy': { title: '使用规范', html: '<p>Policy</p>' }
+  })
+});
+await legalRuntime.openLegalOverlay();
+assert.equal(legalSettings.classList.contains('visible'), false, 'legal pages replace settings rather than inherit its raised stacking layer');
+assert.equal(legalSettings.style.zIndex, '');
+assert.equal(legalRoot.getElementById('legalTopTag').textContent, 'ToolKnit Program Declaration');
+legalRuntime.showLegalSection('usage-policy');
+assert.equal(legalRoot.getElementById('legalTopTag').textContent, 'ToolKnit Usage Policy');
+assert.equal(legalRoot.getElementById('legalContentTitle').textContent, '使用规范');
+await legalRuntime.closeLegalOverlay();
+legalRuntime.dispose();
+
+// A homepage has no .visible class; modal close must restore its prior input state.
+{
+const modalDocument = new FakeRoot();
+const modalBackground = new FakeElement('homepage');
+const modalRoot = new FakeElement('customToolsOverlay');
+modalRoot.ownerDocument = modalDocument;
+modalBackground.inert = false;
+const modalSession = createModalSession({ root: modalRoot, background: modalBackground });
+modalSession.open();
+assert.equal(modalBackground.inert, true);
+modalSession.close();
+assert.equal(modalBackground.inert, false);
+assert.equal(modalRoot.inert, true);
+modalBackground.inert = true;
+modalSession.open();
+modalSession.close();
+assert.equal(modalBackground.inert, true, 'an already suspended background must stay suspended');
+modalSession.dispose();
+
+// Late key reads cannot reopen a page the user already left.
+let completeKeyRead;
+let settingsRestored = 0;
+const delayedAiRoot = makeByIdRoot(['apiKeyOverlay', 'apiKeyInput', 'apiKeyBack']);
+const delayedAi = createAiSettingsRuntime({ root: delayedAiRoot, storage: null,
+  aiKeyStore: { get: () => new Promise(resolve => { completeKeyRead = resolve; }) },
+  onOpenSettings: () => { settingsRestored++; }
+});
+const delayedOpening = delayedAi.openApiKeySettings();
+await new Promise(resolve => setImmediate(resolve));
+delayedAi.closeApiKeySettings();
+completeKeyRead('');
+await delayedOpening;
+assert.equal(delayedAiRoot.getElementById('apiKeyOverlay').classList.contains('visible'), false);
+assert.equal(settingsRestored, 1, 'a cancelled key read must only restore Settings when the API key page closes');
+delayedAi.dispose();
+
+// The protected key read stays behind the shared page veil, so Settings never
+// becomes visible again between the click and the API key page activation.
+let completeVisibleKeyRead;
+let transitionCalls = 0;
+let settingsOpened = 0;
+let settingsClosed = 0;
+const transitionRoot = makeByIdRoot(['apiKeyOverlay', 'apiKeyBack', 'apiKeyInput', 'settingsOverlay']);
+transitionRoot.getElementById('settingsOverlay').classList.add('visible');
+const transitionAi = createAiSettingsRuntime({ root: transitionRoot, storage: null,
+  aiKeyStore: { get: () => new Promise(resolve => { completeVisibleKeyRead = resolve; }) },
+  settingsOverlay: transitionRoot.getElementById('settingsOverlay'),
+  onOpenSettings: () => { settingsOpened++; },
+  onCloseSettings: () => { settingsClosed++; },
+  pageTransition: { run: async action => { transitionCalls++; return action(); } }
+});
+const transitionOpening = transitionAi.openApiKeySettings();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(transitionCalls, 1);
+assert.equal(settingsOpened, 0, 'the current Settings page must not be reopened during key loading');
+assert.equal(transitionRoot.getElementById('apiKeyOverlay').classList.contains('visible'), false);
+completeVisibleKeyRead('');
+await transitionOpening;
+assert.equal(settingsClosed, 1);
+assert.equal(transitionRoot.getElementById('apiKeyOverlay').classList.contains('visible'), true);
+transitionAi.dispose();
+
+// Startup state is native-owned: duplicate clicks, tray changes, errors and late teardown.
+const startupRoot = makeByIdRoot(['autostartToggle', 'autostartStatus']);
+startupRoot.defaultView = new EventTarget();
+const startupButton = startupRoot.getElementById('autostartToggle');
+let nativeEnabled = false;
+let writes = 0;
+let completeWrite;
+let unlistened = 0;
+const startupListeners = new Map();
+const startupMessages = [];
+const startup = createAutostartRuntime({ root: startupRoot, isTauri: true,
+  tauriCorePromise: Promise.resolve({ invoke: async (name, options) => {
+    if (name === 'get_autostart') return { supported: true, enabled: nativeEnabled };
+    writes++;
+    await new Promise(resolve => { completeWrite = resolve; });
+    nativeEnabled = options.enabled;
+    startupListeners.get('toolknit-autostart-changed')?.({ payload: { supported: true, enabled: nativeEnabled } });
+    return { supported: true, enabled: nativeEnabled };
+  } }),
+  tauriEventPromise: Promise.resolve({ listen: async (name, callback) => {
+    startupListeners.set(name, callback);
+    return () => { startupListeners.delete(name); unlistened++; };
+  } }),
+  notify: value => startupMessages.push(value)
+});
+const flush = () => new Promise(resolve => setImmediate(resolve));
+await flush();
+assert.equal(startupButton.disabled, false);
+startupButton.dispatchEvent(new Event('click'));
+startupButton.dispatchEvent(new Event('click'));
+await flush();
+assert.equal(writes, 1);
+assert.equal(startupButton.disabled, true);
+completeWrite();
+await flush();
+assert.equal(startupButton.getAttribute('aria-pressed'), 'true');
+assert.equal(startupMessages.at(-1), 'settings.autostartEnabled', 'native event before command response preserves success feedback');
+nativeEnabled = false;
+startupListeners.get('toolknit-autostart-changed')({ payload: { supported: true, enabled: false } });
+assert.equal(startupButton.getAttribute('aria-pressed'), 'false');
+startupListeners.get('toolknit-autostart-error')();
+await flush();
+assert.equal(startupMessages.at(-1), 'settings.autostartError');
+startupButton.dispatchEvent(new Event('click'));
+await flush();
+startup.dispose();
+completeWrite();
+await flush();
+assert.equal(startupButton.getAttribute('aria-pressed'), 'false', 'late writes do not repaint a disposed runtime');
+assert.equal(unlistened, 2);
+const browserStartup = createAutostartRuntime({ root: startupRoot });
+assert.equal(startupButton.disabled, true);
+browserStartup.dispose();
+}
 
 console.log('Application runtime module contracts passed');

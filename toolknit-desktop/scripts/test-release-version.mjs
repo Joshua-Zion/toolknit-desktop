@@ -12,7 +12,7 @@ const readStaticHtml = async () => (await Promise.all([
   'src/app/templates/settings.html',
   'src/app/templates/feedback.html',
   'src/app/templates/donation.html',
-  'src/app/templates/update-preview.html'
+  'src/app/templates/update-dialog.html'
 ].map(readText))).join('\n');
 
 function escapeRegExp(value) {
@@ -143,7 +143,18 @@ assert.match(zhHelpSource, new RegExp(`${desktopToolCount} 个桌面工具`), 'C
 assert.match(enHelpSource, new RegExp(`${desktopToolCount} desktop tools`), 'English help overview must match the desktop catalog');
 assert.match(repositoryReadme, /<h3>46<\/h3><strong>MCP 能力<\/strong>/, 'Repository README must state the 46-capability MCP contract');
 assert.match(releaseNotes, new RegExp(`^# ToolKnit Desktop ${escapeRegExp(fullVersion)}\\s*$`, 'm'), 'Release notes heading must match package.json version');
-assert.match(releaseNotes, new RegExp(`${desktopToolCount} 项工具`), 'Release notes must match the current desktop catalog');
+// Published notes retain their release catalog while the next version is developed.
+const releasedToolCount = Number(captureExactlyOnce(releaseNotes,
+  /^- \d+ 个分类、(\d+) 项工具/m, 'Published desktop catalog'));
+const publishedSeriesVersion = captureExactlyOnce(releaseNotes,
+  /^## (V\d+\.\d+) 正式版记录/m, 'Published release series');
+assert.ok(releasedToolCount > 0 && releasedToolCount <= desktopToolCount,
+  'Published catalog must be valid and no larger than the current catalog');
+if (releasedToolCount !== desktopToolCount) {
+  assert.match(repositoryReadme, new RegExp(`已发布 ${escapeRegExp(publishedSeriesVersion)} 为 ${releasedToolCount} 项`),
+    'README must distinguish the published catalog from development additions');
+  assert.match(repositoryReadme, /V\d+\.\d+ 开发中/, 'Additional tools must be documented as development work');
+}
 assert.match(releaseNotes, /46 项已发布能力/, 'Release notes must state the 46-capability CLI and MCP contract');
 
 const manifestVersions = new Map([
@@ -197,17 +208,11 @@ for (const source of [
   for (const version of versions) assert.equal(version, fullVersion, `${source} user agent version must match package.json`);
 }
 
-const previewSource = await readText('src/update-preview.js');
-for (const name of ['current', 'latest']) {
-  assert.equal(captureExactlyOnce(previewSource, new RegExp(`${name}: '([^']+)'`), `Preview ${name} version`), fullVersion);
-  assert.equal(captureExactlyOnce(indexHtml, new RegExp(`data-update-version="${name}">([^<]+)<`), `Preview ${name} markup version`), fullVersion);
-}
-assert.equal(captureExactlyOnce(indexHtml, /data-update-release="brand-version">(\d+\.\d+) PREVIEW</, 'Preview brand version'), seriesVersion);
-assert.equal(captureExactlyOnce(indexHtml, /data-update-release="edition">TOOLKNIT DESKTOP · V(\d+\.\d+)</, 'Preview edition version'), seriesVersion);
-for (const source of [previewSource, indexHtml]) {
-  for (const version of captures(source, /WHAT(?:\\)?'S NEW · (\d+\.\d+)/)) assert.equal(version, seriesVersion);
-}
-for (const source of [zhHelpSource, enHelpSource, previewSource, await readText('src/app/templates/update-preview.html')]) {
+const dialogSource = await readText('src/update-dialog.js');
+assert.match(dialogSource, /stableTagVersion\(value\?\.version\)/, 'Latest version must come from validated stable tags');
+assert.match(dialogSource, /normalizeVersion\(value\?\.currentVersion\)/, 'Installed version must be validated separately');
+assert.doesNotMatch(dialogSource, /current: '\d|latest: '\d/, 'Update dialog must not contain fabricated versions');
+for (const source of [zhHelpSource, enHelpSource, dialogSource, await readText('src/app/templates/update-dialog.html')]) {
   for (const version of captures(source, /\bToolKnit (\d+\.\d+)\b/)) assert.equal(version, seriesVersion);
 }
 assert.match(await readText('../README_EN.md'), new RegExp(`<h1>ToolKnit Desktop ${escapeRegExp(seriesVersion)}<\\/h1>`));
@@ -288,8 +293,13 @@ for (const [label, actual] of legalVersions) {
 assert.match(zhUsageSource, /随当前功能边界更新/, 'Chinese usage policy must use a version-independent feature boundary');
 assert.match(enUsageSource, /with the current feature boundary/, 'English usage policy must use a version-independent feature boundary');
 
-assert.match(zhLocale.home?.supportCostNote ?? '', /500/, 'Chinese home support copy must state the monthly AI cost');
-assert.match(enLocale.home?.supportCostNote ?? '', /500/, 'English home support copy must state the monthly AI cost');
+for (const [name, locale] of [['Chinese', zhLocale], ['English', enLocale]]) {
+  for (const key of ['recommendedProviders', 'malian', 'doufu', 'customTools', 'customToolsTitle', 'customToolsDescription', 'openWebWorkbench']) {
+    assert.ok(locale.home?.[key]?.trim(), `${name} home ${key} must be translated`);
+  }
+  assert.equal(locale.home?.supportCostNote, undefined, `${name} obsolete homepage cost copy must be removed`);
+  assert.equal(locale.home?.supportGroupNote, undefined, `${name} obsolete homepage group copy must be removed`);
+}
 assert.match(zhLocale.home?.supportPage?.supporterBenefit ?? '', /灰度体验群/, 'Chinese support copy must explain preview-group access');
 assert.match(enLocale.home?.supportPage?.supporterBenefit ?? '', /preview group/i, 'English support copy must explain preview-group access');
 assert.match(zhLegalSource, /灰度体验群/, 'Chinese legal copy must define the preview-group boundary');

@@ -1,4 +1,3 @@
-
 const PPT_RENDER_MAX_INPUT_BYTES: u64 = 200 * 1024 * 1024;
 const PPT_RENDER_MAX_SLIDES: usize = 500;
 const PPT_RENDER_PREVIEW_SUFFIX: &str = "ppt_to_image_preview";
@@ -297,9 +296,7 @@ fn canonical_existing_ppt_preview_dir(path_text: &str) -> Result<std::path::Path
     Ok(canonical)
 }
 
-fn canonical_existing_ppt_preview_file(
-    path_text: &str,
-) -> Result<std::path::PathBuf, String> {
+fn canonical_existing_ppt_preview_file(path_text: &str) -> Result<std::path::PathBuf, String> {
     if path_text.trim().is_empty() || path_text.contains('\0') {
         return Err("ppt-render:cleanup-invalid-path".to_string());
     }
@@ -331,13 +328,13 @@ fn manifest_path_matches(value: Option<&serde_json::Value>, expected: &std::path
 fn validate_ppt_preview_pdf_header(path: &std::path::Path) -> Result<(), String> {
     use std::io::Read;
 
-    let metadata = std::fs::metadata(path)
-        .map_err(|_| "ppt-render:cleanup-invalid-output".to_string())?;
+    let metadata =
+        std::fs::metadata(path).map_err(|_| "ppt-render:cleanup-invalid-output".to_string())?;
     if !metadata.is_file() || metadata.len() < 5 {
         return Err("ppt-render:cleanup-invalid-output".to_string());
     }
-    let mut file = std::fs::File::open(path)
-        .map_err(|_| "ppt-render:cleanup-invalid-output".to_string())?;
+    let mut file =
+        std::fs::File::open(path).map_err(|_| "ppt-render:cleanup-invalid-output".to_string())?;
     let mut header = [0_u8; 5];
     file.read_exact(&mut header)
         .map_err(|_| "ppt-render:cleanup-invalid-output".to_string())?;
@@ -390,12 +387,17 @@ pub(crate) fn discard_ppt_to_image_preview(
     if manifest_metadata.len() > PPT_RENDER_MANIFEST_MAX_BYTES {
         return Err("ppt-render:cleanup-invalid-manifest".to_string());
     }
-    let manifest_bytes = std::fs::read(&manifest)
-        .map_err(|_| "ppt-render:cleanup-invalid-manifest".to_string())?;
+    let manifest_bytes =
+        std::fs::read(&manifest).map_err(|_| "ppt-render:cleanup-invalid-manifest".to_string())?;
     let manifest_json: serde_json::Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|_| "ppt-render:cleanup-invalid-manifest".to_string())?;
-    if manifest_json.get("temporary").and_then(serde_json::Value::as_bool) != Some(true)
-        || manifest_json.get("artifactKind").and_then(serde_json::Value::as_str)
+    if manifest_json
+        .get("temporary")
+        .and_then(serde_json::Value::as_bool)
+        != Some(true)
+        || manifest_json
+            .get("artifactKind")
+            .and_then(serde_json::Value::as_str)
             != Some("ppt-to-image-preview")
         || !manifest_path_matches(manifest_json.get("outputDir"), &directory)
         || !manifest_path_matches(manifest_json.get("outputPath"), &output)
@@ -406,9 +408,14 @@ pub(crate) fn discard_ppt_to_image_preview(
         .get("outputFile")
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
-    let actual_file = output.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+    let actual_file = output
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
     if output_file.is_empty()
-        || std::path::Path::new(output_file).file_name().and_then(|value| value.to_str())
+        || std::path::Path::new(output_file)
+            .file_name()
+            .and_then(|value| value.to_str())
             != Some(output_file)
         || !output_file.eq_ignore_ascii_case(actual_file)
     {
@@ -417,8 +424,8 @@ pub(crate) fn discard_ppt_to_image_preview(
 
     let mut saw_output = false;
     let mut saw_manifest = false;
-    for entry in std::fs::read_dir(&directory)
-        .map_err(|_| "ppt-render:cleanup-invalid-path".to_string())?
+    for entry in
+        std::fs::read_dir(&directory).map_err(|_| "ppt-render:cleanup-invalid-path".to_string())?
     {
         let entry = entry.map_err(|_| "ppt-render:cleanup-invalid-path".to_string())?;
         let path = entry.path();
@@ -470,7 +477,10 @@ mod ppt_preview_cleanup_tests {
         root
     }
 
-    fn create_preview(root: &std::path::Path, temporary: bool) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    fn create_preview(
+        root: &std::path::Path,
+        temporary: bool,
+    ) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
         let directory = root.join("deck_ppt_to_image_preview");
         std::fs::create_dir_all(&directory).unwrap();
         let output = directory.join("deck.pdf");
@@ -528,14 +538,13 @@ mod ppt_preview_cleanup_tests {
     }
 }
 
+use crate::platform::runtime_discovery;
+
 fn shell_path_candidates_from_path_env(file_names: &[&str]) -> Vec<std::path::PathBuf> {
-    std::env::var_os("PATH")
-        .map(|value| {
-            std::env::split_paths(&value)
-                .flat_map(|directory| file_names.iter().map(move |name| directory.join(name)))
-                .collect()
-        })
-        .unwrap_or_default()
+    runtime_discovery::path_directories()
+        .into_iter()
+        .flat_map(|directory| file_names.iter().map(move |name| directory.join(name)))
+        .collect()
 }
 
 pub(crate) fn libreoffice_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
@@ -546,18 +555,45 @@ pub(crate) fn libreoffice_candidates() -> Vec<(std::path::PathBuf, &'static str)
     };
     let mut candidates = Vec::new();
     if let Ok(value) = std::env::var("TOOLKNIT_LIBREOFFICE_PATH") {
-        if !value.trim().is_empty() && !value.contains('\0') {
-            candidates.push((
-                std::path::PathBuf::from(value),
-                "env:TOOLKNIT_LIBREOFFICE_PATH",
-            ));
-        }
+        candidates.extend(
+            runtime_discovery::explicit_candidates(&value, exe_name)
+                .into_iter()
+                .map(|path| (path, "env:TOOLKNIT_LIBREOFFICE_PATH")),
+        );
     }
     if let Ok(managed) = libreoffice_runtime_path() {
         candidates.push((managed, "managed"));
     }
     #[cfg(target_os = "windows")]
     {
+        candidates.extend(
+            runtime_discovery::registered_executables("soffice.exe")
+                .into_iter()
+                .map(|path| (path, "windows-install")),
+        );
+        for key in ["USERPROFILE", "SCOOP", "SCOOP_GLOBAL"] {
+            if let Ok(root) = std::env::var(key) {
+                let root = std::path::PathBuf::from(root);
+                let scoop = if key == "USERPROFILE" {
+                    root.join("scoop")
+                } else {
+                    root
+                };
+                candidates.push((
+                    scoop.join("apps/libreoffice/current/program/soffice.com"),
+                    "system:scoop",
+                ));
+            }
+        }
+        for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(root) = std::env::var(key) {
+                candidates.push((
+                    std::path::Path::new(&root)
+                        .join("LibreOfficePortable/App/libreoffice/program/soffice.com"),
+                    "windows-install",
+                ));
+            }
+        }
         for key in ["ProgramFiles", "ProgramFiles(x86)"] {
             if let Ok(root) = std::env::var(key) {
                 let directory = std::path::PathBuf::from(root)
@@ -568,6 +604,7 @@ pub(crate) fn libreoffice_candidates() -> Vec<(std::path::PathBuf, &'static str)
             }
         }
     }
+    #[cfg(debug_assertions)]
     if let Ok(current_dir) = std::env::current_dir() {
         for ancestor in current_dir.ancestors().take(6) {
             candidates.push((
@@ -592,6 +629,7 @@ pub(crate) fn libreoffice_candidates() -> Vec<(std::path::PathBuf, &'static str)
             }
         }
     }
+    #[cfg(debug_assertions)]
     if let Ok(current_exe) = std::env::current_exe() {
         for ancestor in current_exe.ancestors().take(8) {
             candidates.push((
@@ -642,24 +680,23 @@ pub(crate) fn probe_libreoffice(
 }
 
 pub(crate) fn resolve_libreoffice_runtime() -> LibreOfficeRuntimeInfo {
-    // Reuse a validated path for conversions. The command itself is still
-    // launched by the conversion worker; this only avoids repeated probes.
-    if let Some(runtime) = cached_libreoffice_runtime() {
-        let valid = runtime
-            .command
-            .as_deref()
-            .map(std::path::Path::new)
-            .is_some_and(|path| std::fs::metadata(path).map(|meta| meta.is_file()).unwrap_or(false));
-        if valid {
-            return runtime;
-        }
-        invalidate_libreoffice_runtime_cache();
-    }
+    static DISCOVERY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = DISCOVERY.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(runtime) = resolve_libreoffice_runtime_quick() {
-        cache_libreoffice_runtime(runtime.clone());
         return runtime;
     }
     for (candidate, source) in libreoffice_candidates() {
+        if !candidate.is_file() {
+            continue;
+        }
+        if source == "managed"
+            && candidate
+                .parent()
+                .and_then(|p| p.parent())
+                .is_none_or(|root| !prepare_managed_office(root))
+        {
+            continue;
+        }
         if let Some(runtime) = probe_libreoffice(&candidate, source) {
             cache_libreoffice_runtime(runtime.clone());
             return runtime;

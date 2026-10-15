@@ -32,29 +32,9 @@
   -webkit-app-region: drag;
 }
 
-.ai-doc-edit-overlay .ai-doc-edit-topbar {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
-  background:
-    linear-gradient(180deg, rgba(8, 8, 10, 0.82), rgba(8, 8, 10, 0.54)),
-    rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
 .ai-doc-edit-overlay .settings-back {
   margin: 0;
   -webkit-app-region: no-drag;
-}
-
-.ai-doc-edit-overlay .pdf-merge-v2-back {
-  height: 38px;
-  min-width: 96px;
-  border-radius: 12px;
-}
-
-.ai-doc-edit-top-tag {
-  flex: 0 0 auto;
-  max-width: 250px;
 }
 
 .ai-doc-edit-export-btn {
@@ -323,27 +303,6 @@
 
 .ai-doc-edit-v2 .ai-doc-edit-bg {
   opacity: 0.72;
-}
-
-.ai-doc-edit-v2-topbar {
-  height: 68px;
-}
-
-.ai-doc-edit-v2-topbar-left {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.ai-doc-edit-v2 .pdf-merge-v2-back {
-  flex: 0 0 auto;
-  margin: 0;
-  -webkit-app-region: no-drag;
-}
-
-.ai-doc-edit-v2 .ai-doc-edit-top-tag {
-  max-width: none;
 }
 
 .ai-doc-edit-v2 .ai-doc-edit-export-btn {
@@ -862,10 +821,6 @@
 }
 
 @media (max-height: 760px) {
-  .ai-doc-edit-v2-topbar {
-    height: 68px;
-  }
-
   .ai-doc-edit-workbench {
     padding-block: 14px 18px;
   }

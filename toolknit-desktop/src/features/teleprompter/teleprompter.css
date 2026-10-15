@@ -38,30 +38,9 @@
   background: rgba(5, 5, 6, .42);
 }
 
-.teleprompter-topbar,
 .teleprompter-body {
   position: relative;
   z-index: 1;
-}
-
-.teleprompter-topbar {
-  min-height: 58px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, .12);
-  background: rgba(8, 8, 9, .72);
-  backdrop-filter: blur(22px) saturate(120%);
-}
-
-.teleprompter-topbar-left,
-.teleprompter-top-actions,
-.teleprompter-window-cluster {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .teleprompter-focus-exit {
@@ -102,61 +81,6 @@
 
 .teleprompter-focus-exit:focus-visible {
   outline: none;
-}
-
-.teleprompter-back,
-.teleprompter-top-button,
-.teleprompter-window-button {
-  min-height: 38px;
-  border: 1px solid rgba(255, 255, 255, .17);
-  color: rgba(255, 255, 255, .9);
-  background: rgba(255, 255, 255, .07);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
-}
-
-.teleprompter-back,
-.teleprompter-top-button {
-  padding: 0 14px;
-  border-radius: 999px;
-}
-
-.teleprompter-window-button {
-  width: 38px;
-  padding: 0;
-  border-radius: 50%;
-}
-
-.teleprompter-back:hover,
-.teleprompter-top-button:hover,
-.teleprompter-window-button:hover {
-  border-color: rgba(255, 255, 255, .5);
-  background: rgba(255, 255, 255, .14);
-  color: #fff;
-}
-
-.teleprompter-window-button[data-action="close"]:hover {
-  border-color: rgba(255, 102, 102, .65);
-  background: rgba(190, 35, 35, .72);
-}
-
-.teleprompter-back svg,
-.teleprompter-top-button svg,
-.teleprompter-window-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.teleprompter-top-tag {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0;
-  color: rgba(255, 255, 255, .48);
-  white-space: nowrap;
 }
 
 /* Keep the tool overlay on the same navigation system as the v2 homepage. */
@@ -1030,13 +954,10 @@
 }
 
 @media (max-width: 820px), (max-height: 560px) {
-  .teleprompter-top-tag,
-  .teleprompter-top-button span,
   .teleprompter-editor-actions .teleprompter-small-button span {
     display: none;
   }
 
-  .teleprompter-top-button,
   .teleprompter-editor-actions .teleprompter-small-button {
     width: 36px;
     padding: 0;
@@ -1141,34 +1062,9 @@
 
 /* The prompt view is a full-screen tool page: the home-shell icon-only
    collapse (app.is-v2-home) must never shrink its topbar actions. */
-.app.is-v2-home .teleprompter-overlay .home-v2-nav-link,
-.app.is-v2-home .teleprompter-overlay .home-v2-support-top {
-  width: auto;
-  min-width: 0;
-  height: auto;
-  min-height: 34px;
-  justify-content: flex-start;
-  padding: 0 12px;
-}
-
-.app.is-v2-home .teleprompter-overlay .home-v2-support-top {
-  padding: 0 13px;
-}
-
-.app.is-v2-home .teleprompter-overlay .home-v2-nav-link span,
-.app.is-v2-home .teleprompter-overlay .home-v2-support-top span {
-  display: inline-flex;
-}
 
 /* `.feature-tool-overlay button { color: inherit }` outranks the single-class
    topbar button rules and turns the support pill white-on-white. */
-.teleprompter-overlay .home-v2-support-top {
-  color: var(--black);
-}
-
-.teleprompter-overlay .home-v2-nav-link {
-  color: var(--muted);
-}
 .teleprompter-input.tk-vertical-stripe-surface {
   background-image: var(--tk-vertical-stripe-surface-image);
   background-position: 0 0;

@@ -23,6 +23,7 @@
     "security": {
       "capabilities": [
         "default",
+        "screenshot-windows",
         {
           "identifier": "qa-devtools",
           "description": "Local DevTools shortcut for explicitly requested test installers.",

@@ -101,9 +101,6 @@ pub(crate) fn register_screen_picker_shortcut(
         Err(error) => return Err(error.to_string()),
     }
     app.global_shortcut()
-        .unregister_all()
-        .map_err(|error| error.to_string())?;
-    app.global_shortcut()
         .on_shortcut(shortcut_str, |app, _shortcut, event| {
             if event.state == ShortcutState::Pressed {
                 let app = app.clone();
@@ -440,17 +437,27 @@ pub(crate) fn set_screen_picker_shortcut(
     shortcut: Option<String>,
 ) -> Result<ScreenPickerShortcutInfo, String> {
     let mut config = load_screen_picker_shortcut_config();
+    let previous = config.shortcut.clone();
     let value = shortcut.unwrap_or_default().trim().to_string();
+    if previous.as_deref() == Some(value.as_str()) { return get_screen_picker_shortcut(); }
     if value.is_empty() {
         config.shortcut = None;
-        app.global_shortcut()
-            .unregister_all()
-            .map_err(|error| error.to_string())?;
     } else {
         register_screen_picker_shortcut(&app, &value)?;
         config.shortcut = Some(value);
     }
-    save_screen_picker_shortcut_config(&config)?;
+    if let Err(error) = save_screen_picker_shortcut_config(&config) {
+        if let Some(new) = config.shortcut.as_deref() { let _ = app.global_shortcut().unregister(new); }
+        return Err(error);
+    }
+    if let Some(old) = previous.as_deref() {
+        if let Err(error) = app.global_shortcut().unregister(old) {
+            if let Some(new) = config.shortcut.as_deref() { let _ = app.global_shortcut().unregister(new); }
+            config.shortcut = previous;
+            let _ = save_screen_picker_shortcut_config(&config);
+            return Err(error.to_string());
+        }
+    }
     let default = ScreenPickerShortcutConfig::default()
         .shortcut
         .unwrap_or_default();

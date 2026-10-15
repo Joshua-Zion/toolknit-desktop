@@ -81,6 +81,7 @@ export function createPdfCropWorkspace({
   let history = [];
   let future = [];
   let marginEditBefore = null;
+  let marginEditingInput = null;
   let pointerState = null;
   let previewTask = null;
   let previewRequest = 0;
@@ -339,6 +340,7 @@ export function createPdfCropWorkspace({
   async function resetDocument() {
     cancelPointer({ render: false });
     marginEditBefore = null;
+    marginEditingInput = null;
     cancelPreview();
     releaseThumbs();
     const previous = source;
@@ -366,9 +368,21 @@ export function createPdfCropWorkspace({
     }
     const margins = pdfCropRectToMargins(page.rect, { width: page.displayWidth, height: page.displayHeight });
     marginInputs.forEach(input => {
-      if (document.activeElement === input && marginEditBefore) return;
+      if (document.activeElement === input && marginEditingInput === input) return;
       input.value = formatPdfCropUnitValue(margins[input.dataset.marginSide], unitSelect?.value);
     });
+  }
+
+  function beginMarginEdit(input) {
+    marginEditingInput = input;
+    marginEditBefore ||= snapshotPdfCropPages(pages);
+  }
+
+  function finishMarginEdit(input) {
+    if (marginEditingInput !== input) return;
+    if (marginEditBefore) commitHistory(marginEditBefore);
+    marginEditBefore = null;
+    marginEditingInput = null;
   }
 
   function updateDimension() {
@@ -733,21 +747,16 @@ export function createPdfCropWorkspace({
     renderCropOverlay();
   });
   marginInputs.forEach(input => {
-    listen(input, 'focus', () => { marginEditBefore ||= snapshotPdfCropPages(pages); });
+    listen(input, 'focus', () => beginMarginEdit(input));
     listen(input, 'input', () => {
       if (marginsLinked) marginInputs.forEach(candidate => { if (candidate !== input) candidate.value = input.value; });
       applyMarginsToScope();
     });
     listen(input, 'change', () => {
-      commitHistory(marginEditBefore);
-      marginEditBefore = null;
+      if (document.activeElement !== input) finishMarginEdit(input);
       refreshCropState();
     });
-    listen(input, 'blur', () => {
-      if (!marginEditBefore) return;
-      commitHistory(marginEditBefore);
-      marginEditBefore = null;
-    });
+    listen(input, 'blur', () => finishMarginEdit(input));
   });
 
   renderLinkButton();

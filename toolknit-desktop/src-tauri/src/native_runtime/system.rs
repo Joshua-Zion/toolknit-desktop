@@ -1,6 +1,8 @@
 use super::*;
 #[path = "cleanup_guard.rs"]
 mod cleanup_guard;
+#[path = "duplicate_files.rs"]
+pub(super) mod duplicate_files;
 
 #[cfg(target_os = "windows")]
 pub(super) const HARDWARE_PROVIDER_PREAMBLE: &str = r#"
@@ -1347,6 +1349,21 @@ pub(super) fn canonical_scan_root(
     Ok(root)
 }
 
+#[cfg(target_os = "windows")]
+pub(super) fn canonical_fixed_drive_root(root_path: &str) -> Result<std::path::PathBuf, String> {
+    if root_path.contains('\0') {
+        return Err("Invalid scan folder".to_string());
+    }
+    cleanup_guard::reject_links(std::path::Path::new(root_path))?;
+    let root = std::path::PathBuf::from(root_path)
+        .canonicalize()
+        .map_err(|error| format!("Cannot access scan drive: {}", error))?;
+    if !root.is_dir() || cleanup_drive_root_letter(&root).is_none() {
+        return Err("Scan target must be a drive root".to_string());
+    }
+    Ok(root)
+}
+
 pub(super) fn normalize_large_file_mode(mode: Option<&str>) -> String {
     match mode.unwrap_or("video").to_ascii_lowercase().as_str() {
         "all" | "video" | "archives" | "installers" | "documents" | "images" | "audio"
@@ -1791,49 +1808,132 @@ fn move_files_to_recycle_bin_checked(
 
 #[cfg(target_os = "windows")]
 pub(super) fn move_single_file_to_recycle_bin(path: &std::path::Path) -> Result<(), String> {
-    use windows::core::HSTRING;
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED,
-    };
-    use windows::Win32::UI::Shell::{
-        FileOperation, IFileOperation, IShellItem, SHCreateItemFromParsingName, FOFX_ADDUNDORECORD,
-        FOFX_EARLYFAILURE, FOFX_RECYCLEONDELETE, FOF_NOERRORUI, FOF_SILENT,
-    };
-    // Request recycling explicitly; never retry with a permanent-delete API.
-    unsafe {
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED)
-            .ok()
-            .map_err(|error| error.to_string())?;
-        struct ComScope;
-        impl Drop for ComScope {
-            fn drop(&mut self) {
+    RecycleBinBatch::new()?
+        .move_batch(&[path.to_path_buf()], &|_| Ok(()))
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| Err("No recycle result".into()))
+}
+
+// One apartment per cleanup worker; bounded batches avoid thousands of Shell initializations.
+#[cfg(target_os = "windows")]
+pub(super) struct RecycleBinBatch {
+    _thread_bound: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+#[cfg(target_os = "windows")]
+impl RecycleBinBatch {
+    pub(super) fn new() -> Result<Self, String> {
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok() }
+            .map_err(|error| format!("Cannot initialize Recycle Bin API: {}", error.code()))?;
+        Ok(Self {
+            _thread_bound: std::marker::PhantomData,
+        })
+    }
+
+    pub(super) fn move_batch(
+        &self,
+        paths: &[std::path::PathBuf],
+        validate: &dyn Fn(&std::path::Path) -> Result<(), String>,
+    ) -> Vec<Result<(), String>> {
+        let results = self.run(paths, validate);
+        if paths.len() == 1 {
+            return results;
+        }
+        paths
+            .iter()
+            .zip(results)
+            .map(|(path, outcome)| {
+                // Retry only an existing, still-valid file. Never retry an ambiguous/missing path.
+                if outcome.is_err()
+                    && std::fs::symlink_metadata(path).is_ok()
+                    && validate(path).is_ok()
+                {
+                    self.run(std::slice::from_ref(path), validate).remove(0)
+                } else {
+                    outcome
+                }
+            })
+            .collect()
+    }
+
+    fn run(
+        &self,
+        paths: &[std::path::PathBuf],
+        validate: &dyn Fn(&std::path::Path) -> Result<(), String>,
+    ) -> Vec<Result<(), String>> {
+        use windows::core::HSTRING;
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
+        use windows::Win32::UI::Shell::{
+            FileOperation, IFileOperation, IShellItem, SHCreateItemFromParsingName,
+            FOFX_ADDUNDORECORD, FOFX_EARLYFAILURE, FOFX_RECYCLEONDELETE, FOF_NOERRORUI, FOF_SILENT,
+        };
+        let mut results = vec![Err("File was not queued".into()); paths.len()];
+        let mut queued = Vec::new();
+        let run = || -> windows::core::Result<()> {
+            let operation: IFileOperation =
+                unsafe { CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER)? };
+            // Explicit recycling only; no permanent-delete fallback.
+            unsafe {
+                operation.SetOperationFlags(
+                    FOFX_RECYCLEONDELETE
+                        | FOFX_EARLYFAILURE
+                        | FOFX_ADDUNDORECORD
+                        | FOF_NOERRORUI
+                        | FOF_SILENT,
+                )?;
+            }
+            for (index, path) in paths.iter().enumerate() {
+                results[index] = validate(path).and_then(|_| {
+                    let item: IShellItem = unsafe {
+                        SHCreateItemFromParsingName(
+                            &HSTRING::from(cleanup_display_path(path)),
+                            None,
+                        )
+                    }
+                    .map_err(|error| format!("Cannot queue file: {}", error.code()))?;
+                    unsafe { operation.DeleteItem(&item, None) }
+                        .map_err(|error| format!("Cannot queue file: {}", error.code()))?;
+                    queued.push(index);
+                    Ok(())
+                });
+            }
+            if !queued.is_empty() {
                 unsafe {
-                    CoUninitialize();
+                    operation.PerformOperations()?;
+                }
+            }
+            Ok(())
+        };
+        let mut run = run;
+        let operation_error = run()
+            .err()
+            .map(|error| format!("Windows Recycle Bin API failed: {}", error.code()));
+        for index in queued {
+            results[index] = match std::fs::symlink_metadata(&paths[index]) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                _ => Err(operation_error
+                    .clone()
+                    .unwrap_or_else(|| "Windows did not move the file to the Recycle Bin".into())),
+            };
+        }
+        if let Some(error) = operation_error {
+            for result in &mut results {
+                if matches!(result, Err(message) if message == "File was not queued") {
+                    *result = Err(error.clone());
                 }
             }
         }
-        let _scope = ComScope;
-        let run = || -> windows::core::Result<bool> {
-            let operation: IFileOperation =
-                CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER)?;
-            operation.SetOperationFlags(
-                FOFX_RECYCLEONDELETE
-                    | FOFX_EARLYFAILURE
-                    | FOFX_ADDUNDORECORD
-                    | FOF_NOERRORUI
-                    | FOF_SILENT,
-            )?;
-            let item: IShellItem =
-                SHCreateItemFromParsingName(&HSTRING::from(cleanup_display_path(path)), None)?;
-            operation.DeleteItem(&item, None)?;
-            operation.PerformOperations()?;
-            Ok(operation.GetAnyOperationsAborted()?.as_bool())
-        };
-        match run() {
-            Ok(false) => Ok(()),
-            Ok(true) => Err("Recycle bin operation was cancelled or blocked by Windows".into()),
-            Err(error) => Err(format!("Windows Recycle Bin API failed: {}", error.code())),
+        results
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for RecycleBinBatch {
+    fn drop(&mut self) {
+        unsafe {
+            windows::Win32::System::Com::CoUninitialize();
         }
     }
 }
@@ -2121,7 +2221,8 @@ mod cleanup_large_file_tests {
         };
         // Resolve the parent before invoking cmd.exe: an unquoted `..` segment
         // can be parsed as a switch by mklink on runners whose path has no spaces.
-        let dir = std::fs::canonicalize(cleanup_test_dir("links")).expect("canonicalize cleanup test dir");
+        let dir = std::fs::canonicalize(cleanup_test_dir("links"))
+            .expect("canonicalize cleanup test dir");
         let original = dir.join("original.mp4");
         make_sparse_file(&original, 11 * MB);
         std::fs::hard_link(&original, dir.join("alias.mp4")).unwrap();

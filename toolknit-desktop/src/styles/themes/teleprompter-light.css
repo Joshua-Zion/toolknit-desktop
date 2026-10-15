@@ -23,59 +23,6 @@ html[data-theme="light"] .teleprompter-overlay::after {
   background: transparent;
 }
 
-html[data-theme="light"] .teleprompter-overlay .teleprompter-topbar {
-  border-bottom-color: #ececef;
-  color: var(--tele-light-ink);
-  background: rgba(255, 255, 255, .98);
-  backdrop-filter: none;
-}
-
-html[data-theme="light"] .teleprompter-overlay .pdf-merge-v2-back {
-  --tool-back-static-outline: #bfc2c7;
-  border-color: var(--tele-light-line-strong);
-  color: var(--tele-light-ink);
-  background: var(--tele-light-surface);
-}
-
-html[data-theme="light"] .teleprompter-overlay .pdf-merge-v2-back:hover {
-  --tool-back-static-outline: #171717;
-  border-color: var(--tele-light-ink);
-  color: var(--tele-light-ink);
-  background: var(--tele-light-hover);
-}
-
-html[data-theme="light"] .teleprompter-overlay .pdf-merge-v2-top-tag {
-  border-color: transparent;
-  color: #686b72;
-  background: #f0f1f3;
-}
-
-html[data-theme="light"] .teleprompter-overlay .teleprompter-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
-  color: var(--tele-light-ink);
-}
-
-html[data-theme="light"] .teleprompter-overlay .teleprompter-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover {
-  color: var(--tele-light-ink);
-  background: var(--tele-light-hover);
-}
-
-html[data-theme="light"] .teleprompter-overlay .teleprompter-topbar .home-v2-support-top {
-  border-color: var(--tele-light-ink);
-  color: #ffffff;
-  background: var(--tele-light-ink);
-}
-
-html[data-theme="light"] .teleprompter-overlay .teleprompter-topbar .home-v2-support-top:hover {
-  border-color: #303030;
-  color: #ffffff;
-  background: #303030;
-}
-
-html[data-theme="light"] .teleprompter-overlay .teleprompter-topbar .home-v2-window-button[data-window-action="close"]:hover {
-  color: #ffffff;
-  background: #c83b3b;
-}
-
 html[data-theme="light"] .teleprompter-overlay .teleprompter-body {
   background: var(--tele-light-surface);
 }

@@ -1,6 +1,7 @@
 import { createLifecycleScope, normalizeToolInstance } from './tool-lifecycle.js';
 import { mountTrustedTemplate } from './trusted-template-runtime.js';
 import { moveFocusOutOfHiddenRegion } from '../shared/tool-page-shell.js';
+import { prepareToolPageChrome } from '../shared/tool-page-chrome.js';
 
 function validateSpec(toolId, spec) {
   if (!spec || typeof spec !== 'object') throw new TypeError(`Missing lazy tool spec for ${toolId}`);
@@ -119,6 +120,7 @@ export function createLazyToolRegistry({
         const context = await createContext({ toolId, spec, overlay });
         if (disposed) return null;
         const created = normalizeToolInstance(initializer({ ...context, overlay }), toolId);
+        prepareToolPageChrome(overlay);
         instances.set(instanceKey, created);
         instanceOverlays.set(created, overlay);
         // Initializers may add or replace controls in the mounted overlay.

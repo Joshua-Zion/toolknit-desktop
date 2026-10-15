@@ -31,58 +31,6 @@ html[data-theme="light"] .bg-removal-overlay .bg-removal-bg {
 /* The overlay also carries the shared pdf-merge-v2 marker for navigation
    compatibility. Keep the existing tool-page navigation geometry, but make
    every action readable on the daytime surface. */
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar {
-  background: rgba(255, 255, 255, .96);
-  border-bottom-color: #ececef;
-  color: var(--bg-removal-ink);
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .pdf-merge-v2-back {
-  border-color: transparent;
-  background: #ffffff;
-  color: var(--bg-removal-ink);
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .pdf-merge-v2-back:hover {
-  border-color: #111111;
-  background: #eeeeee;
-  color: var(--bg-removal-ink);
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .pdf-merge-v2-back::before {
-  border-color: #bbbbbb;
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .pdf-merge-v2-back:hover::after {
-  opacity: 1;
-  --tool-back-outline-progress: 360deg;
-  transition: --tool-back-outline-progress 560ms linear, opacity 70ms linear;
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .pdf-merge-v2-top-tag {
-  border-color: transparent;
-  background: #f0f1f3;
-  color: #686b72;
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button) {
-  color: var(--bg-removal-ink);
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar :is(.home-v2-nav-link, .home-v2-icon-button, .home-v2-window-button):hover {
-  background: #f0f1f3;
-  color: var(--bg-removal-ink);
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .home-v2-support-top {
-  background: #171717;
-  color: #ffffff;
-}
-
-html[data-theme="light"] .bg-removal-overlay .bg-removal-topbar .home-v2-support-top:hover {
-  background: #303030;
-  color: #ffffff;
-}
 
 html[data-theme="light"] .bg-removal-body {
   background: transparent;

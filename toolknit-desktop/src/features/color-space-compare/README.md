@@ -6,7 +6,7 @@ The wheel geometry, Canvas rendering, HEX parser, and geometry regression cases
 are adapted from Joshua-Zion's contribution in
 [ToolKnit Desktop PR #67](https://github.com/ZihangDong/toolknit-desktop/pull/67),
 revision `8691216bad1f7154c53ad52e9126ec151ade8979`, under the repository's
-[Apache-2.0 license](../../../../LICENSE). The PR was not merged; these changes
+[Apache-2.0 license](../../../../LICENSES/Apache-2.0.txt). The PR was not merged; these changes
 are integrated into the existing V3 feature. Source comments mark the adaptations.
 
 ## Ownership

@@ -49,6 +49,13 @@ export function overallDependencyProgress(state) {
 export function createDependencyHelpers({ translate = key => key, getLanguage = () => 'zh', displayPath = value => value } = {}) {
   const dependencyErrorMessage = error => {
     const message = String(error?.message || error || '');
+    const download = /dependency-download:(timeout|network|range|size|http|storage|verify|cancelled)\b/.exec(message);
+    if (download) {
+      const key = { timeout: 'downloadTimeout', network: 'downloadNetwork', http: 'downloadNetwork',
+        range: 'downloadIntegrity', size: 'downloadIntegrity', verify: 'downloadIntegrity',
+        storage: 'downloadStorage', cancelled: 'downloadCancelled' }[download[1]];
+      return translate(`home.dependencies.${key}`);
+    }
     const match = /^libreoffice-runtime:([a-z-]+)(?::([A-Za-z0-9_.=-]+))?$/.exec(message);
     if (!match) return message;
     const key = {

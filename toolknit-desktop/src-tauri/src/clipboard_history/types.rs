@@ -220,6 +220,9 @@ pub enum Request {
     Detail {
         id: i64,
     },
+    Pin {
+        id: i64,
+    },
     Favorite {
         id: i64,
         favorite: bool,
@@ -236,4 +239,29 @@ pub enum Request {
         #[serde(default)]
         paths: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Request;
+
+    #[test]
+    fn pin_accepts_only_an_existing_record_id() {
+        assert!(matches!(
+            serde_json::from_str::<Request>(r#"{"action":"pin","id":42}"#).unwrap(),
+            Request::Pin { id: 42 }
+        ));
+        for input in [
+            r#"{"action":"pin"}"#,
+            r#"{"action":"pin","id":1.5}"#,
+            r#"{"action":"pin","id":42,"path":"C:/untrusted.png"}"#,
+            r#"{"action":"pin","id":42,"image":"untrusted"}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(input).is_err());
+        }
+        assert!(matches!(
+            serde_json::from_str::<Request>(r#"{"action":"copy","id":42}"#).unwrap(),
+            Request::Copy { id: 42, paths: false }
+        ));
+    }
 }

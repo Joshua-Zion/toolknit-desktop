@@ -1,7 +1,6 @@
-export const COLOR_EXTRACTOR_LIMITS = Object.freeze({
-  maxBytes: 100 * 1024 * 1024,
-  maxPixels: 160_000_000
-});
+import { COLOR_EXTRACTOR_LIMITS } from './core/limits/image.js';
+
+export { COLOR_EXTRACTOR_LIMITS };
 
 const SUPPORTED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 

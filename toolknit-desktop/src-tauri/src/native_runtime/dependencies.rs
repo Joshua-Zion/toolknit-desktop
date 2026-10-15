@@ -1,8 +1,10 @@
+use super::office::resolve_libreoffice_runtime;
 use super::*;
-#[path = "dependencies/libreoffice_install.rs"]
-mod libreoffice_install;
+use crate::platform::{dependency_download, runtime_discovery};
 #[path = "dependencies/libreoffice_extract.rs"]
 mod libreoffice_extract;
+#[path = "dependencies/libreoffice_install.rs"]
+mod libreoffice_install;
 
 // ===== Audio Conversion =====
 
@@ -68,11 +70,13 @@ pub(super) fn pdf_enhance_writes(
     PDF_ENHANCE_WRITES.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeMap::new()))
 }
 
-pub(super) fn active_video_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>> {
+pub(super) fn active_video_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>>
+{
     ACTIVE_VIDEO_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeSet::new()))
 }
 
-pub(super) fn active_office_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>> {
+pub(super) fn active_office_children() -> &'static std::sync::Mutex<std::collections::BTreeSet<u32>>
+{
     ACTIVE_OFFICE_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::BTreeSet::new()))
 }
 
@@ -148,6 +152,8 @@ pub(super) struct ResolvedFfmpegRuntime {
     path: std::path::PathBuf,
     source: String,
     version: Option<String>,
+    file_bytes: u64,
+    modified: Option<std::time::SystemTime>,
 }
 
 pub(super) static FFMPEG_RUNTIME_CACHE: OnceLock<std::sync::Mutex<Option<ResolvedFfmpegRuntime>>> =
@@ -172,9 +178,11 @@ pub(super) fn ffmpeg_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
     };
     let mut candidates = Vec::new();
     if let Ok(value) = std::env::var("TOOLKNIT_FFMPEG_PATH") {
-        if !value.trim().is_empty() && !value.contains('\0') {
-            candidates.push((std::path::PathBuf::from(value), "env:TOOLKNIT_FFMPEG_PATH"));
-        }
+        candidates.extend(
+            runtime_discovery::explicit_candidates(&value, executable)
+                .into_iter()
+                .map(|p| (p, "env:TOOLKNIT_FFMPEG_PATH")),
+        );
     }
     if let Ok(managed) = ffmpeg_runtime_path() {
         candidates.push((managed, "managed"));
@@ -186,6 +194,14 @@ pub(super) fn ffmpeg_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
     #[cfg(target_os = "windows")]
     {
         if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            let packages = std::path::Path::new(&local_app_data).join("Microsoft/WinGet/Packages");
+            for package in runtime_discovery::package_candidates(&packages, "gyan.ffmpeg", "") {
+                candidates.extend(
+                    runtime_discovery::package_candidates(&package, "ffmpeg", "bin/ffmpeg.exe")
+                        .into_iter()
+                        .map(|p| (p, "system:winget")),
+                );
+            }
             candidates.push((
                 std::path::PathBuf::from(local_app_data)
                     .join("Microsoft")
@@ -197,6 +213,11 @@ pub(super) fn ffmpeg_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
         }
         if let Ok(user_profile) = std::env::var("USERPROFILE") {
             candidates.push((
+                std::path::Path::new(&user_profile)
+                    .join("scoop/apps/ffmpeg/current/bin/ffmpeg.exe"),
+                "system:scoop",
+            ));
+            candidates.push((
                 std::path::PathBuf::from(user_profile)
                     .join("scoop")
                     .join("shims")
@@ -204,6 +225,17 @@ pub(super) fn ffmpeg_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
                 "system:scoop",
             ));
         }
+        if let Ok(drive) = std::env::var("SystemDrive") {
+            candidates.push((
+                std::path::PathBuf::from(format!("{drive}\\ffmpeg\\bin\\ffmpeg.exe")),
+                "system:windows-install",
+            ));
+        }
+        candidates.extend(
+            runtime_discovery::registered_executables(executable)
+                .into_iter()
+                .map(|p| (p, "system:windows-install")),
+        );
         if let Ok(chocolatey) = std::env::var("ChocolateyInstall") {
             candidates.push((
                 std::path::PathBuf::from(chocolatey)
@@ -244,11 +276,11 @@ pub(super) fn ffmpeg_candidates() -> Vec<(std::path::PathBuf, &'static str)> {
         "debug-resource",
     ));
 
-    if let Some(paths) = std::env::var_os("PATH") {
-        candidates.extend(
-            std::env::split_paths(&paths).map(|directory| (directory.join(executable), "PATH")),
-        );
-    }
+    candidates.extend(
+        runtime_discovery::path_directories()
+            .into_iter()
+            .map(|directory| (directory.join(executable), "PATH")),
+    );
     let mut seen = std::collections::BTreeSet::new();
     candidates
         .into_iter()
@@ -271,13 +303,28 @@ pub(super) fn probe_ffmpeg_runtime(
         .arg("-version")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stderr(std::process::Stdio::null());
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = command.spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let mut output = Vec::new();
+        let mut buffer = [0; 4096];
+        while let Ok(count) = stdout.read(&mut buffer) {
+            if count == 0 {
+                break;
+            }
+            let remaining = 4096usize.saturating_sub(output.len());
+            output.extend_from_slice(&buffer[..count.min(remaining)]);
+        }
+        let _ = sender.send(output);
+    });
     let child_id = child.id();
     let started_at = std::time::Instant::now();
     loop {
@@ -293,30 +340,42 @@ pub(super) fn probe_ffmpeg_runtime(
             }
         }
     }
-    let output = child.wait_with_output().ok()?;
-    if !output.status.success() {
+    if !child.wait().ok()?.success() {
         return None;
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let remaining = FFMPEG_PROBE_TIMEOUT_MS
+        .saturating_sub(started_at.elapsed().as_millis())
+        .max(1);
+    let output = receiver
+        .recv_timeout(std::time::Duration::from_millis(remaining as u64))
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output);
     let version = stdout
         .lines()
-        .chain(stderr.lines())
         .map(str::trim)
         .find(|line| line.to_ascii_lowercase().starts_with("ffmpeg version"))
-        .map(str::to_string);
+        .map(|line| line.chars().take(160).collect::<String>())?;
+    let metadata = std::fs::metadata(path).ok()?;
     Some(ResolvedFfmpegRuntime {
         path: path.to_path_buf(),
         source: source.to_string(),
-        version,
+        version: Some(version),
+        file_bytes: metadata.len(),
+        modified: metadata.modified().ok(),
     })
 }
 
 pub(super) fn resolve_ffmpeg_runtime() -> Option<ResolvedFfmpegRuntime> {
+    static DISCOVERY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = DISCOVERY.lock().unwrap_or_else(|e| e.into_inner());
     if let Ok(cache) = ffmpeg_runtime_cache().lock() {
         if let Some(runtime) = cache.as_ref() {
             if std::fs::metadata(&runtime.path)
-                .map(|metadata| metadata.is_file())
+                .map(|metadata| {
+                    metadata.is_file()
+                        && metadata.len() == runtime.file_bytes
+                        && metadata.modified().ok() == runtime.modified
+                })
                 .unwrap_or(false)
             {
                 return Some(runtime.clone());
@@ -343,10 +402,14 @@ pub(super) fn get_ffmpeg_path() -> Result<std::path::PathBuf, String> {
 }
 
 #[tauri::command]
-pub(super) fn check_ffmpeg() -> bool {
-    get_ffmpeg_path()
-        .map(|path| path.is_file())
-        .unwrap_or(false)
+pub(super) async fn check_ffmpeg() -> bool {
+    tokio::task::spawn_blocking(|| {
+        get_ffmpeg_path()
+            .map(|path| path.is_file())
+            .unwrap_or(false)
+    })
+    .await
+    .unwrap_or(false)
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -378,7 +441,13 @@ pub(super) fn begin_ffmpeg_download() -> Result<FfmpegDownloadGuard, String> {
 }
 
 #[tauri::command]
-pub(super) fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String> {
+pub(super) async fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String> {
+    tokio::task::spawn_blocking(ffmpeg_runtime_status)
+        .await
+        .map_err(|_| "Cannot detect FFmpeg runtime".to_string())?
+}
+
+fn ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String> {
     let runtime = resolve_ffmpeg_runtime();
     let path = runtime.as_ref().map(|runtime| runtime.path.as_path());
     Ok(FfmpegRuntimeStatus {
@@ -393,7 +462,9 @@ pub(super) fn get_ffmpeg_runtime_status() -> Result<FfmpegRuntimeStatus, String>
     })
 }
 
-pub(super) fn ffmpeg_download_candidates(source: &str) -> Result<Vec<(&'static str, &'static str)>, String> {
+pub(super) fn ffmpeg_download_candidates(
+    source: &str,
+) -> Result<Vec<(&'static str, &'static str)>, String> {
     let china = [
         ("china", FFMPEG_CHINA_URL),
         ("china-fallback", FFMPEG_CHINA_FALLBACK_URL),
@@ -418,41 +489,64 @@ pub(super) fn extract_ffmpeg_executable(
         .map_err(|error| format!("Cannot open FFmpeg archive: {}", error))?;
     let mut entry = GzDecoder::new(file);
     let temporary = destination.with_extension("exe.part");
-    let mut output = std::fs::File::create(&temporary)
-        .map_err(|error| format!("Cannot create FFmpeg runtime: {}", error))?;
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut extracted = 0_u64;
-    loop {
-        let count = entry
-            .read(&mut buffer)
-            .map_err(|error| format!("Cannot extract FFmpeg: {}", error))?;
-        if count == 0 {
-            break;
+    let extraction = (|| -> Result<(), String> {
+        let mut output =
+            std::fs::File::create(&temporary).map_err(|_| "dependency-download:storage")?;
+        let mut buffer = [0_u8; 64 * 1024];
+        let mut extracted = 0_u64;
+        loop {
+            let count = entry
+                .read(&mut buffer)
+                .map_err(|_| "dependency-download:verify")?;
+            if count == 0 {
+                break;
+            }
+            extracted = extracted.saturating_add(count as u64);
+            if extracted > 250 * 1024 * 1024 {
+                return Err("dependency-download:verify".into());
+            }
+            output
+                .write_all(&buffer[..count])
+                .map_err(|_| "dependency-download:storage")?;
         }
-        extracted = extracted.saturating_add(count as u64);
-        if extracted > 250 * 1024 * 1024 {
-            drop(output);
-            let _ = std::fs::remove_file(&temporary);
-            return Err("FFmpeg executable in archive is invalid".to_string());
+        if extracted < 1024 * 1024 {
+            return Err("dependency-download:verify".into());
         }
         output
-            .write_all(&buffer[..count])
-            .map_err(|error| format!("Cannot write FFmpeg runtime: {}", error))?;
-    }
-    if extracted < 1024 * 1024 {
-        drop(output);
+            .sync_all()
+            .map_err(|_| "dependency-download:storage")?;
+        Ok(())
+    })();
+    if let Err(error) = extraction {
         let _ = std::fs::remove_file(&temporary);
-        return Err("FFmpeg executable in archive is invalid".to_string());
+        return Err(error);
     }
-    output
-        .sync_all()
-        .map_err(|error| format!("Cannot finalize FFmpeg runtime: {}", error))?;
-    drop(output);
+    if probe_ffmpeg_runtime(&temporary, "managed").is_none() {
+        let _ = std::fs::remove_file(&temporary);
+        return Err("FFmpeg executable validation failed".into());
+    }
+    let backup = destination.with_extension("exe.previous");
     if destination.exists() {
-        let _ = std::fs::remove_file(destination);
+        if backup.exists() {
+            std::fs::remove_file(&backup).map_err(|_| "Cannot clear FFmpeg backup")?;
+        }
+        std::fs::rename(destination, &backup).map_err(|_| "Cannot back up FFmpeg runtime")?;
     }
-    std::fs::rename(&temporary, destination)
-        .map_err(|error| format!("Cannot install FFmpeg runtime: {}", error))
+    if let Err(error) = std::fs::rename(&temporary, destination) {
+        if backup.exists() {
+            let _ = std::fs::rename(&backup, destination);
+        }
+        return Err(format!("Cannot install FFmpeg runtime: {}", error));
+    }
+    if probe_ffmpeg_runtime(destination, "managed").is_none() {
+        let _ = std::fs::remove_file(destination);
+        if backup.exists() {
+            let _ = std::fs::rename(&backup, destination);
+        }
+        return Err("FFmpeg executable validation failed".into());
+    }
+    let _ = std::fs::remove_file(backup);
+    Ok(())
 }
 
 #[tauri::command]
@@ -474,7 +568,7 @@ pub(super) async fn download_ffmpeg_runtime(
         .to_ascii_lowercase();
     let candidates = ffmpeg_download_candidates(&requested)?;
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/3.0.0 ffmpeg-runtime-manager")
+        .user_agent("ToolKnit/3.1.0 ffmpeg-runtime-manager")
         .connect_timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(|error| format!("Cannot initialize FFmpeg download: {}", error))?;
@@ -490,86 +584,114 @@ pub(super) async fn download_ffmpeg_runtime(
             let _ = std::fs::remove_file(&archive);
             resume_from = 0;
         }
-        let mut request = client.get(url);
-        if resume_from > 0 {
-            request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
-        }
-        let mut response = match request.send().await {
-            Ok(response) if response.status().is_success() => response,
-            Ok(response) => {
-                last_error = Some(format!("{}: HTTP {}", candidate, response.status()));
-                continue;
+        let mut downloaded = resume_from;
+        if !dependency_download::verified_partial(
+            &archive,
+            FFMPEG_ARCHIVE_BYTES,
+            FFMPEG_ARCHIVE_SHA256,
+        )
+        .await?
+        {
+            resume_from = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
+            let mut request = client.get(url);
+            if resume_from > 0 {
+                request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
             }
-            Err(error) => {
-                last_error = Some(format!("{}: {}", candidate, error));
-                continue;
-            }
-        };
-        let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-        if !append && resume_from > 0 {
-            resume_from = 0;
-        }
-        let mut downloaded = if append { resume_from } else { 0 };
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(append)
-            .truncate(!append)
-            .open(&archive)
-            .map_err(|error| format!("Cannot create FFmpeg download: {}", error))?;
-        let _ = app_handle.emit(
-            "ffmpeg-runtime-download-progress",
-            FfmpegDownloadProgress {
-                downloaded_bytes: downloaded,
-                total_bytes: FFMPEG_ARCHIVE_BYTES,
-                phase: "downloading".to_string(),
-            },
-        );
-        let mut failed = None;
-        loop {
-            if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
-                let _ = file.sync_all();
-                return Err("dependency-download:cancelled".to_string());
-            }
-            match response.chunk().await {
-                Ok(Some(chunk)) => {
-                    downloaded = downloaded.saturating_add(chunk.len() as u64);
-                    if downloaded > FFMPEG_ARCHIVE_BYTES {
-                        failed =
-                            Some("FFmpeg package is larger than the expected size".to_string());
-                        break;
+            let mut response =
+                match dependency_download::network(request.send(), &CANCEL_FFMPEG_DOWNLOAD).await {
+                    Ok(response) if response.status().is_success() => response,
+                    Ok(response) => {
+                        last_error = Some(format!(
+                            "{candidate}: dependency-download:http:{}",
+                            response.status().as_u16()
+                        ));
+                        continue;
                     }
-                    if let Err(error) = file.write_all(&chunk) {
-                        failed = Some(format!("Cannot write FFmpeg download: {}", error));
-                        break;
+                    Err(error) => {
+                        if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
+                            return Err("dependency-download:cancelled".into());
+                        }
+                        last_error = Some(format!("{}: {}", candidate, error));
+                        continue;
                     }
-                    let _ = app_handle.emit(
-                        "ffmpeg-runtime-download-progress",
-                        FfmpegDownloadProgress {
-                            downloaded_bytes: downloaded,
-                            total_bytes: FFMPEG_ARCHIVE_BYTES,
-                            phase: "downloading".to_string(),
-                        },
-                    );
-                }
-                Ok(None) => break,
+                };
+            downloaded = match dependency_download::response_offset(
+                &response,
+                resume_from,
+                FFMPEG_ARCHIVE_BYTES,
+            ) {
+                Ok(offset) => offset,
                 Err(error) => {
-                    failed = Some(format!("FFmpeg download interrupted: {}", error));
-                    break;
+                    last_error = Some(error);
+                    continue;
+                }
+            };
+            let append = downloaded > 0;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(append)
+                .truncate(!append)
+                .open(&archive)
+                .map_err(|_| "dependency-download:storage")?;
+            let _ = app_handle.emit(
+                "ffmpeg-runtime-download-progress",
+                FfmpegDownloadProgress {
+                    downloaded_bytes: downloaded,
+                    total_bytes: FFMPEG_ARCHIVE_BYTES,
+                    phase: "downloading".to_string(),
+                },
+            );
+            let mut failed = None;
+            let mut last_report = std::time::Instant::now();
+            loop {
+                if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
+                    let _ = file.sync_all();
+                    return Err("dependency-download:cancelled".to_string());
+                }
+                match dependency_download::network(response.chunk(), &CANCEL_FFMPEG_DOWNLOAD).await
+                {
+                    Ok(Some(chunk)) => {
+                        downloaded = downloaded.saturating_add(chunk.len() as u64);
+                        if downloaded > FFMPEG_ARCHIVE_BYTES {
+                            failed = Some("dependency-download:size".to_string());
+                            break;
+                        }
+                        file.write_all(&chunk)
+                            .map_err(|_| "dependency-download:storage")?;
+                        if last_report.elapsed().as_millis() >= 100
+                            || downloaded == FFMPEG_ARCHIVE_BYTES
+                        {
+                            last_report = std::time::Instant::now();
+                            let _ = app_handle.emit(
+                                "ffmpeg-runtime-download-progress",
+                                FfmpegDownloadProgress {
+                                    downloaded_bytes: downloaded,
+                                    total_bytes: FFMPEG_ARCHIVE_BYTES,
+                                    phase: "downloading".to_string(),
+                                },
+                            );
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(error) => {
+                        failed = Some(format!("FFmpeg download interrupted: {}", error));
+                        break;
+                    }
                 }
             }
-        }
-        let _ = file.sync_all();
-        drop(file);
-        if let Some(error) = failed {
-            last_error = Some(error);
-            continue;
+            file.sync_all().map_err(|_| "dependency-download:storage")?;
+            drop(file);
+            if let Some(error) = failed {
+                if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
+                    return Err("dependency-download:cancelled".into());
+                }
+                last_error = Some(error);
+                continue;
+            }
         }
         if downloaded != FFMPEG_ARCHIVE_BYTES {
-            last_error = Some(format!(
-                "Downloaded FFmpeg package is incomplete ({}/{})",
-                downloaded, FFMPEG_ARCHIVE_BYTES
-            ));
+            last_error = Some("dependency-download:size".into());
             continue;
         }
         let archive_for_hash = archive.clone();
@@ -578,8 +700,11 @@ pub(super) async fn download_ffmpeg_runtime(
             .map_err(|error| format!("Cannot verify FFmpeg package: {}", error))??;
         if actual_hash != FFMPEG_ARCHIVE_SHA256 {
             let _ = std::fs::remove_file(&archive);
-            last_error = Some("FFmpeg package integrity check failed".to_string());
+            last_error = Some("dependency-download:verify".to_string());
             continue;
+        }
+        if CANCEL_FFMPEG_DOWNLOAD.load(Ordering::SeqCst) {
+            return Err("dependency-download:cancelled".into());
         }
         let _ = app_handle.emit(
             "ffmpeg-runtime-download-progress",
@@ -596,29 +721,10 @@ pub(super) async fn download_ffmpeg_runtime(
         })
         .await
         .map_err(|error| format!("Cannot install FFmpeg runtime: {}", error))?;
-        if let Err(error) = extraction {
-            last_error = Some(error);
-            let _ = std::fs::remove_file(&archive);
-            continue;
-        }
+        // A verified package cannot be repaired by downloading from another source.
+        // Keep it for retry if installation is blocked by local storage or permissions.
+        extraction?;
         let _ = std::fs::remove_file(&archive);
-        let executable = ffmpeg_runtime_path()?;
-        let valid = tokio::task::spawn_blocking(move || {
-            std::process::Command::new(&executable)
-                .arg("-version")
-                .output()
-                .map(|result| result.status.success())
-                .unwrap_or(false)
-        })
-        .await
-        .map_err(|error| format!("Cannot validate FFmpeg runtime: {}", error))?;
-        if !valid {
-            let _ = std::fs::remove_file(ffmpeg_runtime_path()?);
-            return Err(
-                "FFmpeg executable validation failed; the downloaded runtime was removed"
-                    .to_string(),
-            );
-        }
         let _ = app_handle.emit(
             "ffmpeg-runtime-download-progress",
             FfmpegDownloadProgress {
@@ -628,7 +734,7 @@ pub(super) async fn download_ffmpeg_runtime(
             },
         );
         invalidate_ffmpeg_runtime_cache();
-        return get_ffmpeg_runtime_status();
+        return get_ffmpeg_runtime_status().await;
     }
     Err(format!(
         "Cannot download FFmpeg: {}",
@@ -638,11 +744,13 @@ pub(super) async fn download_ffmpeg_runtime(
 
 #[tauri::command]
 pub(super) fn delete_ffmpeg_runtime() -> Result<(), String> {
+    let _guard = begin_ffmpeg_download()?;
     let directory = ffmpeg_runtime_dir()?;
     if directory.exists() {
         std::fs::remove_dir_all(directory)
             .map_err(|error| format!("Cannot delete FFmpeg runtime: {}", error))?;
     }
+    invalidate_ffmpeg_runtime_cache();
     Ok(())
 }
 
@@ -691,6 +799,7 @@ pub(super) struct LibreOfficeRuntimeCache {
     /// The last runtime path that was resolved successfully. Keeping this in
     /// memory avoids launching soffice --version for every PPT conversion.
     runtime: Option<LibreOfficeRuntimeInfo>,
+    fingerprint: Option<(u64, Option<std::time::SystemTime>)>,
     /// Directory size is only presentation metadata. It is populated by a
     /// background scan so opening a PPT tool never waits on thousands of files.
     bytes: Option<u64>,
@@ -704,7 +813,8 @@ pub(super) static LIBREOFFICE_RUNTIME_CACHE: std::sync::OnceLock<
 pub(super) static LIBREOFFICE_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn libreoffice_runtime_cache() -> &'static std::sync::Mutex<LibreOfficeRuntimeCache> {
-    LIBREOFFICE_RUNTIME_CACHE.get_or_init(|| std::sync::Mutex::new(LibreOfficeRuntimeCache::default()))
+    LIBREOFFICE_RUNTIME_CACHE
+        .get_or_init(|| std::sync::Mutex::new(LibreOfficeRuntimeCache::default()))
 }
 
 pub(super) fn invalidate_libreoffice_runtime_cache() {
@@ -716,15 +826,13 @@ pub(super) fn invalidate_libreoffice_runtime_cache() {
 
 pub(super) fn cache_libreoffice_runtime(runtime: LibreOfficeRuntimeInfo) {
     if let Ok(mut cache) = libreoffice_runtime_cache().lock() {
+        cache.fingerprint = runtime
+            .command
+            .as_deref()
+            .and_then(|p| std::fs::metadata(p).ok())
+            .map(|m| (m.len(), m.modified().ok()));
         cache.runtime = Some(runtime);
     }
-}
-
-pub(super) fn cached_libreoffice_runtime() -> Option<LibreOfficeRuntimeInfo> {
-    libreoffice_runtime_cache()
-        .lock()
-        .ok()
-        .and_then(|cache| cache.runtime.clone())
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -815,72 +923,39 @@ pub(super) fn cached_or_schedule_libreoffice_size(root: &std::path::Path) -> u64
     0
 }
 
-/// Resolve an installed executable without starting LibreOffice. This is the
-/// hot-path check used while opening the two PPT tools. A successful metadata
-/// check is sufficient because conversion performs the real process launch
-/// and reports a renderer error if a custom path is invalid.
+/// Reuse only a probed executable whose identity has not changed.
 pub(super) fn resolve_libreoffice_runtime_quick() -> Option<LibreOfficeRuntimeInfo> {
-    for (candidate, source) in libreoffice_candidates() {
-        let metadata = match std::fs::metadata(&candidate) {
-            Ok(metadata) => metadata,
-            Err(_) => continue,
-        };
-        if !metadata.is_file() {
-            continue;
-        }
-        if source == "managed" && libreoffice_install::ensure_app_local_libraries(
-            candidate.parent()?.parent()?
-        ).is_err() {
-            continue;
-        }
-        return Some(LibreOfficeRuntimeInfo {
-            available: true,
-            command: Some(candidate.to_string_lossy().into_owned()),
-            source: Some(source.to_string()),
-            version: cached_libreoffice_runtime().and_then(|runtime| runtime.version),
-            message: None,
-        });
-    }
-    None
+    let cache = libreoffice_runtime_cache().lock().ok()?;
+    let runtime = cache.runtime.as_ref()?;
+    let metadata = std::fs::metadata(runtime.command.as_deref()?).ok()?;
+    (metadata.is_file() && cache.fingerprint == Some((metadata.len(), metadata.modified().ok())))
+        .then(|| runtime.clone())
+}
+
+pub(super) fn prepare_managed_office(root: &std::path::Path) -> bool {
+    libreoffice_install::ensure_app_local_libraries(root).is_ok()
 }
 
 #[tauri::command]
-pub(super) fn is_libreoffice_runtime_available() -> bool {
-    if let Some(runtime) = cached_libreoffice_runtime() {
-        if runtime
-            .command
-            .as_deref()
-            .map(std::path::Path::new)
-            .is_some_and(|path| std::fs::metadata(path).map(|meta| meta.is_file()).unwrap_or(false))
-        {
-            return true;
-        }
-    }
-    if let Some(runtime) = resolve_libreoffice_runtime_quick() {
-        cache_libreoffice_runtime(runtime);
-        return true;
-    }
-    false
+pub(super) async fn is_libreoffice_runtime_available() -> bool {
+    tokio::task::spawn_blocking(|| resolve_libreoffice_runtime().available)
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]
-pub(super) fn get_libreoffice_runtime_status() -> Result<LibreOfficeRuntimeStatus, String> {
+pub(super) async fn get_libreoffice_runtime_status() -> Result<LibreOfficeRuntimeStatus, String> {
+    tokio::task::spawn_blocking(libreoffice_runtime_status)
+        .await
+        .map_err(|_| "libreoffice-runtime:probe".to_string())?
+}
+
+fn libreoffice_runtime_status() -> Result<LibreOfficeRuntimeStatus, String> {
     // Status is also called from the settings page. Keep it responsive even
     // when the managed runtime contains tens of thousands of extracted files.
     // Detailed size metadata is filled asynchronously and appears on the next
     // refresh/open of the manager.
-    let runtime = resolve_libreoffice_runtime_quick()
-        .or_else(cached_libreoffice_runtime)
-        .unwrap_or(LibreOfficeRuntimeInfo {
-            available: false,
-            command: None,
-            source: None,
-            version: None,
-            message: None,
-        });
-    if runtime.available {
-        cache_libreoffice_runtime(runtime.clone());
-    }
+    let runtime = resolve_libreoffice_runtime();
     let bytes = if runtime.source.as_deref() == Some("managed") {
         cached_or_schedule_libreoffice_size(&libreoffice_runtime_dir()?)
     } else {
@@ -953,7 +1028,7 @@ pub(super) async fn download_libreoffice_runtime(
         .to_ascii_lowercase();
     let candidates = libreoffice_download_candidates(&requested)?;
     let client = reqwest::Client::builder()
-        .user_agent("ToolKnit/3.0.0 libreoffice-runtime-manager")
+        .user_agent("ToolKnit/3.1.0 libreoffice-runtime-manager")
         .connect_timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|error| format!("Cannot initialize PPT runtime download: {}", error))?;
@@ -977,29 +1052,45 @@ pub(super) async fn download_libreoffice_runtime(
             if resume_from > 0 {
                 request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_from));
             }
-            let mut response = match request.send().await {
-                Ok(response) if response.status().is_success() => response,
-                Ok(response) => {
-                    last_error = Some(format!("{}: HTTP {}", candidate, response.status()));
-                    continue;
-                }
+            let mut response =
+                match dependency_download::network(request.send(), &CANCEL_LIBREOFFICE_DOWNLOAD)
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => response,
+                    Ok(response) => {
+                        last_error = Some(format!(
+                            "{candidate}: dependency-download:http:{}",
+                            response.status().as_u16()
+                        ));
+                        continue;
+                    }
+                    Err(error) => {
+                        if CANCEL_LIBREOFFICE_DOWNLOAD.load(Ordering::SeqCst) {
+                            return Err("dependency-download:cancelled".into());
+                        }
+                        last_error = Some(format!("{}: {}", candidate, error));
+                        continue;
+                    }
+                };
+            downloaded = match dependency_download::response_offset(
+                &response,
+                resume_from,
+                LIBREOFFICE_ARCHIVE_BYTES,
+            ) {
+                Ok(offset) => offset,
                 Err(error) => {
-                    last_error = Some(format!("{}: {}", candidate, error));
+                    last_error = Some(error);
                     continue;
                 }
             };
-            let append = resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-            if !append && resume_from > 0 {
-                resume_from = 0;
-            }
-            downloaded = if append { resume_from } else { 0 };
+            let append = downloaded > 0;
             let mut file = std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
                 .append(append)
                 .truncate(!append)
                 .open(&archive)
-                .map_err(|error| format!("Cannot create PPT runtime download: {}", error))?;
+                .map_err(|_| "dependency-download:storage")?;
             let _ = app_handle.emit(
                 "libreoffice-runtime-download-progress",
                 LibreOfficeDownloadProgress {
@@ -1009,30 +1100,36 @@ pub(super) async fn download_libreoffice_runtime(
                 },
             );
             let mut failed = None;
+            let mut last_report = std::time::Instant::now();
             loop {
                 if CANCEL_LIBREOFFICE_DOWNLOAD.load(Ordering::SeqCst) {
                     let _ = file.sync_all();
                     return Err("dependency-download:cancelled".to_string());
                 }
-                match response.chunk().await {
+                match dependency_download::network(response.chunk(), &CANCEL_LIBREOFFICE_DOWNLOAD)
+                    .await
+                {
                     Ok(Some(chunk)) => {
                         downloaded = downloaded.saturating_add(chunk.len() as u64);
                         if downloaded > LIBREOFFICE_ARCHIVE_BYTES {
-                            failed = Some("PPT runtime package is larger than expected".to_string());
+                            failed = Some("dependency-download:size".to_string());
                             break;
                         }
-                        if let Err(error) = file.write_all(&chunk) {
-                            failed = Some(format!("Cannot write PPT runtime download: {}", error));
-                            break;
+                        file.write_all(&chunk)
+                            .map_err(|_| "dependency-download:storage")?;
+                        if last_report.elapsed().as_millis() >= 100
+                            || downloaded == LIBREOFFICE_ARCHIVE_BYTES
+                        {
+                            last_report = std::time::Instant::now();
+                            let _ = app_handle.emit(
+                                "libreoffice-runtime-download-progress",
+                                LibreOfficeDownloadProgress {
+                                    downloaded_bytes: downloaded,
+                                    total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
+                                    phase: "downloading".to_string(),
+                                },
+                            );
                         }
-                        let _ = app_handle.emit(
-                            "libreoffice-runtime-download-progress",
-                            LibreOfficeDownloadProgress {
-                                downloaded_bytes: downloaded,
-                                total_bytes: LIBREOFFICE_ARCHIVE_BYTES,
-                                phase: "downloading".to_string(),
-                            },
-                        );
                     }
                     Ok(None) => break,
                     Err(error) => {
@@ -1041,18 +1138,18 @@ pub(super) async fn download_libreoffice_runtime(
                     }
                 }
             }
-            let _ = file.sync_all();
+            file.sync_all().map_err(|_| "dependency-download:storage")?;
             drop(file);
             if let Some(error) = failed {
+                if CANCEL_LIBREOFFICE_DOWNLOAD.load(Ordering::SeqCst) {
+                    return Err("dependency-download:cancelled".into());
+                }
                 last_error = Some(error);
                 continue;
             }
         }
         if downloaded != LIBREOFFICE_ARCHIVE_BYTES {
-            last_error = Some(format!(
-                "Downloaded PPT runtime is incomplete ({}/{})",
-                downloaded, LIBREOFFICE_ARCHIVE_BYTES
-            ));
+            last_error = Some("dependency-download:size".into());
             continue;
         }
         let _ = app_handle.emit(
@@ -1069,7 +1166,7 @@ pub(super) async fn download_libreoffice_runtime(
             .map_err(|error| format!("Cannot verify PPT runtime: {}", error))??;
         if actual_hash != LIBREOFFICE_ARCHIVE_SHA256 {
             let _ = std::fs::remove_file(&archive);
-            last_error = Some("PPT runtime integrity check failed".to_string());
+            last_error = Some("dependency-download:verify".to_string());
             continue;
         }
         if CANCEL_LIBREOFFICE_DOWNLOAD.load(Ordering::SeqCst) {
@@ -1122,7 +1219,7 @@ pub(super) async fn download_libreoffice_runtime(
         // Do not perform a recursive directory-size scan on the download
         // completion path. The manager can refresh the cached size later while
         // the newly installed runtime is immediately usable.
-        return get_libreoffice_runtime_status();
+        return get_libreoffice_runtime_status().await;
     }
     Err(format!(
         "Cannot download PPT runtime: {}",
@@ -1132,6 +1229,7 @@ pub(super) async fn download_libreoffice_runtime(
 
 #[tauri::command]
 pub(super) fn delete_libreoffice_runtime() -> Result<(), String> {
+    let _guard = begin_libreoffice_download()?;
     let directory = libreoffice_runtime_dir()?;
     if directory.exists() {
         std::fs::remove_dir_all(&directory)
@@ -1148,3 +1246,107 @@ pub(super) fn cancel_dependency_downloads() {
     CANCEL_LIBREOFFICE_DOWNLOAD.store(true, Ordering::SeqCst);
 }
 
+#[cfg(test)]
+mod dependency_probe_tests {
+    use super::*;
+    use crate::native_runtime::office::probe_libreoffice;
+
+    #[test]
+    fn invalid_archive_preserves_existing_ffmpeg_and_non_ffmpeg_is_rejected() {
+        use std::io::Write;
+        let root =
+            std::env::temp_dir().join(format!("toolknit-ffmpeg-invalid-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let archive = root.join("invalid.gz");
+        let destination = root.join("ffmpeg.exe");
+        std::fs::write(&destination, b"previous runtime").unwrap();
+        let mut gzip = flate2::write::GzEncoder::new(
+            std::fs::File::create(&archive).unwrap(),
+            flate2::Compression::fast(),
+        );
+        gzip.write_all(&vec![0; 1024 * 1024]).unwrap();
+        gzip.finish().unwrap();
+        assert!(extract_ffmpeg_executable(&archive, &destination).is_err());
+        assert_eq!(std::fs::read(&destination).unwrap(), b"previous runtime");
+        assert!(!destination.with_extension("exe.part").exists());
+        std::fs::write(&archive, b"invalid gzip").unwrap();
+        assert!(extract_ffmpeg_executable(&archive, &destination).is_err());
+        assert_eq!(std::fs::read(&destination).unwrap(), b"previous runtime");
+        assert!(!destination.with_extension("exe.part").exists());
+        assert!(probe_ffmpeg_runtime(&std::env::current_exe().unwrap(), "test").is_none());
+        assert!(probe_libreoffice(&std::env::current_exe().unwrap(), "test").is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "Requires an existing local LibreOffice runtime; never installs or modifies system Office"]
+    fn libreoffice_real_discovery_and_cached_probe() {
+        invalidate_libreoffice_runtime_cache();
+        let started = std::time::Instant::now();
+        let runtime = resolve_libreoffice_runtime();
+        assert!(
+            runtime.available,
+            "no usable LibreOffice on this test device"
+        );
+        println!(
+            "LibreOffice discovery: {:?}; {}; source={}",
+            started.elapsed(),
+            runtime.version.as_deref().unwrap_or("unknown"),
+            runtime.source.as_deref().unwrap_or("unknown")
+        );
+        let started = std::time::Instant::now();
+        let cached = resolve_libreoffice_runtime();
+        assert_eq!(cached.command, runtime.command);
+        assert!(cached.available);
+        println!("LibreOffice cached discovery: {:?}", started.elapsed());
+        invalidate_libreoffice_runtime_cache();
+    }
+
+    #[tokio::test]
+    #[ignore = "Downloads and executes the pinned FFmpeg runtime in an isolated temporary directory"]
+    async fn ffmpeg_real_download_extract_and_probe() {
+        use std::io::Write;
+        let root =
+            std::env::temp_dir().join(format!("toolknit-ffmpeg-smoke-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let archive = root.join("ffmpeg.gz");
+        let cancel = AtomicBool::new(false);
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(12))
+            .build()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let url = ffmpeg_download_candidates("china").unwrap()[0].1;
+        let mut response = dependency_download::network(client.get(url).send(), &cancel)
+            .await
+            .unwrap();
+        assert_eq!(
+            dependency_download::response_offset(&response, 0, FFMPEG_ARCHIVE_BYTES).unwrap(),
+            0
+        );
+        let mut file = std::fs::File::create(&archive).unwrap();
+        let mut bytes = 0;
+        while let Some(chunk) = dependency_download::network(response.chunk(), &cancel)
+            .await
+            .unwrap()
+        {
+            bytes += chunk.len() as u64;
+            assert!(bytes <= FFMPEG_ARCHIVE_BYTES);
+            file.write_all(&chunk).unwrap();
+        }
+        drop(file);
+        assert_eq!(bytes, FFMPEG_ARCHIVE_BYTES);
+        assert_eq!(sha256_file(&archive).unwrap(), FFMPEG_ARCHIVE_SHA256);
+        let destination = root.join("ffmpeg.exe");
+        extract_ffmpeg_executable(&archive, &destination).unwrap();
+        let runtime = probe_ffmpeg_runtime(&destination, "test").unwrap();
+        println!(
+            "FFmpeg download/extract/probe: {:?}; {}",
+            started.elapsed(),
+            runtime.version.unwrap()
+        );
+        extract_ffmpeg_executable(&archive, &destination).unwrap();
+        assert!(!destination.with_extension("exe.previous").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
